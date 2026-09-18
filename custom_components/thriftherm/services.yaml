@@ -1,0 +1,115 @@
+set_override:
+  name: Set room override
+  description: Temporarily override a room's target temperature. Expires automatically.
+  fields:
+    room:
+      name: Room
+      description: Room key as configured (e.g. badezimmer).
+      required: true
+      example: badezimmer
+      selector:
+        text:
+    temperature:
+      name: Temperature
+      description: Target temperature during the override.
+      required: true
+      example: 22
+      selector:
+        number:
+          min: 5
+          max: 30
+          step: 0.5
+          unit_of_measurement: "°C"
+    duration_min:
+      name: Duration
+      description: Minutes until the override expires (default 120).
+      required: false
+      example: 90
+      selector:
+        number:
+          min: 5
+          max: 1440
+          step: 5
+          unit_of_measurement: min
+
+clear_override:
+  name: Clear room override
+  description: Remove the override of one room, or of all rooms if no room is given.
+  fields:
+    room:
+      name: Room
+      description: Room key; omit to clear all overrides.
+      required: false
+      example: badezimmer
+      selector:
+        text:
+
+set_away:
+  name: Set away
+  description: Switch to away mode. With a return time the rooms are pre-heated so they reach their scheduled target on return.
+  fields:
+    return_time:
+      name: Return time
+      description: Expected return (ISO datetime, local time allowed). Omit to keep a return time that is already set.
+      required: false
+      example: "2026-12-24 16:00"
+      selector:
+        datetime:
+    clear_return_time:
+      name: Open-ended
+      description: Drop a return time that was set before, so the absence has no planned end.
+      required: false
+      selector:
+        boolean:
+
+clear_away:
+  name: Clear away
+  description: Leave away mode and return to automatic operation.
+
+reset_learning:
+  name: Reset learning data
+  description: Forgets what was learned in the chosen areas. Settings and run state stay.
+  fields:
+    scope:
+      name: Areas
+      description: boiler, heat_pump and/or rooms. All when omitted.
+      required: false
+      example: '["heat_pump"]'
+      selector:
+        select:
+          multiple: true
+          options:
+            - boiler
+            - heat_pump
+            - rooms
+    rooms:
+      name: Rooms
+      description: Room keys; narrows the rooms area. All rooms when omitted.
+      required: false
+      example: '["badezimmer"]'
+      selector:
+        text:
+          multiple: true
+
+boost:
+  name: Quick heat-up
+  description: Heat a room to its comfort temperature as fast as possible (heat pump at full power). Ends after the duration; clear_override ends it earlier.
+  fields:
+    room:
+      name: Room
+      description: Room key as configured (e.g. badezimmer).
+      required: true
+      example: badezimmer
+      selector:
+        text:
+    duration_min:
+      name: Duration
+      description: Minutes (default from the options, 45).
+      required: false
+      example: 45
+      selector:
+        number:
+          min: 5
+          max: 240
+          step: 5
+          unit_of_measurement: min

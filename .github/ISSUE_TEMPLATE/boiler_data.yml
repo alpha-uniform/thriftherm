@@ -1,0 +1,70 @@
+name: Boiler data
+description: Share data from your boiler so it can be supported
+title: "Boiler data: <manufacturer> <model>"
+labels: ["boiler data"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping support more boilers! Please remove serial numbers, IP addresses and anything else personal before posting.
+  - type: input
+    id: model
+    attributes:
+      label: Boiler manufacturer and model
+      placeholder: Vaillant atmoTEC plus VCW 194/4-5
+    validations:
+      required: true
+  - type: dropdown
+    id: type
+    attributes:
+      label: Boiler type
+      options:
+        - Condensing
+        - Non-condensing
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: definition
+    attributes:
+      label: ebusd circuit and definition
+      description: Shown by `ebusctl info` or `ebusctl find -a`.
+      placeholder: bai / bai.308523
+    validations:
+      required: true
+  - type: input
+    id: adapter
+    attributes:
+      label: eBUS adapter and ebusd version
+      placeholder: eBUS adapter C6, ebusd 25.1
+  - type: checkboxes
+    id: observations
+    attributes:
+      label: What you observed
+      description: Only tick what you actually tested. Writing to a boiler is your responsibility.
+      options:
+        - label: Readable values (flow and return temperature, burner state) show up in Home Assistant
+        - label: SetMode is accepted and the flow setpoint follows it
+        - label: The front knob stays the upper limit
+        - label: Heating block (disablehc) stops space heating while hot water still works
+        - label: Without new SetMode messages the boiler returns to its knob
+  - type: input
+    id: fallback
+    attributes:
+      label: Time until fallback to the knob
+      placeholder: 9–16 minutes
+  - type: textarea
+    id: dump
+    attributes:
+      label: ebusd output
+      description: Output of `ebusctl find -a -f` (serial numbers removed).
+      render: text
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+  - type: input
+    id: credit
+    attributes:
+      label: Credit
+      description: The name or GitHub handle to show in the supported boilers table, or leave empty to stay anonymous.

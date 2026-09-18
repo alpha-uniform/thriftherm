@@ -1,0 +1,20 @@
+[project]
+name = "thriftherm"
+version = "0.4.0"
+description = "Thriftherm for Home Assistant: cost-optimised gas boiler / air-to-air heat pump coordination"
+readme = "README.md"
+requires-python = ">=3.13"
+license = { text = "MIT" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 130
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
