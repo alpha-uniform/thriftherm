@@ -55,6 +55,7 @@ The first setup step asks which heating you have and leaves out the steps that d
 - **A heat pump without a boiler works**: choose *None – heat pump and room control only* in the first setup step. Like the whole add-on, this is a preview.
 - **Bathroom drying needs the heat pump.** It dries with the heat pump's warm air, only in a room the heat pump heats – details in the [user guide, section 7](GUIDE.md#7-heat-pump-optional).
 - **Everything in the boiler rows needs an own boiler on ebusd** – flow temperature, heating block, learned heating curve, hot water recognition, summer mode over eBUS and the knob fallback. With district heating or without a boiler, nothing is ever sent over eBUS.
+- **With district heating, Thriftherm pays off mainly with a heat pump.** It then keeps deciding whether heat from electricity or from the district heating is cheaper right now, and lets the heat pump heat only when it pays – except for quick heat-up, bathroom drying and learning runs. Without a heat pump, only room control is left. Better Thermostat already regulates the valves, and Thriftherm adds schedules with pre-heating and away mode – not much beyond what Better Thermostat with a schedule can already do.
 
 ## Quick start
 
