@@ -55,6 +55,7 @@ Im ersten Einrichtungsschritt wählst du, welche Heizung du hast; Schritte, die 
 - **Eine Wärmepumpe ohne Therme funktioniert**: Im ersten Einrichtungsschritt *Keine – nur Wärmepumpe und Raumsteuerung* wählen. Wie die ganze Erweiterung ist das eine Vorschau.
 - **Bad-Trocknung braucht die Wärmepumpe.** Sie trocknet mit der warmen Luft der Wärmepumpe, nur in einem Raum, den die Wärmepumpe beheizt – Einzelheiten in der [Anleitung, Abschnitt 7](ANLEITUNG.md#7-wärmepumpe-optional).
 - **Alles in den Therme-Zeilen braucht eine eigene Therme über ebusd** – Vorlauf, Heizsperre, gelernte Heizkurve, Warmwasser-Erkennung, Sommerbetrieb über eBUS und der Rückfall auf den Drehknopf. Bei Fernwärme oder ohne Therme wird nie etwas über eBUS gesendet.
+- **Bei Fernwärme bringt Thriftherm vor allem mit einer Wärmepumpe etwas.** Dann entscheidet es laufend, ob Wärme aus Strom oder aus der Fernwärme gerade günstiger ist, und lässt die Wärmepumpe nur dann heizen, wenn sie sich rechnet – außer bei „Schnell aufheizen“, Bad-Trocknung und Lernläufen. Ohne Wärmepumpe bleibt nur die Raumsteuerung. Die Ventile regelt dabei ohnehin Better Thermostat, Thriftherm ergänzt Zeitpläne mit Vorheizen und die Abwesenheit – viel mehr, als Better Thermostat mit einem Zeitplan schon kann, ist das nicht.
 
 ## Schnellstart
 
