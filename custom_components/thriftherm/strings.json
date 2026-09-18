@@ -1,0 +1,1864 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "What kind of heating do you have?",
+        "description": "This decides which steps follow and how costs are calculated. You can change it later in the options.",
+        "data": {
+          "system_type": "Kind of heating"
+        }
+      },
+      "prices": {
+        "title": "Prices",
+        "description": "All values can be changed later in the options. Efficiency refers to the gross calorific value (Hs), because gas is billed per kWh Hs. For district heating the allocation key matters: only the consumption share is saved when you heat less – the floor-area share is billed regardless. The heat pump therefore has to reach a higher COP to pay off.",
+        "data": {
+          "electricity_price": "Electricity price",
+          "gas_price": "Gas price",
+          "boiler_efficiency": "Effective boiler efficiency (Hs)",
+          "gas_calorific_value_kwh_m3": "Calorific value Hs",
+          "gas_z_factor": "State number (Z)",
+          "heat_price": "Heat price from your bill",
+          "heat_consumption_share_pct": "Share billed by consumption",
+          "heat_ownership_share_pct": "Your ownership share of the building"
+        }
+      },
+      "boiler": {
+        "title": "Gas boiler (ebusd) and gas meter",
+        "description": "{detected}\n\nEverything is optional; missing values reduce what the integration can derive.",
+        "data": {
+          "boiler_flow_temp": "Flow temperature",
+          "boiler_return_temp": "Return temperature",
+          "boiler_pump_state": "Boiler state from Status01 (off/on/overrun/hwc)",
+          "boiler_pump_running": "Heating pump running (ebusd WP, on/off)",
+          "boiler_state_number": "Boiler status number (ebusd Statenumber, S.xx)",
+          "boiler_hwc_mode": "Domestic hot water mode",
+          "boiler_signal": "eBUS signal (binary sensor)",
+          "boiler_circulation_l_h": "Nominal circulation flow of the pump",
+          "gas_volume": "Gas meter volume (m³, total)",
+          "gas_flow": "Gas meter instantaneous flow (m³/h)",
+          "boiler_ebus_circuit": "ebusd circuit of the boiler (usually bai)",
+          "boiler_curve_flow_at_minus10": "Heating curve: flow temperature at -10 °C outdoor",
+          "boiler_curve_flow_at_plus15": "Heating curve: flow temperature at +15 °C outdoor",
+          "boiler_flow_min": "Minimum flow temperature",
+          "boiler_flow_max": "Maximum flow temperature",
+          "boiler_allow_active_control": "Release active boiler control (otherwise plan only)"
+        }
+      },
+      "midea": {
+        "title": "Heat pump (optional add-on)",
+        "description": "Optional. Leave everything empty to use the smart boiler control only; the heat pump can be added later in the options. Intake/outlet sensors and the airflow curve are needed for the COP. Airflow curve format: rpm:m3h,rpm:m3h (e.g. 400:250,900:600).",
+        "data": {
+          "midea_climate": "Heat pump climate entity",
+          "midea_power": "Electrical power (smart plug)",
+          "midea_intake_temp": "Intake air temperature",
+          "midea_intake_rh": "Intake air humidity",
+          "midea_outlet_temp": "Outlet air temperature",
+          "midea_airflow_curve": "Airflow curve (rpm:m³/h, ...)",
+          "midea_duct_factor": "Duct factor (real airflow / free-blowing, 1.0 without hoses)",
+          "midea_room": "Room the heat pump stands in"
+        }
+      },
+      "outdoor": {
+        "title": "Outdoor conditions",
+        "description": "Outdoor temperature sources in priority order. The weather entity is used as fallback.",
+        "data": {
+          "outdoor_temp_sensors": "Outdoor temperature sensors (priority order)",
+          "outdoor_rh_sensor": "Outdoor humidity sensor",
+          "weather_entity": "Weather entity (fallback)"
+        }
+      },
+      "room": {
+        "title": "Room",
+        "description": "Rooms configured so far: {count}. Schedule format: HH:MM-HH:MM, comma separated (comfort temperature inside the windows, setback outside).",
+        "data": {
+          "name": "Room name",
+          "priority": "Priority (1 = highest)",
+          "temperature_sensor": "Room temperature sensor",
+          "humidity_sensor": "Room humidity sensor",
+          "window_sensors": "Window / door contacts",
+          "climate_entity": "Thermostat (TRV or Better Thermostat)",
+          "served_by_midea": "Heated by the heat pump",
+          "internal_gain_sensors": "Power sensors of internal heat sources",
+          "comfort_temp": "Comfort temperature",
+          "setback_temp": "Setback temperature",
+          "schedule_weekday": "Comfort windows Mon–Fri",
+          "schedule_weekend": "Comfort windows Sat–Sun",
+          "add_another": "Add another room",
+          "bathroom_drying_mode": "Bathroom drying with the heat pump (keep heating while airing after showers)",
+          "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows below)"
+        }
+      }
+    },
+    "error": {
+      "invalid_schedule": "Invalid schedule, use HH:MM-HH:MM,HH:MM-HH:MM",
+      "setback_above_comfort": "Setback temperature must not exceed comfort temperature",
+      "duplicate_room": "A room with this name already exists",
+      "invalid_airflow_curve": "Invalid airflow curve, use rpm:m3h,rpm:m3h"
+    },
+    "abort": {
+      "single_instance_allowed": "Only one Thriftherm can be configured"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Thriftherm",
+        "menu_options": {
+          "system": "Kind of heating",
+          "prices": "Prices",
+          "boiler": "Gas boiler and gas meter",
+          "midea": "Heat pump (optional add-on)",
+          "outdoor": "Outdoor conditions",
+          "parameters": "Control parameters",
+          "rooms": "Rooms",
+          "reset_learning": "Reset learning"
+        }
+      },
+      "system": {
+        "title": "What kind of heating do you have?",
+        "description": "This decides which steps follow and how costs are calculated. You can change it later in the options.",
+        "data": {
+          "system_type": "Kind of heating"
+        }
+      },
+      "prices": {
+        "title": "Prices",
+        "description": "All values can be changed later in the options. Efficiency refers to the gross calorific value (Hs), because gas is billed per kWh Hs. For district heating the allocation key matters: only the consumption share is saved when you heat less – the floor-area share is billed regardless. The heat pump therefore has to reach a higher COP to pay off.",
+        "data": {
+          "electricity_price": "Electricity price",
+          "gas_price": "Gas price",
+          "boiler_efficiency": "Effective boiler efficiency (Hs)",
+          "gas_calorific_value_kwh_m3": "Calorific value Hs",
+          "gas_z_factor": "State number (Z)",
+          "heat_price": "Heat price from your bill",
+          "heat_consumption_share_pct": "Share billed by consumption",
+          "heat_ownership_share_pct": "Your ownership share of the building"
+        }
+      },
+      "boiler": {
+        "title": "Gas boiler (ebusd) and gas meter",
+        "description": "{detected}\n\nEverything is optional; missing values reduce what the integration can derive.",
+        "data": {
+          "boiler_flow_temp": "Flow temperature",
+          "boiler_return_temp": "Return temperature",
+          "boiler_pump_state": "Boiler state from Status01 (off/on/overrun/hwc)",
+          "boiler_pump_running": "Heating pump running (ebusd WP, on/off)",
+          "boiler_state_number": "Boiler status number (ebusd Statenumber, S.xx)",
+          "boiler_hwc_mode": "Domestic hot water mode",
+          "boiler_signal": "eBUS signal (binary sensor)",
+          "boiler_circulation_l_h": "Nominal circulation flow of the pump",
+          "gas_volume": "Gas meter volume (m³, total)",
+          "gas_flow": "Gas meter instantaneous flow (m³/h)",
+          "boiler_ebus_circuit": "ebusd circuit of the boiler (usually bai)",
+          "boiler_curve_flow_at_minus10": "Heating curve: flow temperature at -10 °C outdoor",
+          "boiler_curve_flow_at_plus15": "Heating curve: flow temperature at +15 °C outdoor",
+          "boiler_flow_min": "Minimum flow temperature",
+          "boiler_flow_max": "Maximum flow temperature",
+          "boiler_allow_active_control": "Release active boiler control (otherwise plan only)"
+        }
+      },
+      "midea": {
+        "title": "Heat pump (optional add-on)",
+        "data": {
+          "midea_climate": "Heat pump climate entity",
+          "midea_power": "Electrical power (smart plug)",
+          "midea_intake_temp": "Intake air temperature",
+          "midea_intake_rh": "Intake air humidity",
+          "midea_outlet_temp": "Outlet air temperature",
+          "midea_airflow_curve": "Airflow curve (rpm:m³/h, ...)",
+          "midea_duct_factor": "Duct factor (real airflow / free-blowing, 1.0 without hoses)",
+          "midea_room": "Room the heat pump stands in"
+        }
+      },
+      "outdoor": {
+        "title": "Outdoor conditions",
+        "data": {
+          "outdoor_temp_sensors": "Outdoor temperature sensors (priority order)",
+          "outdoor_rh_sensor": "Outdoor humidity sensor",
+          "weather_entity": "Weather entity (fallback)"
+        }
+      },
+      "parameters": {
+        "title": "Control parameters",
+        "data": {
+          "sensor_max_age_min": "Max. sensor age",
+          "window_grace_s": "Window open grace period",
+          "frost_protection_temp": "Frost protection temperature",
+          "away_temp": "Away temperature",
+          "demand_full_delta_k": "Deviation for 100 % demand",
+          "trend_weight_h": "Trend look-ahead",
+          "internal_gain_threshold_w": "Internal gain threshold",
+          "internal_gain_factor_per_w": "Internal gain demand reduction per W",
+          "break_even_margin_on": "Margin above break-even to prefer the heat pump",
+          "break_even_margin_off": "Margin below break-even to return to boiler",
+          "midea_min_outdoor_temp": "Minimum outdoor temperature for heat pump heating (data sheet)",
+          "midea_setpoint_offset_k": "Eco setpoint above intake air, start value (learned)",
+          "cop_warmup_s": "COP warm-up time after compressor start",
+          "cop_min_power_w": "COP minimum electrical power",
+          "cop_min_delta_t_k": "COP minimum air temperature rise",
+          "cop_min_samples": "COP minimum valid samples",
+          "cop_settle_max_k_per_min": "COP: max. outlet temperature slope (settled)",
+          "icing_block_min": "Heat pump lockout after icing / inefficiency",
+          "defrost_coil_rise_k": "Defrost: outdoor coil rise within 2 min",
+          "defrost_max_cycles_90min": "Defrost: max. cycles per 90 min",
+          "icing_coil_depression_k": "Icing: outdoor coil below outdoor air by",
+          "drying_target_temp": "Bathroom drying (heat pump only): target temperature",
+          "drying_abs_humidity_rise_g_m3": "Bathroom drying (heat pump only): trigger, rise in absolute humidity",
+          "drying_max_min": "Bathroom drying (heat pump only): max. duration",
+          "away_dewpoint_margin_k": "Away: dew-point margin for humidity guard",
+          "preheat_margin_min": "Return preheat safety margin",
+          "default_heat_rate_radiator_k_h": "Default heat-up rate radiator rooms",
+          "default_heat_rate_midea_k_h": "Default heat-up rate heat pump rooms",
+          "override_default_min": "Default override duration",
+          "midea_min_run_min": "Heat pump minimum run time",
+          "midea_min_off_min": "Heat pump minimum pause",
+          "boost_duration_min": "Quick heat-up duration",
+          "midea_learning_runs": "Allow learning runs (measure COP at new outdoor temperatures)",
+          "midea_allow_active_control": "Release active heat pump control (otherwise plan only)",
+          "room_allow_active_control": "Release active room control (write setpoints to the thermostats)"
+        }
+      },
+      "rooms": {
+        "title": "Rooms",
+        "data": {
+          "room": "Room",
+          "action": "Action"
+        }
+      },
+      "room": {
+        "title": "Room",
+        "description": "Rooms configured: {count}. Schedule format: HH:MM-HH:MM, comma separated.",
+        "data": {
+          "name": "Room name",
+          "priority": "Priority (1 = highest)",
+          "temperature_sensor": "Room temperature sensor",
+          "humidity_sensor": "Room humidity sensor",
+          "window_sensors": "Window / door contacts",
+          "climate_entity": "Thermostat (TRV or Better Thermostat)",
+          "served_by_midea": "Heated by the heat pump",
+          "internal_gain_sensors": "Power sensors of internal heat sources",
+          "comfort_temp": "Comfort temperature",
+          "setback_temp": "Setback temperature",
+          "schedule_weekday": "Comfort windows Mon–Fri",
+          "schedule_weekend": "Comfort windows Sat–Sun",
+          "bathroom_drying_mode": "Bathroom drying with the heat pump (keep heating while airing after showers)",
+          "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows below)"
+        }
+      },
+      "reset_learning": {
+        "title": "Reset learning",
+        "description": "After a change to the installation, learned values no longer fit – for example after hydraulic balancing, new radiators, fitted ducts or a new thermostat. Only the chosen areas are cleared; settings, schedules and modes stay. When the heating curve, duct factor, installation room, served rooms or a room's sensor change, Thriftherm forgets the affected area on its own.",
+        "data": {
+          "scope": "Areas",
+          "rooms": "Only these rooms (empty = all)"
+        },
+        "data_description": {
+          "rooms": "Applies to the rooms area only."
+        }
+      }
+    },
+    "error": {
+      "invalid_schedule": "Invalid schedule, use HH:MM-HH:MM,HH:MM-HH:MM",
+      "setback_above_comfort": "Setback temperature must not exceed comfort temperature",
+      "duplicate_room": "A room with this name already exists",
+      "invalid_airflow_curve": "Invalid airflow curve, use rpm:m3h,rpm:m3h",
+      "no_scope": "Choose at least one area."
+    },
+    "abort": {
+      "learning_reset": "The chosen learning data was cleared. Thriftherm starts learning again.",
+      "not_loaded": "Thriftherm is not loaded."
+    }
+  },
+  "selector": {
+    "room_action": {
+      "options": {
+        "edit": "Edit",
+        "delete": "Delete"
+      }
+    },
+    "system_type": {
+      "options": {
+        "gas": "Own gas or oil boiler",
+        "district": "Central or district heating, or heat supplied by the landlord",
+        "none": "None – heat pump and room control only"
+      }
+    },
+    "learning_scope": {
+      "options": {
+        "boiler": "Boiler: heating curve correction",
+        "heat_pump": "Heat pump: COP map, setpoint correction, icing lockout",
+        "rooms": "Rooms: heat-up rates"
+      }
+    },
+    "room_choice": {
+      "options": {
+        "add-room": "Add a room"
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "midea_cop": {
+        "name": "Heat pump COP",
+        "state_attributes": {
+          "raw_sample": {
+            "name": "Raw sample"
+          },
+          "samples": {
+            "name": "Samples"
+          },
+          "gate_reasons": {
+            "name": "Not measured because"
+          },
+          "airflow_m3h": {
+            "name": "Airflow m³/h"
+          },
+          "duct_factor": {
+            "name": "Duct factor"
+          },
+          "expected_cop_at_current_outdoor": {
+            "name": "Expected COP at this outdoor temperature"
+          },
+          "expected_cop_basis": {
+            "name": "Basis of the expected COP",
+            "state": {
+              "measured": "Measured",
+              "learned": "Learned",
+              "prior": "Starting curve",
+              "prior_calibrated": "Starting curve (calibrated)"
+            }
+          },
+          "prior_calibration_factor": {
+            "name": "Starting curve calibration"
+          },
+          "cop_map_by_outdoor_temp": {
+            "name": "COP map by outdoor temperature"
+          }
+        }
+      },
+      "midea_thermal_power": {
+        "name": "Heat pump thermal power"
+      },
+      "midea_electrical_power": {
+        "name": "Heat pump electrical power",
+        "state_attributes": {
+          "source": {
+            "name": "Source",
+            "state": {
+              "plug": "Smart plug",
+              "midea_internal": "Heat pump's own value"
+            }
+          }
+        }
+      },
+      "midea_airflow_estimate": {
+        "name": "Heat pump airflow (estimate)"
+      },
+      "midea_cost_per_kwh_thermal": {
+        "name": "Heat cost per kWh, heat pump"
+      },
+      "gas_cost_per_kwh_thermal": {
+        "name": "Heat cost per kWh, boiler"
+      },
+      "break_even_cop": {
+        "name": "Break-even COP"
+      },
+      "cheaper_source": {
+        "name": "Cheaper heat source",
+        "state": {
+          "midea": "Heat pump",
+          "boiler": "Gas boiler",
+          "unknown": "Unknown"
+        },
+        "state_attributes": {
+          "saving_pct": {
+            "name": "Saving %"
+          }
+        }
+      },
+      "gas_power": {
+        "name": "Gas power"
+      },
+      "gas_energy": {
+        "name": "Gas energy"
+      },
+      "boiler_thermal_power_estimate": {
+        "name": "Boiler thermal power (estimate)",
+        "state_attributes": {
+          "basis": {
+            "name": "Basis",
+            "state": {
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)"
+            }
+          }
+        }
+      },
+      "boiler_delta_t": {
+        "name": "Boiler flow/return spread"
+      },
+      "active_source_advice": {
+        "name": "Recommended heat source",
+        "state": {
+          "boiler": "Gas boiler",
+          "midea": "Heat pump",
+          "both": "Both",
+          "none": "None"
+        },
+        "state_attributes": {
+          "blocked": {
+            "name": "Blocked"
+          },
+          "observation_only": {
+            "name": "Observation only"
+          }
+        }
+      },
+      "decision_reason": {
+        "name": "Decision reason",
+        "state_attributes": {
+          "reasons": {
+            "name": "Reasons"
+          },
+          "reason_codes": {
+            "name": "Reason codes"
+          }
+        }
+      },
+      "automation_state": {
+        "name": "Automation state",
+        "state": {
+          "observing": "Observing",
+          "planning": "Plan only (beta)",
+          "active": "Active"
+        }
+      },
+      "safety_state": {
+        "name": "Safety state",
+        "state": {
+          "ok": "OK",
+          "degraded": "Degraded",
+          "fallback": "Fallback"
+        },
+        "state_attributes": {
+          "issues": {
+            "name": "Issues"
+          },
+          "frost_rooms": {
+            "name": "Rooms in frost protection"
+          }
+        }
+      },
+      "midea_run_state": {
+        "name": "Heat pump run state",
+        "state": {
+          "unavailable": "Unavailable",
+          "off": "Off",
+          "cooling_user": "Cooling (user)",
+          "fan_only": "Fan only",
+          "auto": "Auto",
+          "heating_idle": "Heating idle",
+          "heating_warming_up": "Heating warming up",
+          "heating_stable": "Heating"
+        },
+        "state_attributes": {
+          "issues": {
+            "name": "Issues"
+          }
+        }
+      },
+      "outdoor_temperature": {
+        "name": "Outdoor temperature (selected source)",
+        "state_attributes": {
+          "source": {
+            "name": "Source"
+          }
+        }
+      },
+      "room_target": {
+        "name": "Target temperature",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "override": "Manual override",
+              "mode_off_frost_protection": "Summer mode (frost protection only)",
+              "mode_away": "Away",
+              "away_preheat": "Pre-heating for your return",
+              "away_humidity_guard": "Away, raised against damp",
+              "schedule_comfort": "Schedule: comfort",
+              "schedule_setback": "Schedule: setback",
+              "schedule_preheat": "Pre-heating for the schedule",
+              "bathroom_drying": "Drying the bathroom",
+              "drying_active": "Drying",
+              "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_ended_humidity_normal": "Ended: humidity back to normal",
+              "drying_ended_timeout": "Ended: time limit",
+              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "room_demand": "Rooms need heat",
+              "no_room_needs_boiler": "No room needs the boiler",
+              "frost_protection": "Frost protection",
+              "summer_mode": "Summer mode",
+              "safety_fallback": "Safety fallback",
+              "boiler_data_unavailable": "Boiler data unavailable",
+              "waiting_for_room_data": "Waiting for room data",
+              "hands_off": "No setpoint sent",
+              "control_off": "Control off",
+              "not_configured": "Not configured",
+              "min_state_time": "Minimum time in state",
+              "ramp_limit": "Rising slowly (ramp limit)",
+              "spread_small": "Flow/return spread small",
+              "spread_large": "Flow/return spread large",
+              "short_cycling": "Boiler kept switching on and off",
+              "rooms_slow": "Rooms heating up slowly",
+              "rooms_satisfied": "Rooms warm without demand",
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused",
+              "cheaper_than_gas": "Cheaper than central heating",
+              "gas_cheaper": "Central heating cheaper",
+              "learning_run": "Learning run",
+              "quick_heat_up": "Quick heat-up",
+              "mode_midea_only": "Mode: heat pump only",
+              "mode_boiler_only": "Mode: boiler only",
+              "manual_takeover": "Changed by hand",
+              "midea_unavailable": "Heat pump unavailable",
+              "target_reached": "Target reached",
+              "no_demand": "No demand",
+              "blocked": "Blocked",
+              "intake_temperature_unknown": "Intake temperature unknown",
+              "outdoor_temperature_unknown": "Outdoor temperature unknown",
+              "outdoor_too_cold": "Too cold outside",
+              "min_run_time": "Minimum run time",
+              "min_off_time": "Minimum off time",
+              "rate_limit": "Waiting between commands",
+              "unavailable": "Unavailable",
+              "cooling_user": "Cooling (user)",
+              "fan_only": "Fan only",
+              "auto": "Auto",
+              "heating_idle": "Heating idle",
+              "heating_warming_up": "Heating warming up",
+              "heating_stable": "Heating",
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+              "frequent_defrost_cycles": "Frequent defrost cycles",
+              "icing_lockout_active": "Icing lockout active",
+              "outdoor_coil_iced": "Outdoor coil iced",
+              "sustained_inefficiency": "Heat output collapsed",
+              "in_sync": "In sync",
+              "waiting_for_thermostat": "Waiting for the thermostat",
+              "no_thermostat": "No thermostat",
+              "thermostat_off": "Thermostat off",
+              "thermostat_unavailable": "Thermostat unavailable",
+              "airflow_curve_not_calibrated": "airflow not calibrated",
+              "warming_up": "warming up",
+              "electrical_power_missing": "no power reading",
+              "electrical_power_below_minimum": "power too low",
+              "delta_t_below_minimum": "temperature rise too small",
+              "outlet_temp_not_settled": "outlet not settled",
+              "fan_rpm_outside_curve": "fan speed outside the curve",
+              "raw_cop_out_of_range": "COP implausible",
+              "exceeds_carnot_limit": "above the physical limit",
+              "setpoint_recently_changed": "setpoint changed recently",
+              "boiler_control_not_active": "boiler control not active",
+              "hot_water_recent": "hot water recently"
+            }
+          },
+          "quick_heat_up": {
+            "name": "Quick heat-up"
+          },
+          "override_until_ts": {
+            "name": "Override until"
+          },
+          "preheat_start_ts": {
+            "name": "Pre-heating starts"
+          }
+        }
+      },
+      "room_deviation": {
+        "name": "Deviation from target"
+      },
+      "room_demand": {
+        "name": "Heat demand",
+        "state_attributes": {
+          "issues": {
+            "name": "Issues"
+          },
+          "internal_gain_w": {
+            "name": "Internal gains W"
+          }
+        }
+      },
+      "room_trend": {
+        "name": "Temperature trend"
+      },
+      "room_dew_point": {
+        "name": "Dew point"
+      },
+      "room_abs_humidity": {
+        "name": "Absolute humidity"
+      },
+      "midea_command": {
+        "name": "Heat pump command",
+        "state": {
+          "heat": "Heat",
+          "off": "Off",
+          "hands_off": "Manual operation",
+          "disabled": "Control off"
+        },
+        "state_attributes": {
+          "control_mode": {
+            "name": "Control mode",
+            "state": {
+              "off": "Off",
+              "shadow": "Plan only",
+              "active": "Active"
+            }
+          },
+          "commands_sent": {
+            "name": "Commands sent"
+          },
+          "served_rooms": {
+            "name": "Served rooms"
+          },
+          "installed_in_room": {
+            "name": "Installed in"
+          },
+          "action": {
+            "name": "Action",
+            "state": {
+              "none": "None",
+              "start": "Start",
+              "stop": "Stop",
+              "adjust": "Adjust"
+            }
+          },
+          "target_temperature": {
+            "name": "Setpoint"
+          },
+          "fan_mode": {
+            "name": "Fan"
+          },
+          "load": {
+            "name": "Load"
+          },
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "override": "Manual override",
+              "mode_off_frost_protection": "Summer mode (frost protection only)",
+              "mode_away": "Away",
+              "away_preheat": "Pre-heating for your return",
+              "away_humidity_guard": "Away, raised against damp",
+              "schedule_comfort": "Schedule: comfort",
+              "schedule_setback": "Schedule: setback",
+              "schedule_preheat": "Pre-heating for the schedule",
+              "bathroom_drying": "Drying the bathroom",
+              "drying_active": "Drying",
+              "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_ended_humidity_normal": "Ended: humidity back to normal",
+              "drying_ended_timeout": "Ended: time limit",
+              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "room_demand": "Rooms need heat",
+              "no_room_needs_boiler": "No room needs the boiler",
+              "frost_protection": "Frost protection",
+              "summer_mode": "Summer mode",
+              "safety_fallback": "Safety fallback",
+              "boiler_data_unavailable": "Boiler data unavailable",
+              "waiting_for_room_data": "Waiting for room data",
+              "hands_off": "No setpoint sent",
+              "control_off": "Control off",
+              "not_configured": "Not configured",
+              "min_state_time": "Minimum time in state",
+              "ramp_limit": "Rising slowly (ramp limit)",
+              "spread_small": "Flow/return spread small",
+              "spread_large": "Flow/return spread large",
+              "short_cycling": "Boiler kept switching on and off",
+              "rooms_slow": "Rooms heating up slowly",
+              "rooms_satisfied": "Rooms warm without demand",
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused",
+              "cheaper_than_gas": "Cheaper than central heating",
+              "gas_cheaper": "Central heating cheaper",
+              "learning_run": "Learning run",
+              "quick_heat_up": "Quick heat-up",
+              "mode_midea_only": "Mode: heat pump only",
+              "mode_boiler_only": "Mode: boiler only",
+              "manual_takeover": "Changed by hand",
+              "midea_unavailable": "Heat pump unavailable",
+              "target_reached": "Target reached",
+              "no_demand": "No demand",
+              "blocked": "Blocked",
+              "intake_temperature_unknown": "Intake temperature unknown",
+              "outdoor_temperature_unknown": "Outdoor temperature unknown",
+              "outdoor_too_cold": "Too cold outside",
+              "min_run_time": "Minimum run time",
+              "min_off_time": "Minimum off time",
+              "rate_limit": "Waiting between commands",
+              "unavailable": "Unavailable",
+              "cooling_user": "Cooling (user)",
+              "fan_only": "Fan only",
+              "auto": "Auto",
+              "heating_idle": "Heating idle",
+              "heating_warming_up": "Heating warming up",
+              "heating_stable": "Heating",
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+              "frequent_defrost_cycles": "Frequent defrost cycles",
+              "icing_lockout_active": "Icing lockout active",
+              "outdoor_coil_iced": "Outdoor coil iced",
+              "sustained_inefficiency": "Heat output collapsed",
+              "in_sync": "In sync",
+              "waiting_for_thermostat": "Waiting for the thermostat",
+              "no_thermostat": "No thermostat",
+              "thermostat_off": "Thermostat off",
+              "thermostat_unavailable": "Thermostat unavailable",
+              "airflow_curve_not_calibrated": "airflow not calibrated",
+              "warming_up": "warming up",
+              "electrical_power_missing": "no power reading",
+              "electrical_power_below_minimum": "power too low",
+              "delta_t_below_minimum": "temperature rise too small",
+              "outlet_temp_not_settled": "outlet not settled",
+              "fan_rpm_outside_curve": "fan speed outside the curve",
+              "raw_cop_out_of_range": "COP implausible",
+              "exceeds_carnot_limit": "above the physical limit",
+              "setpoint_recently_changed": "setpoint changed recently",
+              "boiler_control_not_active": "boiler control not active",
+              "hot_water_recent": "hot water recently"
+            }
+          },
+          "blockers": {
+            "name": "Blocked by"
+          },
+          "waiting": {
+            "name": "Waiting for",
+            "state": {
+              "override": "Manual override",
+              "mode_off_frost_protection": "Summer mode (frost protection only)",
+              "mode_away": "Away",
+              "away_preheat": "Pre-heating for your return",
+              "away_humidity_guard": "Away, raised against damp",
+              "schedule_comfort": "Schedule: comfort",
+              "schedule_setback": "Schedule: setback",
+              "schedule_preheat": "Pre-heating for the schedule",
+              "bathroom_drying": "Drying the bathroom",
+              "drying_active": "Drying",
+              "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_ended_humidity_normal": "Ended: humidity back to normal",
+              "drying_ended_timeout": "Ended: time limit",
+              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "room_demand": "Rooms need heat",
+              "no_room_needs_boiler": "No room needs the boiler",
+              "frost_protection": "Frost protection",
+              "summer_mode": "Summer mode",
+              "safety_fallback": "Safety fallback",
+              "boiler_data_unavailable": "Boiler data unavailable",
+              "waiting_for_room_data": "Waiting for room data",
+              "hands_off": "No setpoint sent",
+              "control_off": "Control off",
+              "not_configured": "Not configured",
+              "min_state_time": "Minimum time in state",
+              "ramp_limit": "Rising slowly (ramp limit)",
+              "spread_small": "Flow/return spread small",
+              "spread_large": "Flow/return spread large",
+              "short_cycling": "Boiler kept switching on and off",
+              "rooms_slow": "Rooms heating up slowly",
+              "rooms_satisfied": "Rooms warm without demand",
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused",
+              "cheaper_than_gas": "Cheaper than central heating",
+              "gas_cheaper": "Central heating cheaper",
+              "learning_run": "Learning run",
+              "quick_heat_up": "Quick heat-up",
+              "mode_midea_only": "Mode: heat pump only",
+              "mode_boiler_only": "Mode: boiler only",
+              "manual_takeover": "Changed by hand",
+              "midea_unavailable": "Heat pump unavailable",
+              "target_reached": "Target reached",
+              "no_demand": "No demand",
+              "blocked": "Blocked",
+              "intake_temperature_unknown": "Intake temperature unknown",
+              "outdoor_temperature_unknown": "Outdoor temperature unknown",
+              "outdoor_too_cold": "Too cold outside",
+              "min_run_time": "Minimum run time",
+              "min_off_time": "Minimum off time",
+              "rate_limit": "Waiting between commands",
+              "unavailable": "Unavailable",
+              "cooling_user": "Cooling (user)",
+              "fan_only": "Fan only",
+              "auto": "Auto",
+              "heating_idle": "Heating idle",
+              "heating_warming_up": "Heating warming up",
+              "heating_stable": "Heating",
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+              "frequent_defrost_cycles": "Frequent defrost cycles",
+              "icing_lockout_active": "Icing lockout active",
+              "outdoor_coil_iced": "Outdoor coil iced",
+              "sustained_inefficiency": "Heat output collapsed",
+              "in_sync": "In sync",
+              "waiting_for_thermostat": "Waiting for the thermostat",
+              "no_thermostat": "No thermostat",
+              "thermostat_off": "Thermostat off",
+              "thermostat_unavailable": "Thermostat unavailable",
+              "airflow_curve_not_calibrated": "airflow not calibrated",
+              "warming_up": "warming up",
+              "electrical_power_missing": "no power reading",
+              "electrical_power_below_minimum": "power too low",
+              "delta_t_below_minimum": "temperature rise too small",
+              "outlet_temp_not_settled": "outlet not settled",
+              "fan_rpm_outside_curve": "fan speed outside the curve",
+              "raw_cop_out_of_range": "COP implausible",
+              "exceeds_carnot_limit": "above the physical limit",
+              "setpoint_recently_changed": "setpoint changed recently",
+              "boiler_control_not_active": "boiler control not active",
+              "hot_water_recent": "hot water recently"
+            }
+          },
+          "eco_offset_k": {
+            "name": "Setpoint correction K"
+          },
+          "decision_cop": {
+            "name": "COP used"
+          },
+          "decision_cop_basis": {
+            "name": "COP basis",
+            "state": {
+              "measured": "Measured",
+              "learned": "Learned",
+              "prior": "Starting curve",
+              "prior_calibrated": "Starting curve (calibrated)"
+            }
+          },
+          "break_even_cop": {
+            "name": "Break-even COP"
+          },
+          "quick_heat_up_until": {
+            "name": "Quick heat-up until"
+          },
+          "recent_commands": {
+            "name": "Recent commands"
+          }
+        }
+      },
+      "boiler_command": {
+        "name": "Boiler command",
+        "state": {
+          "heat": "Heat",
+          "block": "Heating blocked",
+          "hands_off": "Knob in charge",
+          "disabled": "Control off"
+        },
+        "state_attributes": {
+          "control_mode": {
+            "name": "Control mode",
+            "state": {
+              "off": "Off",
+              "shadow": "Plan only",
+              "active": "Active"
+            }
+          },
+          "commands_sent": {
+            "name": "Commands sent"
+          },
+          "setmode_payload": {
+            "name": "SetMode payload"
+          },
+          "setmode_topic": {
+            "name": "MQTT topic"
+          },
+          "heating_blocked": {
+            "name": "Heating blocked"
+          },
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "override": "Manual override",
+              "mode_off_frost_protection": "Summer mode (frost protection only)",
+              "mode_away": "Away",
+              "away_preheat": "Pre-heating for your return",
+              "away_humidity_guard": "Away, raised against damp",
+              "schedule_comfort": "Schedule: comfort",
+              "schedule_setback": "Schedule: setback",
+              "schedule_preheat": "Pre-heating for the schedule",
+              "bathroom_drying": "Drying the bathroom",
+              "drying_active": "Drying",
+              "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_ended_humidity_normal": "Ended: humidity back to normal",
+              "drying_ended_timeout": "Ended: time limit",
+              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "room_demand": "Rooms need heat",
+              "no_room_needs_boiler": "No room needs the boiler",
+              "frost_protection": "Frost protection",
+              "summer_mode": "Summer mode",
+              "safety_fallback": "Safety fallback",
+              "boiler_data_unavailable": "Boiler data unavailable",
+              "waiting_for_room_data": "Waiting for room data",
+              "hands_off": "No setpoint sent",
+              "control_off": "Control off",
+              "not_configured": "Not configured",
+              "min_state_time": "Minimum time in state",
+              "ramp_limit": "Rising slowly (ramp limit)",
+              "spread_small": "Flow/return spread small",
+              "spread_large": "Flow/return spread large",
+              "short_cycling": "Boiler kept switching on and off",
+              "rooms_slow": "Rooms heating up slowly",
+              "rooms_satisfied": "Rooms warm without demand",
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused",
+              "cheaper_than_gas": "Cheaper than central heating",
+              "gas_cheaper": "Central heating cheaper",
+              "learning_run": "Learning run",
+              "quick_heat_up": "Quick heat-up",
+              "mode_midea_only": "Mode: heat pump only",
+              "mode_boiler_only": "Mode: boiler only",
+              "manual_takeover": "Changed by hand",
+              "midea_unavailable": "Heat pump unavailable",
+              "target_reached": "Target reached",
+              "no_demand": "No demand",
+              "blocked": "Blocked",
+              "intake_temperature_unknown": "Intake temperature unknown",
+              "outdoor_temperature_unknown": "Outdoor temperature unknown",
+              "outdoor_too_cold": "Too cold outside",
+              "min_run_time": "Minimum run time",
+              "min_off_time": "Minimum off time",
+              "rate_limit": "Waiting between commands",
+              "unavailable": "Unavailable",
+              "cooling_user": "Cooling (user)",
+              "fan_only": "Fan only",
+              "auto": "Auto",
+              "heating_idle": "Heating idle",
+              "heating_warming_up": "Heating warming up",
+              "heating_stable": "Heating",
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+              "frequent_defrost_cycles": "Frequent defrost cycles",
+              "icing_lockout_active": "Icing lockout active",
+              "outdoor_coil_iced": "Outdoor coil iced",
+              "sustained_inefficiency": "Heat output collapsed",
+              "in_sync": "In sync",
+              "waiting_for_thermostat": "Waiting for the thermostat",
+              "no_thermostat": "No thermostat",
+              "thermostat_off": "Thermostat off",
+              "thermostat_unavailable": "Thermostat unavailable",
+              "airflow_curve_not_calibrated": "airflow not calibrated",
+              "warming_up": "warming up",
+              "electrical_power_missing": "no power reading",
+              "electrical_power_below_minimum": "power too low",
+              "delta_t_below_minimum": "temperature rise too small",
+              "outlet_temp_not_settled": "outlet not settled",
+              "fan_rpm_outside_curve": "fan speed outside the curve",
+              "raw_cop_out_of_range": "COP implausible",
+              "exceeds_carnot_limit": "above the physical limit",
+              "setpoint_recently_changed": "setpoint changed recently",
+              "boiler_control_not_active": "boiler control not active",
+              "hot_water_recent": "hot water recently"
+            }
+          },
+          "blockers": {
+            "name": "Blocked by"
+          },
+          "waiting": {
+            "name": "Waiting for",
+            "state": {
+              "override": "Manual override",
+              "mode_off_frost_protection": "Summer mode (frost protection only)",
+              "mode_away": "Away",
+              "away_preheat": "Pre-heating for your return",
+              "away_humidity_guard": "Away, raised against damp",
+              "schedule_comfort": "Schedule: comfort",
+              "schedule_setback": "Schedule: setback",
+              "schedule_preheat": "Pre-heating for the schedule",
+              "bathroom_drying": "Drying the bathroom",
+              "drying_active": "Drying",
+              "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_ended_humidity_normal": "Ended: humidity back to normal",
+              "drying_ended_timeout": "Ended: time limit",
+              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "room_demand": "Rooms need heat",
+              "no_room_needs_boiler": "No room needs the boiler",
+              "frost_protection": "Frost protection",
+              "summer_mode": "Summer mode",
+              "safety_fallback": "Safety fallback",
+              "boiler_data_unavailable": "Boiler data unavailable",
+              "waiting_for_room_data": "Waiting for room data",
+              "hands_off": "No setpoint sent",
+              "control_off": "Control off",
+              "not_configured": "Not configured",
+              "min_state_time": "Minimum time in state",
+              "ramp_limit": "Rising slowly (ramp limit)",
+              "spread_small": "Flow/return spread small",
+              "spread_large": "Flow/return spread large",
+              "short_cycling": "Boiler kept switching on and off",
+              "rooms_slow": "Rooms heating up slowly",
+              "rooms_satisfied": "Rooms warm without demand",
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused",
+              "cheaper_than_gas": "Cheaper than central heating",
+              "gas_cheaper": "Central heating cheaper",
+              "learning_run": "Learning run",
+              "quick_heat_up": "Quick heat-up",
+              "mode_midea_only": "Mode: heat pump only",
+              "mode_boiler_only": "Mode: boiler only",
+              "manual_takeover": "Changed by hand",
+              "midea_unavailable": "Heat pump unavailable",
+              "target_reached": "Target reached",
+              "no_demand": "No demand",
+              "blocked": "Blocked",
+              "intake_temperature_unknown": "Intake temperature unknown",
+              "outdoor_temperature_unknown": "Outdoor temperature unknown",
+              "outdoor_too_cold": "Too cold outside",
+              "min_run_time": "Minimum run time",
+              "min_off_time": "Minimum off time",
+              "rate_limit": "Waiting between commands",
+              "unavailable": "Unavailable",
+              "cooling_user": "Cooling (user)",
+              "fan_only": "Fan only",
+              "auto": "Auto",
+              "heating_idle": "Heating idle",
+              "heating_warming_up": "Heating warming up",
+              "heating_stable": "Heating",
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+              "frequent_defrost_cycles": "Frequent defrost cycles",
+              "icing_lockout_active": "Icing lockout active",
+              "outdoor_coil_iced": "Outdoor coil iced",
+              "sustained_inefficiency": "Heat output collapsed",
+              "in_sync": "In sync",
+              "waiting_for_thermostat": "Waiting for the thermostat",
+              "no_thermostat": "No thermostat",
+              "thermostat_off": "Thermostat off",
+              "thermostat_unavailable": "Thermostat unavailable",
+              "airflow_curve_not_calibrated": "airflow not calibrated",
+              "warming_up": "warming up",
+              "electrical_power_missing": "no power reading",
+              "electrical_power_below_minimum": "power too low",
+              "delta_t_below_minimum": "temperature rise too small",
+              "outlet_temp_not_settled": "outlet not settled",
+              "fan_rpm_outside_curve": "fan speed outside the curve",
+              "raw_cop_out_of_range": "COP implausible",
+              "exceeds_carnot_limit": "above the physical limit",
+              "setpoint_recently_changed": "setpoint changed recently",
+              "boiler_control_not_active": "boiler control not active",
+              "hot_water_recent": "hot water recently"
+            }
+          },
+          "heating_curve_flow": {
+            "name": "Heating curve flow °C"
+          },
+          "learned_offset_k": {
+            "name": "Learned correction K"
+          },
+          "flow_return_spread_k": {
+            "name": "Flow/return spread K"
+          },
+          "learning_phase": {
+            "name": "Learning phase",
+            "state": {
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused"
+            }
+          },
+          "pump_running": {
+            "name": "Heating pump running"
+          },
+          "boiler_status": {
+            "name": "Boiler status"
+          },
+          "recent_plans": {
+            "name": "Recent plans"
+          }
+        }
+      },
+      "boiler_flow_setpoint": {
+        "name": "Boiler flow setpoint (planned)"
+      },
+      "room_thermostat_plan": {
+        "name": "Thermostat plan",
+        "state": {
+          "set": "Set setpoint",
+          "hold": "In sync",
+          "hands_off": "Thermostat in charge",
+          "disabled": "Control off"
+        },
+        "state_attributes": {
+          "control_mode": {
+            "name": "Control mode",
+            "state": {
+              "off": "Off",
+              "shadow": "Plan only",
+              "active": "Active"
+            }
+          },
+          "setpoint": {
+            "name": "Setpoint"
+          },
+          "thermostat_setpoint": {
+            "name": "Thermostat setpoint"
+          },
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "override": "Manual override",
+              "mode_off_frost_protection": "Summer mode (frost protection only)",
+              "mode_away": "Away",
+              "away_preheat": "Pre-heating for your return",
+              "away_humidity_guard": "Away, raised against damp",
+              "schedule_comfort": "Schedule: comfort",
+              "schedule_setback": "Schedule: setback",
+              "schedule_preheat": "Pre-heating for the schedule",
+              "bathroom_drying": "Drying the bathroom",
+              "drying_active": "Drying",
+              "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_ended_humidity_normal": "Ended: humidity back to normal",
+              "drying_ended_timeout": "Ended: time limit",
+              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "room_demand": "Rooms need heat",
+              "no_room_needs_boiler": "No room needs the boiler",
+              "frost_protection": "Frost protection",
+              "summer_mode": "Summer mode",
+              "safety_fallback": "Safety fallback",
+              "boiler_data_unavailable": "Boiler data unavailable",
+              "waiting_for_room_data": "Waiting for room data",
+              "hands_off": "No setpoint sent",
+              "control_off": "Control off",
+              "not_configured": "Not configured",
+              "min_state_time": "Minimum time in state",
+              "ramp_limit": "Rising slowly (ramp limit)",
+              "spread_small": "Flow/return spread small",
+              "spread_large": "Flow/return spread large",
+              "short_cycling": "Boiler kept switching on and off",
+              "rooms_slow": "Rooms heating up slowly",
+              "rooms_satisfied": "Rooms warm without demand",
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused",
+              "cheaper_than_gas": "Cheaper than central heating",
+              "gas_cheaper": "Central heating cheaper",
+              "learning_run": "Learning run",
+              "quick_heat_up": "Quick heat-up",
+              "mode_midea_only": "Mode: heat pump only",
+              "mode_boiler_only": "Mode: boiler only",
+              "manual_takeover": "Changed by hand",
+              "midea_unavailable": "Heat pump unavailable",
+              "target_reached": "Target reached",
+              "no_demand": "No demand",
+              "blocked": "Blocked",
+              "intake_temperature_unknown": "Intake temperature unknown",
+              "outdoor_temperature_unknown": "Outdoor temperature unknown",
+              "outdoor_too_cold": "Too cold outside",
+              "min_run_time": "Minimum run time",
+              "min_off_time": "Minimum off time",
+              "rate_limit": "Waiting between commands",
+              "unavailable": "Unavailable",
+              "cooling_user": "Cooling (user)",
+              "fan_only": "Fan only",
+              "auto": "Auto",
+              "heating_idle": "Heating idle",
+              "heating_warming_up": "Heating warming up",
+              "heating_stable": "Heating",
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+              "frequent_defrost_cycles": "Frequent defrost cycles",
+              "icing_lockout_active": "Icing lockout active",
+              "outdoor_coil_iced": "Outdoor coil iced",
+              "sustained_inefficiency": "Heat output collapsed",
+              "in_sync": "In sync",
+              "waiting_for_thermostat": "Waiting for the thermostat",
+              "no_thermostat": "No thermostat",
+              "thermostat_off": "Thermostat off",
+              "thermostat_unavailable": "Thermostat unavailable",
+              "airflow_curve_not_calibrated": "airflow not calibrated",
+              "warming_up": "warming up",
+              "electrical_power_missing": "no power reading",
+              "electrical_power_below_minimum": "power too low",
+              "delta_t_below_minimum": "temperature rise too small",
+              "outlet_temp_not_settled": "outlet not settled",
+              "fan_rpm_outside_curve": "fan speed outside the curve",
+              "raw_cop_out_of_range": "COP implausible",
+              "exceeds_carnot_limit": "above the physical limit",
+              "setpoint_recently_changed": "setpoint changed recently",
+              "boiler_control_not_active": "boiler control not active",
+              "hot_water_recent": "hot water recently"
+            }
+          },
+          "commands_sent": {
+            "name": "Commands sent"
+          }
+        }
+      },
+      "learning_state": {
+        "name": "Learning state",
+        "state": {
+          "learning": "Learning",
+          "refining": "Refining",
+          "paused": "Paused"
+        },
+        "state_attributes": {
+          "heating_curve_offset_k": {
+            "name": "Heating curve correction K"
+          },
+          "adjustments_last_24h": {
+            "name": "Adjustments in 24 h"
+          },
+          "last_adjustment_reason": {
+            "name": "Last adjustment because",
+            "state": {
+              "override": "Manual override",
+              "mode_off_frost_protection": "Summer mode (frost protection only)",
+              "mode_away": "Away",
+              "away_preheat": "Pre-heating for your return",
+              "away_humidity_guard": "Away, raised against damp",
+              "schedule_comfort": "Schedule: comfort",
+              "schedule_setback": "Schedule: setback",
+              "schedule_preheat": "Pre-heating for the schedule",
+              "bathroom_drying": "Drying the bathroom",
+              "drying_active": "Drying",
+              "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_ended_humidity_normal": "Ended: humidity back to normal",
+              "drying_ended_timeout": "Ended: time limit",
+              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "room_demand": "Rooms need heat",
+              "no_room_needs_boiler": "No room needs the boiler",
+              "frost_protection": "Frost protection",
+              "summer_mode": "Summer mode",
+              "safety_fallback": "Safety fallback",
+              "boiler_data_unavailable": "Boiler data unavailable",
+              "waiting_for_room_data": "Waiting for room data",
+              "hands_off": "No setpoint sent",
+              "control_off": "Control off",
+              "not_configured": "Not configured",
+              "min_state_time": "Minimum time in state",
+              "ramp_limit": "Rising slowly (ramp limit)",
+              "spread_small": "Flow/return spread small",
+              "spread_large": "Flow/return spread large",
+              "short_cycling": "Boiler kept switching on and off",
+              "rooms_slow": "Rooms heating up slowly",
+              "rooms_satisfied": "Rooms warm without demand",
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused",
+              "cheaper_than_gas": "Cheaper than central heating",
+              "gas_cheaper": "Central heating cheaper",
+              "learning_run": "Learning run",
+              "quick_heat_up": "Quick heat-up",
+              "mode_midea_only": "Mode: heat pump only",
+              "mode_boiler_only": "Mode: boiler only",
+              "manual_takeover": "Changed by hand",
+              "midea_unavailable": "Heat pump unavailable",
+              "target_reached": "Target reached",
+              "no_demand": "No demand",
+              "blocked": "Blocked",
+              "intake_temperature_unknown": "Intake temperature unknown",
+              "outdoor_temperature_unknown": "Outdoor temperature unknown",
+              "outdoor_too_cold": "Too cold outside",
+              "min_run_time": "Minimum run time",
+              "min_off_time": "Minimum off time",
+              "rate_limit": "Waiting between commands",
+              "unavailable": "Unavailable",
+              "cooling_user": "Cooling (user)",
+              "fan_only": "Fan only",
+              "auto": "Auto",
+              "heating_idle": "Heating idle",
+              "heating_warming_up": "Heating warming up",
+              "heating_stable": "Heating",
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+              "frequent_defrost_cycles": "Frequent defrost cycles",
+              "icing_lockout_active": "Icing lockout active",
+              "outdoor_coil_iced": "Outdoor coil iced",
+              "sustained_inefficiency": "Heat output collapsed",
+              "in_sync": "In sync",
+              "waiting_for_thermostat": "Waiting for the thermostat",
+              "no_thermostat": "No thermostat",
+              "thermostat_off": "Thermostat off",
+              "thermostat_unavailable": "Thermostat unavailable",
+              "airflow_curve_not_calibrated": "airflow not calibrated",
+              "warming_up": "warming up",
+              "electrical_power_missing": "no power reading",
+              "electrical_power_below_minimum": "power too low",
+              "delta_t_below_minimum": "temperature rise too small",
+              "outlet_temp_not_settled": "outlet not settled",
+              "fan_rpm_outside_curve": "fan speed outside the curve",
+              "raw_cop_out_of_range": "COP implausible",
+              "exceeds_carnot_limit": "above the physical limit",
+              "setpoint_recently_changed": "setpoint changed recently",
+              "boiler_control_not_active": "boiler control not active",
+              "hot_water_recent": "hot water recently"
+            }
+          },
+          "flow_return_spread_k": {
+            "name": "Flow/return spread K"
+          },
+          "paused_because": {
+            "name": "Paused because"
+          },
+          "room_heat_up_rates": {
+            "name": "Room heat-up rates"
+          },
+          "room_cooling_rates": {
+            "name": "Room cool-down coefficients (1/h)"
+          },
+          "room_heating_power_k_h": {
+            "name": "Heating power per room (K/h, losses removed)"
+          },
+          "cop_bins": {
+            "name": "COP map points"
+          },
+          "cop_basis": {
+            "name": "COP basis",
+            "state": {
+              "measured": "Measured",
+              "learned": "Learned",
+              "prior": "Starting curve",
+              "prior_calibrated": "Starting curve (calibrated)"
+            }
+          },
+          "midea_eco_offset_k": {
+            "name": "Heat pump setpoint correction K"
+          },
+          "last_reset": {
+            "name": "Last reset"
+          }
+        }
+      }
+    },
+    "binary_sensor": {
+      "boiler_heating_active": {
+        "name": "Boiler space heating active"
+      },
+      "boiler_hwc_active": {
+        "name": "Boiler hot water active",
+        "state_attributes": {
+          "last_detected_ts": {
+            "name": "Last detected"
+          }
+        }
+      },
+      "boiler_available": {
+        "name": "Boiler data available",
+        "state_attributes": {
+          "issues": {
+            "name": "Issues"
+          }
+        }
+      },
+      "midea_blocked": {
+        "name": "Heat pump blocked for heating",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "override": "Manual override",
+              "mode_off_frost_protection": "Summer mode (frost protection only)",
+              "mode_away": "Away",
+              "away_preheat": "Pre-heating for your return",
+              "away_humidity_guard": "Away, raised against damp",
+              "schedule_comfort": "Schedule: comfort",
+              "schedule_setback": "Schedule: setback",
+              "schedule_preheat": "Pre-heating for the schedule",
+              "bathroom_drying": "Drying the bathroom",
+              "drying_active": "Drying",
+              "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_ended_humidity_normal": "Ended: humidity back to normal",
+              "drying_ended_timeout": "Ended: time limit",
+              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "room_demand": "Rooms need heat",
+              "no_room_needs_boiler": "No room needs the boiler",
+              "frost_protection": "Frost protection",
+              "summer_mode": "Summer mode",
+              "safety_fallback": "Safety fallback",
+              "boiler_data_unavailable": "Boiler data unavailable",
+              "waiting_for_room_data": "Waiting for room data",
+              "hands_off": "No setpoint sent",
+              "control_off": "Control off",
+              "not_configured": "Not configured",
+              "min_state_time": "Minimum time in state",
+              "ramp_limit": "Rising slowly (ramp limit)",
+              "spread_small": "Flow/return spread small",
+              "spread_large": "Flow/return spread large",
+              "short_cycling": "Boiler kept switching on and off",
+              "rooms_slow": "Rooms heating up slowly",
+              "rooms_satisfied": "Rooms warm without demand",
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused",
+              "cheaper_than_gas": "Cheaper than central heating",
+              "gas_cheaper": "Central heating cheaper",
+              "learning_run": "Learning run",
+              "quick_heat_up": "Quick heat-up",
+              "mode_midea_only": "Mode: heat pump only",
+              "mode_boiler_only": "Mode: boiler only",
+              "manual_takeover": "Changed by hand",
+              "midea_unavailable": "Heat pump unavailable",
+              "target_reached": "Target reached",
+              "no_demand": "No demand",
+              "blocked": "Blocked",
+              "intake_temperature_unknown": "Intake temperature unknown",
+              "outdoor_temperature_unknown": "Outdoor temperature unknown",
+              "outdoor_too_cold": "Too cold outside",
+              "min_run_time": "Minimum run time",
+              "min_off_time": "Minimum off time",
+              "rate_limit": "Waiting between commands",
+              "unavailable": "Unavailable",
+              "cooling_user": "Cooling (user)",
+              "fan_only": "Fan only",
+              "auto": "Auto",
+              "heating_idle": "Heating idle",
+              "heating_warming_up": "Heating warming up",
+              "heating_stable": "Heating",
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+              "frequent_defrost_cycles": "Frequent defrost cycles",
+              "icing_lockout_active": "Icing lockout active",
+              "outdoor_coil_iced": "Outdoor coil iced",
+              "sustained_inefficiency": "Heat output collapsed",
+              "in_sync": "In sync",
+              "waiting_for_thermostat": "Waiting for the thermostat",
+              "no_thermostat": "No thermostat",
+              "thermostat_off": "Thermostat off",
+              "thermostat_unavailable": "Thermostat unavailable",
+              "airflow_curve_not_calibrated": "airflow not calibrated",
+              "warming_up": "warming up",
+              "electrical_power_missing": "no power reading",
+              "electrical_power_below_minimum": "power too low",
+              "delta_t_below_minimum": "temperature rise too small",
+              "outlet_temp_not_settled": "outlet not settled",
+              "fan_rpm_outside_curve": "fan speed outside the curve",
+              "raw_cop_out_of_range": "COP implausible",
+              "exceeds_carnot_limit": "above the physical limit",
+              "setpoint_recently_changed": "setpoint changed recently",
+              "boiler_control_not_active": "boiler control not active",
+              "hot_water_recent": "hot water recently"
+            }
+          }
+        }
+      },
+      "midea_heating_available": {
+        "name": "Heat pump available for heating"
+      },
+      "room_window_open": {
+        "name": "Window open",
+        "state_attributes": {
+          "unknown": {
+            "name": "State unknown"
+          }
+        }
+      },
+      "room_heating_allowed": {
+        "name": "Heating allowed",
+        "state_attributes": {
+          "midea_allowed": {
+            "name": "Heat pump allowed"
+          }
+        }
+      },
+      "defrost_suspected": {
+        "name": "Defrost or icing suspected",
+        "state_attributes": {
+          "kind": {
+            "name": "Kind",
+            "state": {
+              "none": "None",
+              "persistent": "Icing",
+              "cycle": "Defrost cycle"
+            }
+          },
+          "indicators": {
+            "name": "Indicators"
+          },
+          "cycles_last_90min": {
+            "name": "Defrost cycles in 90 min"
+          },
+          "block_reason": {
+            "name": "Lockout because",
+            "state": {
+              "override": "Manual override",
+              "mode_off_frost_protection": "Summer mode (frost protection only)",
+              "mode_away": "Away",
+              "away_preheat": "Pre-heating for your return",
+              "away_humidity_guard": "Away, raised against damp",
+              "schedule_comfort": "Schedule: comfort",
+              "schedule_setback": "Schedule: setback",
+              "schedule_preheat": "Pre-heating for the schedule",
+              "bathroom_drying": "Drying the bathroom",
+              "drying_active": "Drying",
+              "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_ended_humidity_normal": "Ended: humidity back to normal",
+              "drying_ended_timeout": "Ended: time limit",
+              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "room_demand": "Rooms need heat",
+              "no_room_needs_boiler": "No room needs the boiler",
+              "frost_protection": "Frost protection",
+              "summer_mode": "Summer mode",
+              "safety_fallback": "Safety fallback",
+              "boiler_data_unavailable": "Boiler data unavailable",
+              "waiting_for_room_data": "Waiting for room data",
+              "hands_off": "No setpoint sent",
+              "control_off": "Control off",
+              "not_configured": "Not configured",
+              "min_state_time": "Minimum time in state",
+              "ramp_limit": "Rising slowly (ramp limit)",
+              "spread_small": "Flow/return spread small",
+              "spread_large": "Flow/return spread large",
+              "short_cycling": "Boiler kept switching on and off",
+              "rooms_slow": "Rooms heating up slowly",
+              "rooms_satisfied": "Rooms warm without demand",
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused",
+              "cheaper_than_gas": "Cheaper than central heating",
+              "gas_cheaper": "Central heating cheaper",
+              "learning_run": "Learning run",
+              "quick_heat_up": "Quick heat-up",
+              "mode_midea_only": "Mode: heat pump only",
+              "mode_boiler_only": "Mode: boiler only",
+              "manual_takeover": "Changed by hand",
+              "midea_unavailable": "Heat pump unavailable",
+              "target_reached": "Target reached",
+              "no_demand": "No demand",
+              "blocked": "Blocked",
+              "intake_temperature_unknown": "Intake temperature unknown",
+              "outdoor_temperature_unknown": "Outdoor temperature unknown",
+              "outdoor_too_cold": "Too cold outside",
+              "min_run_time": "Minimum run time",
+              "min_off_time": "Minimum off time",
+              "rate_limit": "Waiting between commands",
+              "unavailable": "Unavailable",
+              "cooling_user": "Cooling (user)",
+              "fan_only": "Fan only",
+              "auto": "Auto",
+              "heating_idle": "Heating idle",
+              "heating_warming_up": "Heating warming up",
+              "heating_stable": "Heating",
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+              "frequent_defrost_cycles": "Frequent defrost cycles",
+              "icing_lockout_active": "Icing lockout active",
+              "outdoor_coil_iced": "Outdoor coil iced",
+              "sustained_inefficiency": "Heat output collapsed",
+              "in_sync": "In sync",
+              "waiting_for_thermostat": "Waiting for the thermostat",
+              "no_thermostat": "No thermostat",
+              "thermostat_off": "Thermostat off",
+              "thermostat_unavailable": "Thermostat unavailable",
+              "airflow_curve_not_calibrated": "airflow not calibrated",
+              "warming_up": "warming up",
+              "electrical_power_missing": "no power reading",
+              "electrical_power_below_minimum": "power too low",
+              "delta_t_below_minimum": "temperature rise too small",
+              "outlet_temp_not_settled": "outlet not settled",
+              "fan_rpm_outside_curve": "fan speed outside the curve",
+              "raw_cop_out_of_range": "COP implausible",
+              "exceeds_carnot_limit": "above the physical limit",
+              "setpoint_recently_changed": "setpoint changed recently",
+              "boiler_control_not_active": "boiler control not active",
+              "hot_water_recent": "hot water recently"
+            }
+          }
+        }
+      },
+      "override_active": {
+        "name": "Override active",
+        "state_attributes": {
+          "overrides": {
+            "name": "Overrides"
+          },
+          "away_return_ts": {
+            "name": "Return"
+          }
+        }
+      },
+      "room_drying_mode": {
+        "name": "Drying mode",
+        "state_attributes": {
+          "reason": {
+            "name": "Reason",
+            "state": {
+              "override": "Manual override",
+              "mode_off_frost_protection": "Summer mode (frost protection only)",
+              "mode_away": "Away",
+              "away_preheat": "Pre-heating for your return",
+              "away_humidity_guard": "Away, raised against damp",
+              "schedule_comfort": "Schedule: comfort",
+              "schedule_setback": "Schedule: setback",
+              "schedule_preheat": "Pre-heating for the schedule",
+              "bathroom_drying": "Drying the bathroom",
+              "drying_active": "Drying",
+              "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_ended_humidity_normal": "Ended: humidity back to normal",
+              "drying_ended_timeout": "Ended: time limit",
+              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "room_demand": "Rooms need heat",
+              "no_room_needs_boiler": "No room needs the boiler",
+              "frost_protection": "Frost protection",
+              "summer_mode": "Summer mode",
+              "safety_fallback": "Safety fallback",
+              "boiler_data_unavailable": "Boiler data unavailable",
+              "waiting_for_room_data": "Waiting for room data",
+              "hands_off": "No setpoint sent",
+              "control_off": "Control off",
+              "not_configured": "Not configured",
+              "min_state_time": "Minimum time in state",
+              "ramp_limit": "Rising slowly (ramp limit)",
+              "spread_small": "Flow/return spread small",
+              "spread_large": "Flow/return spread large",
+              "short_cycling": "Boiler kept switching on and off",
+              "rooms_slow": "Rooms heating up slowly",
+              "rooms_satisfied": "Rooms warm without demand",
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused",
+              "cheaper_than_gas": "Cheaper than central heating",
+              "gas_cheaper": "Central heating cheaper",
+              "learning_run": "Learning run",
+              "quick_heat_up": "Quick heat-up",
+              "mode_midea_only": "Mode: heat pump only",
+              "mode_boiler_only": "Mode: boiler only",
+              "manual_takeover": "Changed by hand",
+              "midea_unavailable": "Heat pump unavailable",
+              "target_reached": "Target reached",
+              "no_demand": "No demand",
+              "blocked": "Blocked",
+              "intake_temperature_unknown": "Intake temperature unknown",
+              "outdoor_temperature_unknown": "Outdoor temperature unknown",
+              "outdoor_too_cold": "Too cold outside",
+              "min_run_time": "Minimum run time",
+              "min_off_time": "Minimum off time",
+              "rate_limit": "Waiting between commands",
+              "unavailable": "Unavailable",
+              "cooling_user": "Cooling (user)",
+              "fan_only": "Fan only",
+              "auto": "Auto",
+              "heating_idle": "Heating idle",
+              "heating_warming_up": "Heating warming up",
+              "heating_stable": "Heating",
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+              "frequent_defrost_cycles": "Frequent defrost cycles",
+              "icing_lockout_active": "Icing lockout active",
+              "outdoor_coil_iced": "Outdoor coil iced",
+              "sustained_inefficiency": "Heat output collapsed",
+              "in_sync": "In sync",
+              "waiting_for_thermostat": "Waiting for the thermostat",
+              "no_thermostat": "No thermostat",
+              "thermostat_off": "Thermostat off",
+              "thermostat_unavailable": "Thermostat unavailable",
+              "airflow_curve_not_calibrated": "airflow not calibrated",
+              "warming_up": "warming up",
+              "electrical_power_missing": "no power reading",
+              "electrical_power_below_minimum": "power too low",
+              "delta_t_below_minimum": "temperature rise too small",
+              "outlet_temp_not_settled": "outlet not settled",
+              "fan_rpm_outside_curve": "fan speed outside the curve",
+              "raw_cop_out_of_range": "COP implausible",
+              "exceeds_carnot_limit": "above the physical limit",
+              "setpoint_recently_changed": "setpoint changed recently",
+              "boiler_control_not_active": "boiler control not active",
+              "hot_water_recent": "hot water recently"
+            }
+          },
+          "started_ts": {
+            "name": "Started"
+          },
+          "baseline_abs_humidity_g_m3": {
+            "name": "Baseline humidity g/m³"
+          }
+        }
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Operating mode",
+        "state": {
+          "auto": "Auto",
+          "boiler_only": "Boiler only",
+          "midea_only": "Heat pump only",
+          "off": "Summer (heating off)",
+          "away": "Away"
+        },
+        "state_attributes": {
+          "away_return_ts": {
+            "name": "Return"
+          },
+          "heat_rates": {
+            "name": "Heat-up rates"
+          }
+        }
+      },
+      "midea_control": {
+        "name": "Heat pump control",
+        "state": {
+          "off": "Off",
+          "shadow": "Plan only (beta)",
+          "active": "Active"
+        },
+        "state_attributes": {
+          "active_control_released": {
+            "name": "Active control released"
+          }
+        }
+      },
+      "boiler_control": {
+        "name": "Boiler control",
+        "state": {
+          "off": "Off",
+          "shadow": "Plan only (beta)",
+          "active": "Active"
+        },
+        "state_attributes": {
+          "active_control_released": {
+            "name": "Active control released"
+          }
+        }
+      },
+      "room_control": {
+        "name": "Room control",
+        "state": {
+          "off": "Off",
+          "shadow": "Plan only (beta)",
+          "active": "Active"
+        },
+        "state_attributes": {
+          "active_control_released": {
+            "name": "Active control released"
+          }
+        }
+      }
+    },
+    "button": {
+      "room_boost": {
+        "name": "Quick heat-up"
+      }
+    },
+    "number": {
+      "room_comfort_temp": {
+        "name": "Comfort temperature"
+      },
+      "room_setback_temp": {
+        "name": "Setback temperature"
+      }
+    },
+    "datetime": {
+      "away_return": {
+        "name": "Planned return"
+      }
+    }
+  },
+  "services": {
+    "set_override": {
+      "name": "Set room override",
+      "description": "Temporarily override a room's target temperature. Expires automatically.",
+      "fields": {
+        "room": {
+          "name": "Room",
+          "description": "Room key as configured."
+        },
+        "temperature": {
+          "name": "Temperature",
+          "description": "Target temperature during the override."
+        },
+        "duration_min": {
+          "name": "Duration",
+          "description": "Minutes until the override expires."
+        }
+      }
+    },
+    "clear_override": {
+      "name": "Clear room override",
+      "description": "Remove the override of one room, or all rooms.",
+      "fields": {
+        "room": {
+          "name": "Room",
+          "description": "Room key; omit to clear all."
+        }
+      }
+    },
+    "set_away": {
+      "name": "Set away",
+      "description": "Switch to away mode, optionally with a return time for preheating.",
+      "fields": {
+        "return_time": {
+          "name": "Return time",
+          "description": "Expected return. Omit to keep a return time that is already set."
+        },
+        "clear_return_time": {
+          "name": "Open-ended",
+          "description": "Drop a return time set earlier, so the absence has no planned end."
+        }
+      }
+    },
+    "clear_away": {
+      "name": "Clear away",
+      "description": "Leave away mode."
+    },
+    "reset_learning": {
+      "name": "Reset learning data",
+      "description": "Forgets what was learned in the chosen areas. Settings and run state stay.",
+      "fields": {
+        "scope": {
+          "name": "Areas",
+          "description": "boiler, heat_pump and/or rooms. All when omitted."
+        },
+        "rooms": {
+          "name": "Rooms",
+          "description": "Room keys; narrows the rooms area. All rooms when omitted."
+        }
+      }
+    },
+    "boost": {
+      "name": "Quick heat-up",
+      "description": "Heat a room to its comfort temperature as fast as possible (heat pump at full power).",
+      "fields": {
+        "room": {
+          "name": "Room",
+          "description": "Room key as configured."
+        },
+        "duration_min": {
+          "name": "Duration",
+          "description": "Minutes until quick heat-up ends."
+        }
+      }
+    }
+  },
+  "issues": {
+    "no_schedule": {
+      "title": "{room}: no heating window configured",
+      "description": "{room} has neither a schedule helper nor a time range. The room stays at its setback temperature for good and is never pre-heated. Create a schedule under Settings → Devices & services → Helpers and select it for the room in the options."
+    },
+    "airflow_not_calibrated": {
+      "title": "Heat pump airflow not calibrated",
+      "description": "Without the rpm → m³/h curve there is no thermal power and therefore no COP. The cost comparison falls back to the data sheet until then. The curve lives in the heat pump options."
+    },
+    "boiler_data_unavailable": {
+      "title": "No data from the boiler",
+      "description": "ebusd is not delivering usable values right now. Nothing is sent to the boiler; it keeps running on its own front knob. Check the ebusd app and the eBUS adapter."
+    },
+    "schedule_missing": {
+      "title": "{room}: schedule helper missing",
+      "description": "{room} refers to the schedule {entity_id}, which no longer exists in Home Assistant. The room has no warm periods left and stays at its setback temperature. Recreate the helper or pick another one in the options."
+    },
+    "heat_stays_in_the_room": {
+      "title": "Heat pump assigned to rooms it cannot reach",
+      "description": "The heat pump is set to serve {rooms}, but no duct factor is configured (1.0 means no ducts fitted), so the warm air stays in the room the unit stands in. Until that changes, a run for those rooms heats the wrong one. Either fit the ducts and set the factor in the options, or clear the tick for those rooms."
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "Thriftherm is not set up or not loaded."
+    },
+    "unknown_room": {
+      "message": "Unknown room: {room}"
+    },
+    "return_time_in_past": {
+      "message": "The return time must be in the future."
+    },
+    "setback_above_comfort": {
+      "message": "{room}: the setback temperature must not be above the comfort temperature."
+    }
+  }
+}
