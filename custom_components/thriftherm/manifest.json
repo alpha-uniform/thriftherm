@@ -1,0 +1,21 @@
+{
+  "domain": "thriftherm",
+  "name": "Thriftherm",
+  "after_dependencies": [
+    "climate",
+    "mqtt",
+    "schedule"
+  ],
+  "codeowners": [
+    "@alpha-uniform"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/alpha-uniform/thriftherm",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/alpha-uniform/thriftherm/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.4.0"
+}
