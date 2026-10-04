@@ -64,6 +64,30 @@ def thermostat_setpoint(target: float) -> float:
     return min(max(round_half(target), SETPOINT_MIN), SETPOINT_MAX)
 
 
+# Better Thermostat, calibrating by target temperature, rewrites the valve setpoint every few
+# seconds. Over Zigbee a reply can arrive after the next write; Better Thermostat then takes
+# the stale value for a turn of the knob and adopts it as its own target (measured
+# 2026-09-27 07:01: valve 16 -> 16.5 -> 16 within ten seconds, Better Thermostat 17 -> 16).
+ECHO_WINDOW_S = 60.0
+
+
+def is_echo(value: float, valve_history: tuple[tuple[float, float], ...], changed_ts: float) -> bool:
+    """True when `value` is a late radio echo, not a turn of the knob.
+
+    `valve_history` holds (timestamp, setpoint) of the valve behind the thermostat,
+    `changed_ts` is when the room thermostat jumped to `value`. An echo is a value the
+    valve showed within the minute before, left for another one, and showed again:
+    16 -> 16.5 -> 16. A turn of the knob brings a value that was not there before:
+    17 -> 16.5 -> 16. Turning the knob to a value and back within a minute looks like
+    an echo too and is not taken over; turning it again does.
+    """
+    sequence: list[float] = []
+    for ts, setpoint in valve_history:
+        if changed_ts - ECHO_WINDOW_S <= ts <= changed_ts + 1.0 and (not sequence or sequence[-1] != setpoint):
+            sequence.append(setpoint)
+    return sum(1 for setpoint in sequence if abs(setpoint - value) < 0.05) >= 2
+
+
 def manual_change(control_mode: str, thermostat_target: float | None, mem: RoomCtrlMemory) -> float | None:
     """A confirmed setpoint that changed on the thermostat itself: someone turned it by hand.
 

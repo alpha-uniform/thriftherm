@@ -93,10 +93,15 @@
       "invalid_schedule": "Invalid schedule, use HH:MM-HH:MM,HH:MM-HH:MM",
       "setback_above_comfort": "Setback temperature must not exceed comfort temperature",
       "duplicate_room": "A room with this name already exists",
-      "invalid_airflow_curve": "Invalid airflow curve, use rpm:m3h,rpm:m3h"
+      "invalid_airflow_curve": "Invalid airflow curve, use rpm:m3h,rpm:m3h",
+      "curve_inverted": "The flow at -10 °C must not be lower than at +15 °C",
+      "flow_min_above_max": "The minimum flow temperature must not be above the maximum",
+      "drying_needs_heat_pump": "Bathroom drying runs on the heat pump: also switch on “Heated by the heat pump”",
+      "drying_needs_humidity": "Bathroom drying needs the room humidity sensor"
     },
     "abort": {
-      "single_instance_allowed": "Only one Thriftherm can be configured"
+      "single_instance_allowed": "Only one Thriftherm can be configured",
+      "celsius_only": "Thriftherm works in °C only. Please switch Home Assistant to the metric unit system first."
     }
   },
   "options": {
@@ -215,7 +220,11 @@
           "boost_duration_min": "Quick heat-up duration",
           "midea_learning_runs": "Allow learning runs (measure COP at new outdoor temperatures)",
           "midea_allow_active_control": "Release active heat pump control (otherwise plan only)",
-          "room_allow_active_control": "Release active room control (write setpoints to the thermostats)"
+          "room_allow_active_control": "Release active room control (write setpoints to the thermostats)",
+          "room_echo_filter": "Echo filter for Better Thermostat (advanced)"
+        },
+        "data_description": {
+          "room_echo_filter": "Better Thermostat rewrites the valve setpoint every few seconds. Over Zigbee a reply can arrive after the next write, and Better Thermostat then takes the old value for a turn of the knob. Thriftherm used to turn that into a two-hour override. With the filter on, a jump back to a value the valve already showed and left within the last minute (e.g. 16 → 16.5 → 16) is ignored and the plan's setpoint is sent again. A real turn of the knob on the thermostat or a change in the app brings a new value and is still taken over. Only applies to rooms whose thermostat is a Better Thermostat. Recommended: on."
         }
       },
       "rooms": {
@@ -262,7 +271,11 @@
       "setback_above_comfort": "Setback temperature must not exceed comfort temperature",
       "duplicate_room": "A room with this name already exists",
       "invalid_airflow_curve": "Invalid airflow curve, use rpm:m3h,rpm:m3h",
-      "no_scope": "Choose at least one area."
+      "no_scope": "Choose at least one area.",
+      "curve_inverted": "The flow at -10 °C must not be lower than at +15 °C",
+      "flow_min_above_max": "The minimum flow temperature must not be above the maximum",
+      "drying_needs_heat_pump": "Bathroom drying runs on the heat pump: also switch on “Heated by the heat pump”",
+      "drying_needs_humidity": "Bathroom drying needs the room humidity sensor"
     },
     "abort": {
       "learning_reset": "The chosen learning data was cleared. Thriftherm starts learning again.",
@@ -470,7 +483,10 @@
         "name": "Outdoor temperature (selected source)",
         "state_attributes": {
           "source": {
-            "name": "Source"
+            "name": "Source",
+            "state": {
+              "last_known": "Last known value (held up to 6 h)"
+            }
           }
         }
       },
@@ -489,6 +505,9 @@
               "schedule_setback": "Schedule: setback",
               "schedule_preheat": "Pre-heating for the schedule",
               "bathroom_drying": "Drying the bathroom",
+              "joined_boiler_run": "Heating along while the boiler runs",
+              "joined_preheat": "Pre-heating early while the boiler runs",
+              "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
@@ -510,6 +529,7 @@
               "spread_small": "Flow/return spread small",
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
+              "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
@@ -560,7 +580,8 @@
               "exceeds_carnot_limit": "above the physical limit",
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
-              "hot_water_recent": "hot water recently"
+              "hot_water_recent": "hot water recently",
+              "no_heating_run": "boiler not heating right now"
             }
           },
           "quick_heat_up": {
@@ -585,6 +606,16 @@
           },
           "internal_gain_w": {
             "name": "Internal gains W"
+          },
+          "boiler_call": {
+            "name": "Boiler call",
+            "state": {
+              "calling": "Calls for heat",
+              "idle": "Warm enough",
+              "stalled": "Close to target, barely rising: counts as reached",
+              "comfort_ending": "Comfort ends soon: no new heat",
+              "not_allowed": "Heating not allowed"
+            }
           }
         }
       },
@@ -653,6 +684,9 @@
               "schedule_setback": "Schedule: setback",
               "schedule_preheat": "Pre-heating for the schedule",
               "bathroom_drying": "Drying the bathroom",
+              "joined_boiler_run": "Heating along while the boiler runs",
+              "joined_preheat": "Pre-heating early while the boiler runs",
+              "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
@@ -674,6 +708,7 @@
               "spread_small": "Flow/return spread small",
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
+              "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
@@ -724,7 +759,8 @@
               "exceeds_carnot_limit": "above the physical limit",
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
-              "hot_water_recent": "hot water recently"
+              "hot_water_recent": "hot water recently",
+              "no_heating_run": "boiler not heating right now"
             }
           },
           "blockers": {
@@ -742,6 +778,9 @@
               "schedule_setback": "Schedule: setback",
               "schedule_preheat": "Pre-heating for the schedule",
               "bathroom_drying": "Drying the bathroom",
+              "joined_boiler_run": "Heating along while the boiler runs",
+              "joined_preheat": "Pre-heating early while the boiler runs",
+              "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
@@ -763,6 +802,7 @@
               "spread_small": "Flow/return spread small",
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
+              "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
@@ -813,7 +853,8 @@
               "exceeds_carnot_limit": "above the physical limit",
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
-              "hot_water_recent": "hot water recently"
+              "hot_water_recent": "hot water recently",
+              "no_heating_run": "boiler not heating right now"
             }
           },
           "eco_offset_k": {
@@ -883,6 +924,9 @@
               "schedule_setback": "Schedule: setback",
               "schedule_preheat": "Pre-heating for the schedule",
               "bathroom_drying": "Drying the bathroom",
+              "joined_boiler_run": "Heating along while the boiler runs",
+              "joined_preheat": "Pre-heating early while the boiler runs",
+              "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
@@ -904,6 +948,7 @@
               "spread_small": "Flow/return spread small",
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
+              "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
@@ -954,7 +999,8 @@
               "exceeds_carnot_limit": "above the physical limit",
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
-              "hot_water_recent": "hot water recently"
+              "hot_water_recent": "hot water recently",
+              "no_heating_run": "boiler not heating right now"
             }
           },
           "blockers": {
@@ -972,6 +1018,9 @@
               "schedule_setback": "Schedule: setback",
               "schedule_preheat": "Pre-heating for the schedule",
               "bathroom_drying": "Drying the bathroom",
+              "joined_boiler_run": "Heating along while the boiler runs",
+              "joined_preheat": "Pre-heating early while the boiler runs",
+              "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
@@ -993,6 +1042,7 @@
               "spread_small": "Flow/return spread small",
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
+              "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
@@ -1043,7 +1093,8 @@
               "exceeds_carnot_limit": "above the physical limit",
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
-              "hot_water_recent": "hot water recently"
+              "hot_water_recent": "hot water recently",
+              "no_heating_run": "boiler not heating right now"
             }
           },
           "heating_curve_flow": {
@@ -1112,6 +1163,9 @@
               "schedule_setback": "Schedule: setback",
               "schedule_preheat": "Pre-heating for the schedule",
               "bathroom_drying": "Drying the bathroom",
+              "joined_boiler_run": "Heating along while the boiler runs",
+              "joined_preheat": "Pre-heating early while the boiler runs",
+              "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
@@ -1133,6 +1187,7 @@
               "spread_small": "Flow/return spread small",
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
+              "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
@@ -1183,11 +1238,18 @@
               "exceeds_carnot_limit": "above the physical limit",
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
-              "hot_water_recent": "hot water recently"
+              "hot_water_recent": "hot water recently",
+              "no_heating_run": "boiler not heating right now"
             }
           },
           "commands_sent": {
             "name": "Commands sent"
+          },
+          "echo_ignored_at": {
+            "name": "Last radio echo ignored"
+          },
+          "echo_ignored_value": {
+            "name": "Value of the ignored echo"
           }
         }
       },
@@ -1217,6 +1279,9 @@
               "schedule_setback": "Schedule: setback",
               "schedule_preheat": "Pre-heating for the schedule",
               "bathroom_drying": "Drying the bathroom",
+              "joined_boiler_run": "Heating along while the boiler runs",
+              "joined_preheat": "Pre-heating early while the boiler runs",
+              "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
@@ -1238,6 +1303,7 @@
               "spread_small": "Flow/return spread small",
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
+              "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
@@ -1288,7 +1354,99 @@
               "exceeds_carnot_limit": "above the physical limit",
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
-              "hot_water_recent": "hot water recently"
+              "hot_water_recent": "hot water recently",
+              "no_heating_run": "boiler not heating right now"
+            }
+          },
+          "held_back_because": {
+            "name": "Held back because",
+            "state": {
+              "override": "Manual override",
+              "mode_off_frost_protection": "Summer mode (frost protection only)",
+              "mode_away": "Away",
+              "away_preheat": "Pre-heating for your return",
+              "away_humidity_guard": "Away, raised against damp",
+              "schedule_comfort": "Schedule: comfort",
+              "schedule_setback": "Schedule: setback",
+              "schedule_preheat": "Pre-heating for the schedule",
+              "bathroom_drying": "Drying the bathroom",
+              "joined_boiler_run": "Heating along while the boiler runs",
+              "joined_preheat": "Pre-heating early while the boiler runs",
+              "heat_pump_cooling": "Heat pump cooling: radiator at setback",
+              "drying_active": "Drying",
+              "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_ended_humidity_normal": "Ended: humidity back to normal",
+              "drying_ended_timeout": "Ended: time limit",
+              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "room_demand": "Rooms need heat",
+              "no_room_needs_boiler": "No room needs the boiler",
+              "frost_protection": "Frost protection",
+              "summer_mode": "Summer mode",
+              "safety_fallback": "Safety fallback",
+              "boiler_data_unavailable": "Boiler data unavailable",
+              "waiting_for_room_data": "Waiting for room data",
+              "hands_off": "No setpoint sent",
+              "control_off": "Control off",
+              "not_configured": "Not configured",
+              "min_state_time": "Minimum time in state",
+              "ramp_limit": "Rising slowly (ramp limit)",
+              "spread_small": "Flow/return spread small",
+              "spread_large": "Flow/return spread large",
+              "short_cycling": "Boiler kept switching on and off",
+              "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_slow": "Rooms heating up slowly",
+              "rooms_satisfied": "Rooms warm without demand",
+              "learning": "Learning",
+              "refining": "Refining",
+              "paused": "Paused",
+              "cheaper_than_gas": "Cheaper than central heating",
+              "gas_cheaper": "Central heating cheaper",
+              "learning_run": "Learning run",
+              "quick_heat_up": "Quick heat-up",
+              "mode_midea_only": "Mode: heat pump only",
+              "mode_boiler_only": "Mode: boiler only",
+              "manual_takeover": "Changed by hand",
+              "midea_unavailable": "Heat pump unavailable",
+              "target_reached": "Target reached",
+              "no_demand": "No demand",
+              "blocked": "Blocked",
+              "intake_temperature_unknown": "Intake temperature unknown",
+              "outdoor_temperature_unknown": "Outdoor temperature unknown",
+              "outdoor_too_cold": "Too cold outside",
+              "min_run_time": "Minimum run time",
+              "min_off_time": "Minimum off time",
+              "rate_limit": "Waiting between commands",
+              "unavailable": "Unavailable",
+              "cooling_user": "Cooling (user)",
+              "fan_only": "Fan only",
+              "auto": "Auto",
+              "heating_idle": "Heating idle",
+              "heating_warming_up": "Heating warming up",
+              "heating_stable": "Heating",
+              "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+              "frequent_defrost_cycles": "Frequent defrost cycles",
+              "icing_lockout_active": "Icing lockout active",
+              "outdoor_coil_iced": "Outdoor coil iced",
+              "sustained_inefficiency": "Heat output collapsed",
+              "in_sync": "In sync",
+              "waiting_for_thermostat": "Waiting for the thermostat",
+              "no_thermostat": "No thermostat",
+              "thermostat_off": "Thermostat off",
+              "thermostat_unavailable": "Thermostat unavailable",
+              "airflow_curve_not_calibrated": "airflow not calibrated",
+              "warming_up": "warming up",
+              "electrical_power_missing": "no power reading",
+              "electrical_power_below_minimum": "power too low",
+              "delta_t_below_minimum": "temperature rise too small",
+              "outlet_temp_not_settled": "outlet not settled",
+              "fan_rpm_outside_curve": "fan speed outside the curve",
+              "raw_cop_out_of_range": "COP implausible",
+              "exceeds_carnot_limit": "above the physical limit",
+              "setpoint_recently_changed": "setpoint changed recently",
+              "boiler_control_not_active": "boiler control not active",
+              "hot_water_recent": "hot water recently",
+              "no_heating_run": "boiler not heating right now"
             }
           },
           "flow_return_spread_k": {
@@ -1362,6 +1520,9 @@
               "schedule_setback": "Schedule: setback",
               "schedule_preheat": "Pre-heating for the schedule",
               "bathroom_drying": "Drying the bathroom",
+              "joined_boiler_run": "Heating along while the boiler runs",
+              "joined_preheat": "Pre-heating early while the boiler runs",
+              "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
@@ -1383,6 +1544,7 @@
               "spread_small": "Flow/return spread small",
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
+              "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
@@ -1433,7 +1595,8 @@
               "exceeds_carnot_limit": "above the physical limit",
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
-              "hot_water_recent": "hot water recently"
+              "hot_water_recent": "hot water recently",
+              "no_heating_run": "boiler not heating right now"
             }
           }
         }
@@ -1486,6 +1649,9 @@
               "schedule_setback": "Schedule: setback",
               "schedule_preheat": "Pre-heating for the schedule",
               "bathroom_drying": "Drying the bathroom",
+              "joined_boiler_run": "Heating along while the boiler runs",
+              "joined_preheat": "Pre-heating early while the boiler runs",
+              "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
@@ -1507,6 +1673,7 @@
               "spread_small": "Flow/return spread small",
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
+              "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
@@ -1557,7 +1724,8 @@
               "exceeds_carnot_limit": "above the physical limit",
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
-              "hot_water_recent": "hot water recently"
+              "hot_water_recent": "hot water recently",
+              "no_heating_run": "boiler not heating right now"
             }
           }
         }
@@ -1570,6 +1738,9 @@
           },
           "away_return_ts": {
             "name": "Return"
+          },
+          "away_return_provisional": {
+            "name": "Return provisional"
           }
         }
       },
@@ -1588,6 +1759,9 @@
               "schedule_setback": "Schedule: setback",
               "schedule_preheat": "Pre-heating for the schedule",
               "bathroom_drying": "Drying the bathroom",
+              "joined_boiler_run": "Heating along while the boiler runs",
+              "joined_preheat": "Pre-heating early while the boiler runs",
+              "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
@@ -1609,6 +1783,7 @@
               "spread_small": "Flow/return spread small",
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
+              "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
@@ -1659,7 +1834,8 @@
               "exceeds_carnot_limit": "above the physical limit",
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
-              "hot_water_recent": "hot water recently"
+              "hot_water_recent": "hot water recently",
+              "no_heating_run": "boiler not heating right now"
             }
           },
           "started_ts": {
@@ -1684,6 +1860,9 @@
         "state_attributes": {
           "away_return_ts": {
             "name": "Return"
+          },
+          "away_return_provisional": {
+            "name": "Return provisional"
           },
           "heat_rates": {
             "name": "Heat-up rates"
@@ -1745,7 +1924,12 @@
     },
     "datetime": {
       "away_return": {
-        "name": "Planned return"
+        "name": "Planned return",
+        "state_attributes": {
+          "provisional": {
+            "name": "Provisional (23:59 placeholder)"
+          }
+        }
       }
     }
   },
@@ -1845,6 +2029,10 @@
     "heat_stays_in_the_room": {
       "title": "Heat pump assigned to rooms it cannot reach",
       "description": "The heat pump is set to serve {rooms}, but no duct factor is configured (1.0 means no ducts fitted), so the warm air stays in the room the unit stands in. Until that changes, a run for those rooms heats the wrong one. Either fit the ducts and set the factor in the options, or clear the tick for those rooms."
+    },
+    "thermostat_silent": {
+      "title": "{room}: radiator thermostat not responding",
+      "description": "The radiator thermostat in {room} has not reported for over an hour. It keeps its last setpoint and takes no new ones, so the room no longer calls the boiler. Check the thermostat: take the batteries out and put them back in, or look for it in Zigbee2MQTT."
     }
   },
   "exceptions": {

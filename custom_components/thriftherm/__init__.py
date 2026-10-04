@@ -10,11 +10,13 @@ from __future__ import annotations
 import logging
 
 import voluptuous as vol
-from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import Event, HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 
@@ -30,8 +32,11 @@ from .const import (
     SERVICE_RESET_LEARNING,
     SERVICE_SET_AWAY,
     SERVICE_SET_OVERRIDE,
+    STORAGE_KEY,
+    STORAGE_VERSION,
 )
-from . import learning_reset
+from . import issues, learning_reset
+from .config_schema import known_keys
 from .coordinator import ThrifthermConfigEntry, ThrifthermCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -124,6 +129,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry)
     Version 1 only ever described one kind of installation: an own gas boiler
     reachable over ebusd. Recording that explicitly lets later versions offer
     district heating and heat-pump-only setups without guessing.
+
+    Version 3 keeps one copy. The options flow wrote everything into the
+    options, so the data kept the values of the first setup and the keys of
+    fields removed since. Both are merged the way they were read (the options
+    win), leftovers dropped, and the data emptied.
     """
     if entry.version > CONFIG_VERSION:
         # written by a newer version: running on data we do not understand is worse than not starting
@@ -133,8 +143,10 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry)
     data = {**entry.data}
     if entry.version < 2:
         data.setdefault(CONF_SYSTEM_TYPE, DEFAULT_SYSTEM_TYPE)
-    hass.config_entries.async_update_entry(entry, data=data, version=CONFIG_VERSION)
-    _LOGGER.info("Thriftherm config entry migrated to version %s", CONFIG_VERSION)
+    merged = {**data, **entry.options}
+    options = known_keys(merged)
+    hass.config_entries.async_update_entry(entry, data={}, options=options, version=CONFIG_VERSION)
+    _LOGGER.info("Thriftherm config entry migrated to version %s, dropped %s", CONFIG_VERSION, sorted(set(merged) - set(options)))
     return True
 
 
@@ -161,6 +173,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _remove_stale_registry_entries(hass, entry, coordinator)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    # The coordinator schedules its next cycle only while someone listens. With every entity
+    # disabled the control would stop; this listener keeps it running.
+    entry.async_on_unload(coordinator.async_add_listener(lambda: None))
+
+    async def _save_on_stop(_event: Event) -> None:
+        # Home Assistant does not unload entries when it stops: without this, up to ten minutes
+        # of learning and controller timers would be lost on every restart.
+        await coordinator.async_save_store(force=True)
+
+    # not listen_once: its remover would log an error on an unload after the stop
+    entry.async_on_unload(hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, _save_on_stop))
     _LOGGER.info("Thriftherm started (heat pump control: %s)", coordinator.control_mode)
     return True
 
@@ -179,7 +202,7 @@ def _remove_stale_registry_entries(hass: HomeAssistant, entry: ThrifthermConfigE
     dev_reg = dr.async_get(hass)
     for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
         if not _device_still_provided(entry, device, rooms):
-            dev_reg.async_update_device(device.id, remove_config_entry_id=entry.entry_id)
+            dev_reg.async_remove_device(device.id)  # our room devices belong to this entry alone
 
 
 def _device_still_provided(entry: ThrifthermConfigEntry, device: dr.DeviceEntry, rooms: set[str]) -> bool:
@@ -204,7 +227,17 @@ async def async_unload_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) 
     if hasattr(entry, "runtime_data"):
         # learning and user state changed since the last periodic save must survive a restart
         await entry.runtime_data.async_save_store(force=True)
-    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    if unloaded and entry.disabled_by is not None:
+        # disabled: no cycle checks the repairs any more (a reload keeps them, its first cycle syncs)
+        issues.async_clear(hass)
+    return unloaded
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> None:
+    """The entry is gone: so are its repairs and its stored learning and controller state."""
+    issues.async_clear(hass)
+    await Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}").async_remove()
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> None:

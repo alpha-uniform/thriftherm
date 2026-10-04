@@ -18,8 +18,6 @@ from typing import Any
 from .const import (
     CONF_BOILER_CURVE_COLD,
     CONF_BOILER_CURVE_WARM,
-    CONF_BOILER_FLOW_MAX,
-    CONF_BOILER_FLOW_MIN,
     CONF_HEAT_PUMP_AIRFLOW_CURVE,
     CONF_HEAT_PUMP_CLIMATE,
     CONF_HEAT_PUMP_DUCT_FACTOR,
@@ -33,8 +31,6 @@ from .const import (
     CONF_ROOMS,
     DEFAULT_BOILER_CURVE_COLD,
     DEFAULT_BOILER_CURVE_WARM,
-    DEFAULT_BOILER_FLOW_MAX,
-    DEFAULT_BOILER_FLOW_MIN,
     DEFAULT_HEAT_PUMP_DUCT_FACTOR,
 )
 
@@ -47,6 +43,8 @@ REASON_USER = "user"
 REASON_CONFIGURATION = "configuration_changed"
 
 _ROOM_PREFIX = "room:"
+# settings no longer fingerprinted; a basis stored before still carries them
+_RETIRED = {SCOPE_BOILER: ("flow_min", "flow_max")}
 
 
 def _fingerprint(values: Mapping[str, Any]) -> str:
@@ -64,12 +62,11 @@ def basis(config: Mapping[str, Any]) -> dict[str, str]:
     """Fingerprint of the settings each learned area depends on."""
     rooms = [r for r in (config.get(CONF_ROOMS) or []) if r.get(CONF_ROOM_KEY)]
     result = {
+        # the flow limits only cut the curve off; how far it is off for these radiators stays the same
         SCOPE_BOILER: _fingerprint(
             {
                 "curve_cold": _as_float(config.get(CONF_BOILER_CURVE_COLD), DEFAULT_BOILER_CURVE_COLD),
                 "curve_warm": _as_float(config.get(CONF_BOILER_CURVE_WARM), DEFAULT_BOILER_CURVE_WARM),
-                "flow_min": _as_float(config.get(CONF_BOILER_FLOW_MIN), DEFAULT_BOILER_FLOW_MIN),
-                "flow_max": _as_float(config.get(CONF_BOILER_FLOW_MAX), DEFAULT_BOILER_FLOW_MAX),
             }
         ),
         SCOPE_HEAT_PUMP: _fingerprint(
@@ -91,6 +88,20 @@ def basis(config: Mapping[str, Any]) -> dict[str, str]:
     return result
 
 
+def _comparable(scope: str, fingerprint: Any) -> Any:
+    """A stored fingerprint without the settings retired since it was written."""
+    retired = _RETIRED.get(scope)
+    if not retired or not isinstance(fingerprint, str):
+        return fingerprint
+    try:
+        values = json.loads(fingerprint)
+    except ValueError:
+        return fingerprint
+    if not isinstance(values, dict):
+        return fingerprint
+    return _fingerprint({k: v for k, v in values.items() if k not in retired})
+
+
 def invalidated(stored: Any, current: Mapping[str, str]) -> tuple[set[str], set[str]]:
     """Scopes and rooms whose settings changed since the learned values were stored.
 
@@ -100,7 +111,7 @@ def invalidated(stored: Any, current: Mapping[str, str]) -> tuple[set[str], set[
     """
     if not isinstance(stored, Mapping):
         return set(), set()
-    scopes = {s for s in (SCOPE_BOILER, SCOPE_HEAT_PUMP) if s in stored and stored[s] != current.get(s)}
+    scopes = {s for s in (SCOPE_BOILER, SCOPE_HEAT_PUMP) if s in stored and _comparable(s, stored[s]) != current.get(s)}
     rooms = {
         key[len(_ROOM_PREFIX):]
         for key, value in current.items()

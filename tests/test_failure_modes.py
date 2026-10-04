@@ -7,6 +7,7 @@ tests keep the reactions from drifting.
 
 from __future__ import annotations
 
+import logging
 from datetime import timedelta
 
 import pytest
@@ -104,6 +105,170 @@ async def test_a_missing_gas_meter_does_not_stop_the_control(hass: HomeAssistant
     assert hass.states.get("sensor.thriftherm_gas_power").state in ("unknown", "unavailable")
     assert hass.states.get("sensor.thriftherm_boiler_command").state in ("heat", "block")
     assert hass.states.get("sensor.thriftherm_safety_state").state == "ok"
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"gas_price": 0.0},
+        {"system_type": "district", "heat_price": 0.0},
+        {"system_type": "district", "heat_consumption_share_pct": 0.0, "heat_ownership_share_pct": 0.0},
+        {"system_type": "none", "gas_price": 0.0},
+    ],
+)
+async def test_a_stored_price_of_0_does_not_stop_the_control(hass: HomeAssistant, options: dict) -> None:
+    """Prices from before the form refused 0 only lose the cost comparison, never the control."""
+    from homeassistant.config_entries import ConfigEntryState
+    from pytest_homeassistant_custom_component.common import async_mock_service
+
+    publish = async_mock_service(hass, "mqtt", "publish")
+    entry = await _setup(hass, options={**options, "boiler_allow_active_control": True})
+    coordinator = entry.runtime_data
+    assert entry.state is ConfigEntryState.LOADED
+    assert coordinator.last_update_success
+    if options.get("system_type", "gas") != "none":
+        assert coordinator.data["econ"].break_even_cop is None
+        assert coordinator.data["econ"].cheaper_source == "unknown"
+    if coordinator.has_boiler:
+        coordinator.set_boiler_control_mode("active")
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert coordinator.last_update_success
+        assert [c for c in publish if c.data["topic"].endswith("/SetMode/set")]  # the boiler still gets its command
+
+
+async def test_a_thermostat_that_raises_does_not_stop_the_other_rooms(hass: HomeAssistant, caplog) -> None:
+    """Better Thermostat is foreign code: any exception from it used to end the cycle half way."""
+    from unittest.mock import AsyncMock, patch
+
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.thriftherm.const import CONF_ROOMS, DOMAIN
+
+    from .test_integration import _entry_data, _set_states
+
+    written: list[dict] = []
+
+    async def set_temperature(call) -> None:
+        if call.data["entity_id"] == "climate.bath_bt":
+            raise TypeError("'NoneType' object is not subscriptable")
+        written.append(dict(call.data))
+
+    hass.services.async_register("climate", "set_temperature", set_temperature)
+    _set_states(hass)
+    data = _entry_data()
+    for room, entity in zip(data[CONF_ROOMS], ("climate.bath_bt", "climate.living_bt"), strict=True):
+        room["climate_entity"] = entity
+        hass.states.async_set(entity, "heat", {"temperature": 17.0, "current_temperature": 18.0})
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=data, options={"room_allow_active_control": True}, unique_id=DOMAIN, title="Thriftherm"
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+    coordinator.set_room_control_mode("active")
+    coordinator._store.async_save = AsyncMock()
+
+    with patch("custom_components.thriftherm.issues.async_sync", AsyncMock()) as sync:
+        await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    assert written == [{"entity_id": "climate.living_bt", "temperature": 18.5}]  # the bathroom came first and failed
+    coordinator._store.async_save.assert_awaited_once()
+    sync.assert_awaited_once()
+    assert ("custom_components.thriftherm.executors", logging.WARNING,
+            "thriftherm room badezimmer: setpoint 21.0 failed: 'NoneType' object is not subscriptable") in caplog.record_tuples
+
+
+async def test_the_boiler_gets_its_setmode_before_a_silent_heat_pump(hass: HomeAssistant, monkeypatch, caplog) -> None:
+    """Every call gives up after a timeout, and a hanging heat pump no longer holds up the boiler."""
+    import asyncio
+
+    from custom_components.thriftherm import executors
+
+    monkeypatch.setattr(executors, "CALL_TIMEOUT_S", 0.05)
+    order: list[str] = []
+
+    async def publish(call) -> None:
+        if call.data["topic"].endswith("/SetMode/set"):
+            order.append("SetMode")
+
+    async def no_answer(call) -> None:
+        order.append(call.service)
+        await asyncio.sleep(3600)
+
+    hass.services.async_register("mqtt", "publish", publish)
+    for service in ("set_hvac_mode", "set_temperature", "set_fan_mode"):
+        hass.services.async_register("climate", service, no_answer)
+    released = {"boiler_allow_active_control": True, "midea_allow_active_control": True}
+    coordinator = (await _setup(hass, options=released)).runtime_data
+    hass.states.async_set(
+        "climate.midea", "off",
+        {"temperature": 22, "indoor_temperature": 21, "outdoor_temperature": 4.0, "compressor_frequency": 0, "error_code": 0},
+    )
+    coordinator.set_boiler_control_mode("active")
+    coordinator.set_control_mode("active")
+    order.clear()
+
+    async with asyncio.timeout(10):
+        await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    assert coordinator.data["midea_command"].action == "start"
+    assert order == ["SetMode", "set_hvac_mode"]  # the heat pump gave up at its first call
+    assert coordinator.control_memory.running_since_ts is None
+    assert ("custom_components.thriftherm.executors", logging.WARNING,
+            "thriftherm heat pump command set_hvac_mode {'hvac_mode': 'heat'} failed: TimeoutError") in caplog.record_tuples
+
+
+async def test_the_settings_stay_usable_while_a_cycle_fails(hass: HomeAssistant, monkeypatch) -> None:
+    """Code audit 2026-09-28 (H3): a failed cycle made the selects, numbers, the return and the button
+    unavailable, and Home Assistant skips unavailable entities in service calls."""
+    from unittest.mock import Mock
+
+    coordinator = (await _setup(hass)).runtime_data
+    monkeypatch.setattr(coordinator, "_evaluate", Mock(side_effect=RuntimeError("broken")))
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert not coordinator.last_update_success
+    assert hass.states.get("sensor.thriftherm_recommended_heat_source").state == "unavailable"  # a result of the cycle
+    for entity_id in (
+        "select.thriftherm_operating_mode",
+        "select.thriftherm_room_control",
+        "select.thriftherm_boiler_control",
+        "select.thriftherm_heat_pump_control",
+        "number.thriftherm_badezimmer_comfort_temperature",
+        "datetime.thriftherm_planned_return",
+        "button.thriftherm_badezimmer_quick_heat_up",
+    ):
+        assert hass.states.get(entity_id).state != "unavailable", entity_id
+
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": "select.thriftherm_operating_mode", "option": "off"}, blocking=True
+    )
+    assert coordinator.mode == "off"
+
+
+async def test_a_failing_cycle_logs_its_traceback_once(hass: HomeAssistant, monkeypatch, caplog) -> None:
+    """Code audit 2026-09-28 (H4): Home Assistant logs a failed cycle without its traceback (debug only)."""
+    from unittest.mock import Mock
+
+    coordinator = (await _setup(hass)).runtime_data
+    evaluate = coordinator._evaluate
+
+    def tracebacks() -> list[logging.LogRecord]:
+        return [r for r in caplog.records if r.levelno == logging.ERROR and r.exc_info and r.exc_info[0] is RuntimeError]
+
+    monkeypatch.setattr(coordinator, "_evaluate", Mock(side_effect=RuntimeError("broken")))
+    for _ in range(3):
+        await coordinator.async_refresh()
+    assert len(tracebacks()) == 1  # the first of the series, not every cycle
+
+    monkeypatch.setattr(coordinator, "_evaluate", evaluate)
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    monkeypatch.setattr(coordinator, "_evaluate", Mock(side_effect=RuntimeError("broken again")))
+    await coordinator.async_refresh()
+    assert len(tracebacks()) == 2 and str(tracebacks()[-1].exc_info[1]) == "broken again"  # a new series
 
 
 # ------------------------------------------------------------------ restart
@@ -220,6 +385,46 @@ async def test_a_damaged_store_still_loads(hass: HomeAssistant, hass_storage) ->
     assert coordinator.boosts == {}
 
 
+async def test_a_deleted_room_leaves_nothing_behind(hass: HomeAssistant, hass_storage) -> None:
+    """Audit 2026-09-28: a room created again under a deleted one's name inherited its learned and set values."""
+    import time
+
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.thriftherm.const import DOMAIN, STORAGE_KEY, STORAGE_VERSION
+
+    from .test_integration import _entry_data, _set_states
+
+    later = time.time() + 3600
+    hass_storage[f"{STORAGE_KEY}.deleted"] = {
+        "version": STORAGE_VERSION,
+        "minor_version": 1,
+        "key": f"{STORAGE_KEY}.deleted",
+        "data": {
+            "room_temps": {"badezimmer": {"comfort": 22.0}, "keller": {"comfort": 25.0}},
+            "room_ctrl_memory": {"badezimmer": {"last_sent_target": 21.0}, "keller": {"last_sent_target": 25.0}},
+            "call_memory": {"badezimmer": {"calling": True, "since_ts": 1.0}, "keller": {"calling": True, "since_ts": 1.0}},
+            "heat_rates": {"rates": {"badezimmer": [1.5], "keller": [3.0]}, "gradients": {"keller": [12.0]}},
+            "cool_rates": {"rates": {"badezimmer": [0.05], "keller": [0.2]}},
+            "overrides": {"keller": {"target": 25.0, "until_ts": later}},
+            "boosts": {"keller": later},
+        },
+    }
+    _set_states(hass)
+    entry = MockConfigEntry(domain=DOMAIN, data=_entry_data(), entry_id="deleted", unique_id=DOMAIN, title="Thriftherm")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    coordinator = entry.runtime_data
+    assert coordinator.room_temps == {"badezimmer": {"comfort": 22.0}}
+    assert "keller" not in coordinator.room_ctrl_memory
+    assert "keller" not in coordinator.call_memory and coordinator.call_memory["badezimmer"].since_ts == 1.0
+    assert coordinator.heat_rates.rates == {"badezimmer": [1.5]} and "keller" not in coordinator.heat_rates.gradients
+    assert coordinator.cool_rates.rates == {"badezimmer": [0.05]}
+    assert coordinator.overrides == {} and coordinator.boosts == {}
+
+
 def test_restore_keeps_only_allowed_modes_and_valid_values():
     import time
     from types import SimpleNamespace
@@ -228,9 +433,11 @@ def test_restore_keeps_only_allowed_modes_and_valid_values():
 
     def coord():
         return SimpleNamespace(
+            builder=SimpleNamespace(rooms=[SimpleNamespace(key=k) for k in "abcd"]),
             heat_pump_tracker=SimpleNamespace(block_until=None), overrides={}, boosts={}, room_temps={}, room_ctrl_memory={},
             mode="auto", control_mode="shadow", boiler_control_mode="shadow", room_control_mode="shadow",
             control_modes=["off", "shadow"], boiler_control_modes=["off", "shadow", "active"], room_control_modes=["off", "shadow"],
+            modes=["auto", "boiler_only", "off", "away"],  # no heat pump
         )
 
     future = time.time() + 3600
@@ -239,7 +446,7 @@ def test_restore_keeps_only_allowed_modes_and_valid_values():
         good,
         {
             "mode": "away", "control_mode": "off", "boiler_control_mode": "active", "room_control_mode": "off",
-            "midea_block_until": "123.5", "away_return_ts": 0,
+            "midea_block_until": "123.5", "away_return_ts": 0, "away_return_provisional": True,
             "overrides": {"a": {"target": "20", "until_ts": future}, "b": {"target": 20, "until_ts": 1.0}, "c": {"until_ts": future}, "d": "x"},
             "boosts": {"a": future, "b": 1.0, "c": "x"},
             "room_temps": {"a": {"comfort": "21", "setback": "x", "other": 1}, "b": "x"},
@@ -249,6 +456,7 @@ def test_restore_keeps_only_allowed_modes_and_valid_values():
     )
     assert (good.mode, good.control_mode, good.boiler_control_mode, good.room_control_mode) == ("away", "off", "active", "off")
     assert good.heat_pump_tracker.block_until == 123.5 and good.away_return_ts is None
+    assert good.away_return_provisional is False  # provisional without a return means nothing
     assert list(good.overrides) == ["a"] and good.overrides["a"].target == 20.0
     assert good.boosts == {"a": future}
     assert good.room_temps == {"a": {"comfort": 21.0}}
@@ -259,6 +467,9 @@ def test_restore_keeps_only_allowed_modes_and_valid_values():
     bad = coord()
     persistence.restore(bad, {"mode": "party", "control_mode": "active", "boiler_control_mode": None, "room_control_mode": "active"})
     assert (bad.mode, bad.control_mode, bad.boiler_control_mode, bad.room_control_mode) == ("auto", "shadow", "shadow", "shadow")
+    no_heat_pump = coord()
+    persistence.restore(no_heat_pump, {"mode": "midea_only"})
+    assert no_heat_pump.mode == "auto"
 
 
 async def test_away_without_a_return_time_keeps_a_planned_one(hass: HomeAssistant) -> None:
@@ -327,7 +538,7 @@ async def test_a_cycling_boiler_still_counts_as_heating(hass: HomeAssistant) -> 
 
 
 STORED_KEYS = (
-    "cop_map", "heat_rates", "cool_rates", "midea_block_until", "overrides", "away_return_ts", "mode",
+    "cop_map", "heat_rates", "cool_rates", "midea_block_until", "overrides", "away_return_ts", "away_return_provisional", "mode",
     "control_mode", "control_memory", "boosts", "boiler_control_mode", "boiler_memory", "room_control_mode",
     "room_temps", "room_ctrl_memory", "learning_basis", "last_learning_reset",
 )
@@ -360,3 +571,28 @@ async def test_no_stored_value_can_stop_the_integration_from_loading(hass: HomeA
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     assert hass.states.get("sensor.thriftherm_boiler_command") is not None
+
+
+# ------------------------------------------------------------------ bathroom drying only with a heat pump that acts
+async def test_bathroom_drying_needs_an_active_heat_pump(hass: HomeAssistant, monkeypatch) -> None:
+    """Measured 2026-09-25: while the heat pump only planned, drying raised the bathroom to 22 °C on gas."""
+    from custom_components.thriftherm import coordinator as coordinator_module
+    from custom_components.thriftherm.const import CTRL_ACTIVE, CTRL_SHADOW
+
+    seen: list[bool] = []
+    evaluate = coordinator_module.room_engine.evaluate_room
+
+    def spy(*args, heat_pump_heat_possible=True, **kwargs):
+        seen.append(heat_pump_heat_possible)
+        return evaluate(*args, heat_pump_heat_possible=heat_pump_heat_possible, **kwargs)
+
+    monkeypatch.setattr(coordinator_module.room_engine, "evaluate_room", spy)
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    hass.states.async_set("climate.midea", "off", {**hass.states.get("climate.midea").attributes})  # ready to heat
+    for mode, expected in ((CTRL_SHADOW, False), (CTRL_ACTIVE, True)):
+        coordinator.control_mode = mode
+        seen.clear()
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert seen and all(value is expected for value in seen), mode

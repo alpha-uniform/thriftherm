@@ -42,6 +42,9 @@ from ..const import (
     BOILER_PLAN_DISABLED,
     BOILER_PLAN_HANDS_OFF,
     BOILER_PLAN_HEAT,
+    BOILER_REPORTS_HEATING,
+    BOILER_REPORTS_HEATING_AFTER,
+    BOILER_REPORTS_HOT_WATER,
     CTRL_ACTIVE,
     CTRL_OFF,
     MODE_OFF,
@@ -50,6 +53,7 @@ from ..const import (
     SOURCE_BOTH,
 )
 from .common import as_dict, as_float, as_floats, round_half
+from .heat_call import CALL_CALLING
 from ..models import BoilerCommand, Parameters, RoomResult
 
 RESEND_INTERVAL_S = 120.0  # boiler falls back to its knob after 9-16 min without SetMode (measured)
@@ -79,8 +83,18 @@ HOT_WATER_HOLDOFF_S = 3600.0
 # ebusd polls flow and return only every few minutes, so the temperature rules above
 # notice a shower late. Two signals are faster:
 HOT_WATER_GAS_W = 1000.0  # gas burning although space heating was blocked: only hot water is left
+# A block counts only once it has been sent without a gap for this long. After an eBUS
+# outage the boiler is back on its front knob and may fire for space heating while the
+# first block is still on its way (measured 2026-09-19 00:59: adapter gone for 12 min,
+# burner ran 20 s in S.4 and was taken for hot water).
+BLOCK_IN_FORCE_S = 120.0
 HOT_WATER_ABOVE_SETPOINT_K = 15.0  # flow far above the heating flow we sent (burner overshoot stays below)
 HOT_WATER_SHOWN_S = 600.0  # how long "hot water active" stays on after the last sign, given the polling lag
+# A guess (gas under a block, temperatures) is taken back when the boiler's status code then says
+# "after heating" (S.5-S.8): after hot water it shows S.15-S.17. Measured 2026-09-28 00:44: the block
+# had been sent for two minutes, but ebusd, restarted after an address change, could not write yet;
+# the boiler fired once more by its knob and went to S.7.
+HOT_WATER_RETRACT_S = 300.0
 MIN_SAMPLES = 10
 REVIEW_S = 1200.0
 ADJUST_COOLDOWN_S = 3600.0
@@ -125,6 +139,9 @@ class BoilerMemory:
     ramp_from: float | None = None  # flow at which the current rise began
     ramp_since_ts: float | None = None
     last_adjust_reason: str | None = None
+    block_since_ts: float | None = None  # first block of an unbroken series of sends; not stored
+    hot_water_guessed: bool = False  # the last hot water sign was a guess, not the boiler's status code
+    hot_water_before_guess_ts: float | None = None  # hot_water_seen_ts before that guess; not stored
 
     def phase(self, now_ts: float) -> str:
         if len(self.adjustments) >= REFINE_AFTER_ADJUSTMENTS:
@@ -183,6 +200,8 @@ class BoilerInputs:
     return_c: float | None = None
     burner_heating: bool = False  # pump running for space heating (not hot water)
     gas_power_w: float | None = None
+    reported_mode: str | None = None  # BOILER_REPORTS_* from the boiler's status code, None if unknown
+    status_known: bool = False  # the boiler's status code is configured and readable
     learning_allowed: bool = True  # False while setpoints move, boost/drying run or safety is not ok
     # Right after a restart the room sensors report within seconds to minutes. A block decided
     # before they did locks the heating (and the pump) off for the minimum state time.
@@ -221,8 +240,8 @@ def _direction(spread: float | None, heating: list[RoomResult]) -> tuple[int, st
         return 1, "spread_large"
     demanding = [r for r in heating if (r.demand or 0.0) > DEMAND_ACTIVE]
     if demanding:
-        slowest = min((r.trend_k_per_h if r.trend_k_per_h is not None else 0.0) for r in demanding)
-        if slowest < SLOW_RATE_K_H:
+        known = [r.trend_k_per_h for r in demanding if r.trend_k_per_h is not None]
+        if known and min(known) < SLOW_RATE_K_H:
             return 1, "rooms_slow"
         return 0, None
     if demand <= 0.1:
@@ -245,7 +264,9 @@ def short_cycling(mem: BoilerMemory, now_ts: float) -> bool:
     starts = [t for t in mem.burn_starts if now_ts - t <= CYCLE_WINDOW_S]
     if len(starts) < CYCLE_MIN_STARTS:
         return False
-    runs = list(mem.burn_durations[-len(starts):])
+    # a run still burning has a start but no duration yet
+    finished = len(starts) - (1 if mem.burner_on and mem.burn_started_ts in starts else 0)
+    runs = list(mem.burn_durations[-finished:]) if finished > 0 else []
     return bool(runs) and median(runs) <= CYCLE_SHORT_BURN_S
 
 
@@ -310,13 +331,24 @@ def hot_water_suspected(
     gas_w: float | None = None,
     heating_blocked: bool = False,
     heating_flow_c: float | None = None,
+    reported_mode: str | None = None,
+    status_known: bool = False,
 ) -> bool:
     """True when the boiler can only be making hot water.
 
     `heating_blocked` and `heating_flow_c` describe what was really sent to the
     boiler (active control); in plan-only mode the knob rules and neither applies.
+    The boiler's own status code, where it is known, outranks every guess.
     """
-    if heating_blocked and gas_w is not None and gas_w > HOT_WATER_GAS_W:
+    if reported_mode == BOILER_REPORTS_HOT_WATER:
+        return True
+    if reported_mode == BOILER_REPORTS_HEATING:
+        return False
+    burning = gas_w is not None and gas_w > HOT_WATER_GAS_W
+    if reported_mode == BOILER_REPORTS_HEATING_AFTER and not burning:
+        # overrun after a heating run; with gas burning the code lags behind a new start
+        return False
+    if heating_blocked and burning:
         return True
     if flow_c is None:
         return False
@@ -324,23 +356,61 @@ def hot_water_suspected(
         return True
     if heating_flow_c is not None and flow_c > heating_flow_c + HOT_WATER_ABOVE_SETPOINT_K:
         return True
+    if status_known:
+        # Return above flow is also what the circuit shows after every heating run while the
+        # pump keeps running (S.7): the exchanger cools first. With a status code at hand the
+        # boiler says hot water itself, so this rule only stands in for boilers without one.
+        return False
     return return_c is not None and return_c - flow_c > HOT_WATER_REVERSE_SPREAD_K
+
+
+def _heating_after_all(inp: BoilerInputs, mem: BoilerMemory, now: float) -> bool:
+    """A recent hot water guess that the boiler's status code now contradicts."""
+    seen = mem.hot_water_seen_ts
+    if not mem.hot_water_guessed or seen is None or now - seen > HOT_WATER_RETRACT_S:
+        return False
+    burning = inp.gas_power_w is not None and inp.gas_power_w > HOT_WATER_GAS_W
+    return inp.reported_mode == BOILER_REPORTS_HEATING or (inp.reported_mode == BOILER_REPORTS_HEATING_AFTER and not burning)
 
 
 def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerMemory]:
     """Plan the boiler command, keeping hot-water episodes out of the learning."""
     now = inp.now_ts
     sent = inp.control_mode == CTRL_ACTIVE and mem.last_send_ts is not None
+    block_in_force = (
+        sent
+        and mem.state == BOILER_PLAN_BLOCK
+        and inp.boiler_available
+        and mem.block_since_ts is not None
+        and now - mem.block_since_ts >= BLOCK_IN_FORCE_S
+    )
     if hot_water_suspected(
         inp.flow_c,
         inp.return_c,
         inp.params.boiler_flow_max,
         gas_w=inp.gas_power_w,
-        heating_blocked=sent and mem.state == BOILER_PLAN_BLOCK,
+        heating_blocked=block_in_force,
         heating_flow_c=mem.last_flow if sent and mem.state == BOILER_PLAN_HEAT else None,
+        reported_mode=inp.reported_mode,
+        status_known=inp.status_known,
     ):
         # discard whatever this run had collected: those samples already carry the shower
-        mem = replace(mem, hot_water_seen_ts=now, heating_since_ts=None, samples=0, spread_ema=None)
+        guessed = inp.reported_mode != BOILER_REPORTS_HOT_WATER
+        before = (mem.hot_water_before_guess_ts if mem.hot_water_guessed else mem.hot_water_seen_ts) if guessed else None
+        mem = replace(
+            mem,
+            hot_water_seen_ts=now,
+            heating_since_ts=None,
+            samples=0,
+            spread_ema=None,
+            hot_water_guessed=guessed,
+            hot_water_before_guess_ts=before,
+        )
+    elif _heating_after_all(inp, mem, now):
+        # the boiler says it heated: the guess was wrong, the hot water hold-off is taken back
+        mem = replace(
+            mem, hot_water_seen_ts=mem.hot_water_before_guess_ts, hot_water_guessed=False, hot_water_before_guess_ts=None
+        )
     if inp.burner_heating and mem.hot_water_seen_ts is not None and now - mem.hot_water_seen_ts < HOT_WATER_HOLDOFF_S:
         # still cooling back from hot water: plan normally, but do not treat it as a heating run
         inp = replace(inp, burner_heating=False)
@@ -356,6 +426,12 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, Boiler
 
     def command(plan: str, send: bool, text: str | None, flow: float | None, disable: bool, reason: str, *, curve=None, blockers=(), waiting=None) -> BoilerCommand:
         phase = mem.phase(now) if (inp.burner_heating and inp.learning_allowed) else PHASE_PAUSED
+        # short cycling asks for a lower curve; at the flow minimum that step is swallowed silently
+        held_back = (
+            "short_cycling_at_flow_min"
+            if short_cycling(mem, now) and curve_flow(inp.outdoor_c, p) + mem.offset_k <= p.boiler_flow_min
+            else None
+        )
         return BoilerCommand(
             plan=plan,
             send=send,
@@ -371,6 +447,7 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, Boiler
             learning_phase=phase,
             adjustments_last_day=mem.adjustments_last_day(now),
             last_adjust_reason=mem.last_adjust_reason,
+            held_back=held_back,
         )
 
     if inp.control_mode == CTRL_OFF:
@@ -393,7 +470,7 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, Boiler
         # send nothing: the boiler returns to its front knob after ~10 min
         return (
             command(BOILER_PLAN_HANDS_OFF, False, None, None, False, "hands_off", blockers=blockers),
-            replace(mem, state=None, state_since_ts=None),
+            replace(mem, state=None, state_since_ts=None, block_since_ts=None),
         )
 
     frost = bool(inp.frost_rooms)
@@ -411,7 +488,11 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, Boiler
     if wanted_state != mem.state:
         mem = replace(mem, state=wanted_state, state_since_ts=now, last_review_ts=None, samples=0)
 
-    heating_rooms = [r for r in inp.rooms if r.heating_allowed and r.temperature is not None]
+    # only rooms that call raise the flow: one hanging below target (stalled) or at the end of its
+    # comfort period does not ask the boiler for anything
+    heating_rooms = [
+        r for r in inp.rooms if r.heating_allowed and r.temperature is not None and r.boiler_call in (None, CALL_CALLING)
+    ]
     curve = round(curve_flow(inp.outdoor_c, p), 1)
     if wanted_state == BOILER_PLAN_HEAT:
         mem = _learn(inp, mem, heating_rooms)
@@ -433,12 +514,21 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, Boiler
                 flow = limit
                 waiting = waiting or "ramp_limit"
             mem = replace(mem, ramp_from=base, ramp_since_ts=since)
-        else:
+        elif (
+            mem.ramp_from is None
+            or flow <= mem.ramp_from
+            or (mem.ramp_since_ts is not None and now - mem.ramp_since_ts >= RAMP_WINDOW_S)
+        ):
+            # A dip within the first window keeps the rise where it began. Measured 2026-10-02:
+            # the bathroom target was clicked up and down for 25 s, every dip restarted the ramp,
+            # and the flow went from 45 to 53 °C in 21 seconds.
             mem = replace(mem, ramp_from=None, ramp_since_ts=None)
         disable = False
     else:
         flow = p.boiler_flow_min
         disable = True
+        # the next heating run ramps from its own start, not from a rise that ended with this block
+        mem = replace(mem, ramp_from=None, ramp_since_ts=None)
 
     if mem.last_flow is None or flow != mem.last_flow:
         mem = replace(mem, last_flow=flow, last_flow_ts=now)
@@ -446,4 +536,8 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, Boiler
     due = text != mem.last_payload or mem.last_send_ts is None or now - mem.last_send_ts >= RESEND_INTERVAL_S
     if due:
         mem = replace(mem, last_send_ts=now, last_payload=text)
+    if not disable or inp.control_mode != CTRL_ACTIVE:
+        mem = replace(mem, block_since_ts=None)
+    elif mem.block_since_ts is None:
+        mem = replace(mem, block_since_ts=now)
     return command(wanted_state, due, text, None if disable else flow, disable, reason, curve=curve, waiting=waiting), mem

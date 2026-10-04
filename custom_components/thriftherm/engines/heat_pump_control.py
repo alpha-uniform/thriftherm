@@ -142,7 +142,7 @@ class ControlInputs:
     safety_state: str
     outdoor_c: float | None
     expected_cop: float | None
-    break_even_cop: float
+    break_even_cop: float | None  # None when the prices cannot be used
     outdoor_bin: int | None
     bin_count: int
     params: Parameters
@@ -271,6 +271,7 @@ def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Con
         and inp.outdoor_bin is not None
         and inp.bin_count < LEARNING_MIN_BIN_COUNT
         and inp.expected_cop is not None
+        and inp.break_even_cop is not None
         and inp.expected_cop >= LEARNING_MIN_RATIO * inp.break_even_cop
         and (need or drying)
     ):

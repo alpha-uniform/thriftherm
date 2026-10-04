@@ -156,6 +156,7 @@
   },
   "binary_sensor.thriftherm_override_active": {
    "attributes": {
+    "away_return_provisional": false,
     "away_return_ts": null,
     "friendly_name": "Thriftherm Override active",
     "icon": "mdi:account-clock",
@@ -287,7 +288,8 @@
   "datetime.thriftherm_planned_return": {
    "attributes": {
     "friendly_name": "Thriftherm Planned return",
-    "icon": "mdi:home-clock"
+    "icon": "mdi:home-clock",
+    "provisional": false
    },
    "capabilities": null,
    "device": {
@@ -482,6 +484,7 @@
   },
   "select.thriftherm_operating_mode": {
    "attributes": {
+    "away_return_provisional": false,
     "away_return_ts": null,
     "friendly_name": "Thriftherm Operating mode",
     "heat_rates": {},
@@ -589,12 +592,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_badezimmer_absolute_humidity": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Absolute humidity",
-    "icon": "mdi:water-percent",
-    "state_class": "measurement",
-    "unit_of_measurement": "g/m³"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -612,18 +610,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:water-percent",
-   "state": "9.47",
+   "state": null,
    "translation_key": "room_abs_humidity",
    "unique_id": "ENTRY_badezimmer_abs_humidity",
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_badezimmer_deviation_from_target": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Deviation from target",
-    "icon": "mdi:thermometer-lines",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -641,18 +634,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": "-2.5",
+   "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_badezimmer_deviation",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_dew_point": {
-   "attributes": {
-    "device_class": "temperature",
-    "friendly_name": "Thriftherm Badezimmer Dew point",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -667,20 +655,17 @@
      "thriftherm/ENTRY"
     ]
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 1
-    }
-   },
+   "options": {},
    "original_device_class": "temperature",
    "original_icon": null,
-   "state": "10.59",
+   "state": null,
    "translation_key": "room_dew_point",
    "unique_id": "ENTRY_badezimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_heat_demand": {
    "attributes": {
+    "boiler_call": "calling",
     "friendly_name": "Thriftherm Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -748,12 +733,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_temperature_trend": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Temperature trend",
-    "icon": "mdi:trending-up",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -771,7 +751,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:trending-up",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_trend",
    "unique_id": "ENTRY_badezimmer_trend",
    "unit_of_measurement": "°C/h"
@@ -940,12 +920,7 @@
    "unit_of_measurement": "EUR/kWh"
   },
   "sensor.thriftherm_heat_pump_airflow_estimate": {
-   "attributes": {
-    "friendly_name": "Thriftherm Heat pump airflow (estimate)",
-    "icon": "mdi:fan",
-    "state_class": "measurement",
-    "unit_of_measurement": "m³/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -961,7 +936,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:fan",
-   "state": "unknown",
+   "state": null,
    "translation_key": "midea_airflow_estimate",
    "unique_id": "ENTRY_midea_airflow_estimate",
    "unit_of_measurement": "m³/h"
@@ -1188,6 +1163,7 @@
     "flow_return_spread_k": null,
     "friendly_name": "Thriftherm Learning state",
     "heating_curve_offset_k": 0.0,
+    "held_back_because": null,
     "icon": "mdi:school",
     "last_adjustment_reason": null,
     "last_reset": null,
@@ -1340,12 +1316,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_wohnzimmer_absolute_humidity": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Absolute humidity",
-    "icon": "mdi:water-percent",
-    "state_class": "measurement",
-    "unit_of_measurement": "g/m³"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -1363,18 +1334,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:water-percent",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_abs_humidity",
    "unique_id": "ENTRY_wohnzimmer_abs_humidity",
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Deviation from target",
-    "icon": "mdi:thermometer-lines",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -1392,18 +1358,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": "-1.5",
+   "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_dew_point": {
-   "attributes": {
-    "device_class": "temperature",
-    "friendly_name": "Thriftherm Wohnzimmer Dew point",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -1418,20 +1379,17 @@
      "thriftherm/ENTRY"
     ]
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 1
-    }
-   },
+   "options": {},
    "original_device_class": "temperature",
    "original_icon": null,
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_dew_point",
    "unique_id": "ENTRY_wohnzimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_heat_demand": {
    "attributes": {
+    "boiler_call": "calling",
     "friendly_name": "Thriftherm Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -1499,12 +1457,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_temperature_trend": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Temperature trend",
-    "icon": "mdi:trending-up",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -1522,7 +1475,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:trending-up",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_trend",
    "unique_id": "ENTRY_wohnzimmer_trend",
    "unit_of_measurement": "°C/h"
@@ -1757,6 +1710,7 @@
   },
   "binary_sensor.thriftherm_override_active": {
    "attributes": {
+    "away_return_provisional": false,
     "away_return_ts": null,
     "friendly_name": "Thriftherm Override active",
     "icon": "mdi:account-clock",
@@ -1888,7 +1842,8 @@
   "datetime.thriftherm_planned_return": {
    "attributes": {
     "friendly_name": "Thriftherm Planned return",
-    "icon": "mdi:home-clock"
+    "icon": "mdi:home-clock",
+    "provisional": false
    },
    "capabilities": null,
    "device": {
@@ -2116,6 +2071,7 @@
   },
   "select.thriftherm_operating_mode": {
    "attributes": {
+    "away_return_provisional": false,
     "away_return_ts": null,
     "friendly_name": "Thriftherm Operating mode",
     "heat_rates": {},
@@ -2223,12 +2179,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_badezimmer_absolute_humidity": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Absolute humidity",
-    "icon": "mdi:water-percent",
-    "state_class": "measurement",
-    "unit_of_measurement": "g/m³"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -2246,18 +2197,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:water-percent",
-   "state": "9.47",
+   "state": null,
    "translation_key": "room_abs_humidity",
    "unique_id": "ENTRY_badezimmer_abs_humidity",
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_badezimmer_deviation_from_target": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Deviation from target",
-    "icon": "mdi:thermometer-lines",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -2275,18 +2221,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": "-2.5",
+   "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_badezimmer_deviation",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_dew_point": {
-   "attributes": {
-    "device_class": "temperature",
-    "friendly_name": "Thriftherm Badezimmer Dew point",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -2301,20 +2242,17 @@
      "thriftherm/ENTRY"
     ]
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 1
-    }
-   },
+   "options": {},
    "original_device_class": "temperature",
    "original_icon": null,
-   "state": "10.59",
+   "state": null,
    "translation_key": "room_dew_point",
    "unique_id": "ENTRY_badezimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_heat_demand": {
    "attributes": {
+    "boiler_call": "calling",
     "friendly_name": "Thriftherm Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -2382,12 +2320,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_temperature_trend": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Temperature trend",
-    "icon": "mdi:trending-up",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -2405,7 +2338,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:trending-up",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_trend",
    "unique_id": "ENTRY_badezimmer_trend",
    "unit_of_measurement": "°C/h"
@@ -2415,6 +2348,8 @@
     "commands_sent": false,
     "control_mode": "shadow",
     "device_class": "enum",
+    "echo_ignored_at": null,
+    "echo_ignored_value": null,
     "friendly_name": "Thriftherm Badezimmer Thermostat plan",
     "icon": "mdi:thermostat",
     "options": [
@@ -2515,12 +2450,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_boiler_flow_return_spread": {
-   "attributes": {
-    "friendly_name": "Thriftherm Boiler flow/return spread",
-    "icon": "mdi:delta",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -2536,7 +2466,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:delta",
-   "state": "7.0",
+   "state": null,
    "translation_key": "boiler_delta_t",
    "unique_id": "ENTRY_boiler_delta_t",
    "unit_of_measurement": "°C"
@@ -2574,13 +2504,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_boiler_thermal_power_estimate": {
-   "attributes": {
-    "basis": "nominal_circulation_estimate",
-    "device_class": "power",
-    "friendly_name": "Thriftherm Boiler thermal power (estimate)",
-    "state_class": "measurement",
-    "unit_of_measurement": "W"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -2593,14 +2517,10 @@
     "name": "Thriftherm",
     "via": null
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 0
-    }
-   },
+   "options": {},
    "original_device_class": "power",
    "original_icon": null,
-   "state": "7000.0",
+   "state": null,
    "translation_key": "boiler_thermal_power_estimate",
    "unique_id": "ENTRY_boiler_thermal_power_estimate",
    "unit_of_measurement": "W"
@@ -2831,12 +2751,7 @@
    "unit_of_measurement": "EUR/kWh"
   },
   "sensor.thriftherm_heat_pump_airflow_estimate": {
-   "attributes": {
-    "friendly_name": "Thriftherm Heat pump airflow (estimate)",
-    "icon": "mdi:fan",
-    "state_class": "measurement",
-    "unit_of_measurement": "m³/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -2852,7 +2767,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:fan",
-   "state": "unknown",
+   "state": null,
    "translation_key": "midea_airflow_estimate",
    "unique_id": "ENTRY_midea_airflow_estimate",
    "unit_of_measurement": "m³/h"
@@ -3079,6 +2994,7 @@
     "flow_return_spread_k": null,
     "friendly_name": "Thriftherm Learning state",
     "heating_curve_offset_k": 0.0,
+    "held_back_because": null,
     "icon": "mdi:school",
     "last_adjustment_reason": null,
     "last_reset": null,
@@ -3231,12 +3147,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_wohnzimmer_absolute_humidity": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Absolute humidity",
-    "icon": "mdi:water-percent",
-    "state_class": "measurement",
-    "unit_of_measurement": "g/m³"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -3254,18 +3165,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:water-percent",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_abs_humidity",
    "unique_id": "ENTRY_wohnzimmer_abs_humidity",
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Deviation from target",
-    "icon": "mdi:thermometer-lines",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -3283,18 +3189,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": "-1.5",
+   "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_dew_point": {
-   "attributes": {
-    "device_class": "temperature",
-    "friendly_name": "Thriftherm Wohnzimmer Dew point",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -3309,20 +3210,17 @@
      "thriftherm/ENTRY"
     ]
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 1
-    }
-   },
+   "options": {},
    "original_device_class": "temperature",
    "original_icon": null,
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_dew_point",
    "unique_id": "ENTRY_wohnzimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_heat_demand": {
    "attributes": {
+    "boiler_call": "calling",
     "friendly_name": "Thriftherm Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -3390,12 +3288,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_temperature_trend": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Temperature trend",
-    "icon": "mdi:trending-up",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -3413,7 +3306,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:trending-up",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_trend",
    "unique_id": "ENTRY_wohnzimmer_trend",
    "unit_of_measurement": "°C/h"
@@ -3648,6 +3541,7 @@
   },
   "binary_sensor.thriftherm_override_active": {
    "attributes": {
+    "away_return_provisional": false,
     "away_return_ts": null,
     "friendly_name": "Thriftherm Override active",
     "icon": "mdi:account-clock",
@@ -3779,7 +3673,8 @@
   "datetime.thriftherm_planned_return": {
    "attributes": {
     "friendly_name": "Thriftherm Planned return",
-    "icon": "mdi:home-clock"
+    "icon": "mdi:home-clock",
+    "provisional": false
    },
    "capabilities": null,
    "device": {
@@ -4011,6 +3906,7 @@
   },
   "select.thriftherm_operating_mode": {
    "attributes": {
+    "away_return_provisional": false,
     "away_return_ts": null,
     "friendly_name": "Thriftherm Operating mode",
     "heat_rates": {},
@@ -4120,12 +4016,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_badezimmer_absolute_humidity": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Absolute humidity",
-    "icon": "mdi:water-percent",
-    "state_class": "measurement",
-    "unit_of_measurement": "g/m³"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -4143,18 +4034,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:water-percent",
-   "state": "9.47",
+   "state": null,
    "translation_key": "room_abs_humidity",
    "unique_id": "ENTRY_badezimmer_abs_humidity",
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_badezimmer_deviation_from_target": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Deviation from target",
-    "icon": "mdi:thermometer-lines",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -4172,18 +4058,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": "-2.5",
+   "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_badezimmer_deviation",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_dew_point": {
-   "attributes": {
-    "device_class": "temperature",
-    "friendly_name": "Thriftherm Badezimmer Dew point",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -4198,20 +4079,17 @@
      "thriftherm/ENTRY"
     ]
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 1
-    }
-   },
+   "options": {},
    "original_device_class": "temperature",
    "original_icon": null,
-   "state": "10.59",
+   "state": null,
    "translation_key": "room_dew_point",
    "unique_id": "ENTRY_badezimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_heat_demand": {
    "attributes": {
+    "boiler_call": "calling",
     "friendly_name": "Thriftherm Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -4279,12 +4157,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_temperature_trend": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Temperature trend",
-    "icon": "mdi:trending-up",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -4302,7 +4175,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:trending-up",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_trend",
    "unique_id": "ENTRY_badezimmer_trend",
    "unit_of_measurement": "°C/h"
@@ -4312,6 +4185,8 @@
     "commands_sent": false,
     "control_mode": "shadow",
     "device_class": "enum",
+    "echo_ignored_at": null,
+    "echo_ignored_value": null,
     "friendly_name": "Thriftherm Badezimmer Thermostat plan",
     "icon": "mdi:thermostat",
     "options": [
@@ -4412,12 +4287,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_boiler_flow_return_spread": {
-   "attributes": {
-    "friendly_name": "Thriftherm Boiler flow/return spread",
-    "icon": "mdi:delta",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -4433,7 +4303,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:delta",
-   "state": "7.0",
+   "state": null,
    "translation_key": "boiler_delta_t",
    "unique_id": "ENTRY_boiler_delta_t",
    "unit_of_measurement": "°C"
@@ -4471,13 +4341,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_boiler_thermal_power_estimate": {
-   "attributes": {
-    "basis": "nominal_circulation_estimate",
-    "device_class": "power",
-    "friendly_name": "Thriftherm Boiler thermal power (estimate)",
-    "state_class": "measurement",
-    "unit_of_measurement": "W"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -4490,14 +4354,10 @@
     "name": "Thriftherm",
     "via": null
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 0
-    }
-   },
+   "options": {},
    "original_device_class": "power",
    "original_icon": null,
-   "state": "7000.0",
+   "state": null,
    "translation_key": "boiler_thermal_power_estimate",
    "unique_id": "ENTRY_boiler_thermal_power_estimate",
    "unit_of_measurement": "W"
@@ -4728,12 +4588,7 @@
    "unit_of_measurement": "EUR/kWh"
   },
   "sensor.thriftherm_heat_pump_airflow_estimate": {
-   "attributes": {
-    "friendly_name": "Thriftherm Heat pump airflow (estimate)",
-    "icon": "mdi:fan",
-    "state_class": "measurement",
-    "unit_of_measurement": "m³/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -4749,7 +4604,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:fan",
-   "state": "unknown",
+   "state": null,
    "translation_key": "midea_airflow_estimate",
    "unique_id": "ENTRY_midea_airflow_estimate",
    "unit_of_measurement": "m³/h"
@@ -4976,6 +4831,7 @@
     "flow_return_spread_k": null,
     "friendly_name": "Thriftherm Learning state",
     "heating_curve_offset_k": 0.0,
+    "held_back_because": null,
     "icon": "mdi:school",
     "last_adjustment_reason": null,
     "last_reset": null,
@@ -5128,12 +4984,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_wohnzimmer_absolute_humidity": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Absolute humidity",
-    "icon": "mdi:water-percent",
-    "state_class": "measurement",
-    "unit_of_measurement": "g/m³"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -5151,18 +5002,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:water-percent",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_abs_humidity",
    "unique_id": "ENTRY_wohnzimmer_abs_humidity",
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Deviation from target",
-    "icon": "mdi:thermometer-lines",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -5180,18 +5026,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": "-1.5",
+   "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_dew_point": {
-   "attributes": {
-    "device_class": "temperature",
-    "friendly_name": "Thriftherm Wohnzimmer Dew point",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -5206,20 +5047,17 @@
      "thriftherm/ENTRY"
     ]
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 1
-    }
-   },
+   "options": {},
    "original_device_class": "temperature",
    "original_icon": null,
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_dew_point",
    "unique_id": "ENTRY_wohnzimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_heat_demand": {
    "attributes": {
+    "boiler_call": "calling",
     "friendly_name": "Thriftherm Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -5287,12 +5125,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_temperature_trend": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Temperature trend",
-    "icon": "mdi:trending-up",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -5310,7 +5143,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:trending-up",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_trend",
    "unique_id": "ENTRY_wohnzimmer_trend",
    "unit_of_measurement": "°C/h"
@@ -5443,6 +5276,7 @@
   },
   "binary_sensor.thriftherm_override_active": {
    "attributes": {
+    "away_return_provisional": false,
     "away_return_ts": null,
     "friendly_name": "Thriftherm Override active",
     "icon": "mdi:account-clock",
@@ -5521,7 +5355,8 @@
   "datetime.thriftherm_planned_return": {
    "attributes": {
     "friendly_name": "Thriftherm Planned return",
-    "icon": "mdi:home-clock"
+    "icon": "mdi:home-clock",
+    "provisional": false
    },
    "capabilities": null,
    "device": {
@@ -5716,6 +5551,7 @@
   },
   "select.thriftherm_operating_mode": {
    "attributes": {
+    "away_return_provisional": false,
     "away_return_ts": null,
     "friendly_name": "Thriftherm Operating mode",
     "heat_rates": {},
@@ -5723,7 +5559,6 @@
     "options": [
      "auto",
      "boiler_only",
-     "midea_only",
      "off",
      "away"
     ]
@@ -5732,7 +5567,6 @@
     "options": [
      "auto",
      "boiler_only",
-     "midea_only",
      "off",
      "away"
     ]
@@ -5823,12 +5657,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_badezimmer_absolute_humidity": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Absolute humidity",
-    "icon": "mdi:water-percent",
-    "state_class": "measurement",
-    "unit_of_measurement": "g/m³"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -5846,18 +5675,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:water-percent",
-   "state": "9.47",
+   "state": null,
    "translation_key": "room_abs_humidity",
    "unique_id": "ENTRY_badezimmer_abs_humidity",
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_badezimmer_deviation_from_target": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Deviation from target",
-    "icon": "mdi:thermometer-lines",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -5875,18 +5699,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": "-2.5",
+   "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_badezimmer_deviation",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_dew_point": {
-   "attributes": {
-    "device_class": "temperature",
-    "friendly_name": "Thriftherm Badezimmer Dew point",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -5901,20 +5720,17 @@
      "thriftherm/ENTRY"
     ]
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 1
-    }
-   },
+   "options": {},
    "original_device_class": "temperature",
    "original_icon": null,
-   "state": "10.59",
+   "state": null,
    "translation_key": "room_dew_point",
    "unique_id": "ENTRY_badezimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_heat_demand": {
    "attributes": {
+    "boiler_call": "calling",
     "friendly_name": "Thriftherm Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -5982,12 +5798,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_temperature_trend": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Temperature trend",
-    "icon": "mdi:trending-up",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -6005,7 +5816,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:trending-up",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_trend",
    "unique_id": "ENTRY_badezimmer_trend",
    "unit_of_measurement": "°C/h"
@@ -6071,12 +5882,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_boiler_flow_return_spread": {
-   "attributes": {
-    "friendly_name": "Thriftherm Boiler flow/return spread",
-    "icon": "mdi:delta",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -6092,7 +5898,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:delta",
-   "state": "7.0",
+   "state": null,
    "translation_key": "boiler_delta_t",
    "unique_id": "ENTRY_boiler_delta_t",
    "unit_of_measurement": "°C"
@@ -6130,13 +5936,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_boiler_thermal_power_estimate": {
-   "attributes": {
-    "basis": "nominal_circulation_estimate",
-    "device_class": "power",
-    "friendly_name": "Thriftherm Boiler thermal power (estimate)",
-    "state_class": "measurement",
-    "unit_of_measurement": "W"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -6149,14 +5949,10 @@
     "name": "Thriftherm",
     "via": null
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 0
-    }
-   },
+   "options": {},
    "original_device_class": "power",
    "original_icon": null,
-   "state": "7000.0",
+   "state": null,
    "translation_key": "boiler_thermal_power_estimate",
    "unique_id": "ENTRY_boiler_thermal_power_estimate",
    "unit_of_measurement": "W"
@@ -6294,6 +6090,7 @@
     "flow_return_spread_k": null,
     "friendly_name": "Thriftherm Learning state",
     "heating_curve_offset_k": 0.0,
+    "held_back_because": null,
     "icon": "mdi:school",
     "last_adjustment_reason": null,
     "last_reset": null,
@@ -6446,12 +6243,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_wohnzimmer_absolute_humidity": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Absolute humidity",
-    "icon": "mdi:water-percent",
-    "state_class": "measurement",
-    "unit_of_measurement": "g/m³"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -6469,18 +6261,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:water-percent",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_abs_humidity",
    "unique_id": "ENTRY_wohnzimmer_abs_humidity",
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Deviation from target",
-    "icon": "mdi:thermometer-lines",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -6498,18 +6285,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": "-1.5",
+   "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_dew_point": {
-   "attributes": {
-    "device_class": "temperature",
-    "friendly_name": "Thriftherm Wohnzimmer Dew point",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -6524,20 +6306,17 @@
      "thriftherm/ENTRY"
     ]
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 1
-    }
-   },
+   "options": {},
    "original_device_class": "temperature",
    "original_icon": null,
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_dew_point",
    "unique_id": "ENTRY_wohnzimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_heat_demand": {
    "attributes": {
+    "boiler_call": "calling",
     "friendly_name": "Thriftherm Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -6605,12 +6384,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_temperature_trend": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Temperature trend",
-    "icon": "mdi:trending-up",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -6628,7 +6402,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:trending-up",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_trend",
    "unique_id": "ENTRY_wohnzimmer_trend",
    "unit_of_measurement": "°C/h"
@@ -6791,6 +6565,7 @@
   },
   "binary_sensor.thriftherm_override_active": {
    "attributes": {
+    "away_return_provisional": false,
     "away_return_ts": null,
     "friendly_name": "Thriftherm Override active",
     "icon": "mdi:account-clock",
@@ -6922,7 +6697,8 @@
   "datetime.thriftherm_planned_return": {
    "attributes": {
     "friendly_name": "Thriftherm Planned return",
-    "icon": "mdi:home-clock"
+    "icon": "mdi:home-clock",
+    "provisional": false
    },
    "capabilities": null,
    "device": {
@@ -7117,13 +6893,13 @@
   },
   "select.thriftherm_operating_mode": {
    "attributes": {
+    "away_return_provisional": false,
     "away_return_ts": null,
     "friendly_name": "Thriftherm Operating mode",
     "heat_rates": {},
     "icon": "mdi:tune",
     "options": [
      "auto",
-     "boiler_only",
      "midea_only",
      "off",
      "away"
@@ -7132,7 +6908,6 @@
    "capabilities": {
     "options": [
      "auto",
-     "boiler_only",
      "midea_only",
      "off",
      "away"
@@ -7224,12 +6999,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_badezimmer_absolute_humidity": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Absolute humidity",
-    "icon": "mdi:water-percent",
-    "state_class": "measurement",
-    "unit_of_measurement": "g/m³"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -7247,18 +7017,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:water-percent",
-   "state": "9.47",
+   "state": null,
    "translation_key": "room_abs_humidity",
    "unique_id": "ENTRY_badezimmer_abs_humidity",
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_badezimmer_deviation_from_target": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Deviation from target",
-    "icon": "mdi:thermometer-lines",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -7276,18 +7041,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": "-2.5",
+   "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_badezimmer_deviation",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_dew_point": {
-   "attributes": {
-    "device_class": "temperature",
-    "friendly_name": "Thriftherm Badezimmer Dew point",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -7302,20 +7062,17 @@
      "thriftherm/ENTRY"
     ]
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 1
-    }
-   },
+   "options": {},
    "original_device_class": "temperature",
    "original_icon": null,
-   "state": "10.59",
+   "state": null,
    "translation_key": "room_dew_point",
    "unique_id": "ENTRY_badezimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_heat_demand": {
    "attributes": {
+    "boiler_call": "calling",
     "friendly_name": "Thriftherm Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -7383,12 +7140,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_badezimmer_temperature_trend": {
-   "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Temperature trend",
-    "icon": "mdi:trending-up",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -7406,7 +7158,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:trending-up",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_trend",
    "unique_id": "ENTRY_badezimmer_trend",
    "unit_of_measurement": "°C/h"
@@ -7478,12 +7230,7 @@
    "unit_of_measurement": "EUR/kWh"
   },
   "sensor.thriftherm_heat_pump_airflow_estimate": {
-   "attributes": {
-    "friendly_name": "Thriftherm Heat pump airflow (estimate)",
-    "icon": "mdi:fan",
-    "state_class": "measurement",
-    "unit_of_measurement": "m³/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -7499,7 +7246,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:fan",
-   "state": "unknown",
+   "state": null,
    "translation_key": "midea_airflow_estimate",
    "unique_id": "ENTRY_midea_airflow_estimate",
    "unit_of_measurement": "m³/h"
@@ -7726,6 +7473,7 @@
     "flow_return_spread_k": null,
     "friendly_name": "Thriftherm Learning state",
     "heating_curve_offset_k": 0.0,
+    "held_back_because": null,
     "icon": "mdi:school",
     "last_adjustment_reason": null,
     "last_reset": null,
@@ -7878,12 +7626,7 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_wohnzimmer_absolute_humidity": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Absolute humidity",
-    "icon": "mdi:water-percent",
-    "state_class": "measurement",
-    "unit_of_measurement": "g/m³"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -7901,18 +7644,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:water-percent",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_abs_humidity",
    "unique_id": "ENTRY_wohnzimmer_abs_humidity",
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Deviation from target",
-    "icon": "mdi:thermometer-lines",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -7930,18 +7668,13 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": "-1.5",
+   "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_dew_point": {
-   "attributes": {
-    "device_class": "temperature",
-    "friendly_name": "Thriftherm Wohnzimmer Dew point",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -7956,20 +7689,17 @@
      "thriftherm/ENTRY"
     ]
    },
-   "options": {
-    "sensor": {
-     "suggested_display_precision": 1
-    }
-   },
+   "options": {},
    "original_device_class": "temperature",
    "original_icon": null,
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_dew_point",
    "unique_id": "ENTRY_wohnzimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_heat_demand": {
    "attributes": {
+    "boiler_call": "calling",
     "friendly_name": "Thriftherm Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -8037,12 +7767,7 @@
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_temperature_trend": {
-   "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Temperature trend",
-    "icon": "mdi:trending-up",
-    "state_class": "measurement",
-    "unit_of_measurement": "°C/h"
-   },
+   "attributes": null,
    "capabilities": {
     "state_class": "measurement"
    },
@@ -8060,7 +7785,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:trending-up",
-   "state": "unknown",
+   "state": null,
    "translation_key": "room_trend",
    "unique_id": "ENTRY_wohnzimmer_trend",
    "unit_of_measurement": "°C/h"

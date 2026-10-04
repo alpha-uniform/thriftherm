@@ -97,6 +97,18 @@ class ThrifthermEntity(CoordinatorEntity[ThrifthermCoordinator]):
         return self.coordinator.data["rooms"].get(self._room_key)
 
 
+class SettingEntity(ThrifthermEntity):
+    """Shows and changes the coordinator's own settings, not the result of the last cycle.
+
+    It stays available when a cycle fails: Home Assistant skips unavailable entities in
+    service calls, and the operating mode or a control must still be changeable then.
+    """
+
+    @property
+    def available(self) -> bool:
+        return True
+
+
 def is_wanted(coordinator: ThrifthermCoordinator, description: Any) -> bool:
     """Leave out what needs a heat pump, an own boiler or a heat source the installation lacks."""
     return (

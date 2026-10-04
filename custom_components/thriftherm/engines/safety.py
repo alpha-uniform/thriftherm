@@ -8,8 +8,11 @@ Rules (see architecture §16):
 
 from __future__ import annotations
 
-from ..const import SAFETY_DEGRADED, SAFETY_FALLBACK, SAFETY_OK
+from ..const import SAFETY_DEGRADED, SAFETY_FALLBACK, SAFETY_OK, SYSTEM_NONE
 from ..models import HeatingSnapshot, RoomResult, SafetyResult
+
+# Issues of the heat pump add-on start with this; they never concern the boiler.
+HEAT_PUMP_ISSUE_PREFIX = "midea_"
 
 # A room hovering at the frost limit would otherwise toggle the boiler between
 # heat and block every few minutes; it stays a frost room until 1 K above.
@@ -32,6 +35,8 @@ def evaluate(snapshot: HeatingSnapshot, rooms: dict[str, RoomResult], previous_f
         for issue in r.issues:
             if issue.startswith("using_trv_local_temperature"):
                 issues.append(f"room_using_trv_fallback:{key}")
+            elif issue == "thermostat_silent":
+                issues.append(f"room_thermostat_silent:{key}")
         if r.temperature is not None:
             limit = snapshot.params.frost_temp + (FROST_HYSTERESIS_K if key in previous_frost_rooms else 0.0)
             if r.temperature < limit:
@@ -54,10 +59,16 @@ def evaluate(snapshot: HeatingSnapshot, rooms: dict[str, RoomResult], previous_f
     if heat_pump.configured and heat_pump.plug_power.entity_id and not heat_pump.plug_power.valid:
         issues.append(f"midea_power_sensor_invalid:{heat_pump.plug_power.reason}")
 
-    if rooms and len(invalid_rooms) == len(rooms):
+    # Heat pump faults are listed but degrade the state only where the heat pump is the only
+    # heat source: a switched-off add-on otherwise kept "degraded" on for days and hid the
+    # faults that matter (measured 2026-09-26 to 2026-10-03).
+    counted = [i for i in issues if not i.startswith(HEAT_PUMP_ISSUE_PREFIX) or snapshot.prices.system_type == SYSTEM_NONE]
+    if not rooms or len(invalid_rooms) == len(rooms):
+        # nothing to judge the heating by: hands off, the boiler runs on its own controls
         state = SAFETY_FALLBACK
-        issues.append("all_room_temperatures_missing")
-    elif issues:
+        if rooms:
+            issues.append("all_room_temperatures_missing")
+    elif counted:
         state = SAFETY_DEGRADED
     else:
         state = SAFETY_OK

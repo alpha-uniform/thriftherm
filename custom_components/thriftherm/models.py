@@ -53,6 +53,7 @@ class ScheduleState:
     active: bool
     temperature: float | None = None  # optional per-block temperature
     next_start: datetime | None = None  # start of the next comfort block
+    next_end: datetime | None = None  # end of the running comfort block
 
 
 @dataclass(frozen=True)
@@ -86,6 +87,7 @@ class DryingState:
     active: bool = False
     started_ts: float | None = None
     baseline_abs_humidity: float | None = None
+    ended_ts: float | None = None  # when the time limit ended the last drying
 
 
 @dataclass(frozen=True)
@@ -104,6 +106,7 @@ class RoomState:
     heat_rate_k_h: float | None = None  # learned heat-up rate for preheat planning
     boost_until_ts: float | None = None  # "quick heat-up" requested until
     trv_hvac_mode: str | None = None  # state of the room thermostat (Better Thermostat), None if unavailable
+    thermostat_silent_s: float | None = None  # how long the valve device behind it has not reported
     schedule: ScheduleState | None = None  # None: no schedule helper configured or it is unavailable
     preheat_latch_ts: float | None = None  # comfort start (or away return) preheating already began for
 
@@ -260,6 +263,8 @@ class RoomResult:
     heat_pump_allowed: bool = True  # Midea may heat (window closed, or drying mode via Midea)
     boost_active: bool = False
     preheat_for_ts: float | None = None  # comfort start / away return this room is preheating for
+    comfort_end_ts: float | None = None  # end of the running comfort window (schedule only)
+    boiler_call: str | None = None  # engines/heat_call.py: calling, idle, stalled, comfort_ending, not_allowed
 
 
 @dataclass(frozen=True)
@@ -308,9 +313,9 @@ class DefrostResult:
 
 @dataclass(frozen=True)
 class EconomicsResult:
-    gas_cost_per_kwh_thermal: float
+    gas_cost_per_kwh_thermal: float | None  # None, like the break-even, when the prices cannot be used
     heat_pump_cost_per_kwh_thermal: float | None
-    break_even_cop: float
+    break_even_cop: float | None
     cheaper_source: str
     saving_pct: float | None
 
@@ -357,6 +362,7 @@ class BoilerCommand:
     last_adjust_reason: str | None = None
     hot_water: bool = False  # hot water recognised within the last minutes
     hot_water_seen_ts: float | None = None
+    held_back: str | None = None  # a learning step that is due but cannot be taken, e.g. at the flow minimum
 
 
 @dataclass(frozen=True)

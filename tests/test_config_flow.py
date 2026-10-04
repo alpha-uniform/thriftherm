@@ -45,7 +45,7 @@ PARAMETER_DEFAULTS = {
     "away_dewpoint_margin_k": 3.0, "preheat_margin_min": 20.0, "default_heat_rate_radiator_k_h": 0.8,
     "default_heat_rate_midea_k_h": 1.2, "override_default_min": 120.0, "midea_min_run_min": 20.0,
     "midea_min_off_min": 10.0, "boost_duration_min": 45.0, "midea_learning_runs": True,
-    "midea_allow_active_control": False, "room_allow_active_control": False,
+    "midea_allow_active_control": False, "room_allow_active_control": False, "room_echo_filter": True,
 }
 ROOM_CHOICES = [{"value": "badezimmer", "label": "Badezimmer"}, {"value": "wohnzimmer", "label": "Wohnzimmer"}]
 
@@ -81,8 +81,36 @@ def test_step_keys_are_exactly_the_fields_they_clear():
     assert config_schema.PARAMETER_KEYS == tuple(PARAMETER_DEFAULTS)
 
 
+def test_every_key_the_code_reads_is_kept():
+    """Saving drops unknown keys; every top-level key in const.py must survive, room fields live in the rooms."""
+    from custom_components.thriftherm import const
+
+    room_fields = {str(k) for k in config_schema.schema_room({}, allow_add_another=False).schema} | {const.CONF_ROOM_KEY}
+    keys = {value for name, value in vars(const).items() if name.startswith("CONF_")}
+    assert keys - room_fields == config_schema.CONFIG_KEYS
+
+
+async def test_options_save_drops_keys_of_removed_fields(hass: HomeAssistant) -> None:
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from .test_integration import LEFTOVERS
+
+    _set_states(hass)
+    options = {**_entry_data(), "system_type": "gas", **LEFTOVERS}
+    entry = MockConfigEntry(domain=DOMAIN, data={}, options=options, unique_id=DOMAIN, title="Thriftherm", version=3)
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    result = await _open(hass, entry, "outdoor")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"outdoor_temp_sensors": ["sensor.outdoor"]})
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+    assert entry.options == {**_entry_data(), "system_type": "gas", "outdoor_rh_sensor": None, "weather_entity": None}
+
+
 # ------------------------------------------------------------------ options steps
-async def test_options_system_step_stores_the_type(hass: HomeAssistant) -> None:
+async def test_options_system_step_asks_for_prices_and_boiler_before_saving(hass: HomeAssistant) -> None:
+    """Audit 2026-09-28: a switch saved at once, so district heating never got its prices."""
     entry = await _setup(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["menu_options"] == ["system", "prices", "boiler", "midea", "outdoor", "parameters", "rooms", "reset_learning"]
@@ -90,12 +118,31 @@ async def test_options_system_step_stores_the_type(hass: HomeAssistant) -> None:
     assert result["step_id"] == "system" and _fields(result) == ["system_type"]
     assert result["errors"] is None
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"system_type": "district"})
+    assert result["step_id"] == "prices"
+    assert _fields(result) == ["electricity_price", "heat_price", "heat_consumption_share_pct", "heat_ownership_share_pct"]
+    assert entry.options["system_type"] == "gas"  # nothing saved yet
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"electricity_price": 0.3, "heat_price": 0.15})
     assert result["type"] == "create_entry"
     await hass.async_block_till_done()
-    assert entry.options == {**_entry_data(), "system_type": "district"}
+    assert entry.options == {
+        **_entry_data(), "system_type": "district", "electricity_price": 0.3, "heat_price": 0.15,
+        "heat_consumption_share_pct": 70.0, "heat_ownership_share_pct": 0.0,
+    }
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert "boiler" not in result["menu_options"]  # no own boiler to configure
+
+    # back to an own boiler: its prices, then the boiler step, then one save
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "system"})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"system_type": "gas"})
+    assert result["step_id"] == "prices" and "gas_price" in _fields(result)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"electricity_price": 0.3, "gas_price": 0.1})
+    assert result["step_id"] == "boiler" and entry.options["system_type"] == "district"
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {**_prefilled(result), "boiler_flow_min": 40.0})
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+    assert entry.options["system_type"] == "gas" and entry.options["gas_price"] == 0.1
+    assert entry.options["heat_price"] == 0.15 and entry.options["boiler_flow_min"] == 40.0
 
 
 async def test_options_prices_step_keeps_fields_it_did_not_show(hass: HomeAssistant) -> None:
@@ -111,11 +158,29 @@ async def test_options_prices_step_keeps_fields_it_did_not_show(hass: HomeAssist
     assert "boiler_efficiency" not in entry.options
 
 
+@pytest.mark.parametrize(
+    ("options", "user_input"),
+    [
+        ({}, {"gas_price": 0.0}),
+        ({"system_type": "district"}, {"heat_price": 0.0}),
+        ({"system_type": "district"}, {"heat_consumption_share_pct": 0.0, "heat_ownership_share_pct": 0.0}),
+    ],
+)
+async def test_options_prices_step_refuses_a_price_of_0(hass: HomeAssistant, options: dict, user_input: dict) -> None:
+    """Nothing to compare against: the cost comparison would fail in every cycle."""
+    from homeassistant.data_entry_flow import InvalidData
+
+    entry = await _setup(hass, options=options)
+    result = await _open(hass, entry, "prices")
+    with pytest.raises(InvalidData):
+        await hass.config_entries.options.async_configure(result["flow_id"], {"electricity_price": 0.3, **user_input})
+
+
 async def test_options_boiler_step_clears_what_was_left_empty(hass: HomeAssistant) -> None:
     entry = await _setup(hass)
     result = await _open(hass, entry, "boiler")
     assert result["step_id"] == "boiler" and _fields(result) == BOILER_FIELDS
-    assert result["errors"] is None
+    assert result["errors"] == {}
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"boiler_flow_temp": "sensor.flow2"})
     assert result["type"] == "create_entry"
     await hass.async_block_till_done()
@@ -150,7 +215,7 @@ async def _config_flow_to_boiler(hass: HomeAssistant):
 
 
 async def _confirm_boiler_and_finish(hass: HomeAssistant, result, boiler: dict) -> dict:
-    """Send the boiler step, skip heat pump and outdoor, add one room; returns the stored data."""
+    """Send the boiler step, skip heat pump and outdoor, add one room; returns the stored options."""
     _set_states(hass)
     result = await hass.config_entries.flow.async_configure(result["flow_id"], boiler)
     assert result["step_id"] == "midea"
@@ -158,9 +223,9 @@ async def _confirm_boiler_and_finish(hass: HomeAssistant, result, boiler: dict) 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     room = {"name": "Bad", "temperature_sensor": "sensor.bath_temp", "add_another": False}
     result = await hass.config_entries.flow.async_configure(result["flow_id"], room)
-    assert result["type"] == "create_entry"
+    assert result["type"] == "create_entry" and result["data"] == {}
     await hass.async_block_till_done()
-    return result["data"]
+    return result["options"]
 
 
 async def test_config_flow_fills_in_the_boiler_found(hass: HomeAssistant) -> None:
@@ -236,6 +301,38 @@ async def test_options_boiler_step_leaves_a_configured_boiler_alone(hass: HomeAs
         assert key not in shown  # still empty: not taken from the other boiler
 
 
+COLD, WARM = "boiler_curve_flow_at_minus10", "boiler_curve_flow_at_plus15"
+REFUSED_BOILER = [
+    ({COLD: 30.0, WARM: 35.0}, COLD, "curve_inverted"),
+    ({"boiler_flow_min": 50.0, "boiler_flow_max": 45.0}, "boiler_flow_min", "flow_min_above_max"),
+]
+
+
+@pytest.mark.parametrize(("bad", "field", "error"), REFUSED_BOILER)
+async def test_options_boiler_step_refuses_an_inverted_curve_or_swapped_limits(hass: HomeAssistant, bad, field, error) -> None:
+    # audit 2026-09-28: swapped limits pinned the flow to 35 °C and blocked the learning both ways
+    entry = await _setup(hass)
+    before = dict(entry.options)
+    result = await _open(hass, entry, "boiler")
+    good = _prefilled(result)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {**good, **bad})
+    assert result["step_id"] == "boiler" and result["errors"] == {field: error}
+    assert _prefilled(result)[field] == bad[field]  # the answer is shown again
+    assert entry.options == before  # nothing saved
+    result = await hass.config_entries.options.async_configure(result["flow_id"], good)
+    assert result["type"] == "create_entry"
+
+
+@pytest.mark.parametrize(("bad", "field", "error"), REFUSED_BOILER)
+async def test_config_flow_boiler_step_refuses_an_inverted_curve_or_swapped_limits(hass: HomeAssistant, bad, field, error):
+    result = await _config_flow_to_boiler(hass)
+    good = _prefilled(result)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {**good, **bad})
+    assert result["step_id"] == "boiler" and result["errors"] == {field: error}
+    data = await _confirm_boiler_and_finish(hass, result, good)
+    assert data["boiler_flow_min"] == 30.0 and data["boiler_curve_flow_at_minus10"] == 55.0
+
+
 async def test_options_outdoor_step_clears_what_was_left_empty(hass: HomeAssistant) -> None:
     entry = await _setup(hass)
     result = await _open(hass, entry, "outdoor")
@@ -282,6 +379,20 @@ async def test_room_choices_in_rooms_and_reset_steps(hass: HomeAssistant) -> Non
     assert _selector_options(result, "rooms") == ROOM_CHOICES
 
 
+async def test_deleting_the_heat_pump_room_clears_it(hass: HomeAssistant) -> None:
+    # audit 2026-09-28: the heat pump form refused itself while it still pointed at the deleted room
+    entry = await _setup(hass, options={"midea_room": "wohnzimmer"})
+    result = await _open(hass, entry, "rooms")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "badezimmer", "action": "delete"})
+    await hass.async_block_till_done()
+    assert entry.options["midea_room"] == "wohnzimmer"  # another room: left alone
+    result = await _open(hass, entry, "rooms")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "wohnzimmer", "action": "delete"})
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+    assert entry.options["rooms"] == [] and entry.options["midea_room"] is None
+
+
 # ------------------------------------------------------------------ duplicate rooms
 async def test_options_refuses_a_second_room_with_the_same_name(hass: HomeAssistant) -> None:
     entry = await _setup(hass)
@@ -314,6 +425,76 @@ async def test_config_flow_refuses_a_second_room_with_the_same_name(hass: HomeAs
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {**room, "name": "bad"})
     assert result["errors"] == {"name": "duplicate_room"}
     assert result["description_placeholders"] == {"count": "1"}
+
+
+async def _submit_bathroom(hass: HomeAssistant, entry, **changes):
+    """Edit the bathroom in the options; a change to None leaves that field empty."""
+    room = {
+        "name": "Badezimmer", "priority": 1, "temperature_sensor": "sensor.bath_temp", "humidity_sensor": "sensor.bath_rh",
+        "window_sensors": ["binary_sensor.bath_window"], "served_by_midea": True, "comfort_temp": 21.0, "setback_temp": 17.0,
+        "schedule_weekday": "00:00-23:59", "schedule_weekend": "00:00-23:59",
+    }
+    result = await _open(hass, entry, "rooms")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "badezimmer", "action": "edit"})
+    answer = {k: v for k, v in {**room, **changes}.items() if v is not None}
+    return await hass.config_entries.options.async_configure(result["flow_id"], answer)
+
+
+async def test_options_refuses_renaming_a_room_to_another_rooms_name(hass: HomeAssistant) -> None:
+    entry = await _setup(hass)
+    result = await _submit_bathroom(hass, entry, name="Wohnzimmer")
+    assert result["errors"] == {"name": "duplicate_room"}
+
+
+@pytest.mark.parametrize(
+    ("changes", "errors"),
+    [
+        ({"served_by_midea": False}, {"bathroom_drying_mode": "drying_needs_heat_pump"}),
+        ({"humidity_sensor": None}, {"humidity_sensor": "drying_needs_humidity"}),
+        ({}, None),
+    ],
+)
+async def test_bathroom_drying_needs_the_heat_pump_and_a_humidity_sensor(hass: HomeAssistant, changes: dict, errors) -> None:
+    # audit 2026-09-28: without either, drying was accepted and silently never ran
+    entry = await _setup(hass)
+    result = await _submit_bathroom(hass, entry, bathroom_drying_mode=True, **changes)
+    if errors is None:
+        assert result["type"] == "create_entry"
+    else:
+        assert result["errors"] == errors
+
+
+# ------------------------------------------------------------------ comfort and setback from two places
+async def _edit_bathroom(hass: HomeAssistant, entry, **changes) -> None:
+    result = await _submit_bathroom(hass, entry, **changes)
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+
+
+async def test_a_temperature_changed_in_the_room_form_wins_over_the_dashboard(hass: HomeAssistant) -> None:
+    """Audit 2026-09-28: once a value was set on the dashboard, a change in the room form never applied."""
+    entry = await _setup(hass)
+    await entry.runtime_data.async_set_room_temperature("badezimmer", "setback", 16.0)
+    await entry.runtime_data.async_set_room_temperature("wohnzimmer", "comfort", 20.0)
+
+    await _edit_bathroom(hass, entry, priority=2)  # temperatures untouched: the dashboard value stays
+    assert entry.runtime_data.room_temperature("badezimmer", "setback") == 16.0
+
+    await _edit_bathroom(hass, entry, priority=2, comfort_temp=22.0)
+    coordinator = entry.runtime_data  # reloaded
+    assert coordinator.room_temperature("badezimmer", "comfort") == 22.0
+    assert coordinator.room_temperature("badezimmer", "setback") == 17.0  # the pair the form checked
+    assert coordinator.room_temperature("wohnzimmer", "comfort") == 20.0  # other rooms keep theirs
+    assert hass.states.get("number.thriftherm_badezimmer_setback_temperature").state == "17.0"
+
+
+async def test_setup_stops_on_a_fahrenheit_installation(hass: HomeAssistant) -> None:
+    # every temperature, curve and limit is taken as °C
+    from homeassistant.util.unit_system import US_CUSTOMARY_SYSTEM
+
+    hass.config.units = US_CUSTOMARY_SYSTEM
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    assert result["type"] == "abort" and result["reason"] == "celsius_only"
 
 
 # ------------------------------------------------------------------ services

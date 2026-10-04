@@ -63,9 +63,16 @@ def advise(
     heat_pump_block_reason: str | None = None,
     decision_cop: float | None = None,
     decision_cop_basis: str | None = None,
+    boiler_calls: frozenset[str] | None = None,
+    heat_pump_acts: bool = True,
 ) -> Advice:
     """`decision_cop` is the COP the economics used: measured while the heat pump runs,
-    otherwise the learned or prior estimate (`decision_cop_basis`)."""
+    otherwise the learned or prior estimate (`decision_cop_basis`).
+
+    `boiler_calls` are the rooms that call the boiler (engines/heat_call.py, with
+    hysteresis); without it a demand above DEMAND_THRESHOLD calls, as before.
+    `heat_pump_acts` is False while the heat pump only plans and the boiler really
+    heats: the cost comparison is then not shown as if it decided anything."""
     reasons: list[Reason] = []
     blocked: dict[str, str] = {}
     mode = snapshot.mode
@@ -80,6 +87,18 @@ def advise(
 
     def demand_of(group: dict[str, RoomResult]) -> float:
         return max((r.demand or 0.0) for r in group.values()) if group else 0.0
+
+    def calls(r: RoomResult) -> bool:
+        return (r.demand or 0.0) > DEMAND_THRESHOLD if boiler_calls is None else r.key in boiler_calls
+
+    def any_calls(group: dict[str, RoomResult]) -> bool:
+        return any(calls(r) for r in group.values())
+
+    def heat_pump_calls(r: RoomResult) -> bool:
+        # Heat pump rooms follow the same calls: when the heat pump cannot deliver, the boiler
+        # takes over, and a room 0.1 K below target must not start it (measured 2026-09-26).
+        # Drying heats through the heat pump even with the radiator shut by an open window.
+        return calls(r) or (r.drying.active and (r.demand or 0.0) > DEMAND_THRESHOLD)
 
     # radiator demand of Midea rooms (excludes rooms only drying via Midea with the window open)
     heat_pump_rooms_radiator = {k: r for k, r in heat_pump_rooms.items() if r.heating_allowed}
@@ -120,21 +139,23 @@ def advise(
         reasons.append(reason("mode_off"))
         return Advice(source=SOURCE_NONE, reasons=tuple(reasons), blocked=blocked)
 
-    heat_pump_demand = demand_of(heat_pump_rooms)
-    boiler_demand = demand_of(boiler_only_radiator)
+    heat_pump_demand = any(heat_pump_calls(r) for r in heat_pump_rooms.values())
     any_frost = bool(safety.frost_rooms)
 
     if mode == MODE_BOILER_ONLY:
         blocked.setdefault("midea", "mode_boiler_only")
-        need = demand_of(heat_pump_rooms_radiator) > DEMAND_THRESHOLD or boiler_demand > DEMAND_THRESHOLD or any_frost
+        need = any_calls(heat_pump_rooms_radiator) or any_calls(boiler_only_radiator) or any_frost
         reasons.append(reason("mode_boiler_only"))
         return Advice(source=SOURCE_BOILER if need else SOURCE_NONE, reasons=tuple(reasons), blocked=blocked)
 
     heat_pump_wanted = False
-    if heat_pump_demand > DEMAND_THRESHOLD and "midea" not in blocked:
+    if heat_pump_demand and "midea" not in blocked:
         if mode == MODE_HEAT_PUMP_ONLY:
             heat_pump_wanted = True
             reasons.append(reason("mode_heat_pump_only"))
+        elif econ.cheaper_source == SOURCE_HEAT_PUMP and not heat_pump_acts:
+            heat_pump_wanted = True
+            reasons.append(reason("heat_pump_plan_only"))
         elif econ.cheaper_source == SOURCE_HEAT_PUMP:
             heat_pump_wanted = True
             reasons.append(reason("cop_above_break_even", basis=cop_basis, cop=cop_used, break_even=econ.break_even_cop))
@@ -150,22 +171,22 @@ def advise(
             reasons.append(reason("cop_below_break_even", basis=cop_basis, cop=cop_used, break_even=econ.break_even_cop))
         else:
             reasons.append(reason("cop_unknown", gates=tuple(cop.gate_reasons[:3])))
-    elif heat_pump_demand > DEMAND_THRESHOLD and has_heat_pump:
+    elif heat_pump_demand and has_heat_pump:
         reasons.append(reason("heat_pump_rooms_blocked"))
 
     for r in heat_pump_rooms.values():
-        if (r.demand or 0.0) > DEMAND_THRESHOLD:
+        if heat_pump_calls(r):
             reasons.append(room_line(r))
         elif r.window_open:
             reasons.append(reason("room_window_open", room=r.key))
 
-    boiler_wanted = boiler_demand > DEMAND_THRESHOLD or any_frost
+    boiler_wanted = any_calls(boiler_only_radiator) or any_frost
     if mode == MODE_HEAT_PUMP_ONLY:
         boiler_wanted = any_frost
-    if demand_of(heat_pump_rooms_radiator) > DEMAND_THRESHOLD and not heat_pump_wanted and mode != MODE_HEAT_PUMP_ONLY:
+    if any_calls(heat_pump_rooms_radiator) and not heat_pump_wanted and mode != MODE_HEAT_PUMP_ONLY:
         boiler_wanted = True
     for r in boiler_only_rooms.values():
-        if r.heating_allowed and (r.demand or 0.0) > DEMAND_THRESHOLD:
+        if r.heating_allowed and calls(r):
             reasons.append(room_line(r))
         elif r.window_open:
             reasons.append(reason("room_window_open", room=r.key))

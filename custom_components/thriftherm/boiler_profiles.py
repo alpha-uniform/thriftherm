@@ -13,6 +13,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from .const import (
+    BOILER_REPORTS_HEATING,
+    BOILER_REPORTS_HEATING_AFTER,
+    BOILER_REPORTS_HOT_WATER,
     CONF_BOILER_FLOW_TEMP,
     CONF_BOILER_HWC_MODE,
     CONF_BOILER_PUMP_RUNNING,
@@ -30,6 +33,19 @@ class BoilerProfile:
     roles: Mapping[str, tuple[str, str]]  # config key -> (ebusd message, field)
     fast_messages: tuple[str, ...]  # polled with high priority, read directly while gas burns
     setmode_message: str  # takes the flow temperature and heating block
+    heating_states: frozenset[int] = frozenset()  # status codes while the burner serves the heating circuit
+    hot_water_states: frozenset[int] = frozenset()  # status codes while it makes hot water
+    heating_after_states: frozenset[int] = frozenset()  # overrun and lockout after a heating run
+
+    def reported_mode(self, state_number: int | None) -> str | None:
+        """What the boiler itself says it burns for, None when the code does not tell."""
+        if state_number in self.hot_water_states:
+            return BOILER_REPORTS_HOT_WATER
+        if state_number in self.heating_states:
+            return BOILER_REPORTS_HEATING
+        if state_number in self.heating_after_states:
+            return BOILER_REPORTS_HEATING_AFTER
+        return None
 
 
 PROFILES: dict[str, BoilerProfile] = {
@@ -51,6 +67,13 @@ PROFILES: dict[str, BoilerProfile] = {
             # return arrive only every seven minutes. These drive hot-water detection and learning.
             fast_messages=("FlowTemp", "ReturnTemp", "Status01", "WP", "Statenumber"),
             setmode_message="SetMode",
+            # S.1–S.4 fan start, ignition, burner on for heating; S.10–S.17 tapping, S.20–S.27
+            # cylinder loading. S.5–S.8 are overrun and lockout after a heating run: no gas, but
+            # the return is still warmer than the flow (measured 2026-09-24..26: 19 of 20 "hot
+            # water" alarms fell into S.7/S.8). S.0 and S.30+ say nothing.
+            heating_states=frozenset(range(1, 5)),
+            hot_water_states=frozenset({*range(11, 15), *range(21, 25)}),
+            heating_after_states=frozenset(range(5, 9)),
         ),
     )
 }
