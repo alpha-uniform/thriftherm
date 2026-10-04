@@ -13,7 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import ThrifthermConfigEntry, ThrifthermCoordinator
-from .entity import ThrifthermEntity
+from .entity import SettingEntity
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -25,7 +25,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, a
     )
 
 
-class BoostButton(ThrifthermEntity, ButtonEntity):
+class BoostButton(SettingEntity, ButtonEntity):
     """Heat the room to its comfort temperature ahead of schedule.
 
     With a heat pump serving the room it also runs it at full power.

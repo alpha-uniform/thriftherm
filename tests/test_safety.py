@@ -1,3 +1,4 @@
+from dataclasses import replace
 from datetime import datetime
 
 from custom_components.thriftherm.engines import room as room_engine, safety
@@ -52,6 +53,22 @@ def test_ebusd_and_heat_pump_issues(two_rooms):
     assert "ebusd_signal_lost" in res.issues
     assert "midea_unavailable" in res.issues
     assert res.state == "degraded"
+
+
+def test_a_heat_pump_fault_alone_is_listed_but_does_not_degrade(two_rooms):
+    # measured 2026-09-26 to 2026-10-03: the unplugged heat pump kept "degraded" on for a week
+    snap = snapshot(two_rooms, heat_pump=heat_pump_state(available=False, error_code=None))
+    res = safety.evaluate(snap, _rooms_results(snap))
+    assert res.state == "ok" and "midea_unavailable" in res.issues
+    alone = replace(snap, prices=replace(snap.prices, system_type="none"))  # the heat pump is the only heat source
+    assert safety.evaluate(alone, _rooms_results(alone)).state == "degraded"
+
+
+def test_without_rooms_hands_off():
+    snap = snapshot({})
+    res = safety.evaluate(snap, {})
+    assert res.state == "fallback" and "no_rooms_configured" in res.issues
+    assert "all_room_temperatures_missing" not in res.issues
 
 
 def test_window_unknown_degrades(two_rooms):

@@ -8,6 +8,8 @@ Target precedence (highest first):
     the comfort temperature. The bathroom drying mode raises the target and lets
     the Midea keep heating while the window is open; it only runs when the
     Midea can heat, otherwise the radiator follows the normal window logic.
+    While the Midea cools, the rooms it serves stay at setback at most and take
+    no heat at all.
 """
 
 from __future__ import annotations
@@ -30,6 +32,9 @@ DRYING_END_DEWPOINT_MARGIN_K = 4.0
 DRYING_END_ABS_MARGIN_G_M3 = 1.0
 DRYING_WINDOW_NO_EFFECT_S = 20 * 60.0
 SCHEDULE_PREHEAT_HORIZON_S = 12 * 3600.0
+# A valve that has not reported for this long takes no commands either: its room must
+# not call the boiler (healthy valves here report at least every 15 minutes).
+THERMOSTAT_SILENT_S = 3600.0
 
 
 def parse_schedule(text: str | None) -> tuple[TimeWindow, ...]:
@@ -75,6 +80,27 @@ def next_comfort_start(cfg: RoomConfig, now: datetime, schedule: ScheduleState |
             if start > now:
                 return start
     return None
+
+
+def comfort_end(cfg: RoomConfig, now: datetime, schedule: ScheduleState | None = None) -> datetime | None:
+    """End of the comfort block or window running now, None outside of one."""
+    if schedule is not None:
+        return schedule.next_end if schedule.active else None
+
+    def window_at(at: datetime) -> TimeWindow | None:
+        windows = cfg.schedule_weekend if at.weekday() >= 5 else cfg.schedule_weekday
+        return next((w for w in windows if w.contains(at.time())), None)
+
+    at, end = now, None
+    for _ in range(8):  # windows that follow each other (e.g. "00:00-23:59" every day) are one
+        w = window_at(at)
+        if w is None:
+            return end
+        end = datetime.combine(at.date(), w.end, tzinfo=at.tzinfo)
+        if end <= at:
+            end += timedelta(days=1)
+        at = end + timedelta(minutes=1)
+    return None  # comfort all week
 
 
 def _default_rate(state: RoomState, params: Parameters) -> float:
@@ -130,7 +156,8 @@ def target_temperature(
         target, reason = params.away_temp, "mode_away"
         preheat_ts = None
         if away_return_ts is not None and away_return_ts > now_ts:
-            return_dt = now + timedelta(seconds=away_return_ts - now_ts)
+            # from the timestamp, not by adding seconds to the clock: across a clock change that is an hour off
+            return_dt = datetime.fromtimestamp(away_return_ts, now.tzinfo)
             if state.schedule is not None:
                 # a weekly schedule helper cannot be evaluated for a future time: assume comfort on return
                 target_at_return = cfg.comfort_temp
@@ -281,7 +308,7 @@ def evaluate_drying(
         base = prev.baseline_abs_humidity if prev.baseline_abs_humidity is not None else baseline
         elapsed = now_ts - prev.started_ts
         if elapsed > params.drying_max_s:
-            return DryingState(), "drying_ended_timeout"
+            return DryingState(ended_ts=now_ts), "drying_ended_timeout"
         if window_open_since_s is not None and window_open_since_s > DRYING_WINDOW_NO_EFFECT_S and base is not None and abs_humidity > base + DRYING_END_ABS_MARGIN_G_M3:
             return DryingState(), "drying_ended_window_ineffective"
         dew_margin_ok = dew_point is not None and temperature - dew_point >= DRYING_END_DEWPOINT_MARGIN_K
@@ -289,6 +316,11 @@ def evaluate_drying(
         if dew_margin_ok and abs_ok:
             return DryingState(), "drying_ended_humidity_normal"
         return prev, "drying_active"
+
+    if prev.ended_ts is not None and now_ts - prev.ended_ts < DRYING_BASELINE_WINDOW_S:
+        # the baseline still holds the air from before the shower: the same humidity would
+        # start the drying again a minute after its time limit (measured 2026-09-25)
+        return DryingState(ended_ts=prev.ended_ts), None
 
     # not active: check triggers
     rise_abs = None if baseline is None else abs_humidity - baseline
@@ -309,6 +341,7 @@ def evaluate_room(
     params: Parameters,
     away_return_ts: float | None = None,
     heat_pump_heat_possible: bool = True,
+    heat_pump_cooling: bool = False,
 ) -> RoomResult:
     cfg = state.config
     issues: list[str] = []
@@ -350,20 +383,31 @@ def evaluate_room(
         target = max(target, params.drying_target_temp)
         target_reason = "bathroom_drying"
 
+    # Cooling never collides with heating: while the heat pump cools, the rooms it serves keep
+    # their radiator at setback and call no boiler heat. Frost protection goes by temperature
+    # (engines/safety.py) and still applies.
+    cooled = heat_pump_cooling and cfg.served_by_heat_pump
+    if cooled:
+        target, target_reason = min(target, cfg.setback_temp), "heat_pump_cooling"
+
     # radiator / Better Thermostat: never with an open window, and not while the thermostat
     # is switched off by hand - its valve is shut, so the boiler would only heat the pipes.
     # Midea: independent of the valve, also while drying.
     thermostat_off = state.trv_hvac_mode == "off"
-    heating_allowed = not bool(window_open) and not thermostat_off
+    thermostat_silent = state.thermostat_silent_s is not None and state.thermostat_silent_s > THERMOSTAT_SILENT_S
+    if thermostat_silent:
+        issues.append("thermostat_silent")
+    heating_allowed = not bool(window_open) and not thermostat_off and not thermostat_silent and not cooled
     heat_pump_allowed = not bool(window_open) or drying.active
 
     trend = trend_k_per_h(state.temperature_history, now_ts)
     deviation = None if temp is None else round(temp - target, 2)
     dem = demand(target, temp, trend, state.internal_gain_w, params)
-    if not heat_pump_allowed and dem is not None:
+    if (not heat_pump_allowed or cooled) and dem is not None:
         dem = 0.0
 
     override_until = state.override.until_ts if state.override is not None and state.override.until_ts > now_ts else None
+    end = comfort_end(cfg, now, state.schedule) if target_reason == "schedule_comfort" else None
 
     return RoomResult(
         key=cfg.key,
@@ -387,4 +431,5 @@ def evaluate_room(
         heat_pump_allowed=heat_pump_allowed,
         boost_active=boost_active,
         preheat_for_ts=preheat_for_ts,
+        comfort_end_ts=None if end is None else end.timestamp(),
     )

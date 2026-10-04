@@ -113,3 +113,25 @@ async def test_entities_match_the_recorded_snapshot(hass: HomeAssistant, freezer
         SNAPSHOT.write_text(json.dumps(recorded, indent=1, sort_keys=True, ensure_ascii=False) + "\n")
     assert scenario in recorded, "no snapshot recorded yet"
     assert current == recorded[scenario]
+
+
+def test_detail_values_are_rounded_and_start_disabled() -> None:
+    """Every change of a sensor is a row in the recorder; values that move every cycle serve the analysis."""
+    from dataclasses import replace
+
+    from custom_components.thriftherm.sensor import ROOM_SENSORS, SYSTEM_SENSORS, DescribedSensor
+    from custom_components.thriftherm.select import ModeSelect
+
+    from .test_heat_call import rr
+
+    room = replace(rr(temp=20.47), trend_k_per_h=0.1349, dew_point_c=12.348, abs_humidity_g_m3=10.471)
+    by_key = {d.key: d for d in ROOM_SENSORS}
+    assert by_key["deviation"].value_fn(room) == -0.5
+    assert by_key["trend"].value_fn(room) == 0.13
+    assert by_key["dew_point"].value_fn(room) == 12.3
+    assert by_key["abs_humidity"].value_fn(room) == 10.5
+    detail = {d.key for d in (*ROOM_SENSORS, *SYSTEM_SENSORS) if d.entity_registry_enabled_default is False}
+    assert detail == {"deviation", "trend", "dew_point", "abs_humidity", "boiler_delta_t", "boiler_thermal_power_estimate",
+                      "midea_airflow_estimate"}
+    assert {"recent_plans", "recent_commands", "cop_map_by_outdoor_temp"} <= DescribedSensor._unrecorded_attributes
+    assert "heat_rates" in ModeSelect._unrecorded_attributes

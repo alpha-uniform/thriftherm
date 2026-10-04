@@ -27,7 +27,10 @@ class HeatPumpTracker:
         self.last_map_entry_ts = 0.0
 
     def reset(self) -> None:
-        self.__init__()
+        """Forget what was learned; an icing lockout and the defrost count protect the unit and stay."""
+        self.cop_samples = []
+        self.last_map_entry_ts = 0.0
+        self.inefficient_since = None
 
     def defrost(self, snapshot: HeatingSnapshot, run_state: str, params: Parameters, now_ts: float) -> tuple[DefrostResult, bool]:
         """Classify defrost/icing. The flag tells whether the lockout changed (worth saving)."""
@@ -61,9 +64,9 @@ class HeatPumpTracker:
             airflow_m3h=instant.airflow_m3h, samples=n, gate_reasons=tuple(gates),
         )
 
-    def track_efficiency(self, cop_value: float | None, break_even_cop: float, margin_off: float, now_ts: float) -> None:
+    def track_efficiency(self, cop_value: float | None, break_even_cop: float | None, margin_off: float, now_ts: float) -> None:
         """Start the inefficiency timer while the measured COP stays below break-even."""
-        if cop_value is not None and cop_value < break_even_cop * (1.0 - margin_off):
+        if cop_value is not None and break_even_cop is not None and cop_value < break_even_cop * (1.0 - margin_off):
             self.inefficient_since = self.inefficient_since or now_ts
         else:
             self.inefficient_since = None

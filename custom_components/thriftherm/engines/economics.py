@@ -105,8 +105,9 @@ def evaluate(prices: Prices, cop: float | None, margin_on: float, margin_off: fl
     else:
         cheaper = cheaper_source(cop, be, margin_on, margin_off, current)
     saving = None
-    if c_heat_pump is not None:
-        # positive = Midea cheaper by this many percent relative to gas
+    if c_heat_pump is not None and c_gas > 0:
+        # positive = Midea cheaper by this many percent relative to gas; a gas price of 0
+        # (left over without a central heat source) gives no percentage, not a crash
         saving = (c_gas - c_heat_pump) / c_gas * 100.0
     return EconomicsResult(
         gas_cost_per_kwh_thermal=c_gas,

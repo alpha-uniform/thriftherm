@@ -1,4 +1,5 @@
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -61,6 +62,19 @@ def test_away_preheat_uses_learned_rate():
     assert res.target_reason == "away_preheat"
 
 
+def test_away_return_target_holds_across_the_clock_change():
+    # code audit 2026-09-28 (F16): the return was found by adding seconds to the clock, an hour off
+    # across the end of summer time; with the text windows that can pick the wrong target
+    berlin = ZoneInfo("Europe/Berlin")
+    cfg = room_config("wohnzimmer", comfort=21.0, setback=17.0)  # weekdays comfort from 17:30
+    saturday = datetime(2026, 10, 24, 12, 0, tzinfo=berlin)  # summer time
+    return_ts = datetime(2026, 10, 26, 17, 0, tzinfo=berlin).timestamp()  # Monday, winter time: still setback
+    res = room_engine.evaluate_room(room_state(cfg, temp=15.0), saturday, "away", PARAMS, away_return_ts=return_ts)
+    deficit = 17.0 - 15.0  # not 21.0 - 15.0 for 18:00
+    rate = PARAMS.default_heat_rate_radiator_k_h
+    assert res.preheat_start_ts == pytest.approx(return_ts - deficit / rate * 3600 - PARAMS.preheat_margin_s, abs=1)
+
+
 def test_away_humidity_guard():
     cfg = room_config("badezimmer", heat_pump=True)
     st = room_state(cfg, temp=16.0, rh=90.0)  # dew point ≈ 14.4 -> margin 1.6 K < 3 K
@@ -108,6 +122,25 @@ def test_drying_mode_timeout_and_window_ineffective():
     res = room_engine.evaluate_room(st2, MON_EVENING, "auto", PARAMS)
     assert res.drying_reason == "drying_ended_window_ineffective"
     assert res.heating_allowed is False  # back to normal window logic
+
+
+def test_drying_does_not_start_again_right_after_its_time_limit():
+    # measured 2026-09-25: the baseline still held the air from before the shower, so the
+    # drying started again a minute after its 60 min ran out
+    cfg = RoomConfig(**{**room_config("badezimmer", heat_pump=True).__dict__, "bathroom_drying": True})
+    now_ts = MON_EVENING.timestamp()
+    baseline = tuple((now_ts - 3 * 3600 + i * 300, 9.0) for i in range(30))
+    st = _with(room_state(cfg, temp=22.0, rh=85.0), abs_humidity_history=baseline, drying=DryingState(True, now_ts - 4000, 9.0))
+    ended = room_engine.evaluate_room(st, MON_EVENING, "auto", PARAMS)
+    assert ended.drying_reason == "drying_ended_timeout" and ended.drying.ended_ts == now_ts
+
+    later = datetime.fromtimestamp(now_ts + 60)
+    again = room_engine.evaluate_room(_with(st, drying=ended.drying), later, "auto", PARAMS)
+    assert not again.drying.active and again.target_reason != "bathroom_drying"
+    after_window = datetime.fromtimestamp(now_ts + 3 * 3600 + 60)
+    fresh = tuple((now_ts + 3600 + i * 300, 9.0) for i in range(30))
+    st3 = _with(st, drying=again.drying, abs_humidity_history=fresh)
+    assert room_engine.evaluate_room(st3, after_window, "auto", PARAMS).drying.active  # a new shower dries again
 
 
 def test_drying_mode_not_for_rooms_without_flag():

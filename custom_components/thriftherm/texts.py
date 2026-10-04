@@ -35,6 +35,12 @@ LABELS: dict[str, dict[str, str]] = {
         "mode_away": "Away", "away_preheat": "Pre-heating for your return", "away_humidity_guard": "Away, raised against damp",
         "schedule_comfort": "Schedule: comfort", "schedule_setback": "Schedule: setback", "schedule_preheat": "Pre-heating for the schedule",
         "bathroom_drying": "Drying the bathroom",
+        "joined_boiler_run": "Heating along while the boiler runs",
+        "joined_preheat": "Pre-heating early while the boiler runs",
+        "heat_pump_cooling": "Heat pump cooling: radiator at setback",
+        # whether a room calls the boiler
+        "calling": "Calls for heat", "idle": "Warm enough", "stalled": "Close to target, barely rising: counts as reached",
+        "comfort_ending": "Comfort ends soon: no new heat", "not_allowed": "Heating not allowed",
         # drying mode
         "drying_active": "Drying", "drying_started_humidity_load": "Started: humidity after a shower",
         "drying_ended_humidity_normal": "Ended: humidity back to normal", "drying_ended_timeout": "Ended: time limit",
@@ -46,6 +52,7 @@ LABELS: dict[str, dict[str, str]] = {
         "min_state_time": "Minimum time in state", "ramp_limit": "Rising slowly (ramp limit)",
         "spread_small": "Flow/return spread small", "spread_large": "Flow/return spread large",
         "short_cycling": "Boiler kept switching on and off",
+        "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
         "rooms_slow": "Rooms heating up slowly", "rooms_satisfied": "Rooms warm without demand",
         "learning": "Learning", "refining": "Refining", "paused": "Paused",
         # heat pump
@@ -61,6 +68,7 @@ LABELS: dict[str, dict[str, str]] = {
         # COP basis and power source
         "measured": "Measured", "learned": "Learned", "prior": "Starting curve", "prior_calibrated": "Starting curve (calibrated)",
         "plug": "Smart plug", "midea_internal": "Heat pump's own value", "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
+        "last_known": "Last known value (held up to 6 h)",
         # icing
         "persistent": "Icing", "cycle": "Defrost cycle", "frequent_defrost_cycles": "Frequent defrost cycles",
         "icing_lockout_active": "Icing lockout active", "outdoor_coil_iced": "Outdoor coil iced", "sustained_inefficiency": "Heat output collapsed",
@@ -73,7 +81,7 @@ LABELS: dict[str, dict[str, str]] = {
         "outlet_temp_not_settled": "outlet not settled", "fan_rpm_outside_curve": "fan speed outside the curve",
         "raw_cop_out_of_range": "COP implausible", "exceeds_carnot_limit": "above the physical limit",
         "setpoint_recently_changed": "setpoint changed recently", "boiler_control_not_active": "boiler control not active",
-        "hot_water_recent": "hot water recently",
+        "hot_water_recent": "hot water recently", "no_heating_run": "boiler not heating right now",
     },
     "de": {
         "off": "Aus", "shadow": "Nur planen", "active": "Aktiv",
@@ -81,6 +89,12 @@ LABELS: dict[str, dict[str, str]] = {
         "mode_away": "Abwesend", "away_preheat": "Vorheizen zur Rückkehr", "away_humidity_guard": "Abwesend, gegen Feuchte angehoben",
         "schedule_comfort": "Zeitplan: Komfort", "schedule_setback": "Zeitplan: Absenkung", "schedule_preheat": "Vorheizen für den Zeitplan",
         "bathroom_drying": "Bad trocknen",
+        "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+        "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+        "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
+        "calling": "Fordert Wärme an", "idle": "Warm genug",
+        "stalled": "Knapp unter Soll, steigt kaum: gilt als erreicht",
+        "comfort_ending": "Komfortzeit endet bald: keine neue Wärme", "not_allowed": "Heizen nicht erlaubt",
         "drying_active": "Trocknet", "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
         "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal", "drying_ended_timeout": "Beendet: Zeitlimit",
         "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung", "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
@@ -90,6 +104,7 @@ LABELS: dict[str, dict[str, str]] = {
         "min_state_time": "Mindestzeit im Zustand", "ramp_limit": "Steigt langsam (Anstiegsbegrenzung)",
         "spread_small": "Spreizung klein", "spread_large": "Spreizung groß",
         "short_cycling": "Therme taktet",
+        "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
         "rooms_slow": "Räume heizen langsam auf", "rooms_satisfied": "Räume warm ohne Bedarf",
         "learning": "Einlernen", "refining": "Verfeinern", "paused": "Pausiert",
         "cheaper_than_gas": "Günstiger als die Heizung", "gas_cheaper": "Heizung günstiger", "learning_run": "Lernlauf",
@@ -103,6 +118,7 @@ LABELS: dict[str, dict[str, str]] = {
         "heating_idle": "Heizen bereit", "heating_warming_up": "Heizen (Warmlauf)", "heating_stable": "Heizen",
         "measured": "Gemessen", "learned": "Gelernt", "prior": "Startkurve", "prior_calibrated": "Startkurve (kalibriert)",
         "plug": "Zwischenstecker", "midea_internal": "Eigener Wert der Wärmepumpe", "nominal_circulation_estimate": "Schätzung aus Nenn-Umlaufmenge (±30 %)",
+        "last_known": "Letzter bekannter Wert (bis 6 h gehalten)",
         "persistent": "Vereisung", "cycle": "Abtauzyklus", "frequent_defrost_cycles": "Häufige Abtauzyklen",
         "icing_lockout_active": "Vereisungssperre aktiv", "outdoor_coil_iced": "Außenregister vereist", "sustained_inefficiency": "Wärmeabgabe eingebrochen",
         "in_sync": "Stimmt überein", "waiting_for_thermostat": "Wartet auf das Thermostat", "no_thermostat": "Kein Thermostat",
@@ -112,7 +128,7 @@ LABELS: dict[str, dict[str, str]] = {
         "outlet_temp_not_settled": "Ausblas nicht eingeschwungen", "fan_rpm_outside_curve": "Lüfterdrehzahl außerhalb der Kennlinie",
         "raw_cop_out_of_range": "COP unplausibel", "exceeds_carnot_limit": "über der physikalischen Grenze",
         "setpoint_recently_changed": "Sollwert kürzlich geändert", "boiler_control_not_active": "Thermensteuerung nicht aktiv",
-        "hot_water_recent": "Warmwasser kürzlich",
+        "hot_water_recent": "Warmwasser kürzlich", "no_heating_run": "Therme heizt gerade nicht",
     },
 }
 
@@ -123,7 +139,10 @@ ACTIONS = ("none", "start", "stop", "adjust")
 DEFROST_KINDS = ("none", "persistent", "cycle")
 COP_BASES = ("measured", "learned", "prior", "prior_calibrated")
 POWER_SOURCES = ("plug", "midea_internal")
-REASON_CODES = tuple(k for k in LABELS["en"] if k not in CONTROL_MODES + ACTIONS + COP_BASES + POWER_SOURCES + ("persistent", "cycle"))
+OUTDOOR_SOURCES = ("last_known",)  # otherwise the entity the value comes from
+CALL_STATES = ("calling", "idle", "stalled", "comfort_ending", "not_allowed")
+_NOT_REASONS = CONTROL_MODES + ACTIONS + COP_BASES + POWER_SOURCES + OUTDOOR_SOURCES + CALL_STATES + ("persistent", "cycle")
+REASON_CODES = tuple(k for k in LABELS["en"] if k not in _NOT_REASONS)
 
 
 def label(code: str | None, lang: str) -> str:
@@ -154,6 +173,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "mode_away": "away: reduced targets",
         "boiler_data_unavailable": "boiler data unavailable (ebusd), boiler state unknown",
         "no_demand": "no room needs heat",
+        "heat_pump_plan_only": "heat pump only plans, the boiler heats",
     },
     "de": {
         "heat_pump_blocked": "Wärmepumpe gesperrt: {reason}",
@@ -175,6 +195,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "mode_away": "Abwesend: abgesenkte Sollwerte",
         "boiler_data_unavailable": "Thermendaten fehlen (ebusd), Zustand der Therme unbekannt",
         "no_demand": "Kein Raum braucht Wärme",
+        "heat_pump_plan_only": "Wärmepumpe plant nur, es heizt die Therme",
     },
 }
 _COP_LABEL = {

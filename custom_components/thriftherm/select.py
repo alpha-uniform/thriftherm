@@ -6,9 +6,8 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import MODES
 from .coordinator import ThrifthermConfigEntry, ThrifthermCoordinator
-from .entity import ThrifthermEntity
+from .entity import SettingEntity
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -21,16 +20,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, a
     async_add_entities(entities)
 
 
-class ModeSelect(ThrifthermEntity, SelectEntity):
+class ModeSelect(SettingEntity, SelectEntity):
     """Operating mode. Persisted by the coordinator's store, which is loaded before entities exist."""
 
     _attr_translation_key = "mode"
     _attr_icon = "mdi:tune"
-    _attr_options = MODES
+    _unrecorded_attributes = frozenset({"heat_rates"})  # kept in the learning store
 
     def __init__(self, coordinator: ThrifthermCoordinator) -> None:
         super().__init__(coordinator, "mode")
         self.suggest_english_entity_id()
+
+    @property
+    def options(self) -> list[str]:
+        return self.coordinator.modes
 
     @property
     def current_option(self) -> str:
@@ -38,16 +41,24 @@ class ModeSelect(ThrifthermEntity, SelectEntity):
 
     @property
     def extra_state_attributes(self) -> dict:
-        return {"away_return_ts": self.coordinator.away_return_ts, "heat_rates": self.coordinator.heat_rates.to_dict()}
+        return {
+            "away_return_ts": self.coordinator.away_return_ts,
+            "away_return_provisional": self.coordinator.away_return_provisional,
+            "heat_rates": self.coordinator.heat_rates.to_dict(),
+        }
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # written the moment the mode or the return changes, by whichever action, not only when the cycle ends
+        self.async_on_remove(self.coordinator.async_add_away_listener(self.async_write_ha_state))
 
     async def async_select_option(self, option: str) -> None:
-        self.coordinator.set_mode(option)
-        self.async_write_ha_state()
-        # immediate (non-debounced) refresh so the new mode is reflected at once
+        self.coordinator.set_mode(option)  # shows the new mode, and the return it drops, at once
+        # immediate (non-debounced) refresh so the rooms follow the new mode at once
         await self.coordinator.async_refresh()
 
 
-class ControlSelect(ThrifthermEntity, SelectEntity):
+class ControlSelect(SettingEntity, SelectEntity):
     """Off / plan only (shadow) / active. "Active" appears only when released in the options.
 
     The heat pump, the boiler and the room thermostats each have one; they differ in

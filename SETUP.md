@@ -25,7 +25,7 @@ Have district heating or no own boiler? Skip steps 2 and 6; the setup dialog lea
 |---|---|---|
 | Boiler with eBUS | with an own boiler | for boiler control |
 | eBUS adapter | with an own boiler | for example an ebusd adapter shield, connected to the boiler's eBUS terminals |
-| Home Assistant 2026.9 or newer | yes | *Settings → About* shows your version |
+| Home Assistant 2026.9 or newer | yes | *Settings → About* shows your version. Temperatures in °C (metric unit system): Thriftherm works in °C only and stops the setup otherwise |
 | MQTT broker | with an own boiler | the **Mosquitto broker** app |
 | **ebusd** app | with an own boiler | reads the boiler and sends it the setpoint |
 | One temperature sensor per room | yes | any sensor that shows the room temperature in Home Assistant |
@@ -65,6 +65,14 @@ Open the **Configuration** tab of the ebusd app:
 | Copy `mqtt-hassio.cfg` (`seed_mqtt_cfg`) | on – this puts an editable copy of the MQTT configuration into the app's folder |
 
 Save and start the app.
+
+> **Give fixed addresses.** A network adapter needs a fixed IP address. Create a **DHCP reservation** in your router for the eBUS adapter, and for every other network device Thriftherm reads from, such as a Wi-Fi gas meter.
+> Why this matters, one night on the test installation shows: the router handed out new addresses, the eBUS adapter got a different IP, and the Wi-Fi gas meter got the adapter's old one.
+> - ebusd no longer found the adapter ("unable to open …" in its log). Thriftherm handed the boiler back within minutes, and it heated for over an hour by its own knob.
+> - ebusd knocked on the gas meter every 5 seconds. The meter kept losing its MQTT connection, and its values showed "unavailable" in Home Assistant.
+> - All the while Home Assistant kept showing the last stored eBUS values (flow 22 °C, status 31), because ebusd keeps its values in the broker. In fact the flow was close to 50 °C.
+>
+> Only *ebusd signal* (`binary_sensor.…_global_signal`) tells whether ebusd really reaches the boiler. When it stays off for more than ten minutes, Thriftherm reports it under Settings → Repairs (*No data from the boiler*). For a push notification, add an automation on that signal, for example "off for 5 minutes".
 
 ### 2.4 Show the heating pump and status number
 
@@ -106,6 +114,8 @@ Open *Settings → Devices & services → Add integration* and pick **Thriftherm
 |---|---|
 | Kind of heating | **Own gas or oil boiler** for boiler control over ebusd. With *Central or district heating, or heat supplied by the landlord* or *None – heat pump and room control only* the boiler step is left out |
 
+Changed later in the options, the prices for the new kind follow, and for an own boiler the boiler step; nothing is saved before the last step.
+
 ### 4.2 Prices
 
 Take the values from your bills. The pre-filled numbers are only examples.
@@ -132,7 +142,7 @@ The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fill
 | Heating pump running (ebusd WP, on/off) | ebusd **WP** |
 | Boiler status number (ebusd Statenumber, S.xx) | ebusd **Statenumber** |
 | Domestic hot water mode | ebusd **Status02 hwcmode** |
-| eBUS signal (binary sensor) | the *signal* connectivity sensor of ebusd or your adapter, if you have one; otherwise leave empty |
+| eBUS signal (binary sensor) | **ebusd's own signal** (`binary_sensor.…_global_signal`), not the adapter's connectivity sensor: when the adapter drops off Wi-Fi, its own sensor keeps its last value "on" (measured) |
 | Nominal circulation flow of the pump | keep the default unless your boiler's manual says otherwise |
 | Gas meter volume (m³, total), Gas meter instantaneous flow (m³/h) | your gas meter entities, if you have them; otherwise leave empty |
 | ebusd circuit of the boiler (usually bai) | keep `bai` unless your ebusd device uses another circuit name |
@@ -144,7 +154,7 @@ The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fill
 
 **Why the minimum depends on the boiler type:** a condensing boiler gains from a low flow, but a non-condensing boiler hardly saves anything there, and with short burner runs the heat may not reach distant radiators – see the [user guide, section 5](GUIDE.md#5-boiler-control-own-boiler-on-ebusd).
 
-The heating curve does not have to be perfect: Thriftherm learns a correction of up to ±10 K.
+The heating curve does not have to be perfect: Thriftherm learns a correction of up to ±10 K. The form only refuses a curve that is lower at -10 °C than at +15 °C, and a minimum above the maximum.
 
 ### 4.4 Heat pump (optional add-on)
 
@@ -180,7 +190,7 @@ You add one room per page. Tick **Add another room** to get the next page; submi
 
 The room is warm *when* a comfort time starts: Thriftherm starts heating early enough.
 
-Only with a heat pump set up (preview) does the form also show *Heated by the heat pump* and *Bathroom drying with the heat pump (keep heating while airing after showers)*. Bathroom drying runs on the heat pump, so without one neither field appears.
+Only with a heat pump set up (preview) does the form also show *Heated by the heat pump* and *Bathroom drying with the heat pump (keep heating while airing after showers)*. Bathroom drying runs on the heat pump, so without one neither field appears. It also needs *Heated by the heat pump* switched on and the room humidity sensor; the form refuses it otherwise.
 
 **Check:** after the last room *Settings → Devices & services* lists **Thriftherm**. Its device shows *Boiler control* and *Room control* set to **Plan only (beta)**.
 
@@ -248,6 +258,8 @@ Everything about daily use – modes, schedules, away mode, learning – is in t
 | Boiler ignores the setpoint | knob set lower than the setpoint | the knob is the upper limit – turn it up to your maximum (for example 55 °C) |
 | Boiler does not heat at all | knob at the left stop = summer mode | turn the knob up |
 | Boiler cycles, but the farthest radiator stays cold | pump stops with the burner; minimum flow too low | check the pump mode ([step 6](#6-at-the-boiler)); on a non-condensing boiler set the minimum flow to about 45 °C ([step 4.3](#43-gas-boiler-ebusd-and-gas-meter)) |
+| Boiler heats although Thriftherm blocks; repair entry *No data from the boiler* | ebusd does not reach the eBUS adapter, often after a new IP address | check the ebusd log ("unable to open …"); correct the address in the ebusd app; give it a fixed address in the router ([step 2.3](#23-configure-the-ebusd-app)) |
+| A Wi-Fi device (e.g. the gas meter) keeps dropping its connection | it got the eBUS adapter's old address, and ebusd knocks there | as above: correct the address in the ebusd app, give fixed addresses, restart the device |
 | A thermostat does not accept setpoints | the thermostat hangs | take the battery out and put it back; update its firmware |
 | Right after a restart *Boiler command* shows *Waiting for room data* | Thriftherm waits for the room sensors | normal for up to five minutes |
 | A room is cold, but the boiler is blocked | window open, or the room's thermostat switched off | close the window; switch the thermostat back to heat |

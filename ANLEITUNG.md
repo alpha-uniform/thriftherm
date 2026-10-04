@@ -37,7 +37,23 @@ Auswahl **Betriebsmodus**:
 | **Nur Therme** | Wärmepumpe wird nicht genutzt |
 | **Nur Wärmepumpe** | nur Wärmepumpen-Räume werden geheizt; die Therme nur für Frostschutz. Vorschau, siehe Abschnitt 7 |
 | **Sommerbetrieb** | keine Raumheizung; Warmwasser funktioniert; Frostschutz bleibt |
-| **Abwesend** | alle Räume auf Abwesenheitstemperatur; mit Rückkehrzeit wird rechtzeitig vorgeheizt. Du stellst *Geplante Rückkehr* ein, damit ist Abwesend bis dahin an; aus Automationen geht dasselbe mit `thriftherm.set_away`, und die Aktion *Abwesend beenden* (`thriftherm.clear_away`) beendet beides |
+| **Abwesend** | alle Räume auf Abwesenheitstemperatur; mit Rückkehrzeit wird rechtzeitig vorgeheizt, siehe unten |
+
+### Abwesend mit und ohne Rückkehr
+
+- **Einfach abwesend, ohne Ende:** Betriebsmodus *Abwesend* wählen, während ein anderer Modus an ist. *Geplante Rückkehr* bleibt leer, die Räume bleiben auf Abwesenheitstemperatur, bis du *Abwesend beenden* oder einen anderen Modus wählst. Ist *Abwesend* mit Rückkehr schon an, ändert ein erneutes *Abwesend* nichts: erst einen anderen Modus wählen und dann wieder *Abwesend*, oder `thriftherm.set_away` mit `clear_return_time: true` aufrufen.
+- **Abwesend bis zu einem Zeitpunkt**, z. B. heute 22:00 oder 3. Oktober 12:00: *Geplante Rückkehr* einstellen, das schaltet auf Abwesend bis dahin. In den Feldern von Home Assistant (Dialog der Entität, Entitäten-Karte) erst das **Datum**, dann die **Uhrzeit** wählen – solange nichts geplant ist, nimmt das Uhrzeitfeld nichts an.
+- **Nur ein Datum ist ein Platzhalter:** Solange keine Uhrzeit gewählt ist, steht die Rückkehr vorläufig auf 23:59 des gewählten Tages, heute wie an jedem späteren Tag; ein anderes Datum nimmt die vorläufige 23:59 mit. Eine vorläufige Rückkehr heizt nicht vor; erst die Uhrzeit, die du danach wählst, gilt, und für sie wird rechtzeitig vorgeheizt. Wählst du keine, endet Abwesend trotzdem um 23:59. Ob die Rückkehr vorläufig ist, zeigt das Attribut *Vorläufig (23:59 als Platzhalter)* (`provisional`) an *Geplante Rückkehr*: `true`, solange nur das Datum gewählt ist.
+- **Datum ändern, wenn schon eine Uhrzeit geplant ist:** Das neue Datum behält die geplante Uhrzeit und gilt sofort. Wählst du heute und ist diese Uhrzeit schon vorbei, steht wieder vorläufig 23:59 da.
+- **Was abgelehnt wird:** eine heute schon vergangene Uhrzeit (außer 00:00 in der Minute nach einer erreichten Rückkehr: die wird zum Platzhalter 23:59, solange 23:59 noch bevorsteht), ein vergangener Tag und, wenn es schon nach 23:59 ist, das heutige Datum allein – jeweils mit einer Meldung.
+- **Wirklich um 23:59 zurück:** Steht dort die vorläufige 23:59, schickt das Uhrzeitfeld für 23:59 nichts, weil sich nichts ändert, und eine 23:59, die trotzdem ankommt (etwa per `datetime.set_value`), bleibt vorläufig. Erst eine andere Minute wählen, z. B. 23:58, und 23:59 erst, wenn sie angezeigt wird und das Attribut *Vorläufig* auf `false` steht – oder `thriftherm.set_away` mit `return_time` nehmen, das Datum und Uhrzeit in einem Schritt setzt.
+- **Browser in einer anderen Zeitzone:** Beide Felder zeigen und rechnen in der Zeitzone des Browsers; Datum und Uhrzeit gelten also in Browser-Zeit. Beispiele mit Home Assistant in Berlin:
+  - Ohne geplante Rückkehr schickt der Datumsschritt Mitternacht des Browsers, in Home Assistant eine andere Uhrzeit (London: 01:00; östlich von Home Assistant am Vortag, Helsinki 23:00, Tokio 17:00, im Winter 16:00). Das ist dann kein Platzhalter, sondern eine echte Zeit: Ist sie schon vorbei, wie für heute meist, wird sie abgelehnt; sonst gilt sie als Rückkehr zu dieser Stunde, mit Vorheizen.
+  - Mit geplanter Rückkehr gilt eine im Uhrzeitfeld gewählte Uhrzeit in Browser-Zeit (in London gewählte 12:00 sind in Berlin 13:00), und auch der Tag kann sich verschieben: Östlich von Home Assistant erscheint die vorläufige 23:59 schon als nächster Tag (Helsinki: 00:59), eine dann gewählte Uhrzeit landet einen Tag später. Westlich kann das Rückkehrzeiten kurz nach Mitternacht treffen (3. Oktober 00:30, in London auf den 5. Oktober gelegt: 6. Oktober 00:30).
+  - Stellen Browser und Home Assistant nicht am selben Tag auf Sommer- oder Winterzeit um – etwa ein Browser in den USA oder in einer Zone ohne Sommerzeit wie Dubai –, kann ein reiner Datumsschritt über eine Umstellung hinweg die Uhrzeit um eine Stunde verschieben. Eine vorläufige Rückkehr wird dann echt, und es wird vorgeheizt (vorläufig 26. Oktober 23:59, in New York auf den 3. November gelegt: 4. November 00:59).
+  - Deshalb nach jeder Eingabe *Geplante Rückkehr* und das Attribut *Vorläufig* prüfen, den Browser auf die Zeitzone von Home Assistant stellen oder `thriftherm.set_away` nehmen.
+- **Aus Automationen:** `thriftherm.set_away` mit `return_time`, oder mit `clear_return_time: true` ohne Ende. Dort ist jede Zeit in der Vergangenheit ein Fehler, auch eine von heute, und jede Zeit gilt so, wie sie kommt, auch Mitternacht. `datetime.set_value` auf *Geplante Rückkehr* liest Werte dagegen wie die Felder: Mitternacht ohne geplante Rückkehr wird zum Platzhalter 23:59, auch an einem späteren Tag. Und solange *Geplante Rückkehr* nicht verfügbar ist (Thriftherm nicht geladen), verwirft Home Assistant `datetime.set_value` ohne Fehlermeldung, `set_away` meldet dagegen einen Fehler. Automationen nehmen deshalb `set_away`.
+- **Wieder da:** Die Aktion *Abwesend beenden* (`thriftherm.clear_away`) beendet Abwesenheit und Rückkehr. Ist die Rückkehrzeit erreicht, geht es von selbst zurück auf Automatik.
 
 ## 3. Welche Temperatur gilt
 
@@ -45,7 +61,7 @@ Für jeden Raum gilt die erste zutreffende Regel:
 
 1. **Übersteuerung** (Dienst `set_override` oder Änderung am Thermostat) – bis sie abläuft.
 2. **Sommerbetrieb** – nur Frostschutztemperatur.
-3. **Abwesend** – Abwesenheitstemperatur (Standard 15 °C). Vor der Rückkehr wird auf Komfort vorgeheizt. Kommt die Luft ihrem Taupunkt zu nahe (Standard 3 K), wird der Sollwert gegen Feuchte angehoben.
+3. **Abwesend** – Abwesenheitstemperatur (Standard 15 °C). Vor einer Rückkehr mit gewählter Uhrzeit wird auf Komfort vorgeheizt (nicht bei der vorläufigen 23:59, siehe Abschnitt 2). Kommt die Luft ihrem Taupunkt zu nahe (Standard 3 K), wird der Sollwert gegen Feuchte angehoben.
 4. **Zeitplan** – Komforttemperatur in einem Zeitplan-Block, sonst Absenktemperatur. Vor Blockbeginn wird so vorgeheizt, dass es *zu Beginn* warm ist.
 
 Zwei Schutzregeln gelten immer zusätzlich:
@@ -55,7 +71,7 @@ Zwei Schutzregeln gelten immer zusätzlich:
 | Frostschutz | 7 °C | Fällt ein Raum darunter, heizt die Therme sofort – auch im Sommerbetrieb – bis der Raum 1 K darüber liegt. |
 | Fenster offen | 90 s Karenz | Solange ein Fensterkontakt offen ist, pausiert das Heizen in diesem Raum. |
 
-Komfort- und Absenktemperatur sind Zahlen-Entitäten je Raum (*Komforttemperatur*, *Absenktemperatur*) und lassen sich im Dashboard ändern. Die Absenktemperatur kann nie über der Komforttemperatur liegen.
+Komfort- und Absenktemperatur sind Zahlen-Entitäten je Raum (*Komforttemperatur*, *Absenktemperatur*) und lassen sich im Dashboard ändern. Die Absenktemperatur kann nie über der Komforttemperatur liegen. Änderst du später eine der beiden in den Raum-Optionen, gelten wieder beide Werte aus den Optionen.
 
 ### Zeitpläne
 
@@ -71,7 +87,7 @@ Beginn = Blockbeginn − (Soll − Ist) / Aufheizrate − Sicherheitszuschlag. D
 |---|---|---|
 | `thriftherm.set_override` | `room`, `temperature`, `duration_min` (Standard 120) | vorübergehend anderer Sollwert für einen Raum |
 | `thriftherm.clear_override` | `room` (optional) | eine oder alle Übersteuerungen beenden |
-| `thriftherm.set_away` | `return_time` (optional) | Abwesenheit, mit Vorheizen zur Rückkehr |
+| `thriftherm.set_away` | `return_time` oder `clear_return_time` (beide optional) | Abwesenheit, mit Vorheizen zur Rückkehr oder ohne Ende |
 | `thriftherm.clear_away` | – | zurück auf Automatik |
 | `thriftherm.boost` | `room`, `duration_min` (Standard 45) | einen Raum schnell aufheizen |
 | `thriftherm.reset_learning` | `scope` (`boiler`, `heat_pump`, `rooms`), `rooms` | Gelerntes vergessen, siehe Abschnitt 6 |
@@ -90,8 +106,11 @@ data:
 
 - **Vorlauftemperatur** aus einer Zwei-Punkt-Heizkurve (Standard 55 °C bei −10 °C, 30 °C bei +15 °C), bei großem Wärmebedarf der Räume bis 8 K höher, dazu eine gelernte Korrektur. Sie bleibt immer zwischen eingestelltem Minimum und Maximum.
   **Warum das Minimum vom Gerätetyp abhängt.** Ein Brennwertgerät profitiert von niedrigem Vorlauf: Liegt der Rücklauf unter etwa 56 °C, kondensiert das Abgas und bringt bis zu 11 % mehr, etwa 30 °C sind also ein gutes Minimum. Ein Heizwertgerät kondensiert nie, dort spart ein sehr niedriger Vorlauf wenig – und bei kurzen Brennerläufen kommt die Wärme womöglich gar nicht bis zu den fernen Heizkörpern. Gemessen an der getesteten Heizwerttherme: Mit 30 °C blieb der letzte Heizkörper kalt, 45 °C funktioniert, dort also mit etwa 45 °C beginnen. Die Einstellung heißt *Minimale Vorlauftemperatur* ([Einrichtungsanleitung, Schritt 4.3](EINRICHTUNG.md#43-gastherme-ebusd-und-gaszähler)).
+- **Wann ein Raum die Therme anfordert:** ab 0,3 K unter Soll, bis er weniger als 0,1 K darunter liegt. Hängt ein Raum nach einer Stunde Heizen knapp unter Soll (höchstens 0,3 K) und steigt kaum noch (unter 0,15 K/h), gilt er als erreicht, bis er 0,5 K unter Soll fällt oder sich der Sollwert ändert. Sinkt der Sollwert (z. B. eine Übersteuerung endet), wird eine laufende Anforderung neu mit der Startschwelle bewertet. In der letzten halben Stunde einer Komfortzeit fordert kein Raum mehr an, die Wärme käme zu spät. *Schnell aufheizen* ist von beiden Regeln ausgenommen. Den Zustand zeigt das Attribut *Anforderung an die Therme* am Sensor *Wärmebedarf* des Raums.
+- **Mitheizen:** Läuft die Therme ohnehin, bekommen andere Räume in ihrer Komfortzeit, die unter Soll liegen, 0,5 K mehr, und ein Raum, dessen Vorheizen in der nächsten Stunde begänne, fängt jetzt an (Grund *Heizt mit* bzw. *Heizt früher vor*). Ein einzelner Heizkörper nimmt nur etwa 1 kW ab, die Therme brennt aber mit mindestens 8 kW; mehr offene Heizkörper bedeuten längere Brennerläufe und weniger Starts. Mitheizende Räume fordern selbst nichts an und halten die Therme nicht am Laufen.
 - **Heizbetrieb gesperrt** (`disablehc`), wenn kein Raum Wärme braucht. Warmwasser wird nie angefasst: Der Warmwasser-Sollwert wird immer als „kein Wert“ gesendet, die Therme folgt weiter ihrem Drehknopf.
 - **Ein von Hand ausgeschaltetes Thermostat fordert keine Therme an:** Sein Ventil ist zu, der Raum zählt beim Bedarf nicht mit. Ein nur nicht erreichbares Thermostat zählt weiter, denn sein Ventil regelt selbst weiter.
+- **Ein Heizkörperthermostat, das über eine Stunde schweigt, fordert ebenfalls keine Therme an.** Es behält seinen letzten Sollwert und nimmt keine neuen an. Bei Better Thermostat wird das echte Thermostat dahinter überwacht, nicht BT selbst. Dazu erscheint eine Reparaturmeldung in HA. Gesunde Thermostate melden sich hier mindestens alle 15 Minuten.
 - **Nach einem Neustart** wartet Thriftherm bis zu fünf Minuten auf die Raumfühler, bevor es den Heizbetrieb sperrt. Bis dahin geht nichts raus, und die Therme behält ihren letzten Befehl.
 - **Anstieg begrenzt** auf 5 K je 10 Minuten, damit die Therme nicht von 30 auf 60 °C springt. Frostschutz ist davon ausgenommen.
 - **Kurze Aussetzer werden ignoriert:** Adapter verlieren das eBUS-Signal immer wieder für eine Sekunde. Erst wenn es zwei Minuten lang wegbleibt, gilt das als Datenausfall und die Therme läuft wieder über ihren Drehknopf.
@@ -146,7 +165,7 @@ Nach einer Änderung an der Anlage passen alte Werte nicht mehr.
 
 | Änderung | Vergessen wird |
 |---|---|
-| Heizkurve, minimaler oder maximaler Vorlauf | Thermen-Korrektur |
+| Heizkurve | Thermen-Korrektur |
 | Wärmepumpen-Entität, Ansaug-/Ausblassensor, Luftmengen-Kennlinie, Schlauchfaktor, Aufstellraum, beheizte Räume | COP-Kennfeld und Wärmepumpen-Korrektur |
 | Temperatursensor oder Thermostat eines Raums | Aufheizrate dieses Raums |
 
@@ -158,7 +177,7 @@ Laufzustand, Sperrzeiten und Handbedienung werden nie zurückgesetzt – ein Zur
 
 - Der COP wird aus der Luftmenge (Lüfterdrehzahl → m³/h-Kennlinie) sowie Temperatur und Feuchte von Ansaug- und Ausblasluft gemessen, erst wenn das Gerät eingeschwungen ist.
 - Verglichen wird mit dem Preis der zentralen Wärme. Bei Fernwärme zählt der **Heizkostenschlüssel**: Nur der Verbrauchsanteil folgt dem eigenen Zähler, eine gesparte kWh spart also weniger als ihr Preis, und die Wärmepumpe braucht einen höheren COP, damit sie sich lohnt.
-- Die Wärmepumpe läuft langsam mit hohem COP. Gesperrt ist sie unter ihrer Mindest-Außentemperatur (Standard −10 °C), bei erkannter Vereisung oder wenn jemand damit kühlt. Kühlen und Heizen überschneiden sich nie.
+- Die Wärmepumpe läuft langsam mit hohem COP. Gesperrt ist sie unter ihrer Mindest-Außentemperatur (Standard −10 °C), bei erkannter Vereisung oder wenn jemand damit kühlt. Kühlen und Heizen überschneiden sich nie: Solange sie kühlt, bleiben die Heizkörper der Räume, die sie bedient, auf Absenktemperatur und fordern keine Wärme von der Therme an. Der Frostschutz gilt weiter.
 - **Der Aufstellort zählt.** Ohne Schläuche bleibt die warme Luft im Aufstellraum. Aufstellraum und Schlauchfaktor (1,0 = keine Schläuche) eintragen; nicht erreichbare Räume erzeugen eine Reparaturmeldung.
 - **Bad-Trocknung** braucht die Wärmepumpe: nur in einem Raum, den die Wärmepumpe beheizt und der einen Feuchtesensor hat; das Raumformular bietet sie erst an, wenn eine Wärmepumpe eingerichtet ist. Nach dem Duschen trocknet die Wärmepumpe den Raum – nur solange sie heizen und effizient laufen kann, höchstens 60 Minuten und nie über Soll + 1,5 K. Sonst folgt der Heizkörper der normalen Fensterlogik.
 - **Schnell aufheizen** (Button je Raum oder `thriftherm.boost`) lässt sie für begrenzte Zeit mit voller Leistung laufen.
@@ -169,12 +188,14 @@ Laufzustand, Sperrzeiten und Handbedienung werden nie zurückgesetzt – ein Zur
 |---|---|
 | *Entscheidungsgrund* | in Worten, warum das System tut, was es tut |
 | *Empfohlene Wärmequelle* | Therme, Wärmepumpe, beide oder keine |
-| *Sicherheitsstatus* | OK, eingeschränkt (ein Sensor fehlt), Fallback (nichts Verlässliches, nichts wird gesendet) |
+| *Sicherheitsstatus* | OK, eingeschränkt (ein Sensor fehlt), Fallback (kein Raum oder keine verlässliche Raumtemperatur, nichts wird gesendet). Störungen der Wärmepumpe stehen in den Attributen, schränken den Status aber nur ein, wo die Wärmepumpe die einzige Wärmequelle ist. |
 | *Solltemperatur* je Raum | den Sollwert und unter *Grund*, woher er kommt |
 | *Thermostat-Plan* je Raum | was an das Thermostat geht |
 | *Therme-Steuerbefehl* | was die Therme bekommt; *Drehknopf regelt* heißt, es wird nichts gesendet und die Therme läuft über ihren Knopf. Zeigt auch Heizungspumpe und Status S.xx |
 | *Lernstatus* | was gelernt wurde und warum das Lernen pausiert |
-| *Geplante Rückkehr* | wann du zurück bist; einstellbar, leer wenn nichts geplant ist |
+| *Geplante Rückkehr* | wann du zurück bist; einstellbar (erst Datum, dann Uhrzeit), leer wenn nichts geplant ist. *Vorläufig (23:59 als Platzhalter)* (`provisional`) ist `true`, solange nur ein Datum gewählt ist: Abwesend endet dann um 23:59, vorgeheizt wird noch nicht |
+
+**Detail-Sensoren sind anfangs ausgeschaltet.** Abweichung vom Soll, Temperaturtrend, Taupunkt und absolute Feuchte je Raum, die Spreizung Vorlauf/Rücklauf, die geschätzte Wärmeleistung der Therme und die geschätzte Luftmenge der Wärmepumpe ändern sich fast bei jedem Zyklus und dienen der Auswertung, nicht der Regelung. Jede Änderung ist eine Zeile in der Datenbank von Home Assistant, deshalb sind sie bei einer neuen Installation ausgeschaltet; einschalten unter *Einstellungen → Geräte & Dienste → Entitäten*. Berechnet werden sie so oder so.
 
 ## 9. Reparaturmeldungen
 
@@ -186,7 +207,7 @@ Laufzustand, Sperrzeiten und Handbedienung werden nie zurückgesetzt – ein Zur
 | Luftmenge der Wärmepumpe nicht kalibriert | keine Luftmengen-Kennlinie, daher kein COP; bis dahin gilt das Datenblatt. |
 | Wärmepumpe versorgt Räume ohne Schläuche | keine Schläuche eingetragen, die warme Luft bleibt im Aufstellraum. Schläuche montieren und Schlauchfaktor setzen oder die Räume abwählen. |
 
-Manches zeigt sich ohne Meldung: Ein Raumfühler, der seit sechs Stunden still ist, zählt nicht mehr, die Temperatur des Thermostats springt ein, und der *Sicherheitsstatus* geht auf *Eingeschränkt*.
+Manches zeigt sich ohne Meldung: Ein Raumfühler, der seit sechs Stunden still ist, zählt nicht mehr, die eigene Temperatur des Ventils springt ein (hinter Better Thermostat das Ventil selbst, nicht Better Thermostat, das den Raumfühler nur wiederholt), und der *Sicherheitsstatus* geht auf *Eingeschränkt*.
 
 Einstellungen → Geräte & Dienste → Thriftherm → ⋮ → *Diagnose herunterladen* liefert eine Datei mit Konfiguration, aktuellem Zustand und Lernwerten für Fehlerberichte. Es wird nichts daraus entfernt – vor dem Veröffentlichen durchsehen.
 
@@ -196,8 +217,12 @@ Einstellungen → Geräte & Dienste → Thriftherm → ⋮ → *Diagnose herunte
 
 **Ich habe am Thermostat gedreht – warum stellt es sich nicht zurück?** Eine Handänderung wird zur vorübergehenden Übersteuerung (Standard 120 Minuten). Mit `clear_override` beenden.
 
+**Übersteuerungen, obwohl niemand am Thermostat war?** Better Thermostat schreibt den Sollwert des Heizkörperthermostats alle paar Sekunden neu. Kommt über Zigbee eine Antwort verspätet an, hält BT den alten Wert für einen Dreh am Thermostat. Der **Echo-Filter** (Optionen → Regelparameter, standardmäßig an) erkennt das: Springt BT auf einen Wert, den das Thermostat in der letzten Minute schon hatte und wieder verlassen hatte (z. B. 16 → 16,5 → 16), wird das ignoriert und der geplante Sollwert neu gesendet. Ein echter Dreh bringt einen neuen Wert und wird übernommen. Wann zuletzt ein Echo ignoriert wurde, zeigt der Sensor *Thermostat-Plan* des Raums.
+
 **Verändert Thriftherm meine Warmwassertemperatur?** Nein. Für den Warmwasser-Sollwert wird „kein Wert“ gesendet; der Drehknopf der Therme entscheidet.
 
 **Was passiert, wenn Home Assistant abstürzt?** Die Therme fällt innerhalb von 9–16 Minuten auf ihren Drehknopf zurück; die Thermostate behalten ihren letzten Sollwert.
 
-**Warum ist der *Temperaturtrend* nach einem Neustart leer?** Der Trend braucht etwa 30 Minuten Messwerte.
+**Was passiert, wenn ebusd die Therme nicht erreicht?** Nach zwei Minuten ohne *ebusd Signal* sendet Thriftherm nichts mehr (*Therme-Steuerbefehl*: *Keine Vorgabe*), die Therme heizt nach ihrem Drehknopf. Nach zehn Minuten erscheint die Reparaturmeldung *Keine Daten von der Therme*. Häufigste Ursache ist eine neue IP-Adresse des eBUS-Adapters, deshalb im Router eine feste Adresse vergeben ([Einrichtung, Schritt 2.3](EINRICHTUNG.md#23-ebusd-app-konfigurieren)). Achtung: Die eBUS-Werte in Home Assistant bleiben während eines Ausfalls auf ihrem letzten Stand stehen, maßgeblich ist nur *ebusd Signal*.
+
+**Warum ist der *Temperaturtrend* nach einem Neustart leer?** Der Trend braucht etwa 30 Minuten Messwerte. Bei einer neuen Installation ist der Sensor ausgeschaltet, bis du ihn einschaltest (Abschnitt 8).

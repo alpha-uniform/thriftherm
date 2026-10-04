@@ -38,6 +38,42 @@ async def test_allowed_control_modes_follow_the_release(hass: HomeAssistant) -> 
 
 
 @pytest.mark.parametrize(
+    ("options", "missing"), [({"midea_climate": None}, "midea_only"), ({"system_type": "none"}, "boiler_only")]
+)
+async def test_operating_modes_follow_the_installation(hass: HomeAssistant, hass_storage, options: dict, missing: str) -> None:
+    """A mode without its heat source (heat pump only without a heat pump, boiler only without one) heats nothing."""
+    from homeassistant.exceptions import ServiceValidationError
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.thriftherm.const import DOMAIN, STORAGE_KEY, STORAGE_VERSION
+
+    from .test_integration import _entry_data, _set_states
+
+    # stored while the installation still had that source
+    key = f"{STORAGE_KEY}.modes"
+    hass_storage[key] = {"version": STORAGE_VERSION, "minor_version": 1, "key": key, "data": {"mode": missing}}
+    _set_states(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=_entry_data(), options=options, entry_id="modes", unique_id=DOMAIN, title="Thriftherm"
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+
+    assert coordinator.mode == "auto"
+    assert missing not in coordinator.modes and {"auto", "off", "away"} <= set(coordinator.modes)
+    assert hass.states.get("select.thriftherm_operating_mode").attributes["options"] == coordinator.modes
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            "select", "select_option", {"entity_id": "select.thriftherm_operating_mode", "option": missing}, blocking=True
+        )
+    with pytest.raises(ValueError, match=f"^mode {missing} not offered$"):
+        coordinator.set_mode(missing)
+    assert coordinator.mode == "auto"
+
+
+@pytest.mark.parametrize(
     ("setter", "label"),
     [("set_control_mode", "midea"), ("set_boiler_control_mode", "boiler"), ("set_room_control_mode", "room")],
 )
@@ -131,3 +167,44 @@ async def test_ebusd_topics(hass: HomeAssistant) -> None:
         ("ebusd/bai2/WP/get", "?1"),
         ("ebusd/bai2/Statenumber/get", "?1"),
     ]
+
+
+@pytest.mark.parametrize("failing", ["set_hvac_mode", "set_temperature"])
+async def test_a_failed_heat_pump_command_does_not_count_as_carried_out(hass: HomeAssistant, freezer, failing: str) -> None:
+    """Kept as sent, the start would read as a change by hand two minutes later: 3 h hands off."""
+    import time
+    from datetime import timedelta
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    unit = {"temperature": 22, "indoor_temperature": 21, "outdoor_temperature": 4.0, "compressor_frequency": 0, "error_code": 0}
+    answering = {"ok": False}
+    sent: list[tuple[str, dict]] = []
+
+    async def climate_service(call) -> None:
+        if call.service == failing and not answering["ok"]:
+            raise HomeAssistantError("the unit did not answer")
+        sent.append((call.service, dict(call.data)))
+        if call.service == "set_hvac_mode":
+            hass.states.async_set("climate.midea", call.data["hvac_mode"], unit)
+
+    for service in ("set_hvac_mode", "set_temperature", "set_fan_mode"):
+        hass.services.async_register("climate", service, climate_service)
+    coordinator = (await _setup(hass, options=RELEASED)).runtime_data
+    hass.states.async_set("climate.midea", "off", unit)
+    coordinator.set_control_mode("active")
+    now = time.time()
+    coordinator.control_memory = ControlMemory(last_hvac_mode="off", last_command_ts=now - 7200, stopped_since_ts=now - 7200)
+
+    await coordinator.async_refresh()
+    assert coordinator.data["midea_command"].action == "start"
+    assert coordinator.control_memory.running_since_ts is None  # the start did not happen
+    assert coordinator.control_memory.last_command_ts == now - 7200
+
+    answering["ok"] = True
+    sent.clear()
+    freezer.tick(timedelta(seconds=180))
+    await coordinator.async_refresh()
+    assert coordinator.data["midea_command"].action == "start"  # sent again, not taken for a hand on the remote
+    assert ("set_hvac_mode", {"entity_id": "climate.midea", "hvac_mode": "heat"}) in sent
+    assert coordinator.control_memory.running_since_ts is not None and coordinator.control_memory.last_hvac_mode == "heat"

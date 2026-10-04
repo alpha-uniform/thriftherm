@@ -227,7 +227,7 @@ def test_flow_far_above_the_heating_setpoint_is_hot_water():
 
 def test_active_block_plus_gas_marks_hot_water_at_once():
     t0 = 1_000_000.0
-    blocked = _BM(state="block", state_since_ts=t0 - 3600, last_send_ts=t0 - 60, last_flow=30.0)
+    blocked = _BM(state="block", state_since_ts=t0 - 3600, last_send_ts=t0 - 60, last_flow=30.0, block_since_ts=t0 - 3600)
     active = replace(_shower_inputs(t0, 35.0, 33.3, burner=False), control_mode="active", advice_source="none", gas_power_w=22600.0)
     cmd, mem = _bc.decide(active, blocked)
     assert mem.hot_water_seen_ts == t0
@@ -241,6 +241,79 @@ def test_active_block_plus_gas_marks_hot_water_at_once():
     later = t0 + _bc.HOT_WATER_SHOWN_S + 60
     cmd, _ = _bc.decide(replace(active, now_ts=later, gas_power_w=0.0), replace(blocked, hot_water_seen_ts=t0))
     assert not cmd.hot_water
+
+
+def test_a_burner_run_after_an_ebus_outage_is_not_hot_water():
+    # 2026-09-19 00:59: the adapter was gone for 12 min, the boiler fell back to its knob and
+    # fired for heating (S.4) just as the first block went out again
+    t0 = 1_000_000.0
+    active = replace(_shower_inputs(t0, 25.8, 25.5, burner=False), control_mode="active", advice_source="none")
+    _, mem = _bc.decide(replace(active, boiler_available=False), _BM(state="block", state_since_ts=t0 - 3600, last_send_ts=t0 - 60, block_since_ts=t0 - 3600))
+    assert mem.block_since_ts is None  # hands off: the block is no longer in force
+
+    _, mem = _bc.decide(replace(active, now_ts=t0 + 60), mem)  # signal back, block sent again
+    cmd, mem = _bc.decide(replace(active, now_ts=t0 + 90, gas_power_w=11300.0), mem)
+    assert mem.hot_water_seen_ts is None and not cmd.hot_water
+
+    # once the block has stood for a while, gas means hot water again
+    _, mem = _bc.decide(replace(active, now_ts=t0 + 60 + _bc.BLOCK_IN_FORCE_S, gas_power_w=22600.0), mem)
+    assert mem.hot_water_seen_ts is not None
+
+
+def test_the_boilers_own_status_outranks_the_guesses():
+    assert not _bc.hot_water_suspected(35.0, 33.3, 60.0, gas_w=11300.0, heating_blocked=True, reported_mode="heating")
+    assert not _bc.hot_water_suspected(64.0, 63.5, 60.0, reported_mode="heating")  # knob at 75 °C after a fallback
+    assert _bc.hot_water_suspected(35.0, 33.3, 60.0, reported_mode="hot_water")
+    assert _bc.hot_water_suspected(35.0, 33.3, 60.0, gas_w=22600.0, heating_blocked=True, reported_mode=None)
+
+
+def test_vaillant_status_codes():
+    from custom_components.thriftherm.boiler_profiles import profile
+
+    vaillant = profile("vaillant_bai")
+    assert vaillant.reported_mode(4) == "heating"
+    assert vaillant.reported_mode(14) == "hot_water"
+    assert vaillant.reported_mode(24) == "hot_water"
+    for code in (5, 6, 7, 8):
+        assert vaillant.reported_mode(code) == "heating_after"
+    for code in (None, 0, 31, 97):
+        assert vaillant.reported_mode(code) is None
+
+
+def test_the_overrun_after_a_heating_run_is_not_hot_water():
+    # 2026-09-25 17:45:03, S.7 after a 55 s heating burst: return 51.2 °C, flow already 36.5 °C
+    assert not _bc.hot_water_suspected(36.5, 51.2, 60.0, gas_w=0.0, reported_mode="heating_after", status_known=True)
+    # 18:10:37, same pattern, both readings within 44 s of each other
+    assert not _bc.hot_water_suspected(33.7, 36.9, 60.0, gas_w=0.0, reported_mode="heating_after", status_known=True)
+    # without a status code the old rule still stands in
+    assert _bc.hot_water_suspected(36.5, 51.2, 60.0, gas_w=0.0)
+
+
+def test_a_status_code_that_lags_behind_gas_gives_no_verdict():
+    # S.8 still shown, but gas burns again: the code has not caught up with the new start
+    assert not _bc.hot_water_suspected(40.0, 38.0, 60.0, gas_w=11300.0, reported_mode="heating_after", status_known=True)
+    # ... so a burner under an active block is still hot water
+    assert _bc.hot_water_suspected(40.0, 38.0, 60.0, gas_w=22600.0, heating_blocked=True, reported_mode="heating_after", status_known=True)
+    # and a flow far above the heating setpoint too
+    assert _bc.hot_water_suspected(62.0, 45.0, 60.0, gas_w=15000.0, heating_flow_c=45.0, reported_mode="heating_after", status_known=True)
+
+
+def test_idle_codes_leave_return_above_flow_alone_when_the_status_is_known():
+    # S.31 (no demand) with the circuit cooling: return a little warmer than flow
+    assert not _bc.hot_water_suspected(31.0, 33.0, 60.0, gas_w=0.0, reported_mode=None, status_known=True)
+
+
+def test_heating_bursts_with_overrun_keep_the_learning_running():
+    # a cycling day as measured on 2026-09-25: burst in S.4, overrun in S.7 with return above flow
+    t0 = 1_000_000.0
+    heat = replace(_shower_inputs(t0, 50.0, 40.0), control_mode="active", status_known=True)
+    mem = _BM(state="heat", state_since_ts=t0 - 3600, last_send_ts=t0 - 60, last_flow=47.0)
+    for i in range(6):
+        start = t0 + i * 770.0
+        _, mem = _bc.decide(replace(heat, now_ts=start, reported_mode="heating", gas_power_w=11300.0), mem)
+        _, mem = _bc.decide(replace(heat, now_ts=start + 90, flow_c=36.5, return_c=51.2, burner_heating=False,
+                                    reported_mode="heating_after", gas_power_w=0.0), mem)
+    assert mem.hot_water_seen_ts is None
 
 
 # ------------------------------------------------------------------ short cycling
@@ -310,3 +383,83 @@ def test_no_block_before_the_rooms_have_reported():
     # once the rooms are there the decision is free again: no minimum state time to sit out
     cmd, _ = decide(inp([rr(temp=19.0, demand=0.5)], mode="active", now=NOW + 60.0), mem)
     assert cmd.plan == "heat" and cmd.waiting is None
+
+
+def test_cycling_at_the_flow_minimum_is_shown_not_hidden():
+    # 2026-09-24..26: 88 short runs at 17 °C outside, the curve (30 °C) below the 45 °C minimum,
+    # so the lowering step was swallowed without a trace
+    params = replace(PARAMS, boiler_flow_min=45.0)
+    rooms = [rr(demand=0.6, temp=21.0, target=23.0)]
+    mem = _bc.BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=45.0)
+    now = NOW
+    for _ in range(3):
+        on = inp(rooms, mode="active", now=now, burner=True, flow=50.0, ret=40.0, params=params, outdoor=17.0)
+        cmd, mem = _bc.decide(on, mem)
+        cmd, mem = _bc.decide(replace(on, now_ts=now + 60, burner_heating=False, flow_c=40.0, return_c=39.0), mem)
+        now += 770.0
+    assert mem.offset_k == 0.0
+    assert cmd.held_back == "short_cycling_at_flow_min"
+
+
+def test_a_hot_water_guess_is_taken_back_when_the_boiler_says_it_heated():
+    # 2026-09-28 00:44: the block had gone out for two minutes, but ebusd could not write yet.
+    # The boiler fired once more by its knob; gas under the "block" looked like hot water,
+    # then the status code showed S.7 (overrun after heating), not S.17.
+    t0 = 1_000_000.0
+    earlier_shower = t0 - 7200.0
+    blocked = _BM(state="block", state_since_ts=t0 - 600, last_send_ts=t0 - 60, last_flow=45.0,
+                  block_since_ts=t0 - 160, hot_water_seen_ts=earlier_shower)
+    base = replace(_shower_inputs(t0, 22.0, 21.5, burner=False), control_mode="active", advice_source="none", status_known=True)
+
+    cmd, mem = _bc.decide(replace(base, gas_power_w=3770.0, reported_mode=None), blocked)  # S.31 not updated yet
+    assert mem.hot_water_seen_ts == t0 and cmd.hot_water
+    _, mem = _bc.decide(replace(base, now_ts=t0 + 1, gas_power_w=3770.0, reported_mode="heating_after"), mem)
+    assert mem.hot_water_seen_ts == t0 + 1  # S.7 while gas still burns: the code may lag, no verdict yet
+    cmd, mem = _bc.decide(replace(base, now_ts=t0 + 20, gas_power_w=0.0, reported_mode="heating_after"), mem)
+    assert mem.hot_water_seen_ts == earlier_shower and not cmd.hot_water  # taken back
+    assert not mem.hot_water_guessed
+
+
+def test_the_boilers_own_hot_water_code_is_never_taken_back():
+    t0 = 1_000_000.0
+    base = replace(_shower_inputs(t0, 50.0, 40.0, burner=False), control_mode="active", status_known=True)
+    _, mem = _bc.decide(replace(base, gas_power_w=22600.0, reported_mode="hot_water"), _BM())
+    _, mem = _bc.decide(replace(base, now_ts=t0 + 120, gas_power_w=0.0, reported_mode="heating_after"), mem)
+    assert mem.hot_water_seen_ts == t0
+
+
+def test_a_guess_stands_once_the_retract_window_has_passed():
+    t0 = 1_000_000.0
+    blocked = _BM(state="block", state_since_ts=t0 - 600, last_send_ts=t0 - 60, last_flow=45.0, block_since_ts=t0 - 600)
+    base = replace(_shower_inputs(t0, 22.0, 21.5, burner=False), control_mode="active", advice_source="none", status_known=True)
+    _, mem = _bc.decide(replace(base, gas_power_w=15000.0), blocked)
+    later = t0 + _bc.HOT_WATER_RETRACT_S + 60
+    _, mem = _bc.decide(replace(base, now_ts=later, gas_power_w=0.0, reported_mode="heating_after"), mem)
+    assert mem.hot_water_seen_ts == t0
+
+
+# ------------------------------------------------------------------ code review 2026-09-28 (F4, F5, F14)
+def test_an_unknown_trend_does_not_count_as_slow():
+    # after a restart the trend needs half an hour of history; until then nothing is known
+    _, mem, _ = feed(heating_memory(), [rr(demand=0.6, trend=None)], flow=50.0, ret=40.0)
+    assert mem.offset_k == 0.0
+
+
+def test_only_calling_rooms_raise_the_flow():
+    calling = replace(rr(key="badezimmer", temp=20.6, target=21.0, demand=0.2), boiler_call="calling")
+    ending = replace(rr(key="kuche", temp=19.0, target=21.0, demand=1.0), boiler_call="comfort_ending")
+    alone, _ = decide(inp([calling], outdoor=5.0), BoilerMemory())
+    both, _ = decide(inp([calling, ending], outdoor=5.0), BoilerMemory())
+    assert both.flow_setpoint == alone.flow_setpoint == 41.5  # curve 40 + 8 K x 0.2
+
+
+def test_a_run_still_burning_is_not_counted_as_a_short_one():
+    import custom_components.thriftherm.engines.boiler_control as bc
+
+    now = NOW
+    # runs of 900 s and 60 s within the hour, a third one burning since 10 s; 30 s belongs to an older start
+    mem = replace(
+        BoilerMemory(), burner_on=True, burn_started_ts=now - 10,
+        burn_starts=(now - 7200, now - 1000, now - 500, now - 10), burn_durations=(30.0, 900.0, 60.0),
+    )
+    assert bc.short_cycling(mem, now) is False  # median of 900 and 60 s

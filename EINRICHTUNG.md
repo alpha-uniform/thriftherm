@@ -25,7 +25,7 @@ Fernwärme oder keine eigene Therme? Dann überspringst du die Schritte 2 und 6;
 |---|---|---|
 | Therme mit eBUS | bei eigener Therme | für die Thermensteuerung |
 | eBUS-Adapter | bei eigener Therme | zum Beispiel ein ebusd Adapter Shield, an die eBUS-Klemmen der Therme angeschlossen |
-| Home Assistant 2026.9 oder neuer | ja | *Einstellungen → Über* zeigt deine Version |
+| Home Assistant 2026.9 oder neuer | ja | *Einstellungen → Über* zeigt deine Version. Temperaturen in °C (metrisches Einheitensystem): Thriftherm rechnet nur in °C und bricht die Einrichtung sonst ab |
 | MQTT-Broker | bei eigener Therme | die App **Mosquitto broker** |
 | App **ebusd** | bei eigener Therme | liest die Therme und schickt ihr den Sollwert |
 | Ein Temperaturfühler je Raum | ja | jeder Sensor, der in Home Assistant die Raumtemperatur zeigt |
@@ -65,6 +65,14 @@ Den Reiter **Konfiguration** der ebusd-App öffnen:
 | `mqtt-hassio.cfg` kopieren (`seed_mqtt_cfg`) | an – damit liegt eine bearbeitbare Kopie der MQTT-Konfiguration im Ordner der App |
 
 Speichern und die App starten.
+
+> **Feste Adressen vergeben.** Ein Netzwerk-Adapter braucht eine feste IP-Adresse. Lege im Router eine **DHCP-Reservierung** für den eBUS-Adapter an, ebenso für jedes andere Netzwerkgerät, von dem Thriftherm Werte bekommt, etwa einen WLAN-Gaszähler.
+> Warum das wichtig ist, zeigt eine Nacht auf der Testanlage: Der Router vergab die Adressen neu, der eBUS-Adapter bekam eine andere IP, und der WLAN-Gaszähler bekam die alte Adresse des Adapters.
+> - ebusd fand den Adapter nicht mehr („unable to open …“ im Log). Thriftherm gab die Therme nach wenigen Minuten ab, und sie heizte eine gute Stunde lang nach ihrem Drehknopf.
+> - ebusd klopfte alle 5 Sekunden beim Gaszähler an. Der verlor dadurch immer wieder seine MQTT-Verbindung, und seine Werte standen in Home Assistant auf „nicht verfügbar“.
+> - Home Assistant zeigte die ganze Zeit die letzten gespeicherten eBUS-Werte weiter an (Vorlauf 22 °C, Status 31), weil ebusd seine Werte im Broker hinterlegt. Tatsächlich lag der Vorlauf bei fast 50 °C.
+>
+> Ob ebusd die Therme wirklich erreicht, zeigt nur *ebusd Signal* (`binary_sensor.…_global_signal`). Fällt es länger als zehn Minuten aus, meldet Thriftherm das unter Einstellungen → Reparaturen (*Keine Daten von der Therme*). Wer eine Push-Nachricht möchte, legt dafür eine Automation auf dieses Signal an, zum Beispiel „5 Minuten aus“.
 
 ### 2.4 Heizungspumpe und Status-Nummer sichtbar machen
 
@@ -106,6 +114,8 @@ Ist Thriftherm schon eingerichtet? Dann *Thriftherm → Konfigurieren → Gasthe
 |---|---|
 | Art der Heizung | **Eigene Gas- oder Ölheizung** für die Thermensteuerung über ebusd. Bei *Zentralheizung, Fernwärme oder Wärme vom Vermieter* oder *Keine – nur Wärmepumpe und Raumsteuerung* entfällt der Thermen-Schritt |
 
+Änderst du die Art später in den Optionen, folgen die Preise für die neue Art und bei eigener Therme der Thermen-Schritt; gespeichert wird erst nach dem letzten Schritt.
+
 ### 4.2 Preise
 
 Die Werte stehen auf deinen Abrechnungen. Die vorausgefüllten Zahlen sind nur Beispiele.
@@ -132,7 +142,7 @@ Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme un
 | Heizungspumpe läuft (ebusd WP, on/off) | ebusd **WP** |
 | Status-Nummer der Therme (ebusd Statenumber, S.xx) | ebusd **Statenumber** |
 | Warmwasser-Modus | ebusd **Status02 hwcmode** |
-| eBUS-Signal (Binärsensor) | der *signal*-Verbindungssensor von ebusd oder deinem Adapter, falls vorhanden; sonst leer lassen |
+| eBUS-Signal (Binärsensor) | **das Signal von ebusd selbst** (`binary_sensor.…_global_signal`), nicht den Verbindungssensor des Adapters: Fällt der Adapter aus dem WLAN, bleibt sein eigener Sensor auf seinem letzten Wert „an“ stehen (gemessen) |
 | Nenn-Umlaufwassermenge der Pumpe | den Standardwert lassen, außer die Anleitung deiner Therme sagt etwas anderes |
 | Gaszähler Volumen (m³, Gesamt), Gaszähler Momentanfluss (m³/h) | deine Gaszähler-Entitäten, falls vorhanden; sonst leer lassen |
 | ebusd-Kreis der Therme (meist bai) | `bai` lassen, außer dein ebusd-Gerät nutzt einen anderen Kreisnamen |
@@ -144,7 +154,7 @@ Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme un
 
 **Warum das Minimum vom Gerätetyp abhängt:** Ein Brennwertgerät profitiert von niedrigem Vorlauf, ein Heizwertgerät spart dort kaum etwas, und bei kurzen Brennerläufen kommt die Wärme womöglich nicht bis zu den fernen Heizkörpern – siehe [Anleitung, Abschnitt 5](ANLEITUNG.md#5-thermensteuerung-eigene-therme-über-ebusd).
 
-Die Heizkurve muss nicht perfekt sein: Thriftherm lernt eine Korrektur von bis zu ±10 K.
+Die Heizkurve muss nicht perfekt sein: Thriftherm lernt eine Korrektur von bis zu ±10 K. Das Formular lehnt nur eine Kurve ab, die bei -10 °C niedriger liegt als bei +15 °C, und ein Minimum über dem Maximum.
 
 ### 4.4 Wärmepumpe (optionales Zusatzmodul)
 
@@ -180,7 +190,7 @@ Du legst einen Raum pro Seite an. Mit dem Haken **Weiteren Raum hinzufügen** ko
 
 Der Raum ist warm, *wenn* eine Komfortzeit beginnt: Thriftherm fängt rechtzeitig vorher an zu heizen.
 
-Nur wenn eine Wärmepumpe eingerichtet ist (Vorschau), zeigt das Formular zusätzlich *Wird von der Wärmepumpe beheizt* und *Bad-Trocknung mit der Wärmepumpe (nach dem Duschen trotz Lüften weiterheizen)*. Die Bad-Trocknung läuft über die Wärmepumpe, ohne sie erscheint keins der beiden Felder.
+Nur wenn eine Wärmepumpe eingerichtet ist (Vorschau), zeigt das Formular zusätzlich *Wird von der Wärmepumpe beheizt* und *Bad-Trocknung mit der Wärmepumpe (nach dem Duschen trotz Lüften weiterheizen)*. Die Bad-Trocknung läuft über die Wärmepumpe, ohne sie erscheint keins der beiden Felder. Sie braucht außerdem *Wird von der Wärmepumpe beheizt* und den Raumfeuchtesensor, sonst lehnt das Formular sie ab.
 
 **Prüfen:** Nach dem letzten Raum zeigt *Einstellungen → Geräte & Dienste* **Thriftherm**. Sein Gerät zeigt *Thermensteuerung* und *Raumsteuerung* auf **Nur planen (Beta)**.
 
@@ -248,6 +258,8 @@ Alles zum Alltag – Modi, Zeitpläne, Abwesenheit, Lernen – steht in der [Anl
 | Therme ignoriert den Sollwert | Drehknopf steht niedriger als der Sollwert | der Knopf ist die Obergrenze – auf dein Maximum aufdrehen (zum Beispiel 55 °C) |
 | Therme heizt gar nicht | Drehknopf am linken Anschlag = Sommerbetrieb | Knopf aufdrehen |
 | Therme taktet, aber der letzte Heizkörper bleibt kalt | Pumpe steht mit dem Brenner; Mindest-Vorlauf zu niedrig | Pumpenmodus prüfen ([Schritt 6](#6-an-der-therme)); bei einer Heizwerttherme den Mindest-Vorlauf auf etwa 45 °C stellen ([Schritt 4.3](#43-gastherme-ebusd-und-gaszähler)) |
+| Therme heizt, obwohl Thriftherm sperrt; Reparaturmeldung *Keine Daten von der Therme* | ebusd erreicht den eBUS-Adapter nicht, oft nach einer neuen IP-Adresse | ebusd-Log prüfen („unable to open …“); Adresse in der ebusd-App korrigieren; im Router eine feste Adresse vergeben ([Schritt 2.3](#23-ebusd-app-konfigurieren)) |
+| Ein WLAN-Gerät (z. B. der Gaszähler) verliert ständig die Verbindung | es hat die alte Adresse des eBUS-Adapters bekommen, und ebusd klopft dort an | wie oben: Adresse in der ebusd-App korrigieren, feste Adressen vergeben, das Gerät neu starten |
 | Ein Thermostat nimmt keine Sollwerte an | das Thermostat hängt | Batterie raus und wieder rein; Firmware aktualisieren |
 | Direkt nach einem Neustart zeigt *Therme-Steuerbefehl* *Warte auf Raumdaten* | Thriftherm wartet auf die Raumfühler | bis zu fünf Minuten normal |
 | Ein Raum ist kalt, aber die Therme ist gesperrt | Fenster offen oder das Thermostat des Raums ausgeschaltet | Fenster schließen; das Thermostat wieder auf Heizen stellen |
