@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .coordinator import ThrifthermConfigEntry, ThrifthermCoordinator
-from .entity import ThrifthermEntity
+from .entity import SettingEntity
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
@@ -24,7 +24,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, a
     async_add_entities(entities)
 
 
-class RoomTemperatureNumber(ThrifthermEntity, NumberEntity):
+class RoomTemperatureNumber(SettingEntity, NumberEntity):
     """Comfort or setback temperature of one room."""
 
     _attr_native_min_value = 10.0  # same range the room form enforces

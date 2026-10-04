@@ -61,6 +61,14 @@ def detect(hass: HomeAssistant, coordinator: Any) -> dict[str, dict[str, str]]:
         elif not missing and not room.schedule_entity and not room.schedule_weekday and not room.schedule_weekend:
             found[f"no_schedule_{room.key}"] = {"translation_key": "no_schedule", "room": room.name}
 
+    rooms = data.get("rooms") or {}
+    for room in coordinator.builder.rooms:
+        result = rooms.get(room.key)
+        if result is not None and "thermostat_silent" in result.issues:
+            # a valve that fell out of the radio network keeps its last setpoint: the room
+            # neither warms nor cools as planned, and only a restart of the valve helps
+            found[f"thermostat_silent_{room.key}"] = {"translation_key": "thermostat_silent", "room": room.name}
+
     if coordinator.has_heat_pump and not coordinator.builder.params.airflow_curve:
         found["airflow_not_calibrated"] = {"translation_key": "airflow_not_calibrated"}
 
@@ -86,15 +94,28 @@ def detect(hass: HomeAssistant, coordinator: Any) -> dict[str, dict[str, str]]:
     return found
 
 
+def _ours(hass: HomeAssistant) -> set[str]:
+    return {
+        issue_id
+        for (domain, issue_id) in ir.async_get(hass).issues
+        if domain == DOMAIN and issue_id.startswith(_ISSUE_PREFIX)
+    }
+
+
+def async_clear(hass: HomeAssistant) -> None:
+    """Delete every issue of this integration, once nothing watches them any more (disabled or removed).
+
+    Not on a reload: the next cycle keeps what still applies, and an issue deleted and created
+    again would come back although the user had ignored it.
+    """
+    for issue_id in _ours(hass):
+        ir.async_delete_issue(hass, DOMAIN, issue_id)
+
+
 async def async_sync(hass: HomeAssistant, coordinator: Any) -> None:
     """Create the issues that apply now and clear the ones that no longer do."""
     current = detect(hass, coordinator)
-    registry = ir.async_get(hass)
-    existing = {
-        issue_id
-        for (domain, issue_id) in registry.issues
-        if domain == DOMAIN and issue_id.startswith(_ISSUE_PREFIX)
-    }
+    existing = _ours(hass)
     for issue_id, info in current.items():
         full_id = _ISSUE_PREFIX + issue_id
         placeholders = {k: v for k, v in info.items() if k != "translation_key"}

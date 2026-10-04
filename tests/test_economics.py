@@ -50,3 +50,12 @@ def test_invalid_prices_raise():
         eco.break_even_cop(Prices(0.3, 0.0, 0.84, 11.0, 0.94))
     with pytest.raises(ValueError):
         eco.gas_cost_per_kwh_thermal(Prices(0.3, 0.09, 0.0, 11.0, 0.94))
+
+
+def test_a_gas_price_of_0_without_a_central_source_is_no_division_by_zero():
+    """A gas price of 0 left over from an earlier setup must not crash the heat-pump-only comparison."""
+    none = Prices(0.3, 0.0, 0.84, 11.0, 0.94, system_type="none")
+    res = eco.evaluate(none, 3.0, 0.10, 0.05, None)
+    assert res.cheaper_source == "midea"
+    assert res.gas_cost_per_kwh_thermal == 0.0
+    assert res.saving_pct is None

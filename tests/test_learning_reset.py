@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 
 import pytest
@@ -41,6 +42,25 @@ def test_heating_curve_invalidates_only_the_boiler() -> None:
     before = learning_reset.basis(_entry_data())
     after = learning_reset.basis({**_entry_data(), "boiler_curve_flow_at_minus10": 50.0})
     assert learning_reset.invalidated(before, after) == ({"boiler"}, set())
+
+
+def test_flow_limits_keep_the_boiler_correction() -> None:
+    # audit 2026-09-28: the reset on 18.09. came from raising the minimum 30 -> 45 °C alone
+    before = learning_reset.basis(_entry_data())
+    after = learning_reset.basis({**_entry_data(), "boiler_flow_min": 45.0, "boiler_flow_max": 55.0})
+    assert learning_reset.invalidated(before, after) == (set(), set())
+
+
+def _with_flow_limits(basis: dict, curve_cold: float = 55.0) -> dict:
+    """A basis as stored before the flow limits left the boiler fingerprint."""
+    boiler = {"curve_cold": curve_cold, "curve_warm": 30.0, "flow_min": 45.0, "flow_max": 60.0}
+    return {**basis, "boiler": json.dumps(boiler, sort_keys=True)}
+
+
+def test_a_stored_basis_with_the_flow_limits_forgets_nothing() -> None:
+    current = learning_reset.basis({**_entry_data(), "boiler_flow_min": 45.0})
+    assert learning_reset.invalidated(_with_flow_limits(current), current) == (set(), set())
+    assert learning_reset.invalidated(_with_flow_limits(current, curve_cold=50.0), current) == ({"boiler"}, set())
 
 
 def test_new_room_sensor_invalidates_that_room_and_serving_change_the_heat_pump() -> None:
@@ -154,3 +174,17 @@ async def test_changing_the_duct_factor_forgets_the_heat_pump_on_reload(hass: Ho
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.runtime_data.control_memory.offset_k == 1.0
+
+
+def test_forgetting_the_heat_pump_learning_keeps_an_icing_lockout():
+    # code review 2026-09-28: the reset also lifted an active icing lockout
+    from custom_components.thriftherm.engines.heat_pump_tracking import HeatPumpTracker
+
+    tracker = HeatPumpTracker()
+    tracker.block_until = 5_000.0
+    tracker.defrost_cycle_starts = [1_000.0, 2_000.0]
+    tracker.cop_samples = [(1_000.0, 3.2)]
+    tracker.inefficient_since = 1_500.0
+    tracker.reset()
+    assert tracker.block_until == 5_000.0 and tracker.defrost_cycle_starts == [1_000.0, 2_000.0]
+    assert tracker.cop_samples == [] and tracker.inefficient_since is None

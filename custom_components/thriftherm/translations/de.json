@@ -93,10 +93,15 @@
       "invalid_schedule": "Ungültiger Zeitplan, Format HH:MM-HH:MM,HH:MM-HH:MM",
       "setback_above_comfort": "Absenktemperatur darf die Komforttemperatur nicht überschreiten",
       "duplicate_room": "Ein Raum mit diesem Namen existiert bereits",
-      "invalid_airflow_curve": "Ungültige Kennlinie, Format rpm:m3h,rpm:m3h"
+      "invalid_airflow_curve": "Ungültige Kennlinie, Format rpm:m3h,rpm:m3h",
+      "curve_inverted": "Der Vorlauf bei -10 °C darf nicht niedriger sein als bei +15 °C",
+      "flow_min_above_max": "Die minimale Vorlauftemperatur darf nicht über der maximalen liegen",
+      "drying_needs_heat_pump": "Die Bad-Trocknung läuft über die Wärmepumpe: bitte auch „Wird von der Wärmepumpe beheizt“ einschalten",
+      "drying_needs_humidity": "Die Bad-Trocknung braucht einen Raumfeuchtesensor"
     },
     "abort": {
-      "single_instance_allowed": "Es kann nur ein Thriftherm konfiguriert werden"
+      "single_instance_allowed": "Es kann nur ein Thriftherm konfiguriert werden",
+      "celsius_only": "Thriftherm rechnet nur in °C. Bitte stell Home Assistant zuerst auf das metrische Einheitensystem um."
     }
   },
   "options": {
@@ -215,7 +220,11 @@
           "boost_duration_min": "Dauer „Schnell aufheizen“",
           "midea_learning_runs": "Lernläufe erlauben (COP bei neuen Außentemperaturen messen)",
           "midea_allow_active_control": "Aktive Wärmepumpen-Steuerung freigeben (sonst nur planen)",
-          "room_allow_active_control": "Aktive Raumsteuerung freigeben (Sollwerte an die Thermostate schreiben)"
+          "room_allow_active_control": "Aktive Raumsteuerung freigeben (Sollwerte an die Thermostate schreiben)",
+          "room_echo_filter": "Echo-Filter für Better Thermostat (erweitert)"
+        },
+        "data_description": {
+          "room_echo_filter": "Better Thermostat schreibt den Sollwert des Heizkörperthermostats alle paar Sekunden neu. Über Zigbee kann eine Antwort erst nach dem nächsten Schreiben ankommen, und Better Thermostat hält den alten Wert dann für einen Dreh am Thermostat. Thriftherm machte daraus bisher eine zweistündige Übersteuerung. Mit dem Filter wird ein Sprung zurück auf einen Wert, den das Thermostat in der letzten Minute schon hatte und wieder verlassen hat (z. B. 16 → 16,5 → 16), ignoriert und der geplante Sollwert erneut gesendet. Ein echter Dreh am Thermostat oder eine Änderung in der App bringt einen neuen Wert und wird weiter übernommen. Gilt nur für Räume, deren Thermostat ein Better Thermostat ist. Empfehlung: an."
         }
       },
       "rooms": {
@@ -262,7 +271,11 @@
       "setback_above_comfort": "Absenktemperatur darf die Komforttemperatur nicht überschreiten",
       "duplicate_room": "Ein Raum mit diesem Namen existiert bereits",
       "invalid_airflow_curve": "Ungültige Kennlinie, Format rpm:m3h,rpm:m3h",
-      "no_scope": "Bitte mindestens einen Bereich wählen."
+      "no_scope": "Bitte mindestens einen Bereich wählen.",
+      "curve_inverted": "Der Vorlauf bei -10 °C darf nicht niedriger sein als bei +15 °C",
+      "flow_min_above_max": "Die minimale Vorlauftemperatur darf nicht über der maximalen liegen",
+      "drying_needs_heat_pump": "Die Bad-Trocknung läuft über die Wärmepumpe: bitte auch „Wird von der Wärmepumpe beheizt“ einschalten",
+      "drying_needs_humidity": "Die Bad-Trocknung braucht einen Raumfeuchtesensor"
     },
     "abort": {
       "learning_reset": "Die gewählten Lerndaten wurden gelöscht. Thriftherm lernt ab jetzt neu.",
@@ -470,7 +483,10 @@
         "name": "Außentemperatur (gewählte Quelle)",
         "state_attributes": {
           "source": {
-            "name": "Quelle"
+            "name": "Quelle",
+            "state": {
+              "last_known": "Letzter bekannter Wert (bis 6 h gehalten)"
+            }
           }
         }
       },
@@ -489,6 +505,9 @@
               "schedule_setback": "Zeitplan: Absenkung",
               "schedule_preheat": "Vorheizen für den Zeitplan",
               "bathroom_drying": "Bad trocknen",
+              "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+              "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+              "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
@@ -510,6 +529,7 @@
               "spread_small": "Spreizung klein",
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
+              "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_satisfied": "Räume warm ohne Bedarf",
               "learning": "Einlernen",
@@ -560,7 +580,8 @@
               "exceeds_carnot_limit": "über der physikalischen Grenze",
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
-              "hot_water_recent": "Warmwasser kürzlich"
+              "hot_water_recent": "Warmwasser kürzlich",
+              "no_heating_run": "Therme heizt gerade nicht"
             }
           },
           "quick_heat_up": {
@@ -585,6 +606,16 @@
           },
           "internal_gain_w": {
             "name": "Interne Gewinne W"
+          },
+          "boiler_call": {
+            "name": "Anforderung an die Therme",
+            "state": {
+              "calling": "Fordert Wärme an",
+              "idle": "Warm genug",
+              "stalled": "Knapp unter Soll, steigt kaum: gilt als erreicht",
+              "comfort_ending": "Komfortzeit endet bald: keine neue Wärme",
+              "not_allowed": "Heizen nicht erlaubt"
+            }
           }
         }
       },
@@ -653,6 +684,9 @@
               "schedule_setback": "Zeitplan: Absenkung",
               "schedule_preheat": "Vorheizen für den Zeitplan",
               "bathroom_drying": "Bad trocknen",
+              "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+              "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+              "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
@@ -674,6 +708,7 @@
               "spread_small": "Spreizung klein",
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
+              "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_satisfied": "Räume warm ohne Bedarf",
               "learning": "Einlernen",
@@ -724,7 +759,8 @@
               "exceeds_carnot_limit": "über der physikalischen Grenze",
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
-              "hot_water_recent": "Warmwasser kürzlich"
+              "hot_water_recent": "Warmwasser kürzlich",
+              "no_heating_run": "Therme heizt gerade nicht"
             }
           },
           "blockers": {
@@ -742,6 +778,9 @@
               "schedule_setback": "Zeitplan: Absenkung",
               "schedule_preheat": "Vorheizen für den Zeitplan",
               "bathroom_drying": "Bad trocknen",
+              "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+              "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+              "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
@@ -763,6 +802,7 @@
               "spread_small": "Spreizung klein",
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
+              "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_satisfied": "Räume warm ohne Bedarf",
               "learning": "Einlernen",
@@ -813,7 +853,8 @@
               "exceeds_carnot_limit": "über der physikalischen Grenze",
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
-              "hot_water_recent": "Warmwasser kürzlich"
+              "hot_water_recent": "Warmwasser kürzlich",
+              "no_heating_run": "Therme heizt gerade nicht"
             }
           },
           "eco_offset_k": {
@@ -883,6 +924,9 @@
               "schedule_setback": "Zeitplan: Absenkung",
               "schedule_preheat": "Vorheizen für den Zeitplan",
               "bathroom_drying": "Bad trocknen",
+              "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+              "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+              "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
@@ -904,6 +948,7 @@
               "spread_small": "Spreizung klein",
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
+              "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_satisfied": "Räume warm ohne Bedarf",
               "learning": "Einlernen",
@@ -954,7 +999,8 @@
               "exceeds_carnot_limit": "über der physikalischen Grenze",
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
-              "hot_water_recent": "Warmwasser kürzlich"
+              "hot_water_recent": "Warmwasser kürzlich",
+              "no_heating_run": "Therme heizt gerade nicht"
             }
           },
           "blockers": {
@@ -972,6 +1018,9 @@
               "schedule_setback": "Zeitplan: Absenkung",
               "schedule_preheat": "Vorheizen für den Zeitplan",
               "bathroom_drying": "Bad trocknen",
+              "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+              "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+              "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
@@ -993,6 +1042,7 @@
               "spread_small": "Spreizung klein",
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
+              "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_satisfied": "Räume warm ohne Bedarf",
               "learning": "Einlernen",
@@ -1043,7 +1093,8 @@
               "exceeds_carnot_limit": "über der physikalischen Grenze",
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
-              "hot_water_recent": "Warmwasser kürzlich"
+              "hot_water_recent": "Warmwasser kürzlich",
+              "no_heating_run": "Therme heizt gerade nicht"
             }
           },
           "heating_curve_flow": {
@@ -1112,6 +1163,9 @@
               "schedule_setback": "Zeitplan: Absenkung",
               "schedule_preheat": "Vorheizen für den Zeitplan",
               "bathroom_drying": "Bad trocknen",
+              "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+              "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+              "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
@@ -1133,6 +1187,7 @@
               "spread_small": "Spreizung klein",
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
+              "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_satisfied": "Räume warm ohne Bedarf",
               "learning": "Einlernen",
@@ -1183,11 +1238,18 @@
               "exceeds_carnot_limit": "über der physikalischen Grenze",
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
-              "hot_water_recent": "Warmwasser kürzlich"
+              "hot_water_recent": "Warmwasser kürzlich",
+              "no_heating_run": "Therme heizt gerade nicht"
             }
           },
           "commands_sent": {
             "name": "Befehle werden gesendet"
+          },
+          "echo_ignored_at": {
+            "name": "Letztes Funk-Echo ignoriert"
+          },
+          "echo_ignored_value": {
+            "name": "Wert des ignorierten Echos"
           }
         }
       },
@@ -1217,6 +1279,9 @@
               "schedule_setback": "Zeitplan: Absenkung",
               "schedule_preheat": "Vorheizen für den Zeitplan",
               "bathroom_drying": "Bad trocknen",
+              "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+              "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+              "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
@@ -1238,6 +1303,7 @@
               "spread_small": "Spreizung klein",
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
+              "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_satisfied": "Räume warm ohne Bedarf",
               "learning": "Einlernen",
@@ -1288,7 +1354,99 @@
               "exceeds_carnot_limit": "über der physikalischen Grenze",
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
-              "hot_water_recent": "Warmwasser kürzlich"
+              "hot_water_recent": "Warmwasser kürzlich",
+              "no_heating_run": "Therme heizt gerade nicht"
+            }
+          },
+          "held_back_because": {
+            "name": "Zurückgehalten weil",
+            "state": {
+              "override": "Übersteuerung von Hand",
+              "mode_off_frost_protection": "Sommerbetrieb (nur Frostschutz)",
+              "mode_away": "Abwesend",
+              "away_preheat": "Vorheizen zur Rückkehr",
+              "away_humidity_guard": "Abwesend, gegen Feuchte angehoben",
+              "schedule_comfort": "Zeitplan: Komfort",
+              "schedule_setback": "Zeitplan: Absenkung",
+              "schedule_preheat": "Vorheizen für den Zeitplan",
+              "bathroom_drying": "Bad trocknen",
+              "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+              "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+              "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
+              "drying_active": "Trocknet",
+              "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
+              "drying_ended_timeout": "Beendet: Zeitlimit",
+              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "room_demand": "Räume brauchen Wärme",
+              "no_room_needs_boiler": "Kein Raum braucht die Therme",
+              "frost_protection": "Frostschutz",
+              "summer_mode": "Sommerbetrieb",
+              "safety_fallback": "Sicherheits-Fallback",
+              "boiler_data_unavailable": "Thermendaten fehlen",
+              "waiting_for_room_data": "Warte auf Raumdaten",
+              "hands_off": "Keine Vorgabe",
+              "control_off": "Steuerung aus",
+              "not_configured": "Nicht eingerichtet",
+              "min_state_time": "Mindestzeit im Zustand",
+              "ramp_limit": "Steigt langsam (Anstiegsbegrenzung)",
+              "spread_small": "Spreizung klein",
+              "spread_large": "Spreizung groß",
+              "short_cycling": "Therme taktet",
+              "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_slow": "Räume heizen langsam auf",
+              "rooms_satisfied": "Räume warm ohne Bedarf",
+              "learning": "Einlernen",
+              "refining": "Verfeinern",
+              "paused": "Pausiert",
+              "cheaper_than_gas": "Günstiger als die Heizung",
+              "gas_cheaper": "Heizung günstiger",
+              "learning_run": "Lernlauf",
+              "quick_heat_up": "Schnell aufheizen",
+              "mode_midea_only": "Modus: nur Wärmepumpe",
+              "mode_boiler_only": "Modus: nur Therme",
+              "manual_takeover": "Von Hand geändert",
+              "midea_unavailable": "Wärmepumpe nicht verfügbar",
+              "target_reached": "Ziel erreicht",
+              "no_demand": "Kein Bedarf",
+              "blocked": "Gesperrt",
+              "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "outdoor_temperature_unknown": "Außentemperatur unbekannt",
+              "outdoor_too_cold": "Draußen zu kalt",
+              "min_run_time": "Mindestlaufzeit",
+              "min_off_time": "Mindeststillstand",
+              "rate_limit": "Wartezeit zwischen Befehlen",
+              "unavailable": "Nicht verfügbar",
+              "cooling_user": "Kühlen (Nutzer)",
+              "fan_only": "Nur Lüfter",
+              "auto": "Auto",
+              "heating_idle": "Heizen bereit",
+              "heating_warming_up": "Heizen (Warmlauf)",
+              "heating_stable": "Heizen",
+              "nominal_circulation_estimate": "Schätzung aus Nenn-Umlaufmenge (±30 %)",
+              "frequent_defrost_cycles": "Häufige Abtauzyklen",
+              "icing_lockout_active": "Vereisungssperre aktiv",
+              "outdoor_coil_iced": "Außenregister vereist",
+              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "in_sync": "Stimmt überein",
+              "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "no_thermostat": "Kein Thermostat",
+              "thermostat_off": "Thermostat aus",
+              "thermostat_unavailable": "Thermostat nicht verfügbar",
+              "airflow_curve_not_calibrated": "Luftmenge nicht kalibriert",
+              "warming_up": "Warmlauf",
+              "electrical_power_missing": "keine Leistungsmessung",
+              "electrical_power_below_minimum": "Leistung zu gering",
+              "delta_t_below_minimum": "Temperaturhub zu klein",
+              "outlet_temp_not_settled": "Ausblas nicht eingeschwungen",
+              "fan_rpm_outside_curve": "Lüfterdrehzahl außerhalb der Kennlinie",
+              "raw_cop_out_of_range": "COP unplausibel",
+              "exceeds_carnot_limit": "über der physikalischen Grenze",
+              "setpoint_recently_changed": "Sollwert kürzlich geändert",
+              "boiler_control_not_active": "Thermensteuerung nicht aktiv",
+              "hot_water_recent": "Warmwasser kürzlich",
+              "no_heating_run": "Therme heizt gerade nicht"
             }
           },
           "flow_return_spread_k": {
@@ -1362,6 +1520,9 @@
               "schedule_setback": "Zeitplan: Absenkung",
               "schedule_preheat": "Vorheizen für den Zeitplan",
               "bathroom_drying": "Bad trocknen",
+              "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+              "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+              "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
@@ -1383,6 +1544,7 @@
               "spread_small": "Spreizung klein",
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
+              "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_satisfied": "Räume warm ohne Bedarf",
               "learning": "Einlernen",
@@ -1433,7 +1595,8 @@
               "exceeds_carnot_limit": "über der physikalischen Grenze",
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
-              "hot_water_recent": "Warmwasser kürzlich"
+              "hot_water_recent": "Warmwasser kürzlich",
+              "no_heating_run": "Therme heizt gerade nicht"
             }
           }
         }
@@ -1486,6 +1649,9 @@
               "schedule_setback": "Zeitplan: Absenkung",
               "schedule_preheat": "Vorheizen für den Zeitplan",
               "bathroom_drying": "Bad trocknen",
+              "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+              "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+              "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
@@ -1507,6 +1673,7 @@
               "spread_small": "Spreizung klein",
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
+              "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_satisfied": "Räume warm ohne Bedarf",
               "learning": "Einlernen",
@@ -1557,7 +1724,8 @@
               "exceeds_carnot_limit": "über der physikalischen Grenze",
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
-              "hot_water_recent": "Warmwasser kürzlich"
+              "hot_water_recent": "Warmwasser kürzlich",
+              "no_heating_run": "Therme heizt gerade nicht"
             }
           }
         }
@@ -1570,6 +1738,9 @@
           },
           "away_return_ts": {
             "name": "Rückkehr"
+          },
+          "away_return_provisional": {
+            "name": "Rückkehr vorläufig"
           }
         }
       },
@@ -1588,6 +1759,9 @@
               "schedule_setback": "Zeitplan: Absenkung",
               "schedule_preheat": "Vorheizen für den Zeitplan",
               "bathroom_drying": "Bad trocknen",
+              "joined_boiler_run": "Heizt mit, solange die Therme läuft",
+              "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+              "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
@@ -1609,6 +1783,7 @@
               "spread_small": "Spreizung klein",
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
+              "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_satisfied": "Räume warm ohne Bedarf",
               "learning": "Einlernen",
@@ -1659,7 +1834,8 @@
               "exceeds_carnot_limit": "über der physikalischen Grenze",
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
-              "hot_water_recent": "Warmwasser kürzlich"
+              "hot_water_recent": "Warmwasser kürzlich",
+              "no_heating_run": "Therme heizt gerade nicht"
             }
           },
           "started_ts": {
@@ -1684,6 +1860,9 @@
         "state_attributes": {
           "away_return_ts": {
             "name": "Rückkehr"
+          },
+          "away_return_provisional": {
+            "name": "Rückkehr vorläufig"
           },
           "heat_rates": {
             "name": "Aufheizraten"
@@ -1745,7 +1924,12 @@
     },
     "datetime": {
       "away_return": {
-        "name": "Geplante Rückkehr"
+        "name": "Geplante Rückkehr",
+        "state_attributes": {
+          "provisional": {
+            "name": "Vorläufig (23:59 als Platzhalter)"
+          }
+        }
       }
     }
   },
@@ -1845,6 +2029,10 @@
     "heat_stays_in_the_room": {
       "title": "Wärmepumpe versorgt Räume ohne Schläuche",
       "description": "Eingetragen ist, dass die Wärmepumpe {rooms} versorgt. Ein Schlauchfaktor ist aber nicht gesetzt (1,0 = ohne Schläuche), also bleibt die warme Luft im Aufstellraum. Solange das so ist, heizt ein Lauf für diese Räume den falschen Raum. Entweder Schläuche montieren und den Faktor in den Optionen eintragen, oder das Häkchen bei diesen Räumen entfernen."
+    },
+    "thermostat_silent": {
+      "title": "{room}: Heizkörperthermostat antwortet nicht",
+      "description": "Das Heizkörperthermostat in {room} hat sich seit über einer Stunde nicht gemeldet. Es behält seinen letzten Sollwert und nimmt keine neuen an, deshalb fordert der Raum die Therme nicht mehr an. Prüfe das Thermostat: Batterien heraus und wieder hinein, oder in Zigbee2MQTT nachsehen."
     }
   },
   "exceptions": {

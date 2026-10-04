@@ -43,6 +43,36 @@ def test_ramp_allows_five_kelvin_per_ten_minutes_not_per_cycle():
     assert flows[10] == 40.0  # the next window allows the next step
 
 
+def test_a_dip_does_not_restart_the_ramp():
+    # measured 2026-10-02: a target clicked up and down sent the flow from 45 to 53 °C in 21 s
+    t = 1_500_000.0
+    _, mem = bc.decide(_boiler(t, "none", outdoor=15.0), bc.BoilerMemory())  # blocked at 30 °C
+    t += 400
+
+    def heat(at: float, demand: float):
+        inp = replace(_boiler(at, "boiler", outdoor=15.0), rooms=(_room(demand=demand),))
+        return bc.decide(inp, mem)
+
+    cmd, mem = heat(t, 0.5)  # curve 30 + 4
+    assert cmd.flow_setpoint == 34.0
+    cmd, mem = heat(t + 2, 0.25)  # a dip
+    assert cmd.flow_setpoint == 32.0
+    cmd, mem = heat(t + 4, 1.0)  # still at most 5 K above where the rise began
+    assert cmd.flow_setpoint == 35.0 and cmd.waiting == "ramp_limit"
+    cmd, mem = heat(t + 600, 1.0)  # the next window
+    assert cmd.flow_setpoint == 38.0
+
+
+def test_a_new_heating_run_ramps_from_its_own_start():
+    t = 1_600_000.0
+    _, mem = bc.decide(_boiler(t, "none"), bc.BoilerMemory())
+    cmd, mem = bc.decide(_boiler(t + 400, "boiler"), mem)
+    assert cmd.flow_setpoint == 35.0  # the rise is cut short by a block
+    _, mem = bc.decide(_boiler(t + 800, "none"), mem)
+    cmd, _ = bc.decide(_boiler(t + 7200, "boiler"), mem)
+    assert cmd.flow_setpoint == 35.0 and cmd.waiting == "ramp_limit"
+
+
 def test_frost_protection_is_not_ramped():
     t = 2_000_000.0
     # mild outside: the curve alone would ask for less than the 40 °C frost floor

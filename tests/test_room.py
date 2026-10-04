@@ -90,3 +90,19 @@ def test_evaluate_room_dew_point_present():
     res = room_engine.evaluate_room(st, datetime(2026, 1, 12, 18, 0), "auto", PARAMS)
     assert res.dew_point_c == pytest.approx(16.3, abs=0.3)
     assert res.abs_humidity_g_m3 == pytest.approx(13.6, abs=0.3)
+
+
+def test_rooms_of_a_cooling_heat_pump_take_no_heat():
+    # hard rule: cooling never collides with heating (code audit 2026-09-28, F8)
+    evening = datetime(2026, 1, 12, 18, 0)  # comfort window
+    served = room_state(room_config("badezimmer", heat_pump=True, comfort=21.0, setback=17.0), temp=16.0)
+    res = room_engine.evaluate_room(served, evening, "auto", PARAMS, heat_pump_heat_possible=False, heat_pump_cooling=True)
+    assert res.target == 17.0 and res.target_reason == "heat_pump_cooling"
+    assert res.heating_allowed is False and res.demand == 0.0  # not even below setback
+    # a lower target stays: summer mode keeps the frost temperature
+    off = room_engine.evaluate_room(served, evening, "off", PARAMS, heat_pump_heat_possible=False, heat_pump_cooling=True)
+    assert off.target == PARAMS.frost_temp and off.heating_allowed is False
+    # a radiator room the heat pump does not serve heats as before
+    radiator = room_state(room_config("wohnzimmer", comfort=21.0), temp=16.0)
+    other = room_engine.evaluate_room(radiator, evening, "auto", PARAMS, heat_pump_heat_possible=False, heat_pump_cooling=True)
+    assert other.target == 21.0 and other.heating_allowed is True and other.demand > 0.0

@@ -12,9 +12,10 @@ from homeassistant.components.sensor import (
     SensorEntityDescription,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfEnergy, UnitOfPower, UnitOfTemperature
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfEnergy, UnitOfPower, UnitOfTemperature
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.util import dt as dt_util
 
 from .const import (
     AUTOMATION_ACTIVE,
@@ -127,8 +128,10 @@ def _learning_attrs(d: Data) -> dict[str, Any]:
         "heating_curve_offset_k": c.offset_k,
         "adjustments_last_24h": c.adjustments_last_day,
         "last_adjustment_reason": c.last_adjust_reason,
+        "held_back_because": c.held_back,
         "flow_return_spread_k": c.spread_k,
-        "paused_because": d.get("learning_blocked_by"),
+        # nothing blocks it, but it only learns from a running burner
+        "paused_because": d.get("learning_blocked_by") or (["no_heating_run"] if c.learning_phase == "paused" else []),
         "room_heat_up_rates": d.get("heat_rates"),
         "room_cooling_rates": d.get("cool_rates"),
         "room_heating_power_k_h": d.get("heating_power"),
@@ -146,6 +149,16 @@ def _reason_texts(d: Data) -> list[str]:
 def _reason_state(d: Data) -> str:
     text = " | ".join(_reason_texts(d))
     return text[:252] + "..." if len(text) > 255 else (text or "no data")
+
+
+# Values that move with every cycle and serve the analysis rather than the control: they start
+# disabled on a new installation (every change is a row in the recorder) and can be enabled.
+_DETAIL = {"entity_registry_enabled_default": False, "entity_category": EntityCategory.DIAGNOSTIC}
+
+
+def _rounded(value: float | None, digits: int) -> float | None:
+    """A derived value only as fine as it means something, so it changes less often."""
+    return None if value is None else round(value, digits)
 
 
 def _desc(key: str, **kwargs: Any) -> ThrifthermSensorDescription:
@@ -190,6 +203,7 @@ SYSTEM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
     _desc(
         "midea_airflow_estimate",
         heat_pump_addon=True,
+        **_DETAIL,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="m³/h",
         icon="mdi:fan",
@@ -249,6 +263,7 @@ SYSTEM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
     _power(
         "boiler_thermal_power_estimate",
         boiler_only=True,
+        **_DETAIL,
         value_fn=lambda d: d["boiler"].thermal_power_estimate_w,
         attr_fn=lambda d: {"basis": "nominal_circulation_estimate"},
     ),
@@ -258,7 +273,8 @@ SYSTEM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         icon="mdi:delta",
-        value_fn=lambda d: d["boiler"].delta_t_k,
+        **_DETAIL,
+        value_fn=lambda d: _rounded(d["boiler"].delta_t_k, 1),
     ),
     _desc(
         "active_source_advice",
@@ -266,7 +282,7 @@ SYSTEM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         options=[SOURCE_BOILER, SOURCE_HEAT_PUMP, SOURCE_BOTH, SOURCE_NONE],
         icon="mdi:fire",
         value_fn=lambda d: d["advice"].source,
-        attr_fn=lambda d: {"blocked": d["advice"].blocked, "observation_only": d.get("control_mode") != CTRL_ACTIVE},
+        attr_fn=lambda d: {"blocked": d["advice"].blocked, "observation_only": _automation_state(d) != AUTOMATION_ACTIVE},
     ),
     _desc(
         "decision_reason",
@@ -338,8 +354,8 @@ SYSTEM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda d: d["snapshot"].outdoor_temp.value_or_none,
-        attr_fn=lambda d: {"source": d["snapshot"].outdoor_temp_source},
+        value_fn=lambda d: d.get("outdoor_c"),
+        attr_fn=lambda d: {"source": d.get("outdoor_source")},
     ),
 )
 
@@ -363,7 +379,8 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         icon="mdi:thermometer-lines",
-        value_fn=lambda r: r.deviation_k,
+        **_DETAIL,
+        value_fn=lambda r: _rounded(r.deviation_k, 1),
     ),
     _room_desc(
         "demand",
@@ -371,28 +388,31 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         icon="mdi:radiator",
         value_fn=lambda r: None if r.demand is None else round(r.demand * 100.0, 0),
-        attr_fn=lambda r: {"issues": list(r.issues), "internal_gain_w": r.internal_gain_w},
+        attr_fn=lambda r: {"issues": list(r.issues), "internal_gain_w": r.internal_gain_w, "boiler_call": r.boiler_call},
     ),
     _room_desc(
         "trend",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="°C/h",
         icon="mdi:trending-up",
-        value_fn=lambda r: r.trend_k_per_h,
+        **_DETAIL,
+        value_fn=lambda r: _rounded(r.trend_k_per_h, 2),
     ),
     _room_desc(
         "dew_point",
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
-        value_fn=lambda r: r.dew_point_c,
+        **_DETAIL,
+        value_fn=lambda r: _rounded(r.dew_point_c, 1),
     ),
     _room_desc(
         "abs_humidity",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="g/m³",
         icon="mdi:water-percent",
-        value_fn=lambda r: r.abs_humidity_g_m3,
+        **_DETAIL,
+        value_fn=lambda r: _rounded(r.abs_humidity_g_m3, 1),
     ),
 )
 
@@ -409,6 +429,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, a
 
 class DescribedSensor(DescribedEntity, SensorEntity):
     entity_description: ThrifthermSensorDescription
+    # long lists that repeat what the history of the state already holds, or the learning store
+    _unrecorded_attributes = frozenset(
+        {"recent_plans", "recent_commands", "cop_map_by_outdoor_temp", "reasons",
+         "room_heat_up_rates", "room_cooling_rates", "room_heating_power_k_h"}
+    )
 
     @property
     def native_value(self) -> Any:
@@ -442,10 +467,14 @@ class ThermostatPlanSensor(ThrifthermEntity, SensorEntity):
         cmd = self._cmd()
         if cmd is None:
             return None
+        echo = (self.coordinator.data.get("echoes_ignored") or {}).get(self._room_key)
         return {
             "control_mode": self.coordinator.data.get("room_control_mode"),
             "setpoint": cmd.target,
             "thermostat_setpoint": cmd.thermostat_target,
             "reason": cmd.reason,
             "commands_sent": self.coordinator.data.get("room_control_mode") == "active",
+            # the last jump of the thermostat that was a late radio echo, not a hand on the knob
+            "echo_ignored_at": None if echo is None else dt_util.utc_from_timestamp(echo[0]).isoformat(),
+            "echo_ignored_value": None if echo is None else echo[1],
         }

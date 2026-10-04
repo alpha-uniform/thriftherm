@@ -71,7 +71,7 @@ SYSTEM_NONE: Final = "none"  # no central heat source: heat pump and room contro
 SYSTEM_TYPES: Final = (SYSTEM_GAS, SYSTEM_DISTRICT, SYSTEM_NONE)
 DEFAULT_SYSTEM_TYPE: Final = SYSTEM_GAS
 
-CONFIG_VERSION: Final = 2
+CONFIG_VERSION: Final = 3  # 3: everything in the options, data empty
 
 CONF_ELECTRICITY_PRICE: Final = "electricity_price"
 CONF_GAS_PRICE: Final = "gas_price"
@@ -108,6 +108,11 @@ CONF_BOILER_PUMP_STATE: Final = "boiler_pump_state"
 # 2026-09-18 it read "off" while the pump ran audibly. The real pump is ebusd "WP" (d.10).
 CONF_BOILER_PUMP_RUNNING: Final = "boiler_pump_running"
 CONF_BOILER_STATE_NUMBER: Final = "boiler_state_number"  # ebusd "Statenumber": the S.xx on the display
+# what the boiler's own status code says it burns for
+BOILER_REPORTS_HEATING: Final = "heating"
+BOILER_REPORTS_HOT_WATER: Final = "hot_water"
+# overrun or burner lockout after a heating run: no gas, and the circuit is cooling back
+BOILER_REPORTS_HEATING_AFTER: Final = "heating_after"
 CONF_BOILER_HWC_MODE: Final = "boiler_hwc_mode"
 CONF_BOILER_SIGNAL: Final = "boiler_signal"
 CONF_BOILER_CIRCULATION_L_H: Final = "boiler_circulation_l_h"
@@ -218,6 +223,7 @@ CONF_BOOST_DURATION_MIN: Final = "boost_duration_min"
 CONF_HEAT_PUMP_LEARNING_RUNS: Final = "midea_learning_runs"
 CONF_HEAT_PUMP_ALLOW_ACTIVE: Final = "midea_allow_active_control"
 CONF_ROOM_ALLOW_ACTIVE: Final = "room_allow_active_control"
+CONF_ROOM_ECHO_FILTER: Final = "room_echo_filter"  # ignore late radio echoes of Better Thermostat
 
 # Zigbee room sensors report only on change; in a room at steady temperature
 # three silent hours are normal (measured 2026-09-13, living room). A shorter
@@ -263,6 +269,7 @@ DEFAULT_BOOST_DURATION_MIN: Final = 45
 DEFAULT_HEAT_PUMP_LEARNING_RUNS: Final = True
 DEFAULT_HEAT_PUMP_ALLOW_ACTIVE: Final = False
 DEFAULT_ROOM_ALLOW_ACTIVE: Final = False
+DEFAULT_ROOM_ECHO_FILTER: Final = True
 
 SERVICE_SET_OVERRIDE: Final = "set_override"
 SERVICE_CLEAR_OVERRIDE: Final = "clear_override"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from datetime import timedelta
 
 import pytest
@@ -143,9 +144,14 @@ async def test_setup_creates_entities_and_observes(hass: HomeAssistant) -> None:
     assert bath_demand is not None
     assert float(bath_demand.state) == 100.0
 
-    dew = hass.states.get("sensor.thriftherm_badezimmer_dew_point")
-    assert dew is not None
-    assert 10.0 < float(dew.state) < 11.5
+    # a detail sensor: computed, but disabled until enabled, so it writes nothing to the recorder
+    from homeassistant.helpers import entity_registry as er
+
+    dew = er.async_get(hass).async_get("sensor.thriftherm_badezimmer_dew_point")
+    assert dew is not None and dew.disabled_by is er.RegistryEntryDisabler.INTEGRATION
+    assert hass.states.get("sensor.thriftherm_badezimmer_dew_point") is None
+    rooms = hass.config_entries.async_entries(DOMAIN)[0].runtime_data.data["rooms"]
+    assert 10.0 < rooms["badezimmer"].dew_point_c < 11.5
 
     heating = hass.states.get("binary_sensor.thriftherm_boiler_space_heating_active")
     assert heating is not None and heating.state == "on"
@@ -237,7 +243,8 @@ async def test_config_flow_full_path(hass: HomeAssistant) -> None:
     good = {**bad, "schedule_weekday": "06:00-22:00", "served_by_midea": False}
     result = await hass.config_entries.flow.async_configure(result["flow_id"], good)
     assert result["type"] == "create_entry"
-    assert [r[CONF_ROOM_KEY] for r in result["data"][CONF_ROOMS]] == ["badezimmer", "kuche"]
+    assert result["data"] == {}  # everything in the options (config version 3)
+    assert [r[CONF_ROOM_KEY] for r in result["options"][CONF_ROOMS]] == ["badezimmer", "kuche"]
     await hass.async_block_till_done()
 
     # second instance is refused
@@ -590,10 +597,59 @@ async def test_entry_from_version_1_is_migrated_to_an_own_boiler(hass: HomeAssis
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
 
-    assert entry.version == 2
-    assert entry.data["system_type"] == "gas"
+    assert entry.version == 3
+    assert entry.data == {} and entry.options == {**_entry_data(), "system_type": "gas"}
     assert entry.runtime_data.has_boiler is True
     assert hass.states.get("sensor.thriftherm_boiler_command") is not None
+
+
+# keys of fields removed before 0.4.0, still in the live entry on 2026-09-28
+LEFTOVERS = {
+    "boiler_dhw_setpoint": "sensor.dhw_setpoint", "boiler_flow_temp_desired": "sensor.flow_desired",
+    "boiler_storage_temp": "sensor.storage", "fallback_room_temp": 19.0, "midea_energy": "sensor.midea_energy",
+    "midea_outlet_rh": "sensor.midea_outlet_rh",
+}
+
+
+async def test_entry_from_version_2_keeps_one_copy_of_the_configuration(hass: HomeAssistant, hass_storage) -> None:
+    """Like the live entry: the data froze at setup, every options save wrote a full copy into the options."""
+    import json
+
+    from custom_components.thriftherm import learning_reset
+    from custom_components.thriftherm.config_schema import CONFIG_KEYS
+    from custom_components.thriftherm.const import STORAGE_KEY, STORAGE_VERSION
+
+    data = {**_entry_data(), "system_type": "gas", "boiler_flow_min": 30.0, "boiler_signal": "binary_sensor.adapter", **LEFTOVERS}
+    rooms = [{**room, "schedule_entity": f"schedule.{room[CONF_ROOM_KEY]}"} for room in data[CONF_ROOMS]]
+    options = {
+        **data, "boiler_flow_min": 45.0, "boiler_signal": "binary_sensor.ebus", "boiler_allow_active_control": True,
+        "midea_room": "wohnzimmer", "room_echo_filter": True, "sensor_max_age_min": 180.0, CONF_ROOMS: rooms,
+    }
+    read_before = {**data, **options}
+    # learned on exactly this configuration; 0.4.0 still fingerprinted the flow limits
+    basis = learning_reset.basis(read_before)
+    basis["boiler"] = json.dumps({"curve_cold": 55.0, "curve_warm": 30.0, "flow_min": 45.0, "flow_max": 60.0}, sort_keys=True)
+    hass_storage[f"{STORAGE_KEY}.live"] = {
+        "version": STORAGE_VERSION, "minor_version": 1, "key": f"{STORAGE_KEY}.live",
+        "data": {"learning_basis": basis, "boiler_memory": {"offset_k": 2.0}, "heat_rates": {"rates": {"badezimmer": [1.5]}},
+                 "control_memory": {"offset_k": 1.5}},
+    }
+    _set_states(hass)
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=data, options=options, entry_id="live", unique_id=DOMAIN, title="Thriftherm", version=2
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert entry.version == 3 and entry.data == {}
+    assert set(entry.options) == set(read_before) - set(LEFTOVERS)  # presence matters: a key holding None is no default
+    assert {k: entry.options.get(k) for k in CONFIG_KEYS} == {k: read_before.get(k) for k in CONFIG_KEYS}
+    assert entry.options["boiler_flow_min"] == 45.0 and entry.options[CONF_ROOMS] == rooms  # the options won
+    coordinator = entry.runtime_data
+    assert coordinator.last_learning_reset is None  # the migration forgets nothing learned
+    assert coordinator.boiler_memory.offset_k == 2.0 and coordinator.control_memory.offset_k == 1.5
+    assert coordinator.heat_rates.rates == {"badezimmer": [1.5]}
 
 
 async def test_quick_heat_up_exists_for_every_controllable_room(hass: HomeAssistant) -> None:
@@ -663,6 +719,37 @@ async def test_repair_issues_appear_and_clear(hass: HomeAssistant) -> None:
     assert registry.async_get_issue(DOMAIN, "thriftherm_schedule_missing_wohnzimmer") is None
 
 
+async def test_repairs_and_the_store_go_with_the_entry(hass: HomeAssistant, hass_storage) -> None:
+    """Code audit 2026-09-28 (H6): repairs stayed after disabling or deleting the entry, and its store stayed behind."""
+    from homeassistant.config_entries import ConfigEntryDisabler
+    from homeassistant.helpers import issue_registry as ir
+
+    entry = await _setup(hass)
+    registry = ir.async_get(hass)
+    issue = "thriftherm_airflow_not_calibrated"  # the heat pump has no airflow curve
+    assert registry.async_get_issue(DOMAIN, issue) is not None
+
+    # a reload keeps it, and an ignored repair stays ignored
+    ir.async_ignore_issue(hass, DOMAIN, issue, True)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert registry.async_get_issue(DOMAIN, issue).dismissed_version is not None
+
+    assert await hass.config_entries.async_set_disabled_by(entry.entry_id, ConfigEntryDisabler.USER)
+    await hass.async_block_till_done()
+    assert registry.async_get_issue(DOMAIN, issue) is None
+    assert await hass.config_entries.async_set_disabled_by(entry.entry_id, None)
+    await hass.async_block_till_done()
+    assert registry.async_get_issue(DOMAIN, issue) is not None  # enabled again, the first cycle finds it
+
+    store = f"thriftherm.learning.{entry.entry_id}"
+    assert store in hass_storage
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert registry.async_get_issue(DOMAIN, issue) is None
+    assert store not in hass_storage
+
+
 async def test_warns_when_the_heat_pump_cannot_reach_the_rooms_it_serves(hass: HomeAssistant) -> None:
     """Ducts missing: the warm air stays where the unit stands, not in the bathroom."""
     from homeassistant.helpers import issue_registry as ir
@@ -724,6 +811,24 @@ async def test_boiler_learning_waits_for_active_boiler_control(hass: HomeAssista
     assert "boiler_control_not_active" in state.attributes["paused_because"]
 
 
+async def test_learning_without_a_burner_run_says_why_it_waits(hass: HomeAssistant) -> None:
+    """Nothing blocks the learning, but it only learns from a running burner (shown since 2026-10-03)."""
+    entry = await _setup(hass, options={"boiler_allow_active_control": True})
+    coordinator = entry.runtime_data
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": "select.thriftherm_boiler_control", "option": "active"}, blocking=True
+    )
+    coordinator._last_target_change_ts = 0.0
+    hass.states.async_set("sensor.pump", "off")
+    hass.states.async_set("sensor.gas_flow", "0")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.thriftherm_learning_state")
+    assert state.state == "paused"
+    assert coordinator.data["learning_blocked_by"] == []
+    assert state.attributes["paused_because"] == ["no_heating_run"]
+
+
 async def test_switching_heat_pump_control_starts_from_a_clean_run_state(hass: HomeAssistant) -> None:
     from custom_components.thriftherm.const import CONF_HEAT_PUMP_ALLOW_ACTIVE
     from custom_components.thriftherm.engines.heat_pump_control import ControlMemory
@@ -780,7 +885,7 @@ async def test_services_without_a_loaded_entry_raise(hass: HomeAssistant) -> Non
 
 async def test_entry_from_a_newer_version_is_not_set_up(hass: HomeAssistant) -> None:
     _set_states(hass)
-    entry = MockConfigEntry(domain=DOMAIN, data=_entry_data(), options={}, unique_id=DOMAIN, title="Thriftherm", version=3)
+    entry = MockConfigEntry(domain=DOMAIN, data=_entry_data(), options={}, unique_id=DOMAIN, title="Thriftherm", version=4)
     entry.add_to_hass(hass)
     assert not await hass.config_entries.async_setup(entry.entry_id)
 
@@ -900,6 +1005,30 @@ async def test_the_real_pump_and_the_display_status_reach_the_boiler_sensor(hass
     assert attrs["boiler_status"] == "S.8"
 
 
+async def test_the_display_shows_what_the_control_uses(hass: HomeAssistant) -> None:
+    """Code audit 2026-09-28 (K8): heating and hot water showed at once, "observation only" looked
+    at the heat pump alone, and the outdoor sensor left out the last known value the curve uses."""
+    hass.states.async_set("sensor.statenumber", "14")  # the boiler itself says: hot water
+    entry = await _setup(hass, options={CONF_BOILER_STATE_NUMBER: "sensor.statenumber", "room_allow_active_control": True})
+    assert hass.states.get("binary_sensor.thriftherm_boiler_hot_water_active").state == "on"
+    assert hass.states.get("binary_sensor.thriftherm_boiler_space_heating_active").state == "off"
+
+    advice = "sensor.thriftherm_recommended_heat_source"
+    assert hass.states.get(advice).attributes["observation_only"] is True
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": "select.thriftherm_room_control", "option": "active"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(advice).attributes["observation_only"] is False  # the room control acts
+
+    outdoor = "sensor.thriftherm_outdoor_temperature_selected_source"
+    assert float(hass.states.get(outdoor).state) == 4.0 and hass.states.get(outdoor).attributes["source"] == "sensor.outdoor"
+    hass.states.async_set("sensor.outdoor", "unavailable")
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    assert float(hass.states.get(outdoor).state) == 4.0 and hass.states.get(outdoor).attributes["source"] == "last_known"
+
+
 async def test_after_a_restart_the_boiler_waits_for_the_room_sensors(hass: HomeAssistant) -> None:
     _set_states(hass)
     hass.states.async_set("sensor.bath_temp", "unknown")
@@ -912,3 +1041,124 @@ async def test_after_a_restart_the_boiler_waits_for_the_room_sensors(hass: HomeA
     attrs = hass.states.get("sensor.thriftherm_boiler_command").attributes
     assert hass.states.get("sensor.thriftherm_boiler_command").state == "hands_off"
     assert "waiting_for_room_data" in attrs["blockers"]
+
+
+async def test_rooms_heat_along_while_another_room_calls_the_boiler(hass: HomeAssistant) -> None:
+    """The living room calls; the bathroom, 0.1 K below comfort, opens its radiator too."""
+    entry = await _setup(hass)
+    hass.states.async_set("sensor.bath_temp", "20.9")
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+
+    assert hass.states.get("sensor.thriftherm_boiler_command").state == "heat"
+    living = hass.states.get("sensor.thriftherm_wohnzimmer_heat_demand")
+    assert living.attributes["boiler_call"] == "calling"
+    bath_demand = hass.states.get("sensor.thriftherm_badezimmer_heat_demand")
+    assert bath_demand.attributes["boiler_call"] == "idle"  # too close to comfort to call by itself
+    bath = hass.states.get("sensor.thriftherm_badezimmer_target_temperature")
+    assert float(bath.state) == 21.5 and bath.attributes["reason"] == "joined_boiler_run"
+    assert hass.states.get("sensor.thriftherm_wohnzimmer_target_temperature").attributes["reason"] == "schedule_comfort"
+
+
+async def test_rooms_of_a_cooling_heat_pump_never_call_the_boiler(hass: HomeAssistant) -> None:
+    """Cooling never collides with heating (code audit 2026-09-28, F8): the bathroom, served by the
+    heat pump and 2.5 K below comfort, called the boiler while the heat pump cooled it."""
+    _set_states(hass)
+    midea = hass.states.get("climate.midea")
+    hass.states.async_set("climate.midea", "cool", midea.attributes)
+    hass.states.async_set("climate.bath_bt", "heat", {"temperature": 21.0, "current_temperature": 18.5})
+    hass.states.async_set("sensor.living_temp", "19.0")  # warm enough: only the bathroom could call
+    data = _entry_data()
+    data[CONF_ROOMS][0]["climate_entity"] = "climate.bath_bt"
+    entry = MockConfigEntry(domain=DOMAIN, data=data, options={}, unique_id=DOMAIN, title="Thriftherm")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+
+    bath = coordinator.data["rooms"]["badezimmer"]
+    assert bath.target == 17.0 and bath.target_reason == "heat_pump_cooling" and bath.boiler_call == "not_allowed"
+    assert coordinator.data["advice"].source == "none"
+    assert coordinator.data["boiler_command"].plan == "block"
+    assert hass.states.get("sensor.thriftherm_badezimmer_thermostat_plan").attributes["setpoint"] == 17.0
+
+    # frost protection always applies
+    hass.states.async_set("sensor.bath_temp", "5.0")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert coordinator.data["advice"].source == "boiler"
+    assert coordinator.data["boiler_command"].plan == "heat"
+
+
+async def test_a_sent_setpoint_is_stored_at_once(hass: HomeAssistant, hass_storage) -> None:
+    """2026-09-26: the store still held 21.0 while the thermostat had 21.5 from us; a restart
+    took that for a change by hand. A sent setpoint is now written without waiting."""
+    async_mock_service(hass, "climate", "set_temperature")
+    _set_states(hass)
+    hass.states.async_set("climate.bath_bt", "heat", {"temperature": 17.0, "current_temperature": 18.5})
+    data = _entry_data()
+    data[CONF_ROOMS][0]["climate_entity"] = "climate.bath_bt"
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=data, options={"room_allow_active_control": True}, unique_id=DOMAIN, title="Thriftherm"
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": "select.thriftherm_room_control", "option": "active"}, blocking=True
+    )
+    await hass.async_block_till_done()
+
+    # the thermostat forgot our value; the periodic save has just run, nothing else is pending
+    from custom_components.thriftherm.engines.room_control import RoomCtrlMemory
+
+    coordinator.room_ctrl_memory["badezimmer"] = RoomCtrlMemory()
+    coordinator._store_dirty = False
+    coordinator._last_store_save = time.time()
+    stored = next(v for k, v in hass_storage.items() if k.startswith("thriftherm"))["data"]
+    stored["room_ctrl_memory"] = {}
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    stored = next(v for k, v in hass_storage.items() if k.startswith("thriftherm"))["data"]
+    assert stored["room_ctrl_memory"]["badezimmer"]["last_sent_target"] == 21.0
+
+
+async def test_state_is_saved_when_home_assistant_stops(hass: HomeAssistant) -> None:
+    """Home Assistant does not unload entries on stop (code review 2026-09-28)."""
+    from unittest.mock import AsyncMock
+
+    from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    coordinator.async_save_store = AsyncMock()
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+    await hass.async_block_till_done()
+    coordinator.async_save_store.assert_awaited_with(force=True)
+
+
+async def test_the_control_keeps_running_with_every_entity_disabled(hass: HomeAssistant) -> None:
+    from custom_components.thriftherm.const import PLATFORMS
+
+    entry = await _setup(hass)
+    assert await hass.config_entries.async_unload_platforms(entry, PLATFORMS)  # no entity listens any more
+    assert entry.runtime_data._listeners  # our own listener still schedules the next cycle
+    await entry.runtime_data.async_shutdown()  # the cycle timer would outlive the test
+
+
+async def test_a_deleted_room_takes_its_device_along(hass: HomeAssistant) -> None:
+    from homeassistant.helpers import device_registry as dr
+
+    from custom_components.thriftherm import _remove_stale_registry_entries
+
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    dev_reg = dr.async_get(hass)
+    room_device = dev_reg.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}_room_wohnzimmer"), entry.entry_id)
+    assert room_device is not None
+    coordinator.builder.rooms = tuple(r for r in coordinator.builder.rooms if r.key != "wohnzimmer")
+    _remove_stale_registry_entries(hass, entry, coordinator)
+    assert dev_reg.async_get(room_device.id) is None
+    assert dev_reg.async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id) is not None  # the hub stays

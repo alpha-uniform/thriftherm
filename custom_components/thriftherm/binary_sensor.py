@@ -39,7 +39,8 @@ SYSTEM_BINARY: tuple[ThrifthermBinaryDescription, ...] = (
         "boiler_heating_active",
         boiler_only=True,
         device_class=BinarySensorDeviceClass.RUNNING,
-        value_fn=lambda d: d["boiler"].hc_active,
+        # never together with hot water, as the hot water sensor below detects it
+        value_fn=lambda d: d["boiler"].hc_active and not d["boiler_command"].hot_water,
     ),
     _desc(
         "boiler_hwc_active",
@@ -80,7 +81,11 @@ SYSTEM_BINARY: tuple[ThrifthermBinaryDescription, ...] = (
         "override_active",
         icon="mdi:account-clock",
         value_fn=lambda d: bool(d.get("overrides")),
-        attr_fn=lambda d: {"overrides": d.get("overrides"), "away_return_ts": d.get("away_return_ts")},
+        attr_fn=lambda d: {
+            "overrides": d.get("overrides"),
+            "away_return_ts": d.get("away_return_ts"),
+            "away_return_provisional": d.get("away_return_provisional", False),
+        },
     ),
     _desc(
         "midea_heating_available",

@@ -16,6 +16,7 @@ from .const import (
     CONF_BOILER_EFFICIENCY,
     CONF_BOILER_FLOW_TEMP,
     CONF_BOILER_HWC_MODE,
+    CONF_BOILER_PROFILE,
     CONF_BOILER_PUMP_RUNNING,
     CONF_BOILER_PUMP_STATE,
     CONF_BOILER_STATE_NUMBER,
@@ -23,8 +24,12 @@ from .const import (
     CONF_BOILER_SIGNAL,
     CONF_BREAK_EVEN_MARGIN_OFF,
     CONF_BREAK_EVEN_MARGIN_ON,
+    CONF_COP_EMA_TAU_S,
+    CONF_COP_MAX_RAW,
+    CONF_COP_MAX_SENSOR_AGE_S,
     CONF_COP_MIN_DELTA_T,
     CONF_COP_MIN_POWER_W,
+    CONF_COP_MIN_RAW,
     CONF_COP_MIN_SAMPLES,
     CONF_COP_SETTLE_MAX_K_PER_MIN,
     CONF_COP_WARMUP_S,
@@ -72,6 +77,7 @@ from .const import (
     CONF_BOILER_FLOW_MIN,
     CONF_HEAT_PUMP_ALLOW_ACTIVE,
     CONF_ROOM_ALLOW_ACTIVE,
+    CONF_ROOM_ECHO_FILTER,
     CONF_HEAT_PUMP_LEARNING_RUNS,
     CONF_HEAT_PUMP_MIN_OFF_MIN,
     CONF_HEAT_PUMP_MIN_RUN_MIN,
@@ -145,6 +151,7 @@ from .const import (
     DEFAULT_BOILER_FLOW_MIN,
     DEFAULT_HEAT_PUMP_ALLOW_ACTIVE,
     DEFAULT_ROOM_ALLOW_ACTIVE,
+    DEFAULT_ROOM_ECHO_FILTER,
     DEFAULT_HEAT_PUMP_LEARNING_RUNS,
     DEFAULT_HEAT_PUMP_MIN_OFF_MIN,
     DEFAULT_HEAT_PUMP_MIN_RUN_MIN,
@@ -237,13 +244,15 @@ def schema_prices(cur: Mapping[str, Any]) -> vol.Schema:
     }
     system = system_type_from_config(cur)
     if system == SYSTEM_GAS:
-        fields[_req(CONF_GAS_PRICE, cur, DEFAULT_GAS_PRICE)] = _number(0, 1, "any", "€/kWh")
+        # a price of 0 leaves nothing to compare against
+        fields[_req(CONF_GAS_PRICE, cur, DEFAULT_GAS_PRICE)] = _number(0.001, 1, "any", "€/kWh")
         fields[_req(CONF_BOILER_EFFICIENCY, cur, DEFAULT_BOILER_EFFICIENCY)] = _number(0.5, 1.1, 0.01)
         fields[_req(CONF_GAS_CALORIFIC_VALUE, cur, DEFAULT_GAS_CALORIFIC_VALUE)] = _number(8, 14, 0.001, "kWh/m³")
         fields[_req(CONF_GAS_Z_FACTOR, cur, DEFAULT_GAS_Z_FACTOR)] = _number(0.8, 1.1, "any")
     elif system == SYSTEM_DISTRICT:
-        fields[_req(CONF_HEAT_PRICE, cur, DEFAULT_HEAT_PRICE)] = _number(0, 1, "any", "€/kWh")
-        fields[_req(CONF_HEAT_CONSUMPTION_SHARE, cur, DEFAULT_HEAT_CONSUMPTION_SHARE)] = _number(0, 100, 1, "%")
+        fields[_req(CONF_HEAT_PRICE, cur, DEFAULT_HEAT_PRICE)] = _number(0.001, 1, "any", "€/kWh")
+        # at least 1 %: with no consumption share and no ownership share a saved kWh would save nothing
+        fields[_req(CONF_HEAT_CONSUMPTION_SHARE, cur, DEFAULT_HEAT_CONSUMPTION_SHARE)] = _number(1, 100, 1, "%")
         fields[_req(CONF_HEAT_OWNERSHIP_SHARE, cur, DEFAULT_HEAT_OWNERSHIP_SHARE)] = _number(0, 100, 0.01, "%")
     return vol.Schema(fields)
 
@@ -378,11 +387,26 @@ def schema_parameters(cur: Mapping[str, Any]) -> vol.Schema:
             _req(CONF_HEAT_PUMP_LEARNING_RUNS, cur, DEFAULT_HEAT_PUMP_LEARNING_RUNS): selector.BooleanSelector(),
             _req(CONF_HEAT_PUMP_ALLOW_ACTIVE, cur, DEFAULT_HEAT_PUMP_ALLOW_ACTIVE): selector.BooleanSelector(),
             _req(CONF_ROOM_ALLOW_ACTIVE, cur, DEFAULT_ROOM_ALLOW_ACTIVE): selector.BooleanSelector(),
+            _req(CONF_ROOM_ECHO_FILTER, cur, DEFAULT_ROOM_ECHO_FILTER): selector.BooleanSelector(),
         }
     )
 
 
 PARAMETER_KEYS = keys_of(schema_parameters)
+
+# every top-level key the integration reads; anything else in a stored entry is a leftover
+CONFIG_KEYS = frozenset(
+    (
+        *SYSTEM_KEYS, *PRICE_KEYS, *BOILER_KEYS, CONF_BOILER_PROFILE, *HEAT_PUMP_KEYS, *OUTDOOR_KEYS, *PARAMETER_KEYS, CONF_ROOMS,
+        # read with a default, never asked for
+        CONF_COP_EMA_TAU_S, CONF_COP_MAX_RAW, CONF_COP_MAX_SENSOR_AGE_S, CONF_COP_MIN_RAW,
+    )
+)
+
+
+def known_keys(config: Mapping[str, Any]) -> dict[str, Any]:
+    """Only the keys the integration reads."""
+    return {k: v for k, v in config.items() if k in CONFIG_KEYS}
 
 
 def room_options(rooms: Iterable[Mapping[str, Any]]) -> list[selector.SelectOptionDict]:
@@ -427,7 +451,7 @@ def schema_room(cur: Mapping[str, Any], allow_add_another: bool, heat_pump: bool
 
 
 def validate_room(user_input: Mapping[str, Any], existing: Iterable[Mapping[str, Any]] = ()) -> dict[str, str]:
-    """Check one room; pass the existing rooms when a new one is added, so its name stays unique."""
+    """Check one room; pass the other rooms, so its name stays unique (also when one is renamed)."""
     errors: dict[str, str] = {}
     for key in (CONF_ROOM_SCHEDULE_WEEKDAY, CONF_ROOM_SCHEDULE_WEEKEND):
         try:
@@ -436,8 +460,32 @@ def validate_room(user_input: Mapping[str, Any], existing: Iterable[Mapping[str,
             errors[key] = "invalid_schedule"
     if float(user_input.get(CONF_ROOM_SETBACK_TEMP, 0)) > float(user_input.get(CONF_ROOM_COMFORT_TEMP, 0)):
         errors[CONF_ROOM_SETBACK_TEMP] = "setback_above_comfort"
-    if any(r[CONF_ROOM_KEY] == slugify(str(user_input[CONF_ROOM_NAME])) for r in existing):
+    slug = slugify(str(user_input[CONF_ROOM_NAME]))
+    if any(slug in (r[CONF_ROOM_KEY], slugify(str(r.get(CONF_ROOM_NAME, "")))) for r in existing):
         errors[CONF_ROOM_NAME] = "duplicate_room"
+    if user_input.get(CONF_ROOM_DRYING):
+        # drying heats with the heat pump and starts on a rise in humidity; without either it silently never runs
+        if not user_input.get(CONF_ROOM_HEAT_PUMP):
+            errors[CONF_ROOM_DRYING] = "drying_needs_heat_pump"
+        if not user_input.get(CONF_ROOM_HUMIDITY):
+            errors[CONF_ROOM_HUMIDITY] = "drying_needs_humidity"
+    return errors
+
+
+def validate_boiler(user_input: Mapping[str, Any]) -> dict[str, str]:
+    """Refuse a curve lower in the cold than in mild weather, and a minimum above the maximum.
+
+    Swapped limits pin the flow to one value and block the learning both ways.
+    """
+
+    def value(key: str, default: float) -> float:
+        return float(user_input.get(key, default))
+
+    errors: dict[str, str] = {}
+    if value(CONF_BOILER_CURVE_COLD, DEFAULT_BOILER_CURVE_COLD) < value(CONF_BOILER_CURVE_WARM, DEFAULT_BOILER_CURVE_WARM):
+        errors[CONF_BOILER_CURVE_COLD] = "curve_inverted"
+    if value(CONF_BOILER_FLOW_MIN, DEFAULT_BOILER_FLOW_MIN) > value(CONF_BOILER_FLOW_MAX, DEFAULT_BOILER_FLOW_MAX):
+        errors[CONF_BOILER_FLOW_MIN] = "flow_min_above_max"
     return errors
 
 
