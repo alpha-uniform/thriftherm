@@ -22,6 +22,8 @@ from .const import (
     AUTOMATION_OBSERVING,
     AUTOMATION_PLANNING,
     BOILER_PLANS,
+    CONF_GAS_FLOW,
+    CONF_GAS_VOLUME,
     ROOM_PLANS,
     CTRL_ACTIVE,
     CTRL_SHADOW,
@@ -49,8 +51,9 @@ class ThrifthermSensorDescription(SensorEntityDescription):
     value_fn: Callable[[Data], Any]
     attr_fn: Callable[[Data], dict[str, Any]] | None = None
     heat_pump_addon: bool = False  # only created when a Midea heat pump is configured
-    boiler_only: bool = False  # needs an own boiler on ebusd (flow/return, gas meter, SetMode)
+    boiler_only: bool = False  # needs an own boiler on ebusd (flow/return, SetMode)
     heat_source: bool = False  # needs any central heat source to compare against
+    needs_input: str | None = None  # config key of an optional input; without it the value would stay unknown
 
 
 def _cop_attrs(d: Data) -> dict[str, Any]:
@@ -249,11 +252,13 @@ SYSTEM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
     _power(
         "gas_power",
         boiler_only=True,
+        needs_input=CONF_GAS_FLOW,
         value_fn=lambda d: d["boiler"].gas_power_w,
     ),
     _desc(
         "gas_energy",
         boiler_only=True,
+        needs_input=CONF_GAS_VOLUME,
         device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,

@@ -110,11 +110,13 @@ class SettingEntity(ThrifthermEntity):
 
 
 def is_wanted(coordinator: ThrifthermCoordinator, description: Any) -> bool:
-    """Leave out what needs a heat pump, an own boiler or a heat source the installation lacks."""
+    """Leave out what needs a heat pump, an own boiler, a heat source or an input the installation lacks."""
+    needs_input = getattr(description, "needs_input", None)
     return (
         (coordinator.has_heat_pump or not getattr(description, "heat_pump_addon", False))
         and (coordinator.has_boiler or not getattr(description, "boiler_only", False))
         and (coordinator.has_heat_source or not getattr(description, "heat_source", False))
+        and (needs_input is None or bool(coordinator.config.get(needs_input)))
     )
 
 

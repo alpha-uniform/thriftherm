@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **No gas meter, no gas sensors.** The control never needed the gas meter (burner runs and hot water come from the pump state and the boiler's status code, measured 2026-10-09: S.4 arrived within a second of the meter), but *Gas power* and *Gas energy* were created anyway and stayed "unknown". Each is now created only when its meter value is configured, and removed when it is taken out.
+
 ## 0.5.0 — 2026-10-04
 
 Three more weeks of a real boiler controlled day and night (Vaillant atmoTEC plus VCW 194/4-5 over ebusd, five radiator rooms with Better Thermostat), the first cold evenings of the season included, and a code review of the whole integration. Almost every change below comes from a measurement on that installation, and each entry says what was measured.
