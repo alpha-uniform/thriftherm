@@ -144,7 +144,7 @@ Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme un
 | Warmwasser-Modus | ebusd **Status02 hwcmode** |
 | eBUS-Signal (Binärsensor) | **das Signal von ebusd selbst** (`binary_sensor.…_global_signal`), nicht den Verbindungssensor des Adapters: Fällt der Adapter aus dem WLAN, bleibt sein eigener Sensor auf seinem letzten Wert „an“ stehen (gemessen) |
 | Nenn-Umlaufwassermenge der Pumpe | den Standardwert lassen, außer die Anleitung deiner Therme sagt etwas anderes |
-| Gaszähler Volumen (m³, Gesamt), Gaszähler Momentanfluss (m³/h) | deine Gaszähler-Entitäten, falls vorhanden; sonst leer lassen |
+| Gaszähler Volumen (m³, Gesamt), Gaszähler Momentanfluss (m³/h) | deine Gaszähler-Entitäten, falls vorhanden; sonst leer lassen. Die Steuerung braucht keinen Gaszähler: Brennerlauf und Warmwasser erkennt sie an Pumpe und Statuscode. Ohne Zähler gibt es die Sensoren *Gasleistung* und *Gasenergie* nicht |
 | ebusd-Kreis der Therme (meist bai) | `bai` lassen, außer dein ebusd-Gerät nutzt einen anderen Kreisnamen |
 | Heizkurve: Vorlauf bei -10 °C außen | mit dem Standardwert 55 °C beginnen |
 | Heizkurve: Vorlauf bei +15 °C außen | mit dem Standardwert 30 °C beginnen |

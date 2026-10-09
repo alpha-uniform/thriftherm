@@ -159,6 +159,7 @@ async def test_setup_creates_entities_and_observes(hass: HomeAssistant) -> None:
     gas_power = hass.states.get("sensor.thriftherm_gas_power")
     assert gas_power is not None
     assert float(gas_power.state) == pytest.approx(12889, rel=0.01)
+    assert hass.states.get("sensor.thriftherm_gas_energy") is None  # only the flow is configured
 
     mode = hass.states.get("select.thriftherm_operating_mode")
     assert mode is not None and mode.state == "auto"
@@ -993,6 +994,51 @@ async def test_a_short_burn_is_not_lost_between_cycles(hass: HomeAssistant) -> N
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=11))
     await hass.async_block_till_done()
     assert coordinator.data["boiler"].gas_power_w > 1000
+
+
+async def test_the_boiler_control_works_without_a_gas_meter(hass: HomeAssistant) -> None:
+    """The gas meter is optional: pump state, status code and temperatures carry the control."""
+    publish = async_mock_service(hass, "mqtt", "publish")
+    _set_states(hass)
+    hass.states.async_set("sensor.statenumber", "31")
+    data = {k: v for k, v in _entry_data().items() if k != CONF_GAS_FLOW}
+    options = {"boiler_allow_active_control": True, CONF_BOILER_STATE_NUMBER: "sensor.statenumber"}
+    entry = MockConfigEntry(domain=DOMAIN, data=data, options=options, unique_id=DOMAIN, title="Thriftherm")
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+    assert "sensor.gas_flow" not in coordinator.builder.watched_entities()
+
+    assert hass.states.get("sensor.thriftherm_safety_state").state == "ok"
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": "select.thriftherm_boiler_control", "option": "active"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    command = hass.states.get("sensor.thriftherm_boiler_command")
+    assert command.state == "heat"  # living room 17.0 °C, comfort 18.5 °C
+    assert command.attributes["blockers"] == []
+    setmode = [c for c in publish if c.data["topic"] == "ebusd/bai/SetMode/set"]
+    assert setmode and setmode[-1].data["payload"] == command.attributes["setmode_payload"]
+    assert ("ebusd/bai/FlowTemp/get", "?1") in [(c.data["topic"], c.data["payload"]) for c in publish]
+
+    # the pump state alone tells the learning that the burner heats
+    coordinator._last_target_change_ts = 0.0
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.thriftherm_learning_state").state != "paused"
+    # sensors that could only ever say "unknown" are left out
+    assert hass.states.get("sensor.thriftherm_gas_power") is None
+    assert hass.states.get("sensor.thriftherm_gas_energy") is None
+
+    # hot water comes from the boiler's own status code
+    hass.states.async_set("sensor.statenumber", "14")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.thriftherm_boiler_hot_water_active").state == "on"
+    await coordinator.async_refresh()  # the pause reasons are gathered before this cycle's hot water check
+    await hass.async_block_till_done()
+    assert "hot_water_recent" in hass.states.get("sensor.thriftherm_learning_state").attributes["paused_because"]
 
 
 async def test_the_real_pump_and_the_display_status_reach_the_boiler_sensor(hass: HomeAssistant) -> None:

@@ -144,7 +144,7 @@ The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fill
 | Domestic hot water mode | ebusd **Status02 hwcmode** |
 | eBUS signal (binary sensor) | **ebusd's own signal** (`binary_sensor.…_global_signal`), not the adapter's connectivity sensor: when the adapter drops off Wi-Fi, its own sensor keeps its last value "on" (measured) |
 | Nominal circulation flow of the pump | keep the default unless your boiler's manual says otherwise |
-| Gas meter volume (m³, total), Gas meter instantaneous flow (m³/h) | your gas meter entities, if you have them; otherwise leave empty |
+| Gas meter volume (m³, total), Gas meter instantaneous flow (m³/h) | your gas meter entities, if you have them; otherwise leave empty. The control needs no gas meter: it tells burner runs and hot water from the pump and the status code. Without a meter, the *Gas power* and *Gas energy* sensors are not created |
 | ebusd circuit of the boiler (usually bai) | keep `bai` unless your ebusd device uses another circuit name |
 | Heating curve: flow temperature at -10 °C outdoor | start with the default 55 °C |
 | Heating curve: flow temperature at +15 °C outdoor | start with the default 30 °C |
