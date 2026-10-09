@@ -10,7 +10,7 @@ import math
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, time
 from operator import attrgetter, itemgetter
 from typing import Any
 
@@ -331,6 +331,11 @@ class SnapshotBuilder:
             # while a block runs, the next event is its end; otherwise the next start
             if active:
                 next_end = dt_util.as_local(parsed)
+                if next_end.time() == time():
+                    # A block to 24:00 is how a schedule says "all day"; the helper does not tell
+                    # whether the next day starts at 00:00 again, so midnight is no comfort end
+                    # (it would end every boiler call at 23:30).
+                    next_end = None
             else:
                 next_start = dt_util.as_local(parsed)
         return ScheduleState(active=active, temperature=temp, next_start=next_start, next_end=next_end)

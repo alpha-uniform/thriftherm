@@ -71,11 +71,21 @@ Two protections apply on top, always:
 | Frost protection | 7 °C | If a room falls below it, the boiler heats immediately – also in summer mode – until the room is 1 K above. |
 | Window open | 90 s grace | Heating in that room pauses while a window contact is open. |
 
-Comfort and setback temperatures are number entities per room (*Comfort temperature*, *Setback temperature*); you can change them on the dashboard. The setback temperature can never be higher than comfort. If you later change either of them in the room options, both values from the options apply again.
+Comfort and setback temperatures are number entities per room (*Comfort temperature*, *Setback temperature*); you can change them on the dashboard. The setback temperature can never be higher than comfort: turn comfort below it, and the setback follows. If you later change either of them in the room options, both values from the options apply again.
 
 ### Schedules
 
 Each room can use a Home Assistant **schedule helper** (Settings → Devices & services → Helpers → Schedule). Blocks of the helper are the comfort periods. A block may carry a `temperature` attribute to use a different target than the room's comfort temperature. Rooms without a helper use the time ranges from the room options.
+
+### Without a fixed schedule
+
+If you would rather adjust by hand than by the clock:
+
+- **Comfort around the clock:** time range `00:00-23:59` on weekdays and weekends, or a schedule helper with blocks from 00:00 to 24:00. Both count as continuous, across midnight as well.
+- **Changing the temperature:** change the room's *Comfort temperature* number, for example from a thermostat card or a template thermostat. The setback follows when you go below it.
+- **Away/home:** `thriftherm.set_away` (with `clear_return_time: true` open-ended, with `return_time` including pre-heating) and `thriftherm.clear_away`. The comfort temperatures stay as they are.
+
+This even suits the heating curve learning: it learns from long, even heating runs. Each change pauses the learning for 20 minutes (see [section 6](#6-learning)); nothing learned is lost.
 
 ### Pre-heating
 
@@ -154,7 +164,7 @@ A room needs a temperature sensor, not a smart thermostat. Everything above stil
 
 Guards against learning nonsense: the boiler learns only in *Active* mode, 10 minutes after the burner starts, from at least 10 samples, at most one change per hour and four per day, never while hot water is made, a setpoint changed in the last 20 minutes, a boost or drying runs, or the safety state is not OK. It starts in **Learning** (1 K steps) and moves to **Refining** (0.5 K) after six changes or a quiet day.
 
-Sensor *Learning state* shows the phase, the current correction, why it is paused and the last reset.
+Sensor *Learning state* shows the phase, the current correction, why it is paused and the last reset. When a setpoint change paused it, it also shows until when and in which room.
 
 ### Forgetting what was learned
 

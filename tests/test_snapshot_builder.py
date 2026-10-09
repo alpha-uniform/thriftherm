@@ -233,3 +233,22 @@ async def test_a_gas_flow_left_hanging_is_no_reading(hass: HomeAssistant, freeze
     freezer.move_to(START + timedelta(hours=8))
     boiler = _build(builder).boiler
     assert boiler.gas_flow_m3h.valid and boiler.gas_flow_m3h.value == 0.0
+
+
+async def test_a_schedule_block_to_midnight_has_no_comfort_end(hass: HomeAssistant, freezer) -> None:
+    """A block to 24:00 means "all day": midnight would end every boiler call at 23:30 (found in the code 2026-10-09)."""
+    now = dt_util.as_local(START).replace(hour=23, minute=40)
+    freezer.move_to(now)
+    _set_states(hass)
+    config = _entry_data()
+    config["rooms"][0]["schedule_entity"] = "schedule.bath"
+    builder = SnapshotBuilder(hass, config)
+
+    midnight = (now + timedelta(days=1)).replace(hour=0, minute=0)
+    hass.states.async_set("schedule.bath", "on", {"next_event": midnight.isoformat()})
+    schedule = _build(builder).rooms["badezimmer"].schedule
+    assert schedule.active and schedule.next_end is None
+
+    evening = now.replace(hour=23, minute=55)
+    hass.states.async_set("schedule.bath", "on", {"next_event": evening.isoformat()})
+    assert _build(builder).rooms["badezimmer"].schedule.next_end == evening

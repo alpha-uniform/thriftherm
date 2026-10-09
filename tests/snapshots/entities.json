@@ -1177,9 +1177,11 @@
      "setpoint_recently_changed",
      "boiler_control_not_active"
     ],
+    "paused_until": "2026-01-14T10:50:00+00:00",
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
-    "room_heating_power_k_h": {}
+    "room_heating_power_k_h": {},
+    "setpoint_changed_in": []
    },
    "capabilities": {
     "options": [
@@ -2977,9 +2979,11 @@
      "setpoint_recently_changed",
      "boiler_control_not_active"
     ],
+    "paused_until": "2026-01-14T10:50:00+00:00",
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
-    "room_heating_power_k_h": {}
+    "room_heating_power_k_h": {},
+    "setpoint_changed_in": []
    },
    "capabilities": {
     "options": [
@@ -4783,9 +4787,11 @@
      "setpoint_recently_changed",
      "boiler_control_not_active"
     ],
+    "paused_until": "2026-01-14T10:50:00+00:00",
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
-    "room_heating_power_k_h": {}
+    "room_heating_power_k_h": {},
+    "setpoint_changed_in": []
    },
    "capabilities": {
     "options": [
@@ -6011,9 +6017,11 @@
      "setpoint_recently_changed",
      "boiler_control_not_active"
     ],
+    "paused_until": "2026-01-14T10:50:00+00:00",
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
-    "room_heating_power_k_h": {}
+    "room_heating_power_k_h": {},
+    "setpoint_changed_in": []
    },
    "capabilities": {
     "options": [
@@ -7394,9 +7402,11 @@
      "setpoint_recently_changed",
      "boiler_control_not_active"
     ],
+    "paused_until": "2026-01-14T10:50:00+00:00",
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
-    "room_heating_power_k_h": {}
+    "room_heating_power_k_h": {},
+    "setpoint_changed_in": []
    },
    "capabilities": {
     "options": [

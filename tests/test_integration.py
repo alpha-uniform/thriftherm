@@ -899,6 +899,38 @@ async def test_setback_above_comfort_is_rejected(hass: HomeAssistant) -> None:
         await entry.runtime_data.async_set_room_temperature("badezimmer", "setback", 25.0)  # comfort is 21
 
 
+async def test_comfort_below_setback_takes_the_setback_along(hass: HomeAssistant) -> None:
+    """Turning comfort down like a room thermostat must work; the setback follows."""
+    await _setup(hass)
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": "number.thriftherm_badezimmer_comfort_temperature", "value": 16.0}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert float(hass.states.get("number.thriftherm_badezimmer_comfort_temperature").state) == 16.0
+    assert float(hass.states.get("number.thriftherm_badezimmer_setback_temperature").state) == 16.0  # was 17
+    assert float(hass.states.get("number.thriftherm_wohnzimmer_setback_temperature").state) == 17.0
+
+
+async def test_the_learning_state_says_which_change_paused_it(hass: HomeAssistant) -> None:
+    entry = await _setup(hass)
+    entry.runtime_data._last_target_change_ts = 0.0  # the start itself is long past
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    attrs = hass.states.get("sensor.thriftherm_learning_state").attributes
+    assert "setpoint_recently_changed" not in attrs["paused_because"]
+    assert attrs["paused_until"] is None and attrs["setpoint_changed_in"] == []
+
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": "number.thriftherm_wohnzimmer_comfort_temperature", "value": 20.0}, blocking=True
+    )
+    await hass.async_block_till_done()
+    attrs = hass.states.get("sensor.thriftherm_learning_state").attributes
+    assert "setpoint_recently_changed" in attrs["paused_because"]
+    assert attrs["setpoint_changed_in"] == ["Wohnzimmer"]
+    until = dt_util.parse_datetime(attrs["paused_until"])
+    assert 19 * 60 < (until - dt_util.utcnow()).total_seconds() <= 20 * 60
+
+
 _HA_ATTRIBUTES = {"friendly_name", "icon", "device_class", "unit_of_measurement", "state_class", "options", "supported_features", "restored", "min", "max", "step", "mode"}
 
 

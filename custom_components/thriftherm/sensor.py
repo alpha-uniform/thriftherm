@@ -125,6 +125,10 @@ def _command_attrs(d: Data) -> dict[str, Any]:
     }
 
 
+def _iso(ts: float | None) -> str | None:
+    return None if ts is None else dt_util.utc_from_timestamp(ts).isoformat()
+
+
 def _learning_attrs(d: Data) -> dict[str, Any]:
     c = d["boiler_command"]
     return {
@@ -135,6 +139,8 @@ def _learning_attrs(d: Data) -> dict[str, Any]:
         "flow_return_spread_k": c.spread_k,
         # nothing blocks it, but it only learns from a running burner
         "paused_because": d.get("learning_blocked_by") or (["no_heating_run"] if c.learning_phase == "paused" else []),
+        "paused_until": _iso(d.get("learning_paused_until_ts")),
+        "setpoint_changed_in": [(d.get("room_names") or {}).get(k, k) for k in d.get("setpoint_changed_in") or []],
         "room_heat_up_rates": d.get("heat_rates"),
         "room_cooling_rates": d.get("cool_rates"),
         "room_heating_power_k_h": d.get("heating_power"),

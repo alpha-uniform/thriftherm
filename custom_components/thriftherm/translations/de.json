@@ -1455,6 +1455,12 @@
           "paused_because": {
             "name": "Pausiert weil"
           },
+          "paused_until": {
+            "name": "Pausiert bis"
+          },
+          "setpoint_changed_in": {
+            "name": "Sollwert geändert in"
+          },
           "room_heat_up_rates": {
             "name": "Aufheizraten der Räume"
           },
