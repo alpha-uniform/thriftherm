@@ -71,11 +71,21 @@ Zwei Schutzregeln gelten immer zusätzlich:
 | Frostschutz | 7 °C | Fällt ein Raum darunter, heizt die Therme sofort – auch im Sommerbetrieb – bis der Raum 1 K darüber liegt. |
 | Fenster offen | 90 s Karenz | Solange ein Fensterkontakt offen ist, pausiert das Heizen in diesem Raum. |
 
-Komfort- und Absenktemperatur sind Zahlen-Entitäten je Raum (*Komforttemperatur*, *Absenktemperatur*) und lassen sich im Dashboard ändern. Die Absenktemperatur kann nie über der Komforttemperatur liegen. Änderst du später eine der beiden in den Raum-Optionen, gelten wieder beide Werte aus den Optionen.
+Komfort- und Absenktemperatur sind Zahlen-Entitäten je Raum (*Komforttemperatur*, *Absenktemperatur*) und lassen sich im Dashboard ändern. Die Absenktemperatur kann nie über der Komforttemperatur liegen: Drehst du Komfort darunter, geht die Absenkung mit. Änderst du später eine der beiden in den Raum-Optionen, gelten wieder beide Werte aus den Optionen.
 
 ### Zeitpläne
 
 Jeder Raum kann einen **Zeitplan-Helfer** von Home Assistant nutzen (Einstellungen → Geräte & Dienste → Helfer → Zeitplan). Die Blöcke des Helfers sind die Komfortzeiten. Ein Block kann ein Attribut `temperature` tragen, um eine andere Temperatur als die Komforttemperatur zu verwenden. Räume ohne Helfer nutzen die Zeitfenster aus den Raum-Optionen.
+
+### Ohne festen Zeitplan
+
+Wer lieber von Hand regelt als nach Uhrzeit:
+
+- **Rund um die Uhr Komfort:** Zeitfenster `00:00-23:59` an Werktagen und am Wochenende, oder ein Zeitplan-Helfer mit Blöcken von 00:00 bis 24:00. Beides gilt als durchgehend, auch über Mitternacht.
+- **Temperatur verstellen:** die Zahl *Komforttemperatur* des Raums ändern, etwa über eine Thermostat-Karte oder ein Template-Thermostat. Die Absenkung geht mit, wenn du darunter drehst.
+- **Abwesend/Zuhause:** `thriftherm.set_away` (mit `clear_return_time: true` ohne Ende, mit `return_time` samt Vorheizen) und `thriftherm.clear_away`. Die Komforttemperaturen bleiben dabei stehen.
+
+Für das Lernen der Heizkurve ist das sogar günstig: Sie lernt aus langen, gleichmäßigen Heizläufen. Jede Verstellung pausiert das Lernen 20 Minuten (siehe [Abschnitt 6](#6-lernen)), gelernt bleibt alles.
 
 ### Vorheizen
 
@@ -154,7 +164,7 @@ Jeder Raum benötigt einen Temperaturfühler, kein smartes Thermostat. Alles obe
 
 Schutz gegen falsches Lernen: Die Therme lernt nur im Modus *Aktiv*, frühestens 10 Minuten nach Brennerstart, aus mindestens 10 Messwerten, höchstens eine Änderung je Stunde und vier je Tag, nie während Warmwasser, einer Sollwertänderung in den letzten 20 Minuten, Schnell-Aufheizen, Trocknung oder wenn der Sicherheitsstatus nicht OK ist. Sie beginnt im **Einlernen** (1-K-Schritte) und wechselt nach sechs Änderungen oder einem ruhigen Tag ins **Verfeinern** (0,5 K).
 
-Der Sensor *Lernstatus* zeigt Phase, aktuelle Korrektur, Pausengrund und das letzte Zurücksetzen.
+Der Sensor *Lernstatus* zeigt Phase, aktuelle Korrektur, Pausengrund und das letzte Zurücksetzen. Pausiert er wegen einer Sollwertänderung, steht dort auch, bis wann und in welchem Raum.
 
 ### Gelerntes vergessen
 

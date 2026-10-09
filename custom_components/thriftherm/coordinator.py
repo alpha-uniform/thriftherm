@@ -180,6 +180,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_room_plans: dict[str, tuple[str, float | None]] = {}
         self._last_targets: dict[str, float] = {}
         self._last_target_change_ts: float = 0.0
+        self._last_target_change_rooms: tuple[str, ...] = ()  # whose setpoint started the learning pause
         self.room_temps: dict[str, dict[str, float]] = {}
 
     @property
@@ -410,11 +411,17 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def async_set_room_temperature(self, room: str, kind: str, value: float) -> None:
         other = self.room_temperature(room, "setback" if kind == "comfort" else "comfort")
-        if other is not None and ((kind == "setback" and value > other) or (kind == "comfort" and value < other)):
+        if kind == "setback" and other is not None and value > other:
             raise ServiceValidationError(
                 translation_domain=DOMAIN, translation_key="setback_above_comfort", translation_placeholders={"room": room}
             )
-        self.room_temps.setdefault(room, {})[kind] = float(value)
+        temps = self.room_temps.setdefault(room, {})
+        if kind == "comfort" and other is not None and value < other:
+            # Turning comfort down is what a room thermostat does; the setback follows instead of
+            # refusing it (from a template thermostat the refusal only reached the log).
+            temps["setback"] = float(value)
+            _LOGGER.info("thriftherm %s: setback temperature follows comfort down to %.1f °C", room, value)
+        temps[kind] = float(value)
         _LOGGER.info("thriftherm %s: %s temperature set to %.1f °C", room, kind, value)
         await self._async_changed()
 
@@ -737,17 +744,22 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._store_dirty = True
 
         # --- learning guard: never learn while setpoints move or special modes run ---------------
-        for key, res in rooms.items():
-            if self._last_targets.get(key) != res.target:
-                self._last_targets[key] = res.target
-                self._last_target_change_ts = now_ts
+        changed = [key for key, res in rooms.items() if self._last_targets.get(key) != res.target]
+        if changed:
+            # rooms seen for the first time (after a start) changed nothing a user did
+            moved = tuple(key for key in changed if key in self._last_targets)
+            for key in changed:
+                self._last_targets[key] = rooms[key].target
+            self._last_target_change_ts = now_ts
+            self._last_target_change_rooms = moved
         learning_blocked: list[str] = []
         # The heat pump's own faults (switched-off plug, no heat pump at all) say nothing about
         # the boiler: measured 2026-09-26, "midea_unavailable" alone paused the learning for 31 h.
         boiler_issues = [i for i in safety_res.issues if not i.startswith(HEAT_PUMP_ISSUE_PREFIX)]
         if safety_res.state == SAFETY_FALLBACK or (safety_res.state != SAFETY_OK and boiler_issues):
             learning_blocked.append(f"safety_{safety_res.state}")
-        if now_ts - self._last_target_change_ts < SETPOINT_SETTLE_S:
+        settling = now_ts - self._last_target_change_ts < SETPOINT_SETTLE_S
+        if settling:
             learning_blocked.append("setpoint_recently_changed")
         if any(r.boost_active for r in rooms.values()):
             learning_blocked.append("quick_heat_up")
@@ -901,6 +913,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "boiler_log": list(self.plan_log.boiler_log),
             "boiler_setmode_topic": self.boiler_setmode_topic,
             "learning_blocked_by": learning_blocked,
+            "learning_paused_until_ts": self._last_target_change_ts + SETPOINT_SETTLE_S if settling else None,
+            "setpoint_changed_in": list(self._last_target_change_rooms) if settling else [],
             "learning_reset": self.last_learning_reset,
             "language": self.hass.config.language,
             "room_names": {r.key: r.name for r in self.builder.rooms},

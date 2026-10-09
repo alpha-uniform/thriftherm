@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+Prompted by a user who heats by hand instead of by schedule: comfort around the clock, the comfort temperature changed from template thermostats.
+
+- **A schedule block to 24:00 runs through midnight.** The schedule helper reports midnight as the end of the block, so every boiler call ended at 23:30 in a room with comfort all day. Midnight no longer counts as the end of comfort (found in the code, 2026-10-09).
+- **Turning comfort below the setback takes the setback along.** It used to be refused; from a template thermostat or an automation the change then simply did not happen.
+- **The learning state says which change paused it.** After a setpoint change it shows until when the learning waits (`paused_until`) and in which rooms the setpoint moved (`setpoint_changed_in`).
+- **New guide section "Without a fixed schedule":** comfort around the clock, changing the comfort temperature, away and home buttons, and why this suits the heating curve learning.
 - **No gas meter, no gas sensors.** The control never needed the gas meter (burner runs and hot water come from the pump state and the boiler's status code, measured 2026-10-09: S.4 arrived within a second of the meter), but *Gas power* and *Gas energy* were created anyway and stayed "unknown". Each is now created only when its meter value is configured, and removed when it is taken out.
 
 ## 0.5.0 — 2026-10-04

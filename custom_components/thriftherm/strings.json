@@ -1455,6 +1455,12 @@
           "paused_because": {
             "name": "Paused because"
           },
+          "paused_until": {
+            "name": "Paused until"
+          },
+          "setpoint_changed_in": {
+            "name": "Setpoint changed in"
+          },
           "room_heat_up_rates": {
             "name": "Room heat-up rates"
           },
