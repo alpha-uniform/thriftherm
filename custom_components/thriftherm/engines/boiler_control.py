@@ -53,7 +53,7 @@ from ..const import (
     SOURCE_BOTH,
 )
 from .common import as_dict, as_float, as_floats, round_half
-from .heat_call import CALL_CALLING
+from .heat_call import CALL_CALLING, CALL_STALLED
 from ..models import BoilerCommand, Parameters, RoomResult
 
 RESEND_INTERVAL_S = 120.0  # boiler falls back to its knob after 9-16 min without SetMode (measured)
@@ -108,6 +108,16 @@ SPREAD_HIGH_K = 15.0
 SPREAD_ALPHA = 0.2
 SLOW_RATE_K_H = 0.2
 DEMAND_ACTIVE = 0.3
+# A cycling boiler never gives a settled spread: its burner runs for a minute and then waits out
+# its lockout. What it delivers shows in the rooms alone. Measured 2026-10-10 with the flow minimum
+# lowered from 45 to 35 °C: burner runs fell from 62 s to 41 s, the pause stayed at the lockout
+# (15 min), and the bathroom hung 0.2-0.3 K below target for 14 hours. So while cycling, a room that
+# is called for and does not get there asks for a HIGHER curve, and only rooms warming up briskly
+# allow a lower one.
+LAG_DEFICIT_K = 0.2  # still this far below target
+LAG_MIN_HEAT_S = 1800.0  # after the heating has been released this long
+BRISK_RATE_K_H = 0.5  # every called room rises at least this fast: the curve may come down
+BURNER_SHARE_WINDOW_S = 3600.0
 
 PHASE_LEARNING = "learning"
 PHASE_REFINING = "refining"
@@ -142,6 +152,8 @@ class BoilerMemory:
     block_since_ts: float | None = None  # first block of an unbroken series of sends; not stored
     hot_water_guessed: bool = False  # the last hot water sign was a guess, not the boiler's status code
     hot_water_before_guess_ts: float | None = None  # hot_water_seen_ts before that guess; not stored
+    flame_since_ts: float | None = None  # the burner is on for the heating since then; not stored
+    flame_runs: tuple[tuple[float, float], ...] = ()  # (start, end) of the heating burns of the last hour; not stored
 
     def phase(self, now_ts: float) -> str:
         if len(self.adjustments) >= REFINE_AFTER_ADJUSTMENTS:
@@ -261,6 +273,35 @@ def track_burner(mem: BoilerMemory, burning: bool, now_ts: float) -> BoilerMemor
     return mem
 
 
+def _flame(inp: BoilerInputs) -> bool:
+    """The burner itself, as exactly as the installation can tell: gas meter, status code, pump state."""
+    if inp.reported_mode == BOILER_REPORTS_HOT_WATER:
+        return False
+    if inp.gas_power_w is not None:
+        return inp.gas_power_w > HOT_WATER_GAS_W
+    if inp.status_known:
+        return inp.reported_mode == BOILER_REPORTS_HEATING
+    return inp.burner_heating
+
+
+def track_flame(mem: BoilerMemory, flame: bool, now_ts: float) -> BoilerMemory:
+    """Keep the heating burns of the last hour: what a cycling boiler delivers is its burner share."""
+    runs = tuple(run for run in mem.flame_runs if now_ts - run[1] <= BURNER_SHARE_WINDOW_S)
+    if flame and mem.flame_since_ts is None:
+        return replace(mem, flame_since_ts=now_ts, flame_runs=runs)
+    if not flame and mem.flame_since_ts is not None:
+        return replace(mem, flame_since_ts=None, flame_runs=(*runs, (mem.flame_since_ts, now_ts)))
+    return mem if runs == mem.flame_runs else replace(mem, flame_runs=runs)
+
+
+def burner_share(mem: BoilerMemory, now_ts: float) -> tuple[float, int]:
+    """Share of the last hour the burner ran for the heating (0..1), and how often it started."""
+    since = now_ts - BURNER_SHARE_WINDOW_S
+    runs = list(mem.flame_runs) + ([(mem.flame_since_ts, now_ts)] if mem.flame_since_ts is not None else [])
+    burning = sum(max(min(end, now_ts) - max(start, since), 0.0) for start, end in runs)
+    return burning / BURNER_SHARE_WINDOW_S, len([1 for start, _ in runs if start >= since])
+
+
 def short_cycling(mem: BoilerMemory, now_ts: float) -> bool:
     """Several short burner runs within the last hour."""
     starts = [t for t in mem.burn_starts if now_ts - t <= CYCLE_WINDOW_S]
@@ -272,14 +313,36 @@ def short_cycling(mem: BoilerMemory, now_ts: float) -> bool:
     return bool(runs) and median(runs) <= CYCLE_SHORT_BURN_S
 
 
+def cycling_direction(inp: BoilerInputs, mem: BoilerMemory) -> tuple[int, str | None]:
+    """Which way a cycling boiler's curve should move, judged by the rooms it is heating."""
+    called = [
+        r
+        for r in inp.rooms
+        if r.heating_allowed and r.temperature is not None and r.boiler_call in (None, CALL_CALLING, CALL_STALLED)
+    ]
+    released_for = 0.0 if mem.state_since_ts is None else inp.now_ts - mem.state_since_ts
+    lagging = [
+        r
+        for r in called
+        if r.target - r.temperature >= LAG_DEFICIT_K and r.trend_k_per_h is not None and r.trend_k_per_h < SLOW_RATE_K_H
+    ]
+    if lagging and released_for >= LAG_MIN_HEAT_S:
+        return 1, "rooms_lagging"
+    calling = [r for r in called if r.boiler_call != CALL_STALLED]
+    if calling and all(r.trend_k_per_h is not None and r.trend_k_per_h >= BRISK_RATE_K_H for r in calling):
+        return -1, "short_cycling"
+    return 0, None
+
+
 def _learn(inp: BoilerInputs, mem: BoilerMemory, heating: list[RoomResult]) -> BoilerMemory:
     """Collect spread samples and move the offset at most once per hour."""
     now = inp.now_ts
     if inp.learning_allowed and short_cycling(mem, now):
-        # the flow is hotter than the rooms can take: lower it, then start counting again
-        lowered = _apply(inp, mem, -1, "short_cycling", now)
-        if lowered is not mem:
-            return replace(lowered, burn_starts=(), burn_durations=())
+        direction, reason = cycling_direction(inp, mem)
+        if direction:
+            moved = _apply(inp, mem, direction, reason, now)
+            if moved is not mem:
+                return replace(moved, burn_starts=(), burn_durations=())  # start counting again
     if not inp.learning_allowed or not inp.burner_heating or inp.flow_c is None or inp.return_c is None:
         return mem
     if mem.heating_since_ts is None or now - mem.heating_since_ts < SETTLE_S:
@@ -417,7 +480,10 @@ def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerM
         # still cooling back from hot water: plan normally, but do not treat it as a heating run
         inp = replace(inp, burner_heating=False)
     mem = track_burner(mem, inp.burner_heating, now)
+    mem = track_flame(mem, _flame(inp) and mem.state == BOILER_PLAN_HEAT, now)
     cmd, mem = _decide(inp, mem)
+    share, starts = burner_share(mem, now)
+    cmd = replace(cmd, burner_share=share, burner_starts_last_hour=starts)
     recent = mem.hot_water_seen_ts is not None and now - mem.hot_water_seen_ts < HOT_WATER_SHOWN_S
     return replace(cmd, hot_water=recent, hot_water_seen_ts=mem.hot_water_seen_ts), mem
 
@@ -428,10 +494,13 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, Boiler
 
     def command(plan: str, send: bool, text: str | None, flow: float | None, disable: bool, reason: str, *, curve=None, blockers=(), waiting=None) -> BoilerCommand:
         phase = mem.phase(now) if (inp.burner_heating and inp.learning_allowed) else PHASE_PAUSED
-        # short cycling asks for a lower curve; at the flow minimum that step is swallowed silently
+        # short cycling with rooms warming briskly asks for a lower curve; at the flow minimum that
+        # step is swallowed silently
         held_back = (
             "short_cycling_at_flow_min"
-            if short_cycling(mem, now) and curve_flow(inp.outdoor_c, p) + mem.offset_k <= p.boiler_flow_min
+            if short_cycling(mem, now)
+            and cycling_direction(inp, mem)[0] < 0
+            and curve_flow(inp.outdoor_c, p) + mem.offset_k <= p.boiler_flow_min
             else None
         )
         return BoilerCommand(
