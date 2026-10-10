@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.2 — 2026-10-10
+
+Three reports from the same user, one day after 0.5.1. The new option changes nothing until you switch it off; the configuration stays at version 3.
+
+- **New boiler option "Keep hot water ready".** Thriftherm always sent `disablehwcload=0`, so a combi boiler kept its exchanger warm and fired about once an hour all night; a room controller on the bus used to switch that off by schedule. Switched off, the option sends `disablehwcload=1`: no hot water heating without a tap open. Default on, as before. Leave it on with a hot water cylinder, which would no longer be loaded. The effect is reported by the user and not yet measured on the test installation.
+- **A radiator thermostat counts as silent after two and a half hours, not one.** A Zigbee valve at its default reports about hourly, and an unchanged value leaves no trace in Home Assistant, so healthy valves were taken for lost and their rooms stopped calling the boiler until the reporting interval was lowered to 15 minutes.
+- **A comfort window to 23:59 includes the last minute of the day.** `00:00-23:59` left 23:59 to the setback; the pre-heating for the next window covered it with the same temperature, but only while the room sensor answered.
+
 ## 0.5.1 — 2026-10-09
 
 A small release. Most of it was prompted by a user who heats by hand instead of by schedule: comfort around the clock, the comfort temperature changed from template thermostats. The configuration stays at version 3; going back to 0.5.0 needs no backup.

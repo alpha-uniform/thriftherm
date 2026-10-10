@@ -34,12 +34,18 @@ class SensorReading:
         return self.value if self.valid else None
 
 
+_LAST_MINUTE = time(23, 59)
+
+
 @dataclass(frozen=True)
 class TimeWindow:
     start: time
     end: time
 
     def contains(self, t: time) -> bool:
+        if self.end == _LAST_MINUTE:
+            # "to 23:59" is how the form says "to the end of the day": the last minute belongs to it
+            return t >= self.start
         if self.start <= self.end:
             return self.start <= t < self.end
         # window across midnight
@@ -218,6 +224,7 @@ class Parameters:
     boiler_curve_flow_warm: float = 30.0  # flow temperature at +15 °C outdoor
     boiler_flow_min: float = 30.0
     boiler_flow_max: float = 60.0
+    boiler_hot_water_standby: bool = True  # False: SetMode disables the keep-warm / cylinder load
 
 
 @dataclass(frozen=True)

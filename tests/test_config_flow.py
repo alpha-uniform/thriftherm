@@ -31,7 +31,7 @@ BOILER_FIELDS = [
     "boiler_flow_temp", "boiler_return_temp", "boiler_pump_state", "boiler_pump_running", "boiler_state_number",
     "boiler_hwc_mode", "boiler_signal", "boiler_circulation_l_h", "gas_volume", "gas_flow", "boiler_ebus_circuit",
     "boiler_curve_flow_at_minus10", "boiler_curve_flow_at_plus15", "boiler_flow_min", "boiler_flow_max",
-    "boiler_allow_active_control",
+    "boiler_hot_water_standby", "boiler_allow_active_control",
 ]
 OUTDOOR_FIELDS = ["outdoor_temp_sensors", "outdoor_rh_sensor", "weather_entity"]
 PARAMETER_DEFAULTS = {
@@ -189,7 +189,7 @@ async def test_options_boiler_step_clears_what_was_left_empty(hass: HomeAssistan
         "boiler_pump_running": None, "boiler_state_number": None, "boiler_hwc_mode": None, "boiler_signal": None,
         "boiler_circulation_l_h": 860.0, "gas_volume": None, "gas_flow": None, "boiler_ebus_circuit": "bai",
         "boiler_curve_flow_at_minus10": 55.0, "boiler_curve_flow_at_plus15": 30.0, "boiler_flow_min": 30.0,
-        "boiler_flow_max": 60.0, "boiler_allow_active_control": False,
+        "boiler_flow_max": 60.0, "boiler_hot_water_standby": True, "boiler_allow_active_control": False,
     }
     assert entry.options["midea_climate"] == "climate.midea"  # other groups untouched
 
@@ -263,7 +263,7 @@ async def test_config_flow_without_ebusd_asks_for_the_entities(hass: HomeAssista
     assert _prefilled(result) == {
         "boiler_circulation_l_h": 860.0, "boiler_ebus_circuit": "bai", "boiler_curve_flow_at_minus10": 55.0,
         "boiler_curve_flow_at_plus15": 30.0, "boiler_flow_min": 30.0, "boiler_flow_max": 60.0,
-        "boiler_allow_active_control": False,
+        "boiler_hot_water_standby": True, "boiler_allow_active_control": False,
     }
     data = await _confirm_boiler_and_finish(hass, result, _prefilled(result))
     assert "boiler_profile" not in data and data["boiler_flow_temp"] is None  # nothing found, nothing stored
