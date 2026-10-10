@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- **Setup guide: the hourly burner start at night.** It is the warm start function of a combi boiler (a **C** in the display). The user who reported it switched it off at the boiler: hot water knob fully to the left, then back. The troubleshooting table now says so, next to the *Keep hot water ready* option.
+
 ## 0.5.2 — 2026-10-10
 
 Three reports from the same user, one day after 0.5.1. The new option changes nothing until you switch it off; the configuration stays at version 3.
