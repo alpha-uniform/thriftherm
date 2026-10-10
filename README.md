@@ -62,7 +62,9 @@ Im ersten Einrichtungsschritt wählst du, welche Heizung du hast; Schritte, die 
 An Therme und Thermostate werden keine Befehle gesendet, bis du selbst auf *Aktiv* stellst.
 
 1. **ebusd:** den eBUS-Adapter an die eBUS-Klemme der Therme (ein vorhandener Raumregler dort wird abgeklemmt), dann die ebusd-App mit MQTT einrichten, mit `--accesslevel=*` und der Ergänzung von `filter-name` ([Schritt 2](EINRICHTUNG.md#2-ebusd-einrichten)); ohne eigene Therme überspringen.
-2. **Installieren:** in HACS das benutzerdefinierte Repository `https://github.com/alpha-uniform/thriftherm` (Kategorie *Integration*) hinzufügen, **Thriftherm** herunterladen und Home Assistant neu starten.
+2. **Installieren:** in HACS das benutzerdefinierte Repository `https://github.com/alpha-uniform/thriftherm` (Kategorie *Integration*) hinzufügen, **Thriftherm** herunterladen und Home Assistant neu starten. Schneller geht es mit diesem Knopf, er öffnet das Repository direkt in HACS:
+
+   [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
 3. **Integration hinzufügen:** *Einstellungen → Geräte & Dienste → Integration hinzufügen → Thriftherm*. Findet Thriftherm ebusd-Entitäten, ist der Thermen-Schritt schon ausgefüllt – prüfen und weiter.
 4. **Einige Tage *Nur planen*:** *Therme-Steuerbefehl*, *Thermostat-Plan* und *Entscheidungsgrund* mit dem vergleichen, was du selbst getan hättest.
 5. **Auf *Aktiv* schalten:** die aktive Steuerung in den Optionen freigeben, dann *Thermensteuerung* und *Raumsteuerung* auf *Aktiv* stellen.

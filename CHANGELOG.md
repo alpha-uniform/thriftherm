@@ -1,8 +1,11 @@
 # Changelog
 
-## Unreleased
+## 0.5.3 — 2026-10-10
+
+Documentation only; the code is that of 0.5.2.
 
 - **Setup guide: the hourly burner start at night.** It is the warm start function of a combi boiler (a **C** in the display). The user who reported it switched it off at the boiler: hot water knob fully to the left, then back. The troubleshooting table now says so, next to the *Keep hot water ready* option.
+- **A button opens the repository in HACS.** README and setup guide carry the My Home Assistant link, so the repository address no longer has to be typed in.
 
 ## 0.5.2 — 2026-10-10
 

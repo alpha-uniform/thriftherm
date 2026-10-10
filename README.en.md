@@ -62,7 +62,10 @@ The first setup step asks which heating you have and leaves out the steps that d
 Nothing is written to the boiler or the thermostats until you switch to *Active* yourself.
 
 1. **ebusd:** connect the eBUS adapter to the boiler's eBUS terminal (a room controller already there is disconnected), then set up the ebusd app with MQTT, with `--accesslevel=*` and the `filter-name` addition ([step 2](SETUP.md#2-set-up-ebusd)); skip this without an own boiler.
-2. **Install:** in HACS add the custom repository `https://github.com/alpha-uniform/thriftherm` (category *Integration*), download **Thriftherm** and restart Home Assistant.
+2. **Install:** in HACS add the custom repository `https://github.com/alpha-uniform/thriftherm` (category *Integration*), download **Thriftherm** and restart Home Assistant. This button is quicker, it opens the repository in HACS directly:
+
+   [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
+
 3. **Add the integration:** *Settings → Devices & services → Add integration → Thriftherm*. When ebusd entities are found, the boiler step is filled in for you – check it and continue.
 4. **Plan only for a few days:** compare *Boiler command*, *Thermostat plan* and *Decision reason* with what you would have done.
 5. **Switch to *Active*:** release active control in the options, then set *Boiler control* and *Room control* to *Active*.
