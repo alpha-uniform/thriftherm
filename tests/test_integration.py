@@ -1054,7 +1054,8 @@ async def test_the_boiler_control_works_without_a_gas_meter(hass: HomeAssistant)
     assert setmode and setmode[-1].data["payload"] == command.attributes["setmode_payload"]
     assert ("ebusd/bai/FlowTemp/get", "?1") in [(c.data["topic"], c.data["payload"]) for c in publish]
 
-    # the pump state alone tells the learning that the burner heats
+    # without a meter the boiler's status code tells the learning that the burner heats (S.4)
+    hass.states.async_set("sensor.statenumber", "4")
     coordinator._last_target_change_ts = 0.0
     await coordinator.async_refresh()
     await hass.async_block_till_done()

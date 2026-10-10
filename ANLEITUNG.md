@@ -154,11 +154,15 @@ Jeder Raum benötigt einen Temperaturfühler, kein smartes Thermostat. Alles obe
 
 | Bereich | Was gelernt wird | Woraus |
 |---|---|---|
-| Therme | Heizkurven-Korrektur (±10 K) | Spreizung Vorlauf/Rücklauf, wie schnell die Räume warm werden, und Taktbetrieb |
+| Therme | Heizkurven-Korrektur in zwei Teilen, je ±10 K: **Höhe** (gilt bei jeder Außentemperatur) und **Steigung** (voll bei −10 °C, gar nicht bei +15 °C) | Spreizung Vorlauf/Rücklauf, wie schnell die Räume warm werden, und Taktbetrieb |
 | Räume | Aufheizrate je Raum (K/h) | echte Heizphasen bei geschlossenem Fenster |
 | Räume | Auskühlkoeffizient je Raum (1/h) | Phasen ohne Heizen, Fenster zu, drinnen mindestens 5 K wärmer als draußen |
 | Räume | Heizleistung je Raum (K/h ohne Verluste) | Aufheizrate plus die Verluste während der Episode; anders als die reine Rate gilt sie auch im Winter |
 | Wärmepumpe (Vorschau) | COP-Kennfeld über der Außentemperatur, Sollwert-Korrektur | gemessene COP-Läufe |
+
+**Höhe und Steigung:** Ein Lernschritt an einem milden Tag verschiebt vor allem die Höhe der Kurve, einer bei Kälte vor allem die Steigung – so, wie man eine Heizkurve von Hand einstellt (nur im Winter zu kalt: steiler; in der Übergangszeit zu kalt: höher). Was im Herbst gelernt wird, verstellt deshalb den Winter kaum. Der Lernstatus zeigt beide Teile und die Summe bei der aktuellen Außentemperatur.
+
+**Woran der Brenner erkannt wird:** am besten Zeichen, das die Anlage hat – Gaszähler, sonst Statuscode der Therme, sonst ihr Pumpenstatus. Ein Gaszähler ist nicht nötig. Brennerläufe für Warmwasser zählen nie mit.
 
 **Im Taktbetrieb entscheiden die Räume:** Eine taktende Therme liefert nie eine ruhige Spreizung. Hängt dabei ein angeforderter Raum mindestens 0,2 K unter Soll und steigt langsamer als 0,2 K/h, wird die Kurve um eine Stufe angehoben (Grund *Therme taktet und ein Raum erreicht sein Soll nicht*). Gesenkt wird im Taktbetrieb nur, wenn alle angeforderten Räume zügig warm werden (ab 0,5 K/h). Gemessen am 10.10.2026: Mit 35 °C Mindest-Vorlauf lief der Brenner nur noch 41 s alle 15 min, das Bad blieb 14 Stunden knapp unter Soll.
 

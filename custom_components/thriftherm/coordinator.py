@@ -64,6 +64,7 @@ from .engines import (
     advisor,
     boiler as boiler_engine,
     boiler_control,
+    boiler_learning,
     economics,
     heat_call,
     heat_pump as heat_pump_engine,
@@ -75,7 +76,7 @@ from .engines import (
 from .engines.heat_pump_tracking import HeatPumpTracker
 from .engines.safety import HEAT_PUMP_ISSUE_PREFIX
 from .engines.learning import CoolRateStats, CopMap, HeatRateStats
-from .engines.boiler_control import BoilerInputs, BoilerMemory
+from .engines.boiler_memory import BoilerInputs, BoilerMemory
 from .engines.heat_pump_control import ControlInputs, ControlMemory
 from .engines.room_control import RoomCtrlMemory
 from .models import (
@@ -498,9 +499,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # manual-change holds stay, so a reset can never make a unit cycle.
         scopes = set(scopes)
         if learning_reset.SCOPE_BOILER in scopes:
-            self.boiler_memory = replace(
-                self.boiler_memory, offset_k=0.0, adjustments=(), last_adjust_reason=None, spread_ema=None, samples=0, last_review_ts=None
-            )
+            self.boiler_memory = boiler_learning.reset(self.boiler_memory)
         if learning_reset.SCOPE_HEAT_PUMP in scopes:
             self.cop_map = CopMap()
             self.heat_pump_tracker.reset()
@@ -797,14 +796,10 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 gas_power_w=boiler_res.gas_power_w,
                 reported_mode=self.boiler_profile.reported_mode(boiler_res.state_number),
                 status_known=boiler_res.state_number is not None,
-                # The pump state alone misses a cycling boiler: measured 2026-09-17, the burner
-                # ran for a minute every 15 and ebusd polled the pump state in between, so the
-                # learning never saw a heating run. Burning gas is the faster evidence.
-                burner_heating=(
-                    snapshot.boiler.pump_state == "on"
-                    or (boiler_res.gas_power_w or 0.0) > boiler_control.HOT_WATER_GAS_W
-                )
-                and not bool(boiler_res.hwc_active),
+                # The coarsest burner sign, for installations with neither a gas meter nor a status
+                # code; the learning ranks the three itself (boiler_learning.flame).
+                burner_heating=snapshot.boiler.pump_state == "on" and not bool(boiler_res.hwc_active),
+                hot_water_active=bool(boiler_res.hwc_active),
                 learning_allowed=not learning_blocked,
             ),
             self.boiler_memory,
