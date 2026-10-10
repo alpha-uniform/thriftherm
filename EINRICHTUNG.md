@@ -95,6 +95,12 @@ Ist Thriftherm schon eingerichtet? Dann *Thriftherm → Konfigurieren → Gasthe
 
 **Mit HACS (empfohlen):**
 
+Am schnellsten mit diesem Knopf, er öffnet das Repository direkt in HACS; dann *Herunterladen* klicken und bei Schritt 4 unten weitermachen:
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
+
+Oder von Hand:
+
 1. **HACS** öffnen, oben rechts ⋮ → *Benutzerdefinierte Repositories*.
 2. Repository: `https://github.com/alpha-uniform/thriftherm`, Typ: **Integration**. *Hinzufügen* klicken.
 3. In HACS nach **Thriftherm** suchen, öffnen und *Herunterladen* klicken.

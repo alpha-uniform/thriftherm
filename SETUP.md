@@ -95,6 +95,12 @@ Is Thriftherm already set up? Then open *Thriftherm → Configure → Gas boiler
 
 **With HACS (recommended):**
 
+Quickest with this button, it opens the repository in HACS directly; then click *Download* and continue with step 4 below:
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
+
+Or by hand:
+
 1. Open **HACS**, click ⋮ (top right) → *Custom repositories*.
 2. Repository: `https://github.com/alpha-uniform/thriftherm`, type: **Integration**. Click *Add*.
 3. Search for **Thriftherm** in HACS, open it and click *Download*.
