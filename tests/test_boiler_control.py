@@ -82,6 +82,16 @@ def test_block_when_no_room_needs_boiler():
     assert cmd2.plan == "block"
 
 
+def test_hot_water_standby_can_be_switched_off():
+    """Reported 2026-10-10: a combi boiler kept its exchanger warm and fired once an hour all night."""
+    no_standby = replace(PARAMS, boiler_hot_water_standby=False)
+    blocked, _ = decide(inp([rr(demand=0.0)], advice="none", params=no_standby), BoilerMemory())
+    assert blocked.payload == "auto;30.0;-;-;1;0;1;0;0;0"
+    heating, _ = decide(inp([rr()], params=no_standby), BoilerMemory())
+    assert heating.plan == "heat" and heating.payload.endswith(";-;-;0;0;1;0;0;0")
+    assert decide(inp([rr()]), BoilerMemory())[0].payload.endswith(";-;-;0;0;0;0;0;0")  # default: as before
+
+
 def test_summer_mode_blocks_heating():
     cmd, _ = decide(inp([rr()], op="off", advice="none"), BoilerMemory())
     assert cmd.plan == "block" and cmd.reason == "summer_mode"

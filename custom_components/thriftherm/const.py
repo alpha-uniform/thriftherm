@@ -128,6 +128,7 @@ CONF_BOILER_CURVE_COLD: Final = "boiler_curve_flow_at_minus10"
 CONF_BOILER_CURVE_WARM: Final = "boiler_curve_flow_at_plus15"
 CONF_BOILER_FLOW_MIN: Final = "boiler_flow_min"
 CONF_BOILER_FLOW_MAX: Final = "boiler_flow_max"
+CONF_BOILER_HOT_WATER_STANDBY: Final = "boiler_hot_water_standby"
 CONF_BOILER_ALLOW_ACTIVE: Final = "boiler_allow_active_control"
 
 DEFAULT_BOILER_EBUS_CIRCUIT: Final = "bai"
@@ -135,6 +136,7 @@ DEFAULT_BOILER_CURVE_COLD: Final = 55.0
 DEFAULT_BOILER_CURVE_WARM: Final = 30.0
 DEFAULT_BOILER_FLOW_MIN: Final = 30.0  # minimum of the atmoTEC (d.05)
 DEFAULT_BOILER_FLOW_MAX: Final = 60.0  # below d.71 (75 °C)
+DEFAULT_BOILER_HOT_WATER_STANDBY: Final = True  # what the boiler does without us
 DEFAULT_BOILER_ALLOW_ACTIVE: Final = False
 
 # ---------------------------------------------------------------------------

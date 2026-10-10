@@ -223,12 +223,14 @@ def curve_flow(outdoor_c: float | None, p: Parameters) -> float:
     return min(max(value, p.boiler_flow_min), p.boiler_flow_max)
 
 
-def payload(flow: float, disable_hc: bool) -> str:
+def payload(flow: float, disable_hc: bool, disable_hwc_load: bool = False) -> str:
     # hcmode;flowtempdesired;hwctempdesired;hwcflowtempdesired;disablehc;disablehwctapping;
     # disablehwcload;remoteControlHcPump;releaseBackup;releaseCooling
+    # disablehwcload stops what the boiler heats without a tap open: the keep-warm of a combi
+    # boiler (reported 2026-10-10: one burner start an hour all night) or the loading of a cylinder.
     # Hot water gets "-" (no value): tested 13.09.2026, the boiler takes the heating
     # setpoint and hot water keeps following the knob, so control never changes it.
-    return f"auto;{flow:.1f};-;-;{1 if disable_hc else 0};0;0;0;0;0"
+    return f"auto;{flow:.1f};-;-;{1 if disable_hc else 0};0;{1 if disable_hwc_load else 0};0;0;0"
 
 
 def _direction(spread: float | None, heating: list[RoomResult]) -> tuple[int, str | None]:
@@ -532,7 +534,7 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, Boiler
 
     if mem.last_flow is None or flow != mem.last_flow:
         mem = replace(mem, last_flow=flow, last_flow_ts=now)
-    text = payload(flow, disable)
+    text = payload(flow, disable, not p.boiler_hot_water_standby)
     due = text != mem.last_payload or mem.last_send_ts is None or now - mem.last_send_ts >= RESEND_INTERVAL_S
     if due:
         mem = replace(mem, last_send_ts=now, last_payload=text)

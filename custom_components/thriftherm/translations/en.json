@@ -41,7 +41,11 @@
           "boiler_curve_flow_at_plus15": "Heating curve: flow temperature at +15 °C outdoor",
           "boiler_flow_min": "Minimum flow temperature",
           "boiler_flow_max": "Maximum flow temperature",
+          "boiler_hot_water_standby": "Keep hot water ready (keep-warm of a combi boiler, cylinder loading)",
           "boiler_allow_active_control": "Release active boiler control (otherwise plan only)"
+        },
+        "data_description": {
+          "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation."
         }
       },
       "midea": {
@@ -159,7 +163,11 @@
           "boiler_curve_flow_at_plus15": "Heating curve: flow temperature at +15 °C outdoor",
           "boiler_flow_min": "Minimum flow temperature",
           "boiler_flow_max": "Maximum flow temperature",
+          "boiler_hot_water_standby": "Keep hot water ready (keep-warm of a combi boiler, cylinder loading)",
           "boiler_allow_active_control": "Release active boiler control (otherwise plan only)"
+        },
+        "data_description": {
+          "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation."
         }
       },
       "midea": {
@@ -2038,7 +2046,7 @@
     },
     "thermostat_silent": {
       "title": "{room}: radiator thermostat not responding",
-      "description": "The radiator thermostat in {room} has not reported for over an hour. It keeps its last setpoint and takes no new ones, so the room no longer calls the boiler. Check the thermostat: take the batteries out and put them back in, or look for it in Zigbee2MQTT."
+      "description": "The radiator thermostat in {room} has not reported for over two and a half hours. It keeps its last setpoint and takes no new ones, so the room no longer calls the boiler. Check the thermostat: take the batteries out and put them back in, or look for it in Zigbee2MQTT."
     }
   },
   "exceptions": {
