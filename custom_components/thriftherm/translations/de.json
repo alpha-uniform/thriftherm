@@ -41,7 +41,11 @@
           "boiler_curve_flow_at_plus15": "Heizkurve: Vorlauf bei +15 °C außen",
           "boiler_flow_min": "Minimale Vorlauftemperatur",
           "boiler_flow_max": "Maximale Vorlauftemperatur",
+          "boiler_hot_water_standby": "Warmwasser bereithalten (Warmhalten der Kombitherme, Speicherladung)",
           "boiler_allow_active_control": "Aktive Thermensteuerung freigeben (sonst nur planen)"
+        },
+        "data_description": {
+          "boiler_hot_water_standby": "Aus: Bei aktiver Thermensteuerung heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist. Sie springt dann nicht mehr etwa einmal pro Stunde an, um ihren Wärmetauscher warm zu halten. Am Hahn kommt weiter warmes Wasser, nur etwas später. Eingeschaltet lassen, wenn ein Warmwasserspeicher angeschlossen ist: Er würde nicht mehr geladen. Von einem Nutzer gemeldet, an der Testanlage noch nicht gemessen."
         }
       },
       "midea": {
@@ -159,7 +163,11 @@
           "boiler_curve_flow_at_plus15": "Heizkurve: Vorlauf bei +15 °C außen",
           "boiler_flow_min": "Minimale Vorlauftemperatur",
           "boiler_flow_max": "Maximale Vorlauftemperatur",
+          "boiler_hot_water_standby": "Warmwasser bereithalten (Warmhalten der Kombitherme, Speicherladung)",
           "boiler_allow_active_control": "Aktive Thermensteuerung freigeben (sonst nur planen)"
+        },
+        "data_description": {
+          "boiler_hot_water_standby": "Aus: Bei aktiver Thermensteuerung heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist. Sie springt dann nicht mehr etwa einmal pro Stunde an, um ihren Wärmetauscher warm zu halten. Am Hahn kommt weiter warmes Wasser, nur etwas später. Eingeschaltet lassen, wenn ein Warmwasserspeicher angeschlossen ist: Er würde nicht mehr geladen. Von einem Nutzer gemeldet, an der Testanlage noch nicht gemessen."
         }
       },
       "midea": {
@@ -2038,7 +2046,7 @@
     },
     "thermostat_silent": {
       "title": "{room}: Heizkörperthermostat antwortet nicht",
-      "description": "Das Heizkörperthermostat in {room} hat sich seit über einer Stunde nicht gemeldet. Es behält seinen letzten Sollwert und nimmt keine neuen an, deshalb fordert der Raum die Therme nicht mehr an. Prüfe das Thermostat: Batterien heraus und wieder hinein, oder in Zigbee2MQTT nachsehen."
+      "description": "Das Heizkörperthermostat in {room} hat sich seit über zweieinhalb Stunden nicht gemeldet. Es behält seinen letzten Sollwert und nimmt keine neuen an, deshalb fordert der Raum die Therme nicht mehr an. Prüfe das Thermostat: Batterien heraus und wieder hinein, oder in Zigbee2MQTT nachsehen."
     }
   },
   "exceptions": {

@@ -106,3 +106,12 @@ def test_rooms_of_a_cooling_heat_pump_take_no_heat():
     radiator = room_state(room_config("wohnzimmer", comfort=21.0), temp=16.0)
     other = room_engine.evaluate_room(radiator, evening, "auto", PARAMS, heat_pump_heat_possible=False, heat_pump_cooling=True)
     assert other.target == 21.0 and other.heating_allowed is True and other.demand > 0.0
+
+
+def test_a_window_to_2359_covers_the_last_minute():
+    parse_schedule = room_engine.parse_schedule
+    all_day, evening = parse_schedule("00:00-23:59")[0], parse_schedule("17:30-22:00")[0]
+    assert all_day.contains(time(23, 59, 30)) and all_day.contains(time(0, 0))
+    assert not evening.contains(time(22, 0))
+    late = parse_schedule("18:00-23:59")[0]
+    assert late.contains(time(23, 59, 59)) and not late.contains(time(17, 59))

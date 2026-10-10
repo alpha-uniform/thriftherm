@@ -75,6 +75,7 @@ from .const import (
     CONF_BOILER_EBUS_CIRCUIT,
     CONF_BOILER_FLOW_MAX,
     CONF_BOILER_FLOW_MIN,
+    CONF_BOILER_HOT_WATER_STANDBY,
     CONF_HEAT_PUMP_ALLOW_ACTIVE,
     CONF_ROOM_ALLOW_ACTIVE,
     CONF_ROOM_ECHO_FILTER,
@@ -149,6 +150,7 @@ from .const import (
     DEFAULT_BOILER_EBUS_CIRCUIT,
     DEFAULT_BOILER_FLOW_MAX,
     DEFAULT_BOILER_FLOW_MIN,
+    DEFAULT_BOILER_HOT_WATER_STANDBY,
     DEFAULT_HEAT_PUMP_ALLOW_ACTIVE,
     DEFAULT_ROOM_ALLOW_ACTIVE,
     DEFAULT_ROOM_ECHO_FILTER,
@@ -288,6 +290,7 @@ def schema_boiler(cur: Mapping[str, Any]) -> vol.Schema:
             _req(CONF_BOILER_CURVE_WARM, cur, DEFAULT_BOILER_CURVE_WARM): _number(30, 60, 0.5, "°C"),
             _req(CONF_BOILER_FLOW_MIN, cur, DEFAULT_BOILER_FLOW_MIN): _number(30, 50, 0.5, "°C"),
             _req(CONF_BOILER_FLOW_MAX, cur, DEFAULT_BOILER_FLOW_MAX): _number(35, 75, 0.5, "°C"),
+            _req(CONF_BOILER_HOT_WATER_STANDBY, cur, DEFAULT_BOILER_HOT_WATER_STANDBY): selector.BooleanSelector(),
             _req(CONF_BOILER_ALLOW_ACTIVE, cur, DEFAULT_BOILER_ALLOW_ACTIVE): selector.BooleanSelector(),
         }
     )

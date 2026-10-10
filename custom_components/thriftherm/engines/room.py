@@ -33,8 +33,10 @@ DRYING_END_ABS_MARGIN_G_M3 = 1.0
 DRYING_WINDOW_NO_EFFECT_S = 20 * 60.0
 SCHEDULE_PREHEAT_HORIZON_S = 12 * 3600.0
 # A valve that has not reported for this long takes no commands either: its room must
-# not call the boiler (healthy valves here report at least every 15 minutes).
-THERMOSTAT_SILENT_S = 3600.0
+# not call the boiler. Valves here report at least every 15 minutes, but a Zigbee valve left
+# at its default reports about hourly, and an unchanged value leaves no trace in Home Assistant:
+# one hour took healthy valves for lost (reported 2026-10-10). One missed report must fit in.
+THERMOSTAT_SILENT_S = 9000.0
 
 
 def parse_schedule(text: str | None) -> tuple[TimeWindow, ...]:
