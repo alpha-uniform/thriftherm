@@ -288,6 +288,20 @@ SYSTEM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         value_fn=lambda d: _rounded(d["boiler"].delta_t_k, 1),
     ),
     _desc(
+        "boiler_burner_share",
+        boiler_only=True,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        suggested_display_precision=1,
+        icon="mdi:fire-circle",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda d: round(d["boiler_command"].burner_share * 100.0, 1),
+        attr_fn=lambda d: {
+            "starts_last_hour": d["boiler_command"].burner_starts_last_hour,
+            "flow_setpoint": d["boiler_command"].flow_setpoint,
+        },
+    ),
+    _desc(
         "active_source_advice",
         device_class=SensorDeviceClass.ENUM,
         options=[SOURCE_BOILER, SOURCE_HEAT_PUMP, SOURCE_BOTH, SOURCE_NONE],

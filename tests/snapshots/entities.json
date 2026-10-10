@@ -2391,6 +2391,39 @@
    "unique_id": "ENTRY_badezimmer_thermostat_plan",
    "unit_of_measurement": null
   },
+  "sensor.thriftherm_boiler_burner_share": {
+   "attributes": {
+    "flow_setpoint": 49.0,
+    "friendly_name": "Thriftherm Boiler burner share",
+    "icon": "mdi:fire-circle",
+    "starts_last_hour": 0,
+    "state_class": "measurement",
+    "unit_of_measurement": "%"
+   },
+   "capabilities": {
+    "state_class": "measurement"
+   },
+   "device": {
+    "identifiers": [
+     "thriftherm/ENTRY"
+    ],
+    "manufacturer": "Thriftherm",
+    "model": "Heating control",
+    "name": "Thriftherm",
+    "via": null
+   },
+   "options": {
+    "sensor": {
+     "suggested_display_precision": 1
+    }
+   },
+   "original_device_class": null,
+   "original_icon": "mdi:fire-circle",
+   "state": "0.0",
+   "translation_key": "boiler_burner_share",
+   "unique_id": "ENTRY_boiler_burner_share",
+   "unit_of_measurement": "%"
+  },
   "sensor.thriftherm_boiler_command": {
    "attributes": {
     "blockers": [],
@@ -4199,6 +4232,39 @@
    "unique_id": "ENTRY_badezimmer_thermostat_plan",
    "unit_of_measurement": null
   },
+  "sensor.thriftherm_boiler_burner_share": {
+   "attributes": {
+    "flow_setpoint": 49.0,
+    "friendly_name": "Thriftherm Boiler burner share",
+    "icon": "mdi:fire-circle",
+    "starts_last_hour": 0,
+    "state_class": "measurement",
+    "unit_of_measurement": "%"
+   },
+   "capabilities": {
+    "state_class": "measurement"
+   },
+   "device": {
+    "identifiers": [
+     "thriftherm/ENTRY"
+    ],
+    "manufacturer": "Thriftherm",
+    "model": "Heating control",
+    "name": "Thriftherm",
+    "via": null
+   },
+   "options": {
+    "sensor": {
+     "suggested_display_precision": 1
+    }
+   },
+   "original_device_class": null,
+   "original_icon": "mdi:fire-circle",
+   "state": "0.0",
+   "translation_key": "boiler_burner_share",
+   "unique_id": "ENTRY_boiler_burner_share",
+   "unit_of_measurement": "%"
+  },
   "sensor.thriftherm_boiler_command": {
    "attributes": {
     "blockers": [],
@@ -5764,6 +5830,39 @@
    "translation_key": "room_trend",
    "unique_id": "ENTRY_badezimmer_trend",
    "unit_of_measurement": "°C/h"
+  },
+  "sensor.thriftherm_boiler_burner_share": {
+   "attributes": {
+    "flow_setpoint": 49.0,
+    "friendly_name": "Thriftherm Boiler burner share",
+    "icon": "mdi:fire-circle",
+    "starts_last_hour": 0,
+    "state_class": "measurement",
+    "unit_of_measurement": "%"
+   },
+   "capabilities": {
+    "state_class": "measurement"
+   },
+   "device": {
+    "identifiers": [
+     "thriftherm/ENTRY"
+    ],
+    "manufacturer": "Thriftherm",
+    "model": "Heating control",
+    "name": "Thriftherm",
+    "via": null
+   },
+   "options": {
+    "sensor": {
+     "suggested_display_precision": 1
+    }
+   },
+   "original_device_class": null,
+   "original_icon": "mdi:fire-circle",
+   "state": "0.0",
+   "translation_key": "boiler_burner_share",
+   "unique_id": "ENTRY_boiler_burner_share",
+   "unit_of_measurement": "%"
   },
   "sensor.thriftherm_boiler_command": {
    "attributes": {

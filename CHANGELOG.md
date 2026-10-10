@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.5.4 — 2026-10-11
+
+The learning meets a boiler that cycles, which is what most boilers do in mild weather. The configuration stays at version 3.
+
+- **A cycling boiler learns from the rooms.** Short cycling used to mean "flow too hot, lower the curve". Measured 2026-10-10 with the flow minimum lowered from 45 to 35 °C: the burner runs fell from 62 s to 41 s, the pauses stayed at the boiler's lockout, less heat arrived, and the bathroom hung 0.2–0.3 K below target for 14 hours while the learning did nothing. Now a called room that stays at least 0.2 K below target and rises more slowly than 0.2 K/h raises the curve by a step, and cycling lowers it only while every called room warms up briskly (0.5 K/h). That Saturday replayed through the new rule: four steps up between 08:13 and 13:44; the old rule: none.
+- **New sensor *Boiler burner share*:** the share of the last hour the burner ran for the heating, with the number of starts and the flow setpoint as attributes. On 2026-10-10 it would have read about 4 % (41 s of every 15.7 min). It only records for now: with some weeks of it, the flow a house needs at each outdoor temperature can be learned from what a cycling boiler really delivers.
+- **Guide: a healthy thermostat reported as silent.** Only a changed value counts as a sign of life in Home Assistant; enabling the valve's *Last seen* entity in Zigbee2MQTT gives one with every report.
+
 ## 0.5.3 — 2026-10-10
 
 Documentation only; the code is that of 0.5.2.
