@@ -360,7 +360,9 @@ class BoilerCommand:
     disable_hc: bool
     reason: str
     curve_flow: float | None = None
-    offset_k: float = 0.0
+    offset_k: float = 0.0  # what the learning adds at the current outdoor temperature
+    offset_level_k: float = 0.0  # its level part, added at every outdoor temperature
+    offset_slope_k: float = 0.0  # its slope part, added in full at -10 °C
     blockers: tuple[str, ...] = ()
     waiting: str | None = None
     spread_k: float | None = None  # smoothed flow/return spread while the boiler heats

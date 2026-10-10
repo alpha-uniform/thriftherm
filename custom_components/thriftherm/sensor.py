@@ -133,6 +133,8 @@ def _learning_attrs(d: Data) -> dict[str, Any]:
     c = d["boiler_command"]
     return {
         "heating_curve_offset_k": c.offset_k,
+        "heating_curve_level_k": c.offset_level_k,
+        "heating_curve_slope_k": c.offset_slope_k,
         "adjustments_last_24h": c.adjustments_last_day,
         "last_adjustment_reason": c.last_adjust_reason,
         "held_back_because": c.held_back,

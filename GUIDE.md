@@ -154,11 +154,15 @@ A room needs a temperature sensor, not a smart thermostat. Everything above stil
 
 | Area | What is learned | From |
 |---|---|---|
-| Boiler | heating curve correction (±10 K) | flow/return spread, how fast rooms warm up, and short cycling |
+| Boiler | heating curve correction in two parts, ±10 K each: **level** (at every outdoor temperature) and **slope** (in full at −10 °C, not at all at +15 °C) | flow/return spread, how fast rooms warm up, and short cycling |
 | Rooms | heat-up rate per room (K/h) | real heating periods with the window closed |
 | Rooms | cool-down coefficient per room (1/h) | stretches without heating, window closed, at least 5 K warmer inside than out |
 | Rooms | heating power per room (K/h without losses) | heat-up rate plus the losses during that episode; unlike the raw rate it holds in winter too |
 | Heat pump (preview) | COP map over outdoor temperature, setpoint correction | measured COP runs |
+
+**Level and slope:** a learning step on a mild day mostly moves the level of the curve, one in the cold mostly its slope, as a heating curve is set by hand (too cold only in winter: steeper; too cold in between: higher). What is learned in autumn therefore hardly touches the winter. The learning state shows both parts and their sum at the current outdoor temperature.
+
+**How the burner is told:** by the best sign the installation has: a gas meter, else the boiler's status code, else its pump state. A gas meter is not needed. Burner runs for hot water never count.
 
 **While the boiler cycles, the rooms decide:** a cycling boiler never gives a settled spread. If a room it is heating hangs at least 0.2 K below target and rises more slowly than 0.2 K/h, the curve goes up by one step (reason *Boiler cycles and a room does not reach its target*). While cycling, the curve only comes down when every called room warms up briskly (0.5 K/h or more). Measured 2026-10-10: at a 35 °C flow minimum the burner ran for only 41 s every 15 minutes, and the bathroom stayed just below target for 14 hours.
 
