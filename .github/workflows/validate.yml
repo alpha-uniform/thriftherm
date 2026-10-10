@@ -27,8 +27,6 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
-          # the brand images ship inside the integration instead of the home-assistant/brands repository
-          ignore: brands
 
   tests:
     name: Tests
