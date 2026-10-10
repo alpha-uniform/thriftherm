@@ -8,6 +8,7 @@ import pytest
 
 from custom_components.thriftherm.engines import advisor
 from custom_components.thriftherm.engines import boiler_control as bc
+from custom_components.thriftherm.engines import boiler_learning as learning
 from custom_components.thriftherm.engines import room as room_engine
 from custom_components.thriftherm.engines.room_control import RoomCtrlMemory, manual_change
 from custom_components.thriftherm.models import DryingState, RoomResult, ScheduleState
@@ -92,8 +93,9 @@ def test_offset_does_not_wind_up_while_the_flow_is_already_at_maximum():
     ready = dict(heating_since_ts=t - 7200, samples=50, spread_ema=10.0, last_review_ts=t - 7200)
     at_max = bc.BoilerMemory(offset_k=5.0, **ready)  # curve 55 + 5 = 60 = maximum
     below = bc.BoilerMemory(offset_k=0.0, **ready)
-    assert bc._learn(_learning_inputs(t), at_max, [_room()]).offset_k == 5.0
-    assert bc._learn(_learning_inputs(t), below, [_room()]).offset_k > 0.0
+    held = learning.learn(_learning_inputs(t), at_max, [_room()], True)
+    assert (held.offset_k, held.slope_k) == (5.0, 0.0)
+    assert learning.learn(_learning_inputs(t), below, [_room()], True).slope_k > 0.0  # at -10 °C the slope takes the step
 
 
 # --- the boiler may only rely on a heat pump that actually heats -----------------------------------

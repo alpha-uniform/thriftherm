@@ -1289,6 +1289,12 @@
           "heating_curve_offset_k": {
             "name": "Heating curve correction K"
           },
+          "heating_curve_level_k": {
+            "name": "Level correction K (at every outdoor temperature)"
+          },
+          "heating_curve_slope_k": {
+            "name": "Slope correction K (in full at -10 °C)"
+          },
           "adjustments_last_24h": {
             "name": "Adjustments in 24 h"
           },

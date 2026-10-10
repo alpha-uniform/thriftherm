@@ -12,7 +12,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from . import learning_reset
-from .engines.boiler_control import BoilerMemory
+from .engines.boiler_memory import BoilerMemory
 from .engines.common import as_dict, as_float
 from .engines.heat_call import CallMemory
 from .engines.heat_pump_control import ControlMemory

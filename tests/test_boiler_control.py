@@ -4,14 +4,10 @@ from dataclasses import replace
 
 import pytest
 
-from custom_components.thriftherm.engines.boiler_control import (
-    MIN_SAMPLES,
-    SETTLE_S,
-    BoilerInputs,
-    BoilerMemory,
-    curve_flow,
-    decide,
-)
+from custom_components.thriftherm.engines import boiler_learning as learning
+from custom_components.thriftherm.engines.boiler_control import decide
+from custom_components.thriftherm.engines.boiler_learning import MIN_SAMPLES, SETTLE_S
+from custom_components.thriftherm.engines.boiler_memory import BoilerInputs, BoilerMemory, correction, curve_flow
 from custom_components.thriftherm.models import RoomResult
 
 from .conftest import PARAMS
@@ -25,6 +21,11 @@ def rr(key="wohnzimmer", temp=19.0, target=20.0, demand=0.5, trend=None, allowed
         demand=demand, trend_k_per_h=trend, dew_point_c=None, abs_humidity_g_m3=None, window_open=not allowed,
         window_unknown=False, heating_allowed=allowed, internal_gain_w=None,
     )
+
+
+def corr(mem, outdoor=5.0):
+    """What the learning adds to the curve at the tests' outdoor temperature."""
+    return correction(mem, outdoor)
 
 
 def inp(rooms=(), *, mode="shadow", op="auto", safety="ok", available=True, frost=(), advice="boiler", outdoor=5.0,
@@ -126,46 +127,46 @@ def test_ramp_limits_flow_increase():
 # --- learning ---------------------------------------------------------------------------------
 def test_small_spread_lowers_the_curve():
     cmd, mem, _ = feed(heating_memory(), [rr(demand=0.5)], flow=45.0, ret=42.0)
-    assert mem.offset_k == -1.0 and mem.last_adjust_reason == "spread_small"
+    assert corr(mem) == pytest.approx(-1.0) and mem.last_adjust_reason == "spread_small"
     assert cmd.spread_k == pytest.approx(3.0, abs=0.2)
     assert cmd.learning_phase == "learning" and cmd.adjustments_last_day == 1
 
 
 def test_large_spread_raises_only_with_demand():
     _, mem, _ = feed(heating_memory(), [rr(demand=0.6)], flow=55.0, ret=37.0)
-    assert mem.offset_k == 1.0 and mem.last_adjust_reason == "spread_large"
+    assert corr(mem) == pytest.approx(1.0) and mem.last_adjust_reason == "spread_large"
     _, calm, _ = feed(heating_memory(), [rr(demand=0.05, trend=1.0)], flow=55.0, ret=37.0)
-    assert calm.offset_k == -1.0 and calm.last_adjust_reason == "rooms_satisfied"
+    assert corr(calm) == pytest.approx(-1.0) and calm.last_adjust_reason == "rooms_satisfied"
 
 
 def test_slow_rooms_raise_the_curve_inside_the_dead_band():
     _, mem, _ = feed(heating_memory(), [rr(demand=0.6, trend=0.05)], flow=50.0, ret=40.0)
-    assert mem.offset_k == 1.0 and mem.last_adjust_reason == "rooms_slow"
+    assert corr(mem) == pytest.approx(1.0) and mem.last_adjust_reason == "rooms_slow"
 
 
 def test_no_learning_before_the_run_settles_or_without_samples():
     mem = heating_memory()
     cmd, mem = decide(inp([rr(demand=0.5)], flow=45.0, ret=42.0, burner=True, now=NOW + SETTLE_S - 30), mem)
-    assert mem.spread_ema is None and mem.offset_k == 0.0
+    assert mem.spread_ema is None and corr(mem) == pytest.approx(0.0)
     _, mem, _ = feed(mem, [rr(demand=0.5)], flow=45.0, ret=42.0, samples=MIN_SAMPLES - 5)
-    assert mem.offset_k == 0.0  # not enough samples yet
+    assert corr(mem) == pytest.approx(0.0)  # not enough samples yet
 
 
 def test_learning_paused_by_guard():
     _, mem, _ = feed(heating_memory(), [rr(demand=0.5)], flow=45.0, ret=42.0, learning=False)
-    assert mem.offset_k == 0.0 and mem.spread_ema is None
+    assert corr(mem) == pytest.approx(0.0) and mem.spread_ema is None
     cmd, _ = decide(inp([rr()], flow=45.0, ret=42.0, burner=True, learning=False), heating_memory())
     assert cmd.learning_phase == "paused"
 
 
 def test_one_adjustment_per_hour_and_four_per_day():
     cmd, mem, now = feed(heating_memory(), [rr(demand=0.5)], flow=45.0, ret=42.0)
-    assert mem.offset_k == -1.0
+    assert corr(mem) == pytest.approx(-1.0)
     _, mem, now = feed(mem, [rr(demand=0.5)], flow=45.0, ret=42.0, start=now + 60)
-    assert mem.offset_k == -1.0  # cooldown
-    full = replace(mem, adjustments=(now - 100, now - 200, now - 300, now - 4000), offset_k=0.0)
+    assert corr(mem) == pytest.approx(-1.0)  # cooldown
+    full = replace(mem, adjustments=(now - 100, now - 200, now - 300, now - 4000), offset_k=0.0, slope_k=0.0)
     _, capped, _ = feed(full, [rr(demand=0.5)], flow=45.0, ret=42.0, start=now + ADJUST_GAP)
-    assert capped.offset_k == 0.0
+    assert corr(capped) == pytest.approx(0.0)
 
 
 ADJUST_GAP = 3700.0
@@ -174,9 +175,9 @@ ADJUST_GAP = 3700.0
 def test_refining_uses_smaller_steps():
     history = tuple(NOW - 3 * 24 * 3600 - i * 4000 for i in range(6))  # old enough not to hit the daily cap
     mem = heating_memory(start=NOW, offset_k=0.0, adjustments=history)
-    assert mem.phase(NOW) == "refining"
+    assert learning.phase(mem, NOW) == "refining"
     _, new, _ = feed(mem, [rr(demand=0.5)], flow=45.0, ret=42.0)
-    assert new.offset_k == -0.5
+    assert corr(new) == pytest.approx(-0.5)
 
 
 def test_offset_survives_storage_roundtrip():
@@ -340,13 +341,14 @@ def test_short_cycling_lowers_the_curve():
     now = NOW
     for _ in range(2):
         cmd, mem, now = _burst(mem, rooms, now)
-    assert mem.offset_k == 0.0  # two short runs are not a pattern yet
+    assert corr(mem) == pytest.approx(0.0)  # two short runs are not a pattern yet
     assert _bc.short_cycling(mem, now) is False
 
     cmd, mem, now = _burst(mem, rooms, now)  # the third start makes it one
-    assert mem.offset_k == -1.0
+    assert corr(mem) == pytest.approx(-1.0)
     assert mem.last_adjust_reason == "short_cycling"
-    assert mem.burn_starts == ()  # counting starts over, so it lowers at most once per pattern
+    cmd, mem, now = _burst(mem, rooms, now)
+    assert corr(mem) == pytest.approx(-1.0)  # the next step waits an hour, however the boiler cycles
 
 
 def test_a_cycling_boiler_whose_room_does_not_get_there_raises_the_curve():
@@ -357,7 +359,7 @@ def test_a_cycling_boiler_whose_room_does_not_get_there_raises_the_curve():
     now = NOW
     for _ in range(3):
         cmd, mem, now = _burst(mem, [bath], now, burn_s=41.0)
-    assert mem.offset_k == 1.0 and mem.last_adjust_reason == "rooms_lagging"
+    assert corr(mem) == pytest.approx(1.0) and mem.last_adjust_reason == "rooms_lagging"
     assert cmd.held_back is None
 
     # a room the stall rule has given up on still counts: it is the evidence
@@ -367,7 +369,7 @@ def test_a_cycling_boiler_whose_room_does_not_get_there_raises_the_curve():
     now = NOW
     for _ in range(3):
         cmd, mem, now = _burst(mem, [stalled, other], now, burn_s=41.0)
-    assert mem.offset_k == 1.0
+    assert corr(mem) == pytest.approx(1.0)
 
 
 def test_a_cycling_boiler_holds_the_curve_while_the_rooms_are_neither_slow_nor_brisk():
@@ -376,7 +378,7 @@ def test_a_cycling_boiler_holds_the_curve_while_the_rooms_are_neither_slow_nor_b
         now = NOW
         for _ in range(3):
             _, mem, now = _burst(mem, [replace(room, boiler_call="calling")], now, gap_s=300.0)
-        return mem.offset_k
+        return corr(mem)
 
     assert run(rr(temp=20.5, target=21.0, trend=0.3)) == 0.0  # getting there, not briskly: leave it
     assert run(rr(temp=20.5, target=21.0, trend=None)) == 0.0  # no trend yet is no evidence
@@ -391,7 +393,7 @@ def test_a_boiler_that_runs_through_is_not_cycling():
     for _ in range(3):  # 20 minutes of burner each time
         cmd, mem, now = _burst(mem, rooms, now, burn_s=1200.0, gap_s=600.0)
     assert not _bc.short_cycling(mem, now)
-    assert mem.offset_k == 0.0
+    assert corr(mem) == pytest.approx(0.0)
 
 
 def test_cycling_respects_the_guards():
@@ -401,20 +403,21 @@ def test_cycling_respects_the_guards():
     now = NOW
     for _ in range(3):
         cmd, low, now = _burst(low, rooms, now)
-    assert low.offset_k == -10.0  # the flow minimum already swallows it
+    assert corr(low) == pytest.approx(-10.0)  # the flow minimum already swallows it
 
     # and nothing is learned while learning is blocked (setpoint just moved, drying, ...)
     blocked = _bc.BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=35.0)
     now = NOW
     for _ in range(3):
         cmd, blocked, now = _burst(blocked, rooms, now, learning=False)
-    assert blocked.offset_k == 0.0
+    assert corr(blocked) == pytest.approx(0.0)
 
 
 def test_the_cycling_memory_survives_a_restart():
-    mem = _bc.BoilerMemory(burn_starts=(1.0, 2.0), burn_durations=(60.0, 65.0))
+    mem = _bc.BoilerMemory(burns=((1.0, 61.0), (900.0, 965.0)), slope_k=1.5, burn_since_ts=1800.0)
     back = _bc.BoilerMemory.from_storage(mem.to_storage())
-    assert back.burn_starts == (1.0, 2.0) and back.burn_durations == (60.0, 65.0)
+    assert back.burns == ((1.0, 61.0), (900.0, 965.0)) and back.slope_k == 1.5
+    assert back.burn_since_ts == 1800.0  # a burn in progress stays one burn across the restart
 
 
 def test_no_block_before_the_rooms_have_reported():
@@ -442,7 +445,7 @@ def test_cycling_at_the_flow_minimum_is_shown_not_hidden():
         cmd, mem = _bc.decide(on, mem)
         cmd, mem = _bc.decide(replace(on, now_ts=now + 60, burner_heating=False, flow_c=40.0, return_c=39.0), mem)
         now += 770.0
-    assert mem.offset_k == 0.0
+    assert corr(mem) == pytest.approx(0.0)
     assert cmd.held_back == "short_cycling_at_flow_min"
 
 
@@ -487,7 +490,7 @@ def test_a_guess_stands_once_the_retract_window_has_passed():
 def test_an_unknown_trend_does_not_count_as_slow():
     # after a restart the trend needs half an hour of history; until then nothing is known
     _, mem, _ = feed(heating_memory(), [rr(demand=0.6, trend=None)], flow=50.0, ret=40.0)
-    assert mem.offset_k == 0.0
+    assert corr(mem) == pytest.approx(0.0)
 
 
 def test_only_calling_rooms_raise_the_flow():
@@ -504,8 +507,8 @@ def test_a_run_still_burning_is_not_counted_as_a_short_one():
     now = NOW
     # runs of 900 s and 60 s within the hour, a third one burning since 10 s; 30 s belongs to an older start
     mem = replace(
-        BoilerMemory(), burner_on=True, burn_started_ts=now - 10,
-        burn_starts=(now - 7200, now - 1000, now - 500, now - 10), burn_durations=(30.0, 900.0, 60.0),
+        BoilerMemory(), burn_since_ts=now - 10,
+        burns=((now - 7200, now - 7170), (now - 2000, now - 1100), (now - 500, now - 440)),
     )
     assert bc.short_cycling(mem, now) is False  # median of 900 and 60 s
 
@@ -529,3 +532,93 @@ def test_the_burner_share_of_the_last_hour_is_kept():
     shower = replace(inp(rooms, mode="active", now=NOW + 9000.0), gas_power_w=20000.0, reported_mode="hot_water")
     tapped, mem = _bc.decide(shower, mem)
     assert tapped.burner_starts_last_hour == 0  # hot water is not the heating
+
+
+def test_a_step_on_a_mild_day_moves_the_level_and_one_in_the_cold_the_slope():
+    """As a heating curve is set by hand: too cold only in winter means steeper, in between means higher."""
+    ready = dict(heating_since_ts=NOW - 7200, samples=50, spread_ema=18.0, last_review_ts=NOW - 7200,
+                 state="heat", state_since_ts=NOW - 7200)
+
+    def step(outdoor):  # a large spread with demand: the curve is too low
+        on = inp([rr(demand=0.5)], mode="active", outdoor=outdoor, burner=True, flow=50.0, ret=32.0)
+        return learning.learn(on, BoilerMemory(**ready), [rr(demand=0.5)], True)
+
+    mild, cold, between = step(15.0), step(-10.0), step(2.5)
+    assert (mild.offset_k, mild.slope_k) == (1.0, 0.0)
+    assert (cold.offset_k, cold.slope_k) == (0.0, 1.0)
+    assert between.offset_k == pytest.approx(between.slope_k)  # halfway: both alike
+    for mem, outdoor in ((mild, 15.0), (cold, -10.0), (between, 2.5)):
+        assert correction(mem, outdoor) == pytest.approx(1.0)  # the flow there moves by the full step
+    assert correction(cold, 15.0) == 0.0  # what the cold taught leaves the mild days alone
+
+
+def test_the_burner_is_told_by_the_best_sign_and_never_by_hot_water():
+    base = inp([rr()], mode="active")
+    pump = replace(base, burner_heating=True)
+    assert learning.flame(pump)  # neither a gas meter nor a status code: the pump state
+    assert not learning.flame(replace(pump, status_known=True, reported_mode="heating_after"))  # overrun is no flame
+    assert learning.flame(replace(base, status_known=True, reported_mode="heating"))
+    assert not learning.flame(replace(pump, status_known=True, reported_mode="heating", gas_power_w=0.0))  # the meter knows best
+    assert learning.flame(replace(base, gas_power_w=9000.0))
+    assert not learning.flame(replace(pump, gas_power_w=20000.0, reported_mode="hot_water"))
+
+    # a shower without a status code and without a gas meter: the temperatures give it away, and
+    # the burn is not counted as a heating burn
+    mem = BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=40.0)
+    _, mem = decide(replace(pump, flow_c=64.0, return_c=63.5), mem)
+    assert mem.burn_since_ts is None and mem.hot_water_seen_ts == NOW
+
+
+# ------------------------------------------------------------------ hot water never counts (review 2026-10-11)
+def test_hot_water_told_by_the_pump_state_is_no_heating_burn_even_with_a_gas_meter():
+    """A gas meter sees a flame, not what it burns for: 45 minutes of cylinder loading were learned from."""
+    loading = replace(inp([rr(demand=0.0)], mode="active", flow=45.0, ret=42.0), gas_power_w=9000.0, hot_water_active=True)
+    assert not learning.flame(loading)
+    mem = heating_memory()
+    for i in range(46):
+        cmd, mem = decide(replace(loading, now_ts=NOW + i * 60.0), mem)
+    assert mem.burns == () and mem.burn_since_ts is None
+    assert (mem.offset_k, mem.slope_k) == (0.0, 0.0) and cmd.burner_share == 0.0
+
+
+def test_the_start_of_a_shower_is_not_kept_as_a_short_heating_burn():
+    on = replace(inp([rr()], mode="active", flow=40.0, ret=36.0), gas_power_w=20000.0)  # gas first...
+    mem = BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=40.0, last_send_ts=NOW - 60)
+    _, mem = decide(on, mem)
+    assert mem.burn_since_ts == NOW
+    _, mem = decide(replace(on, now_ts=NOW + 90, flow_c=64.0, return_c=63.5), mem)  # ...the temperatures 90 s later
+    assert mem.burns == () and mem.burn_since_ts is None
+
+
+def test_taps_in_the_hour_after_hot_water_are_left_out_unless_the_boiler_says_what_it_burns_for():
+    def taps(status_known):
+        base = replace(inp([rr()], mode="active", flow=40.0, ret=36.0), status_known=status_known,
+                       reported_mode="heating" if status_known else None)
+        mem = BoilerMemory(state="heat", state_since_ts=NOW - 7200, last_flow=40.0, hot_water_seen_ts=NOW - 600)
+        for i in range(3):
+            start = NOW + i * 600.0
+            _, mem = decide(replace(base, now_ts=start, gas_power_w=9000.0), mem)
+            _, mem = decide(replace(base, now_ts=start + 60, gas_power_w=0.0,
+                                    reported_mode="heating_after" if status_known else None), mem)
+        return mem
+
+    assert taps(status_known=False).burns == ()  # a guess stays out of the burner's record
+    assert len(taps(status_known=True).burns) == 3  # the boiler itself said: heating
+
+
+def test_the_phase_shown_is_paused_once_the_heating_is_blocked():
+    burns = tuple((NOW - 3000 + i * 900, NOW - 2940 + i * 900) for i in range(3))
+    cycled = BoilerMemory(state="block", state_since_ts=NOW - 60, burns=burns)
+    assert learning.short_cycling(cycled, NOW)
+    cmd, _ = decide(inp([rr(demand=0.0)], mode="active", advice="none"), cycled)
+    assert cmd.plan == "block" and cmd.learning_phase == "paused"
+
+
+def test_a_step_the_limit_swallows_is_not_spent():
+    """At 14 °C a level already at +10 K leaves a step almost nothing to move, yet it used up the hour and the day's count."""
+    ready = dict(heating_since_ts=NOW - 7200, samples=50, spread_ema=18.0, last_review_ts=NOW - 7200,
+                 state="heat", state_since_ts=NOW - 7200)
+    on = inp([rr(demand=0.5)], mode="active", outdoor=14.0, burner=True, flow=50.0, ret=32.0)
+    full = BoilerMemory(offset_k=10.0, **ready)
+    after = learning.learn(on, full, [rr(demand=0.5)], True)
+    assert (after.offset_k, after.slope_k, after.adjustments) == (10.0, 0.0, ())

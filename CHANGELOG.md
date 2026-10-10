@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.5 — 2026-10-11
+
+The boiler learning rebuilt on one foundation. It had grown rule by rule inside the controller; it is now a module of its own with one burner sign, one place that decides the direction, and a correction in two parts. The configuration stays at version 3, and what was learned so far is kept as the level.
+
+- **The curve is corrected in two parts: level and slope.** The level applies at every outdoor temperature, the slope in full at −10 °C and not at all at +15 °C. A step on a mild day mostly moves the level, one in the cold mostly the slope, scaled so that the flow at the current outdoor temperature moves by the full step. Before, one number shifted the whole curve, so what a mild October taught was carried into January unchanged. The learning state shows both parts (`heating_curve_level_k`, `heating_curve_slope_k`) and their sum now.
+- **One burner sign for everything, without a gas meter if there is none.** Cycling, the burner share and the settled spread used two different trackers, one of them fed by the pump state, which runs on for minutes after the flame. Now the best sign the installation has is used throughout: gas meter, else the boiler's status code, else the pump state. Burns for hot water never count, whether the boiler reports them (status code, pump state, hot water mode) or the temperatures give them away: the burn that turns out to be the start of a shower is dropped, and where the boiler does not say what it burns for, taps in the hour after hot water are left out too. What remains unseen is a short tap on an installation with a gas meter but no status code that never trips a temperature rule.
+- **A step the ±10 K limit would swallow is no longer spent,** so it does not use up the hour or the day's four steps.
+- **A burn in progress survives a restart** as one burn.
+- **The learning state no longer says "paused" while a cycling boiler is being learned from.**
+- **After a correction the next one waits its hour.** The cycling rule used to restart its count of burner starts instead; the count is now kept, because the burner share needs it.
+- Code: `engines/boiler_memory.py` (what is remembered, the curve), `engines/boiler_learning.py` (evidence, direction, steps), `engines/boiler_control.py` (heating, blocking, hot water detection).
+
 ## 0.5.4 — 2026-10-11
 
 The learning meets a boiler that cycles, which is what most boilers do in mild weather. The configuration stays at version 3.

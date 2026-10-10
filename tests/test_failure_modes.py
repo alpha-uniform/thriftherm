@@ -297,17 +297,18 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
     boiler = boiler_control.BoilerMemory.from_storage(
         {
             "offset_k": "warm", "adjustments": [1.0, "x", None, *range(2, 14)], "last_adjust_reason": 5, "state": "block",
-            "last_flow": "35", "ramp_from": [], "burn_starts": ["a", *range(12)], "burn_durations": None,
+            "last_flow": "35", "ramp_from": [], "burns": [[1, 61], ["a", 5], [9, 3], "x", [100, 160, 7]], "slope_k": "steep",
+            "burn_starts": [1, 2], "burn_durations": [60],  # written by 0.5.4 and earlier: ignored
         }
     )
     assert boiler.offset_k == 0.0 and boiler.last_adjust_reason is None and boiler.state == "block"
     assert boiler.adjustments == (1.0, *map(float, range(2, 14)))  # all of them, even beyond ten
     assert boiler.last_flow == 35.0 and boiler.ramp_from is None
-    assert boiler.burn_starts == tuple(map(float, range(2, 12))) and boiler.burn_durations == ()
+    assert boiler.burns == ((1.0, 61.0),) and boiler.slope_k == 0.0  # only a whole (start, end) pair counts
     assert boiler_control.BoilerMemory.from_storage({"offset_k": None}).offset_k == 0.0
     assert list(boiler.to_storage()) == [
-        "offset_k", "adjustments", "last_adjust_reason", "state", "state_since_ts", "last_flow", "last_flow_ts",
-        "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "burn_starts", "burn_durations",
+        "offset_k", "slope_k", "adjustments", "last_adjust_reason", "state", "state_since_ts", "last_flow", "last_flow_ts",
+        "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "burn_since_ts", "burns",
     ]
 
     control = ControlMemory(offset_k=1.5, learning_bins=((2, 10.0),), running_since_ts=5.0, last_hvac_mode="heat", last_target=21.0)
