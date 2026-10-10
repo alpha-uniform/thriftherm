@@ -335,7 +335,7 @@ def _burst(mem, rooms, start, burn_s=60.0, gap_s=900.0, learning=True):
 
 
 def test_short_cycling_lowers_the_curve():
-    rooms = [rr(demand=0.6, temp=21.0, target=23.0)]
+    rooms = [rr(demand=0.6, temp=21.0, target=23.0, trend=0.8)]  # warming briskly: the flow is ample
     mem = _bc.BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=35.0)
     now = NOW
     for _ in range(2):
@@ -347,6 +347,41 @@ def test_short_cycling_lowers_the_curve():
     assert mem.offset_k == -1.0
     assert mem.last_adjust_reason == "short_cycling"
     assert mem.burn_starts == ()  # counting starts over, so it lowers at most once per pattern
+
+
+def test_a_cycling_boiler_whose_room_does_not_get_there_raises_the_curve():
+    """Measured 2026-10-10 at a 35 °C flow minimum: 41 s of burner every 15 minutes, and the
+    bathroom hung 0.2-0.3 K below target for 14 hours while the old rule wanted to lower the flow."""
+    bath = replace(rr(key="badezimmer", demand=0.15, temp=20.7, target=21.0, trend=0.1), boiler_call="calling")
+    mem = _bc.BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=35.0)
+    now = NOW
+    for _ in range(3):
+        cmd, mem, now = _burst(mem, [bath], now, burn_s=41.0)
+    assert mem.offset_k == 1.0 and mem.last_adjust_reason == "rooms_lagging"
+    assert cmd.held_back is None
+
+    # a room the stall rule has given up on still counts: it is the evidence
+    stalled = replace(bath, boiler_call="stalled")
+    other = replace(rr(key="kuche", demand=0.2, temp=20.6, target=21.0, trend=0.3), boiler_call="calling")
+    mem = _bc.BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=35.0)
+    now = NOW
+    for _ in range(3):
+        cmd, mem, now = _burst(mem, [stalled, other], now, burn_s=41.0)
+    assert mem.offset_k == 1.0
+
+
+def test_a_cycling_boiler_holds_the_curve_while_the_rooms_are_neither_slow_nor_brisk():
+    def run(room, released_s=3600.0):
+        mem = _bc.BoilerMemory(state="heat", state_since_ts=NOW - released_s, last_flow=35.0)
+        now = NOW
+        for _ in range(3):
+            _, mem, now = _burst(mem, [replace(room, boiler_call="calling")], now, gap_s=300.0)
+        return mem.offset_k
+
+    assert run(rr(temp=20.5, target=21.0, trend=0.3)) == 0.0  # getting there, not briskly: leave it
+    assert run(rr(temp=20.5, target=21.0, trend=None)) == 0.0  # no trend yet is no evidence
+    assert run(rr(temp=20.95, target=21.0, trend=0.0)) == 0.0  # as good as there
+    assert run(rr(temp=20.5, target=21.0, trend=0.1), released_s=0.0) == 0.0  # released minutes ago
 
 
 def test_a_boiler_that_runs_through_is_not_cycling():
@@ -399,7 +434,7 @@ def test_cycling_at_the_flow_minimum_is_shown_not_hidden():
     # 2026-09-24..26: 88 short runs at 17 °C outside, the curve (30 °C) below the 45 °C minimum,
     # so the lowering step was swallowed without a trace
     params = replace(PARAMS, boiler_flow_min=45.0)
-    rooms = [rr(demand=0.6, temp=21.0, target=23.0)]
+    rooms = [rr(demand=0.6, temp=21.0, target=23.0, trend=0.8)]
     mem = _bc.BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=45.0)
     now = NOW
     for _ in range(3):
@@ -473,3 +508,24 @@ def test_a_run_still_burning_is_not_counted_as_a_short_one():
         burn_starts=(now - 7200, now - 1000, now - 500, now - 10), burn_durations=(30.0, 900.0, 60.0),
     )
     assert bc.short_cycling(mem, now) is False  # median of 900 and 60 s
+
+
+def test_the_burner_share_of_the_last_hour_is_kept():
+    """What a cycling boiler delivers is the share of time its burner runs (2026-10-10: 41 s of 15.7 min)."""
+    mem = _bc.BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=40.0)
+    rooms = [replace(rr(temp=20.5, target=21.0, trend=0.3), boiler_call="calling")]
+    cmd = None
+    for i in range(4):  # four burns of 45 s, a quarter of an hour apart, told by the gas meter
+        start = NOW + i * 900.0
+        on = replace(inp(rooms, mode="active", now=start, flow=38.0, ret=34.0), gas_power_w=9000.0)
+        _, mem = _bc.decide(on, mem)
+        cmd, mem = _bc.decide(replace(on, now_ts=start + 45.0, gas_power_w=0.0), mem)
+    assert cmd.burner_starts_last_hour == 4
+    assert cmd.burner_share == pytest.approx(4 * 45.0 / 3600.0)
+
+    later, mem = _bc.decide(replace(inp(rooms, mode="active", now=NOW + 3 * 900.0 + 3700.0), gas_power_w=0.0), mem)
+    assert later.burner_starts_last_hour == 0 and later.burner_share == 0.0  # an hour on, nothing is left
+
+    shower = replace(inp(rooms, mode="active", now=NOW + 9000.0), gas_power_w=20000.0, reported_mode="hot_water")
+    tapped, mem = _bc.decide(shower, mem)
+    assert tapped.burner_starts_last_hour == 0  # hot water is not the heating

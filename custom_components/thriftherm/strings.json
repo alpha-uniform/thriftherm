@@ -417,6 +417,17 @@
       "boiler_delta_t": {
         "name": "Boiler flow/return spread"
       },
+      "boiler_burner_share": {
+        "name": "Boiler burner share",
+        "state_attributes": {
+          "starts_last_hour": {
+            "name": "Burner starts in the last hour"
+          },
+          "flow_setpoint": {
+            "name": "Flow setpoint °C"
+          }
+        }
+      },
       "active_source_advice": {
         "name": "Recommended heat source",
         "state": {
@@ -539,6 +550,7 @@
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
+              "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
               "refining": "Refining",
@@ -718,6 +730,7 @@
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
+              "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
               "refining": "Refining",
@@ -812,6 +825,7 @@
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
+              "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
               "refining": "Refining",
@@ -958,6 +972,7 @@
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
+              "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
               "refining": "Refining",
@@ -1052,6 +1067,7 @@
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
+              "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
               "refining": "Refining",
@@ -1197,6 +1213,7 @@
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
+              "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
               "refining": "Refining",
@@ -1313,6 +1330,7 @@
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
+              "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
               "refining": "Refining",
@@ -1404,6 +1422,7 @@
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
+              "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
               "refining": "Refining",
@@ -1560,6 +1579,7 @@
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
+              "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
               "refining": "Refining",
@@ -1689,6 +1709,7 @@
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
+              "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
               "refining": "Refining",
@@ -1799,6 +1820,7 @@
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
               "rooms_slow": "Rooms heating up slowly",
+              "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
               "learning": "Learning",
               "refining": "Refining",
