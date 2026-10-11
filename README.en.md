@@ -46,7 +46,7 @@ The first setup step asks which heating you have and leaves out the steps that d
 | **Always** | | | | | |
 | *Plan only* first, *Active* only after you release it; a reason for every decision; repair notices | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-✓ works · – not available · preview = not yet tested with a real heat pump. Each “+” column includes the columns to its left. In the heat-pump-only column the room rows apply to the rooms the heat pump reaches.
+✓ works · – not available · preview = has run on a real heat pump for a few hours only. Each “+” column includes the columns to its left. In the heat-pump-only column the room rows apply to the rooms the heat pump reaches.
 
 ¹ Central or district heating, or heat supplied by the landlord: no own boiler. Rooms are controlled through Better Thermostat, and nothing is ever written to the heat supply.
 
@@ -107,7 +107,7 @@ One temperature sensor per room is enough. The boiler control – heating curve,
 
 ### Add-on: heat pump (preview)
 
-> **Preview – coming soon.** Not yet tested with a real heat pump – do not rely on it. It was developed with a Midea PortaSplit in mind but has only ever run in *Plan only* mode and has never controlled a heat pump. What follows describes what it is built to do.
+> **Preview.** Since 2026-10-11 it actively controls one Midea PortaSplit, so far for a few hours in mild weather only – do not rely on it yet. What follows describes what it is built to do.
 
 If a heat pump is configured, the integration measures its COP from airflow and air enthalpy, compares heat cost against the central source using real prices and a learned COP map, detects defrost/icing, and runs the heat pump slowly at a high COP. It can also dry a bathroom it heats after a shower. Without a heat pump, all of this simply disappears; without a boiler, the heat pump is the only heat source and there is nothing to compare.
 
@@ -167,7 +167,7 @@ The full list is in the [setup guide, step 1](SETUP.md#1-what-you-need).
 
 **Writing to a gas boiler is your responsibility.** Only the `SetMode` message is used; no installer parameters are written. Changing the pump mode is a one-time decision you make yourself.
 
-**Status: beta.** All controllers start in *Plan only*: they compute and publish what they would do and write nothing until you release active control. Blocking, flow control and the safety fallbacks are verified on the maintainer's boiler. The learned corrections have so far only seen mild weather. The heat pump add-on is a preview – coming soon, not yet tested with a real heat pump; do not rely on it.
+**Status: beta.** All controllers start in *Plan only*: they compute and publish what they would do and write nothing until you release active control. Blocking, flow control and the safety fallbacks are verified on the maintainer's boiler. The learned corrections have so far only seen mild weather. The heat pump add-on is a preview: it has controlled a real heat pump since 2026-10-11, for a few hours only; do not rely on it.
 
 ## Development
 

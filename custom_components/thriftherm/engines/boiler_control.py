@@ -42,10 +42,10 @@ from ..const import (
 )
 from ..models import BoilerCommand
 from . import boiler_learning as learning
+from . import boiler_load as load
 from .boiler_learning import BURNING_GAS_W, PHASE_LEARNING, PHASE_PAUSED, PHASE_REFINING, short_cycling  # noqa: F401
-from .boiler_memory import BoilerInputs, BoilerMemory, correction, curve_flow  # noqa: F401
+from .boiler_memory import BoilerInputs, BoilerMemory, cold_weight, correction, curve_flow  # noqa: F401
 from .common import round_half
-from .heat_call import CALL_CALLING
 
 RESEND_INTERVAL_S = 120.0  # boiler falls back to its knob after 9-16 min without SetMode (measured)
 MIN_STATE_S = 300.0  # no heat/block toggling faster than this (frost excepted)
@@ -189,11 +189,40 @@ def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerM
     return replace(cmd, hot_water=recent, hot_water_seen_ts=mem.hot_water_seen_ts), mem
 
 
+def _book_operation(inp: BoilerInputs, mem: BoilerMemory, cell: str | None) -> BoilerMemory:
+    """Book the time since the last cycle to the load class in use, with whether a called room lags."""
+    now = inp.now_ts
+    gap = 0.0 if mem.lines_seen_ts is None else now - mem.lines_seen_ts
+    if not inp.learning_allowed or not 0.0 < gap <= load.MAX_GAP_S:
+        return replace(mem, lines_seen_ts=now if inp.learning_allowed else None)
+    released_for = 0.0 if mem.state_since_ts is None else now - mem.state_since_ts
+    given_time = released_for >= learning.LAG_MIN_HEAT_S
+    lag = given_time and load.lagging(inp.rooms)
+    judged = given_time and bool(load.calling_rooms(inp.rooms))
+    lines = load.observe(mem.lines, cell, gap / 3600.0, lag, mem.offset_k, mem.slope_k, judged)
+    return replace(mem, lines=lines, lines_seen_ts=now)
+
+
 def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool) -> tuple[BoilerCommand, BoilerMemory]:
     p = inp.params
     now = inp.now_ts
+    # only rooms that call count: one hanging below target (stalled), at the end of its comfort
+    # period or merely heating along does not ask the boiler for anything
+    heating_rooms = load.calling_rooms(inp.rooms)
+    able = len(load.able_rooms(inp.rooms))  # rooms whose radiator could take heat now: the total they are measured against
+    share = p.boiler_spread_min_room_share
+    seen = load.load_class(len(heating_rooms), able, share)
+    in_use, candidate, candidate_since = load.settled_class(
+        mem.class_in_use, mem.class_candidate, mem.class_candidate_since_ts, seen, now
+    )
+    mem = replace(mem, class_in_use=in_use, class_candidate=candidate, class_candidate_since_ts=candidate_since)
+    # the load class whose line is used and learned; None means the one common correction for all
+    cell = in_use if p.boiler_load_model else None
+    cold = cold_weight(inp.outdoor_c)
 
     def command(plan: str, send: bool, text: str | None, flow: float | None, disable: bool, reason: str, *, curve=None, blockers=(), waiting=None) -> BoilerCommand:
+        # what is shown is the line in use: the class's own, or the common correction
+        shown = load.line_of(mem.lines, cell, mem.offset_k, mem.slope_k) if cell else load.LoadLine(mem.offset_k, mem.slope_k)
         return BoilerCommand(
             plan=plan,
             send=send,
@@ -202,23 +231,28 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool) -> tuple[Bo
             disable_hc=disable,
             reason=reason,
             curve_flow=curve,
-            offset_k=round(correction(mem, inp.outdoor_c), 2),
-            offset_level_k=round(mem.offset_k, 2),
-            offset_slope_k=round(mem.slope_k, 2),
+            offset_k=round(correction(mem, inp.outdoor_c, cell), 2),
+            offset_level_k=round(shown.level_k, 2),
+            offset_slope_k=round(shown.slope_k, 2),
             blockers=tuple(blockers),
             waiting=waiting,
             spread_k=None if mem.spread_ema is None else round(mem.spread_ema, 1),
             learning_phase=learning.shown_phase(inp, mem, heating_run),
             adjustments_last_day=learning.adjustments_last_day(mem, now),
+            moved_last_day_k=round(learning.moved_last_day(mem, now), 2),
             last_adjust_reason=mem.last_adjust_reason,
-            held_back=learning.held_back(inp, mem),
+            held_back=learning.held_back(inp, mem, cell),
+            calling_rooms=len(heating_rooms),
+            rooms_total=able,
+            spread_rule=load.spread_rule(len(heating_rooms), able, share) if plan == BOILER_PLAN_HEAT else None,
+            load_class=in_use,
+            curve_by_load=load.summary(mem.lines, cold) if p.boiler_load_model else None,
         )
 
     if inp.control_mode == CTRL_OFF:
         return command(BOILER_PLAN_DISABLED, False, None, None, False, "control_off"), mem
 
     mem = learning.follow_heating_run(mem, heating_run, now)
-
     blockers: list[str] = []
     if not inp.boiler_available:
         blockers.append("boiler_data_unavailable")
@@ -230,7 +264,10 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool) -> tuple[Bo
         # send nothing: the boiler returns to its front knob after ~10 min
         return (
             command(BOILER_PLAN_HANDS_OFF, False, None, None, False, "hands_off", blockers=blockers),
-            replace(mem, state=None, state_since_ts=None, block_since_ts=None),
+            replace(
+                mem, state=None, state_since_ts=None, block_since_ts=None,
+                class_in_use=None, class_candidate=None, class_candidate_since_ts=None,
+            ),
         )
 
     frost = bool(inp.frost_rooms)
@@ -248,16 +285,12 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool) -> tuple[Bo
     if wanted_state != mem.state:
         mem = replace(mem, state=wanted_state, state_since_ts=now, last_review_ts=None, samples=0)
 
-    # only rooms that call raise the flow: one hanging below target (stalled) or at the end of its
-    # comfort period does not ask the boiler for anything
-    heating_rooms = [
-        r for r in inp.rooms if r.heating_allowed and r.temperature is not None and r.boiler_call in (None, CALL_CALLING)
-    ]
     curve = round(curve_flow(inp.outdoor_c, p), 1)
     if wanted_state == BOILER_PLAN_HEAT:
-        mem = learning.learn(inp, mem, heating_rooms, heating_run)
+        mem = _book_operation(inp, mem, cell)
+        mem = learning.learn(inp, mem, heating_rooms, heating_run, cell)
         demand = max(((r.demand or 0.0) for r in heating_rooms), default=0.0)
-        flow = curve + correction(mem, inp.outdoor_c) + DEMAND_BOOST_K * demand
+        flow = curve + correction(mem, inp.outdoor_c, cell) + DEMAND_BOOST_K * demand
         if frost:
             flow = max(flow, 40.0)
         flow = round_half(min(max(flow, p.boiler_flow_min), p.boiler_flow_max))
@@ -287,6 +320,8 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool) -> tuple[Bo
     else:
         flow = p.boiler_flow_min
         disable = True
+        # blocked time is no operation of any class, and none is in use
+        mem = replace(mem, lines_seen_ts=None, class_in_use=None, class_candidate=None, class_candidate_since_ts=None)
         # the next heating run ramps from its own start, not from a rise that ended with this block
         mem = replace(mem, ramp_from=None, ramp_since_ts=None)
 

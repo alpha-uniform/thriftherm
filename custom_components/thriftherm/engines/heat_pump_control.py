@@ -10,11 +10,23 @@ Principles
 * Blockers (safety fallback, mode, outdoor limit, icing lockout, error code)
   stop a run immediately. Comfort-driven stops respect the minimum run time,
   restarts the minimum off time.
+* A unit is never switched from heating straight to off: it first runs its fan
+  alone for a quarter of an hour (parameter), which blows the heat left in the
+  coil into the rooms, and is switched off after that.
 * The Midea regulates on its own intake air (the room it stands in), not on
   the served rooms. Its setpoint is therefore used as a power lever:
   intake + small offset = low compressor load = high COP ("eco"), 30 °C = full
   power ("boost", only for "quick heat-up"). The offset adapts so the served
   rooms warm up slowly but steadily.
+* With "setpoint follows the rooms" (option) the unit gets the highest target of
+  the rooms it serves plus the setpoint offset (comfort 21 °C by day gives 22 °C,
+  setback 17 °C at night gives 18 °C) and regulates by itself. It stays on, day
+  and night, for as long as the heat pump is the cheaper source, whether or not
+  a room is below its target right now, and is switched off only while nobody
+  wants the served rooms warm (away, off, a window open in each of them). Quick
+  heat-up only raises the fan. While the intake air is at the setpoint the unit
+  idles; the command says so (`delivers`), and the boiler brings what a served
+  room still lacks.
 * Economics come from the advisor (measured COP, else learned/prior estimate).
   Rarely visited outdoor-temperature bins get short learning runs when the
   estimate is close to break-even, so the COP map can learn cold conditions.
@@ -68,11 +80,14 @@ MANUAL_HANDS_OFF_S = 3 * 3600.0
 MANUAL_DETECT_GRACE_S = 120.0
 FAN_ECO = "auto"
 FAN_BOOST = "high"
+# targets that mean "nobody wants this room warm": a unit that follows the rooms is not run for them.
+# The night setback is not among them: the unit then holds the setback temperature plus the offset.
+RESTING_REASONS = ("mode_away", "away_humidity_guard", "mode_off_frost_protection", "heat_pump_cooling")
 
 # restored as they are, anything that is not a number becomes None
 _STORED_FLOATS = (
     "offset_k", "manual_until_ts", "running_since_ts", "stopped_since_ts",
-    "last_command_ts", "last_target", "learning_until_ts", "last_offset_review_ts",
+    "last_command_ts", "last_target", "learning_until_ts", "last_offset_review_ts", "fan_until_ts",
 )
 
 
@@ -90,6 +105,7 @@ class ControlMemory:
     learning_until_ts: float | None = None
     learning_bins: tuple[tuple[int, float], ...] = ()  # (outdoor bin, last learning run ts)
     manual_until_ts: float | None = None
+    fan_until_ts: float | None = None  # the unit runs its fan on until then, then it is switched off
 
     def to_storage(self) -> dict:
         # The run state is persisted too: after a restart mid-run the controller must
@@ -105,6 +121,7 @@ class ControlMemory:
             "last_target": self.last_target,
             "learning_until_ts": self.learning_until_ts,
             "last_offset_review_ts": self.last_offset_review_ts,
+            "fan_until_ts": self.fan_until_ts,
         }
 
     @classmethod
@@ -146,15 +163,33 @@ class ControlInputs:
     outdoor_bin: int | None
     bin_count: int
     params: Parameters
+    cheaper: bool = False  # the heat pump is the cheaper source right now, whether or not a room calls
 
 
 
 def eco_setpoint(heat_pump: HeatPumpState, offset_k: float) -> float | None:
     # the intake air sensor when it works, else the unit's own reading
-    base = heat_pump.intake_temp.value_or_none if heat_pump.intake_temp.valid else heat_pump.indoor_temp
+    base = _intake(heat_pump)
     if base is None:
         return None
     return min(max(round_half(base + offset_k), SETPOINT_MIN), SETPOINT_MAX)
+
+
+def _intake(heat_pump: HeatPumpState) -> float | None:
+    return heat_pump.intake_temp.value_or_none if heat_pump.intake_temp.valid else heat_pump.indoor_temp
+
+
+def wanted_rooms(rooms: tuple[RoomResult, ...]) -> list[RoomResult]:
+    """Served rooms somebody wants warm and the unit may heat (window shut)."""
+    return [r for r in rooms if r.heat_pump_allowed and r.target_reason not in RESTING_REASONS]
+
+
+def room_setpoint(p: Parameters, rooms: tuple[RoomResult, ...]) -> float | None:
+    """The setpoint of a unit that follows the rooms: their highest target plus the offset. None without such a room."""
+    wanted = wanted_rooms(rooms)
+    if not wanted:
+        return None
+    return min(max(round_half(max(r.target for r in wanted) + p.heat_pump_setpoint_offset_k), SETPOINT_MIN), SETPOINT_MAX)
 
 
 def _blockers(inp: ControlInputs) -> list[str]:
@@ -197,18 +232,27 @@ def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Con
     p = inp.params
     now = inp.now_ts
 
-    def cmd(plan: str, action: str, reason: str, *, target=None, fan=None, load=None, blockers=(), waiting=None) -> HeatPumpCommand:
+    def cmd(
+        plan: str, action: str, reason: str, *, target=None, fan=None, load=None, blockers=(), waiting=None, stop_to="off"
+    ) -> HeatPumpCommand:
         return HeatPumpCommand(
             plan=plan,
             action=action,
-            hvac_mode="heat" if plan == HEAT_PUMP_PLAN_HEAT else ("off" if action == "stop" else None),
+            hvac_mode="heat" if plan == HEAT_PUMP_PLAN_HEAT else (stop_to if action == "stop" else None),
             target_temp=target,
             fan_mode=fan,
             load=load,
             reason=reason,
             blockers=tuple(blockers),
             waiting=waiting,
+            delivers=not idles,
         )
+
+    # A unit that follows the rooms' target stops heating by itself once its intake air is there.
+    follows = p.heat_pump_follow_rooms
+    own = room_setpoint(p, inp.rooms) if follows else None
+    intake = _intake(inp.heat_pump)
+    idles = own is not None and intake is not None and intake >= own
 
     if inp.control_mode == CTRL_OFF:
         return cmd(HEAT_PUMP_PLAN_DISABLED, "none", "control_off"), replace(mem, running_since_ts=None)
@@ -216,6 +260,26 @@ def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Con
     # ---- hands off -------------------------------------------------------------
     if inp.run_state == HEAT_PUMP_UNAVAILABLE:
         return cmd(HEAT_PUMP_PLAN_HANDS_OFF, "none", "midea_unavailable"), replace(mem, running_since_ts=None)
+    # ---- the fan runs on after a stop of ours, then the unit is switched off --------------
+    if mem.fan_until_ts is not None:
+        ours = inp.control_mode != CTRL_ACTIVE or (inp.heat_pump.hvac_mode or "off") == "fan_only"
+        settling = mem.last_command_ts is not None and now - mem.last_command_ts <= MANUAL_DETECT_GRACE_S
+        if not ours and not settling:
+            mem = replace(mem, fan_until_ts=None, last_hvac_mode=None)  # somebody set another mode: no longer ours to end
+        elif now >= mem.fan_until_ts:
+            new = replace(mem, fan_until_ts=None, last_command_ts=now, last_hvac_mode="off")
+            return cmd(HEAT_PUMP_PLAN_OFF, "stop", "fan_run_on"), new
+        else:
+            return cmd(HEAT_PUMP_PLAN_OFF, "none", "fan_run_on", waiting="fan_run_on"), mem
+
+    def stop(reason: str, blockers=()) -> tuple[HeatPumpCommand, ControlMemory]:
+        run_on = p.heat_pump_fan_run_on_s > 0
+        new = replace(
+            mem, running_since_ts=None, stopped_since_ts=now, last_command_ts=now, learning_until_ts=None,
+            last_hvac_mode="fan_only" if run_on else "off", fan_until_ts=now + p.heat_pump_fan_run_on_s if run_on else None,
+        )
+        return cmd(HEAT_PUMP_PLAN_OFF, "stop", reason, blockers=blockers, stop_to="fan_only" if run_on else "off"), new
+
     if inp.run_state in (HEAT_PUMP_COOLING_USER, HEAT_PUMP_FAN_ONLY, HEAT_PUMP_AUTO):
         return cmd(HEAT_PUMP_PLAN_HANDS_OFF, "none", f"manual_mode_{inp.heat_pump.hvac_mode}"), replace(mem, running_since_ts=None)
     if inp.control_mode == CTRL_ACTIVE:
@@ -238,6 +302,15 @@ def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Con
         if changed_by_user:
             new = replace(mem, manual_until_ts=now + MANUAL_HANDS_OFF_S, running_since_ts=None, last_hvac_mode=None)
             return cmd(HEAT_PUMP_PLAN_HANDS_OFF, "none", "manual_takeover"), new
+        # A unit found heating without a command of ours on record (control just switched to
+        # active, or the hands-off time after a change by hand is over) is taken over as a run
+        # that starts now. Without this nothing would ever stop it. No setpoint of ours is on
+        # record, so the next cycle sends one (or the stop) and the unit is ours from there.
+        if mem.last_hvac_mode is None and mem.running_since_ts is None and inp.heat_pump.hvac_mode == "heat":
+            mem = replace(
+                mem, running_since_ts=now, stopped_since_ts=None, last_command_ts=None,
+                last_hvac_mode="heat", last_target=None, last_offset_review_ts=None,
+            )
 
     running = mem.running_since_ts is not None
     offset = mem.offset_k if mem.offset_k is not None else p.heat_pump_setpoint_offset_k
@@ -246,9 +319,15 @@ def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Con
     blockers = _blockers(inp)
     if blockers:
         if running:
-            new = replace(mem, running_since_ts=None, stopped_since_ts=now, last_command_ts=now, last_hvac_mode="off", learning_until_ts=None)
-            return cmd(HEAT_PUMP_PLAN_OFF, "stop", "blocked", blockers=blockers), new
+            return stop("blocked", blockers)
         return cmd(HEAT_PUMP_PLAN_OFF, "none", "blocked", blockers=blockers), mem
+
+    # ---- no decision on missing data ---------------------------------------------------
+    # Right after a restart the room sensors have not reported yet. "No room is cold" would be
+    # read from that and a running unit stopped, although nothing has changed in the home.
+    # The unit keeps what it has until the rooms are known again; the blockers above still stop it.
+    if running and any(r.heat_pump_allowed and r.temperature is None for r in inp.rooms):
+        return cmd(HEAT_PUMP_PLAN_HEAT, "none", "waiting_for_room_data", target=mem.last_target, waiting="room_data"), mem
 
     # ---- demand of the served rooms -----------------------------------------------------
     allowed = [r for r in inp.rooms if r.heat_pump_allowed and r.temperature is not None]
@@ -262,6 +341,10 @@ def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Con
     satisfied = not below and not drying
 
     economic = inp.advice_source in (SOURCE_HEAT_PUMP, SOURCE_BOTH) or inp.op_mode == MODE_HEAT_PUMP_ONLY
+    # rooms somebody wants warm: a unit that follows the rooms stays on for them
+    awake = wanted_rooms(inp.rooms) if follows else []  # with or without a temperature: the unit regulates by itself
+    if awake and inp.cheaper:
+        economic = True
     learning_active = mem.learning_until_ts is not None and mem.learning_until_ts > now
     learning_new = False
     if (
@@ -296,14 +379,22 @@ def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Con
     wants_start = permitted and bool(need or drying or boost)
     keep_running = running and permitted and not satisfied
 
+    rests = False  # a unit that follows the rooms while nobody wants a served room warm
+    if follows:
+        rests = not (awake or drying or boost)
+        wants_start = permitted and not rests
+        keep_running = running and permitted and not rests
+
     def setpoint() -> tuple[float | None, str]:
+        if follows:
+            return (own if own is not None else mem.last_target), FAN_BOOST if load == "boost" else FAN_ECO
         if load == "boost":
             return SETPOINT_MAX, FAN_BOOST
         return eco_setpoint(inp.heat_pump, offset), FAN_ECO
 
     if not running:
         if not wants_start:
-            return cmd(HEAT_PUMP_PLAN_OFF, "none", reason if (need or drying or boost) else "no_demand"), mem
+            return cmd(HEAT_PUMP_PLAN_OFF, "none", reason if (need or drying or boost or awake) else "no_demand"), mem
         if mem.stopped_since_ts is not None and now - mem.stopped_since_ts < p.heat_pump_min_off_s:
             return cmd(HEAT_PUMP_PLAN_OFF, "none", reason, waiting="min_off_time"), mem
         target, fan = setpoint()
@@ -333,13 +424,15 @@ def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Con
         if now - (mem.running_since_ts or now) < p.heat_pump_min_run_s:
             # target reached, or economics turned: finish the minimum run (in eco when the
             # gas boiler takes over afterwards)
-            reason, load = ("target_reached", load) if permitted else (reason, "eco")
+            if rests:
+                reason, load = "comfort_time_over", "eco"
+            else:
+                reason, load = ("target_reached", load) if permitted else (reason, "eco")
             return cmd(HEAT_PUMP_PLAN_HEAT, "none", reason, target=mem.last_target, fan=FAN_ECO, load=load, waiting="min_run_time"), mem
-        new = replace(mem, running_since_ts=None, stopped_since_ts=now, last_command_ts=now, last_hvac_mode="off", learning_until_ts=None)
-        return cmd(HEAT_PUMP_PLAN_OFF, "stop", "target_reached" if permitted else reason), new
+        return stop("comfort_time_over" if rests else ("target_reached" if permitted else reason))
 
     # only a real run tells how fast the rooms warm; a planned run heats nothing
-    if load in ("eco", "learning") and inp.control_mode == CTRL_ACTIVE:
+    if not follows and load in ("eco", "learning") and inp.control_mode == CTRL_ACTIVE:
         offset, review_ts = _adapt_offset(inp, mem, offset, need or below)
         if review_ts != mem.last_offset_review_ts:
             mem = replace(mem, offset_k=offset, last_offset_review_ts=review_ts)

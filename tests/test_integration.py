@@ -1241,3 +1241,40 @@ async def test_a_deleted_room_takes_its_device_along(hass: HomeAssistant) -> Non
     _remove_stale_registry_entries(hass, entry, coordinator)
     assert dev_reg.async_get(room_device.id) is None
     assert dev_reg.async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id) is not None  # the hub stays
+
+
+async def test_the_curve_per_load_class_is_shown_recorded_and_kept(hass: HomeAssistant, hass_storage) -> None:
+    """Which flow suits how many rooms: visible in the learning state, one row per cycle, and it survives a restart."""
+    from dataclasses import replace
+
+    from custom_components.thriftherm.engines.boiler_load import LoadLine
+
+    entry = await _setup(hass, options={"boiler_allow_active_control": True})
+    coordinator = entry.runtime_data
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": "select.thriftherm_boiler_control", "option": "active"}, blocking=True
+    )
+    attrs = hass.states.get("sensor.thriftherm_learning_state").attributes
+    assert attrs["calling_rooms"] == 2 and attrs["rooms_total"] == 2 and attrs["spread_rule"] == "active"
+    assert attrs["load_class"] == "majority" and attrs["curve_by_load"] == {}  # nothing learned yet
+    assert coordinator.load_log and len(coordinator.load_log[-1]) == 10  # one compact row per cycle
+    assert coordinator.load_log[-1][5:7] == [2, 2] and coordinator.load_log[-1][9] == [2.5, 1.5]  # target minus actual
+
+    lines = {
+        "majority": LoadLine(level_k=2.0, hours=30.0, calm_hours=4.0, found=True),
+        "single": LoadLine(level_k=5.0, hours=12.0),
+    }
+    coordinator.boiler_memory = replace(coordinator.boiler_memory, offset_k=9.0, lines=lines)
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    attrs = hass.states.get("sensor.thriftherm_learning_state").attributes
+    assert attrs["heating_curve_offset_k"] == 2.0  # the majority's own line, not the common 9 K nor the bathroom's 5 K
+    assert attrs["curve_by_load"]["majority"]["found"] is True and attrs["curve_by_load"]["single"]["level_k"] == 5.0
+
+    await coordinator.async_save_store(force=True)
+    stored = hass_storage[f"thriftherm.learning.{entry.entry_id}"]["data"]
+    assert stored["boiler_memory"]["lines"]["single"]["level_k"] == 5.0 and stored["boiler_load_log"]
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert entry.runtime_data.boiler_memory.lines["majority"].calm_hours >= 4.0
+    assert len(entry.runtime_data.load_log) >= len(stored["boiler_load_log"])

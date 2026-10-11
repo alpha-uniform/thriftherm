@@ -7,6 +7,7 @@ import pytest
 from custom_components.thriftherm.engines import boiler_learning as learning
 from custom_components.thriftherm.engines.boiler_control import decide
 from custom_components.thriftherm.engines.boiler_learning import MIN_SAMPLES, SETTLE_S
+from custom_components.thriftherm.engines.boiler_load import LoadLine
 from custom_components.thriftherm.engines.boiler_memory import BoilerInputs, BoilerMemory, correction, curve_flow
 from custom_components.thriftherm.models import RoomResult
 
@@ -24,8 +25,8 @@ def rr(key="wohnzimmer", temp=19.0, target=20.0, demand=0.5, trend=None, allowed
 
 
 def corr(mem, outdoor=5.0):
-    """What the learning adds to the curve at the tests' outdoor temperature."""
-    return correction(mem, outdoor)
+    """What the learning adds to the curve at the tests' outdoor temperature, for the load class in use."""
+    return correction(mem, outdoor, mem.class_in_use)
 
 
 def inp(rooms=(), *, mode="shadow", op="auto", safety="ok", available=True, frost=(), advice="boiler", outdoor=5.0,
@@ -159,14 +160,97 @@ def test_learning_paused_by_guard():
     assert cmd.learning_phase == "paused"
 
 
-def test_one_adjustment_per_hour_and_four_per_day():
+def test_one_step_down_per_hour_and_four_kelvin_down_per_day():
     cmd, mem, now = feed(heating_memory(), [rr(demand=0.5)], flow=45.0, ret=42.0)
-    assert corr(mem) == pytest.approx(-1.0)
+    assert corr(mem) == pytest.approx(-1.0) and cmd.moved_last_day_k == 1.0
     _, mem, now = feed(mem, [rr(demand=0.5)], flow=45.0, ret=42.0, start=now + 60)
     assert corr(mem) == pytest.approx(-1.0)  # cooldown
-    full = replace(mem, adjustments=(now - 100, now - 200, now - 300, now - 4000), offset_k=0.0, slope_k=0.0)
+    lowered = dict(adjustments=(now - 9000, now - 8000, now - 7000, now - 6000), adjustment_steps=(-1.0, -1.0, -1.0, -0.6))
+    full = replace(mem, lines={}, **lowered)  # 3.6 K down within the day: less than a step is left
     _, capped, _ = feed(full, [rr(demand=0.5)], flow=45.0, ret=42.0, start=now + ADJUST_GAP)
     assert corr(capped) == pytest.approx(0.0)
+    nearly = replace(full, adjustment_steps=(-1.0, -1.0, -1.0, -0.2))  # 3.2 K: what is left is taken, no more
+    _, last, _ = feed(nearly, [rr(demand=0.5)], flow=45.0, ret=42.0, start=now + ADJUST_GAP)
+    assert corr(last) == pytest.approx(-0.8)
+    stepped_up = {"majority": LoadLine(last_step_k=1.0, last_step_ts=now - 6000)}  # this class's step before went up
+    raised = replace(full, adjustment_steps=(4.0, 4.0, 1.0, 1.0), lines=stepped_up)  # steps up do not use up the steps down
+    _, down, _ = feed(raised, [rr(demand=0.5)], flow=45.0, ret=42.0, start=now + ADJUST_GAP)
+    assert corr(down) == pytest.approx(-0.5)  # against the step up before it: half its size
+
+
+def _step(mem, direction, minutes, *, outdoor=15.0, params=PARAMS):
+    """One step of the learning, so many minutes after NOW; at +15 °C a step is all level."""
+    on = inp([rr(demand=0.5)], mode="active", outdoor=outdoor, now=NOW + minutes * 60, params=params)
+    return learning.apply(on, mem, direction, "rooms_lagging")
+
+
+def test_steps_up_grow_with_certainty_and_shrink_when_the_answer_was_overshot():
+    """Measured 2026-10-11: 1 K steps, four a day, left the bathroom 0.6 K below target after eight hours."""
+    mem, sizes = BoilerMemory(), []
+    for i in range(4):
+        mem = _step(mem, 1, i * 46)
+        sizes.append(mem.adjustment_steps[-1])
+    assert sizes == [1.0, 2.0, 4.0, 3.0]  # doubling up to 4 K, then what the day's 10 K up leave
+    assert mem.offset_k == 10.0 and learning.moved_last_day(mem, NOW + 9000, 1) == 10.0
+    assert _step(mem, 1, 300) is mem  # the day's 10 K up are spent
+
+    mem = _step(_step(BoilerMemory(), 1, 0), 1, 46)  # +1, +2 ...
+    assert _step(mem, 1, 46 + 40) is mem  # three quarters of an hour between steps up: the room has to answer first
+    assert _step(mem, -1, 46 + 55) is mem  # ... and a whole hour before a step down
+    back = _step(mem, -1, 46 + 61)
+    assert back.adjustment_steps[-1] == -1.0 and back.offset_k == 2.0  # against the last one: half its size
+    again = _step(back, 1, 46 + 61 + 46)
+    assert again.adjustment_steps[-1] == 0.5  # and half again: closing in
+    assert _step(again, -1, 46 + 61 + 46 + 61).adjustment_steps[-1] == -0.5  # never below half a kelvin
+
+    assert _step(mem, 1, 46 + 181).adjustment_steps[-1] == 1.0  # three hours on, a new run starts at the first step
+
+
+def test_steps_down_never_grow_and_leave_the_steps_up_their_own_allowance():
+    """Review 2026-10-11: doubling both ways lowered the curve by 10 K in an afternoon, and no step up was left."""
+    mem, sizes = BoilerMemory(offset_k=8.0), []
+    for i in range(6):
+        mem = _step(mem, -1, i * 61)
+        sizes.append(mem.adjustment_steps[-1] if len(mem.adjustment_steps) > len(sizes) else None)
+    assert sizes == [-1.0, -1.0, -1.0, -1.0, None, None]  # 4 K down in a day, in single steps
+    assert learning.moved_last_day(mem, NOW + 30000, -1) == 4.0 and learning.moved_last_day(mem, NOW + 30000, 1) == 0.0
+    up = _step(mem, 1, 3 * 61 + 50)  # the last step down was at minute 183
+    assert up.adjustment_steps[-1] == 0.5 and _step(up, 1, 3 * 61 + 96).adjustment_steps[-1] == 1.0  # and up again at once
+
+
+def test_a_step_goes_no_further_than_the_flow_can_follow():
+    """Review 2026-10-11: half a kelvin below the flow maximum a 4 K step put the correction 3.5 K beyond it."""
+    hot = replace(PARAMS, boiler_flow_max=36.0)  # the curve gives 30 °C at +15 °C outdoor
+    mem = BoilerMemory(offset_k=2.0, adjustments=(NOW - 3000,), adjustment_steps=(2.0,))  # planned 32 °C, next step 4 K
+    assert _step(mem, 1, 0, params=hot).offset_k == 6.0  # 4 K fit below the maximum
+    close = _step(replace(mem, offset_k=5.0), 1, 0, params=hot)
+    assert close.adjustment_steps[-1] == 1.0 and close.offset_k == 6.0  # only the kelvin that is left to the maximum
+    assert _step(replace(mem, offset_k=5.7), 1, 0, params=hot).adjustments == (NOW - 3000,)  # 0.3 K: not worth a step
+    low = BoilerMemory(offset_k=0.6)  # planned 30.6 °C, the minimum is 30 °C
+    assert _step(low, -1, 0).offset_k == pytest.approx(0.0)  # and the same downwards
+
+
+def test_what_a_limit_leaves_of_a_step_is_taken():
+    """Review 2026-10-11: at +8.5 K the next step was 4 K, only 1.5 K fitted, and it was refused for three hours."""
+    mem = BoilerMemory(offset_k=8.5, adjustments=(NOW - 3000,), adjustment_steps=(2.0,))
+    after = _step(mem, 1, 0)
+    assert after.offset_k == 10.0 and after.adjustment_steps[-1] == 1.5
+    assert _step(replace(mem, offset_k=9.7), 1, 0).adjustments == (NOW - 3000,)  # 0.3 K: not worth a step
+
+
+def test_every_step_of_the_day_is_counted_and_old_ones_are_taken_as_they_were():
+    """Review 2026-10-11: with ten steps remembered, 28 small ones moved the curve by 20 K in a day."""
+    times = tuple(NOW - 80000 + i * 2800 for i in range(28))
+    many = BoilerMemory(adjustments=times, adjustment_steps=tuple(0.5 if i % 3 else -0.5 for i in range(28)))
+    assert learning.moved_last_day(many, NOW, 1) == 9.0 and learning.moved_last_day(many, NOW, -1) == 5.0
+    assert BoilerMemory.from_storage(many.to_storage()).adjustment_steps == many.adjustment_steps
+    assert _step(many, -1, 0) is many  # more than the 4 K down are used
+
+    old = BoilerMemory(adjustments=(NOW - 600,))  # stored before sizes were kept: 1 K, direction unknown
+    assert learning.next_step(old, 1, NOW) == 1.0  # so nothing is doubled or halved on its account
+    assert learning.moved_last_day(old, NOW, 1) == learning.moved_last_day(old, NOW, -1) == 1.0
+    broken = BoilerMemory.from_storage({"offset_k": "nan", "slope_k": float("inf"), "adjustment_steps": [1.0, float("nan"), "x"]})
+    assert (broken.offset_k, broken.slope_k, broken.adjustment_steps) == (0.0, 0.0, (1.0,))
 
 
 ADJUST_GAP = 3700.0
@@ -537,7 +621,7 @@ def test_the_burner_share_of_the_last_hour_is_kept():
 def test_a_step_on_a_mild_day_moves_the_level_and_one_in_the_cold_the_slope():
     """As a heating curve is set by hand: too cold only in winter means steeper, in between means higher."""
     ready = dict(heating_since_ts=NOW - 7200, samples=50, spread_ema=18.0, last_review_ts=NOW - 7200,
-                 state="heat", state_since_ts=NOW - 7200)
+                 state="heat", state_since_ts=NOW - 7200, spread_judging_since_ts=NOW - 7200)
 
     def step(outdoor):  # a large spread with demand: the curve is too low
         on = inp([rr(demand=0.5)], mode="active", outdoor=outdoor, burner=True, flow=50.0, ret=32.0)
@@ -617,7 +701,7 @@ def test_the_phase_shown_is_paused_once_the_heating_is_blocked():
 def test_a_step_the_limit_swallows_is_not_spent():
     """At 14 °C a level already at +10 K leaves a step almost nothing to move, yet it used up the hour and the day's count."""
     ready = dict(heating_since_ts=NOW - 7200, samples=50, spread_ema=18.0, last_review_ts=NOW - 7200,
-                 state="heat", state_since_ts=NOW - 7200)
+                 state="heat", state_since_ts=NOW - 7200, spread_judging_since_ts=NOW - 7200)
     on = inp([rr(demand=0.5)], mode="active", outdoor=14.0, burner=True, flow=50.0, ret=32.0)
     full = BoilerMemory(offset_k=10.0, **ready)
     after = learning.learn(on, full, [rr(demand=0.5)], True)

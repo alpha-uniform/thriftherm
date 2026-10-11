@@ -1001,6 +1001,7 @@
    "attributes": {
     "airflow_m3h": null,
     "cop_map_by_outdoor_temp": {},
+    "cycle_cop": null,
     "duct_factor": 1.0,
     "expected_cop_at_current_outdoor": 3.344,
     "expected_cop_basis": "prior",
@@ -1157,8 +1158,10 @@
   "sensor.thriftherm_learning_state": {
    "attributes": {
     "adjustments_last_24h": 0,
+    "calling_rooms": 2,
     "cop_basis": "prior",
     "cop_bins": 0,
+    "curve_by_load": {},
     "device_class": "enum",
     "flow_return_spread_k": null,
     "friendly_name": "Thriftherm Learning state",
@@ -1169,7 +1172,9 @@
     "icon": "mdi:school",
     "last_adjustment_reason": null,
     "last_reset": null,
+    "load_class": "majority",
     "midea_eco_offset_k": 1.0,
+    "moved_last_24h_k": 0.0,
     "options": [
      "learning",
      "refining",
@@ -1183,7 +1188,9 @@
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
-    "setpoint_changed_in": []
+    "rooms_total": 2,
+    "setpoint_changed_in": [],
+    "spread_rule": null
    },
    "capabilities": {
     "options": [
@@ -2838,6 +2845,7 @@
    "attributes": {
     "airflow_m3h": null,
     "cop_map_by_outdoor_temp": {},
+    "cycle_cop": null,
     "duct_factor": 1.0,
     "expected_cop_at_current_outdoor": 3.344,
     "expected_cop_basis": "prior",
@@ -2994,8 +3002,10 @@
   "sensor.thriftherm_learning_state": {
    "attributes": {
     "adjustments_last_24h": 0,
+    "calling_rooms": 2,
     "cop_basis": "prior",
     "cop_bins": 0,
+    "curve_by_load": {},
     "device_class": "enum",
     "flow_return_spread_k": null,
     "friendly_name": "Thriftherm Learning state",
@@ -3006,7 +3016,9 @@
     "icon": "mdi:school",
     "last_adjustment_reason": null,
     "last_reset": null,
+    "load_class": "majority",
     "midea_eco_offset_k": 1.0,
+    "moved_last_24h_k": 0.0,
     "options": [
      "learning",
      "refining",
@@ -3020,7 +3032,9 @@
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
-    "setpoint_changed_in": []
+    "rooms_total": 2,
+    "setpoint_changed_in": [],
+    "spread_rule": "active"
    },
    "capabilities": {
     "options": [
@@ -4681,6 +4695,7 @@
    "attributes": {
     "airflow_m3h": null,
     "cop_map_by_outdoor_temp": {},
+    "cycle_cop": null,
     "duct_factor": 1.0,
     "expected_cop_at_current_outdoor": 3.344,
     "expected_cop_basis": "prior",
@@ -4837,8 +4852,10 @@
   "sensor.thriftherm_learning_state": {
    "attributes": {
     "adjustments_last_24h": 0,
+    "calling_rooms": 2,
     "cop_basis": "prior",
     "cop_bins": 0,
+    "curve_by_load": {},
     "device_class": "enum",
     "flow_return_spread_k": null,
     "friendly_name": "Thriftherm Learning state",
@@ -4849,7 +4866,9 @@
     "icon": "mdi:school",
     "last_adjustment_reason": null,
     "last_reset": null,
+    "load_class": "majority",
     "midea_eco_offset_k": 1.0,
+    "moved_last_24h_k": 0.0,
     "options": [
      "learning",
      "refining",
@@ -4863,7 +4882,9 @@
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
-    "setpoint_changed_in": []
+    "rooms_total": 2,
+    "setpoint_changed_in": [],
+    "spread_rule": "active"
    },
    "capabilities": {
     "options": [
@@ -6102,8 +6123,10 @@
   "sensor.thriftherm_learning_state": {
    "attributes": {
     "adjustments_last_24h": 0,
+    "calling_rooms": 2,
     "cop_basis": "prior",
     "cop_bins": 0,
+    "curve_by_load": {},
     "device_class": "enum",
     "flow_return_spread_k": null,
     "friendly_name": "Thriftherm Learning state",
@@ -6114,7 +6137,9 @@
     "icon": "mdi:school",
     "last_adjustment_reason": null,
     "last_reset": null,
+    "load_class": "majority",
     "midea_eco_offset_k": 1.0,
+    "moved_last_24h_k": 0.0,
     "options": [
      "learning",
      "refining",
@@ -6128,7 +6153,9 @@
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
-    "setpoint_changed_in": []
+    "rooms_total": 2,
+    "setpoint_changed_in": [],
+    "spread_rule": "active"
    },
    "capabilities": {
     "options": [
@@ -7333,6 +7360,7 @@
    "attributes": {
     "airflow_m3h": null,
     "cop_map_by_outdoor_temp": {},
+    "cycle_cop": null,
     "duct_factor": 1.0,
     "expected_cop_at_current_outdoor": 3.344,
     "expected_cop_basis": "prior",
@@ -7489,8 +7517,10 @@
   "sensor.thriftherm_learning_state": {
    "attributes": {
     "adjustments_last_24h": 0,
+    "calling_rooms": 2,
     "cop_basis": "prior",
     "cop_bins": 0,
+    "curve_by_load": {},
     "device_class": "enum",
     "flow_return_spread_k": null,
     "friendly_name": "Thriftherm Learning state",
@@ -7501,7 +7531,9 @@
     "icon": "mdi:school",
     "last_adjustment_reason": null,
     "last_reset": null,
+    "load_class": "majority",
     "midea_eco_offset_k": 1.0,
+    "moved_last_24h_k": 0.0,
     "options": [
      "learning",
      "refining",
@@ -7515,7 +7547,9 @@
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
-    "setpoint_changed_in": []
+    "rooms_total": 2,
+    "setpoint_changed_in": [],
+    "spread_rule": null
    },
    "capabilities": {
     "options": [

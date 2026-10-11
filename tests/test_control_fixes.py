@@ -90,7 +90,8 @@ def _learning_inputs(t: float) -> bc.BoilerInputs:
 
 def test_offset_does_not_wind_up_while_the_flow_is_already_at_maximum():
     t = 3_000_000.0
-    ready = dict(heating_since_ts=t - 7200, samples=50, spread_ema=10.0, last_review_ts=t - 7200)
+    ready = dict(heating_since_ts=t - 7200, samples=50, spread_ema=10.0, last_review_ts=t - 7200,
+                 spread_judging_since_ts=t - 7200)
     at_max = bc.BoilerMemory(offset_k=5.0, **ready)  # curve 55 + 5 = 60 = maximum
     below = bc.BoilerMemory(offset_k=0.0, **ready)
     held = learning.learn(_learning_inputs(t), at_max, [_room()], True)
@@ -139,3 +140,8 @@ def test_manual_change_before_our_value_was_echoed_is_still_recognised():
     assert manual_change("active", 23.0, pending) == 23.0   # neither ours nor the old value: a person
     assert manual_change("active", 18.0, pending) is None   # still the old value, echo pending
     assert manual_change("active", 21.0, pending) is None   # our value arrived
+
+
+def test_boiler_takes_over_while_the_heat_pump_idles_at_its_own_setpoint():
+    assert advisor.boiler_source("midea", "heat", "active", "active", heat_pump_delivers=False) == "boiler"
+    assert advisor.boiler_source("midea", "heat", "active", "active", heat_pump_delivers=True) == "midea"

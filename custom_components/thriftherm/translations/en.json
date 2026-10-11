@@ -42,10 +42,14 @@
           "boiler_flow_min": "Minimum flow temperature",
           "boiler_flow_max": "Maximum flow temperature",
           "boiler_hot_water_standby": "Keep hot water ready (keep-warm of a combi boiler, cylinder loading)",
+          "boiler_spread_min_room_share": "Share of rooms that must call before the spread judges the curve",
+          "boiler_load_model": "A heating curve of its own for one room, a few rooms and the majority calling",
           "boiler_allow_active_control": "Release active boiler control (otherwise plan only)"
         },
         "data_description": {
-          "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation."
+          "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation.",
+          "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms.",
+          "boiler_load_model": "The flow a flat needs depends on how many radiators take heat. On: Thriftherm keeps a correction of the heating curve for each of three cases (one room calls, a few, the majority), and a learning step only moves the case it was taken in, so what the bathroom alone taught does not shift the flow for the whole flat. A case that has no value yet starts from the nearest one that has. A value that has served for some hours counts as found and only moves again on evidence that lasts. Off: one common correction for all cases, as before; it keeps what it had learned."
         }
       },
       "midea": {
@@ -59,6 +63,7 @@
           "midea_outlet_temp": "Outlet air temperature",
           "midea_airflow_curve": "Airflow curve (rpm:m³/h, ...)",
           "midea_duct_factor": "Duct factor (real airflow / free-blowing, 1.0 without hoses)",
+          "midea_follow_rooms": "Setpoint follows the served rooms' target (plus the setpoint offset from the parameters); the unit regulates by itself",
           "midea_room": "Room the heat pump stands in"
         }
       },
@@ -164,10 +169,14 @@
           "boiler_flow_min": "Minimum flow temperature",
           "boiler_flow_max": "Maximum flow temperature",
           "boiler_hot_water_standby": "Keep hot water ready (keep-warm of a combi boiler, cylinder loading)",
+          "boiler_spread_min_room_share": "Share of rooms that must call before the spread judges the curve",
+          "boiler_load_model": "A heating curve of its own for one room, a few rooms and the majority calling",
           "boiler_allow_active_control": "Release active boiler control (otherwise plan only)"
         },
         "data_description": {
-          "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation."
+          "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation.",
+          "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms.",
+          "boiler_load_model": "The flow a flat needs depends on how many radiators take heat. On: Thriftherm keeps a correction of the heating curve for each of three cases (one room calls, a few, the majority), and a learning step only moves the case it was taken in, so what the bathroom alone taught does not shift the flow for the whole flat. A case that has no value yet starts from the nearest one that has. A value that has served for some hours counts as found and only moves again on evidence that lasts. Off: one common correction for all cases, as before; it keeps what it had learned."
         }
       },
       "midea": {
@@ -180,6 +189,7 @@
           "midea_outlet_temp": "Outlet air temperature",
           "midea_airflow_curve": "Airflow curve (rpm:m³/h, ...)",
           "midea_duct_factor": "Duct factor (real airflow / free-blowing, 1.0 without hoses)",
+          "midea_follow_rooms": "Setpoint follows the served rooms' target (plus the setpoint offset from the parameters); the unit regulates by itself",
           "midea_room": "Room the heat pump stands in"
         }
       },
@@ -205,7 +215,7 @@
           "break_even_margin_on": "Margin above break-even to prefer the heat pump",
           "break_even_margin_off": "Margin below break-even to return to boiler",
           "midea_min_outdoor_temp": "Minimum outdoor temperature for heat pump heating (data sheet)",
-          "midea_setpoint_offset_k": "Eco setpoint above intake air, start value (learned)",
+          "midea_setpoint_offset_k": "Heat pump setpoint above the rooms' target, or above intake air as a learned start value",
           "cop_warmup_s": "COP warm-up time after compressor start",
           "cop_min_power_w": "COP minimum electrical power",
           "cop_min_delta_t_k": "COP minimum air temperature rise",
@@ -225,6 +235,7 @@
           "override_default_min": "Default override duration",
           "midea_min_run_min": "Heat pump minimum run time",
           "midea_min_off_min": "Heat pump minimum pause",
+          "midea_fan_run_on_min": "Heat pump: fan only before switching off (0 = off at once)",
           "boost_duration_min": "Quick heat-up duration",
           "midea_learning_runs": "Allow learning runs (measure COP at new outdoor temperatures)",
           "midea_allow_active_control": "Release active heat pump control (otherwise plan only)",
@@ -327,6 +338,9 @@
           },
           "samples": {
             "name": "Samples"
+          },
+          "cycle_cop": {
+            "name": "COP over the last on/off cycle"
           },
           "gate_reasons": {
             "name": "Not measured because"
@@ -567,9 +581,12 @@
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
+              "comfort_time_over": "No served room is to be heated (away, off or window open)",
               "outdoor_temperature_unknown": "Outdoor temperature unknown",
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
+              "room_data": "Room sensors",
+              "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
               "unavailable": "Unavailable",
@@ -747,9 +764,12 @@
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
+              "comfort_time_over": "No served room is to be heated (away, off or window open)",
               "outdoor_temperature_unknown": "Outdoor temperature unknown",
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
+              "room_data": "Room sensors",
+              "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
               "unavailable": "Unavailable",
@@ -842,9 +862,12 @@
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
+              "comfort_time_over": "No served room is to be heated (away, off or window open)",
               "outdoor_temperature_unknown": "Outdoor temperature unknown",
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
+              "room_data": "Room sensors",
+              "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
               "unavailable": "Unavailable",
@@ -989,9 +1012,12 @@
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
+              "comfort_time_over": "No served room is to be heated (away, off or window open)",
               "outdoor_temperature_unknown": "Outdoor temperature unknown",
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
+              "room_data": "Room sensors",
+              "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
               "unavailable": "Unavailable",
@@ -1084,9 +1110,12 @@
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
+              "comfort_time_over": "No served room is to be heated (away, off or window open)",
               "outdoor_temperature_unknown": "Outdoor temperature unknown",
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
+              "room_data": "Room sensors",
+              "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
               "unavailable": "Unavailable",
@@ -1230,9 +1259,12 @@
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
+              "comfort_time_over": "No served room is to be heated (away, off or window open)",
               "outdoor_temperature_unknown": "Outdoor temperature unknown",
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
+              "room_data": "Room sensors",
+              "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
               "unavailable": "Unavailable",
@@ -1298,6 +1330,9 @@
           "adjustments_last_24h": {
             "name": "Adjustments in 24 h"
           },
+          "moved_last_24h_k": {
+            "name": "Moved in 24 h K (up and down added)"
+          },
           "last_adjustment_reason": {
             "name": "Last adjustment because",
             "state": {
@@ -1353,9 +1388,12 @@
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
+              "comfort_time_over": "No served room is to be heated (away, off or window open)",
               "outdoor_temperature_unknown": "Outdoor temperature unknown",
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
+              "room_data": "Room sensors",
+              "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
               "unavailable": "Unavailable",
@@ -1445,9 +1483,12 @@
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
+              "comfort_time_over": "No served room is to be heated (away, off or window open)",
               "outdoor_temperature_unknown": "Outdoor temperature unknown",
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
+              "room_data": "Room sensors",
+              "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
               "unavailable": "Unavailable",
@@ -1484,6 +1525,30 @@
           },
           "flow_return_spread_k": {
             "name": "Flow/return spread K"
+          },
+          "calling_rooms": {
+            "name": "Rooms calling for heat"
+          },
+          "rooms_total": {
+            "name": "Rooms that can take heat now"
+          },
+          "spread_rule": {
+            "name": "Spread judges the curve",
+            "state": {
+              "active": "Active",
+              "blocked_few_rooms": "No: too few rooms call for heat"
+            }
+          },
+          "load_class": {
+            "name": "Load class now (rooms calling)",
+            "state": {
+              "single": "One room",
+              "few": "A few rooms",
+              "majority": "Most rooms"
+            }
+          },
+          "curve_by_load": {
+            "name": "Heating curve correction per load class"
           },
           "paused_because": {
             "name": "Paused because"
@@ -1602,9 +1667,12 @@
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
+              "comfort_time_over": "No served room is to be heated (away, off or window open)",
               "outdoor_temperature_unknown": "Outdoor temperature unknown",
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
+              "room_data": "Room sensors",
+              "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
               "unavailable": "Unavailable",
@@ -1732,9 +1800,12 @@
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
+              "comfort_time_over": "No served room is to be heated (away, off or window open)",
               "outdoor_temperature_unknown": "Outdoor temperature unknown",
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
+              "room_data": "Room sensors",
+              "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
               "unavailable": "Unavailable",
@@ -1843,9 +1914,12 @@
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
+              "comfort_time_over": "No served room is to be heated (away, off or window open)",
               "outdoor_temperature_unknown": "Outdoor temperature unknown",
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
+              "room_data": "Room sensors",
+              "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
               "unavailable": "Unavailable",

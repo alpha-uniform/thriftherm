@@ -46,7 +46,7 @@ Im ersten Einrichtungsschritt wählst du, welche Heizung du hast; Schritte, die 
 | **Immer** | | | | | |
 | Erst *Nur planen*, *Aktiv* erst nach deiner Freigabe; ein Grund für jede Entscheidung; Reparaturmeldungen | ✓ | ✓ | ✓ | ✓ | ✓ |
 
-✓ geht · – nicht verfügbar · Vorschau = noch nicht mit einer echten Wärmepumpe getestet. Jede „+“-Spalte enthält die Spalten links davon. In der Spalte „Nur Wärmepumpe“ gelten die Raum-Zeilen für die Räume, die die Wärmepumpe erreicht.
+✓ geht · – nicht verfügbar · Vorschau = erst wenige Stunden an einer echten Wärmepumpe gelaufen. Jede „+“-Spalte enthält die Spalten links davon. In der Spalte „Nur Wärmepumpe“ gelten die Raum-Zeilen für die Räume, die die Wärmepumpe erreicht.
 
 ¹ Zentralheizung, Fernwärme oder Wärme vom Vermieter: keine eigene Therme. Die Räume steuert Thriftherm über Better Thermostat, an die Wärmeversorgung wird nie etwas geschrieben.
 
@@ -106,7 +106,7 @@ Ein Temperaturfühler je Raum reicht. Die Thermensteuerung – Heizkurve, Bedarf
 
 ### Erweiterung: Wärmepumpe (Vorschau)
 
-> **Vorschau – folgt bald.** Noch nicht mit einer echten Wärmepumpe getestet; nicht darauf verlassen. Entwickelt wurde sie mit Blick auf eine Midea PortaSplit, lief bisher aber nur im Modus *Nur planen* und hat noch nie eine Wärmepumpe gesteuert. Die folgende Beschreibung zeigt, was sie können soll.
+> **Vorschau.** Seit dem 11.10.2026 steuert sie eine Midea PortaSplit aktiv, bisher aber erst wenige Stunden bei mildem Wetter; noch nicht darauf verlassen. Die folgende Beschreibung zeigt, was sie können soll.
 
 Ist eine Wärmepumpe eingerichtet, misst die Integration ihren COP aus Luftmenge und Enthalpie der Luft, vergleicht die Wärmekosten mit der zentralen Wärmequelle anhand echter Preise und eines gelernten COP-Kennfelds, erkennt Abtauen und Vereisung und lässt die Wärmepumpe langsam mit hohem COP laufen. Ein Bad, das sie beheizt, kann sie nach dem Duschen trocknen. Ohne Wärmepumpe fällt all das einfach weg; ohne Therme ist die Wärmepumpe die einzige Wärmequelle, und es gibt nichts zu vergleichen.
 
@@ -166,7 +166,7 @@ Die vollständige Liste steht in der [Einrichtungsanleitung, Schritt 1](EINRICHT
 
 **Das Schreiben an eine Gastherme geschieht auf deine Verantwortung.** Genutzt wird nur die Nachricht `SetMode`; Installateur-Parameter werden nie geschrieben. Den Pumpenmodus zu ändern ist eine einmalige Entscheidung, die du selbst triffst.
 
-**Status: Beta.** Alle Steuerungen starten in *Nur planen*: Sie berechnen und zeigen an, was sie tun würden, und schreiben nichts, bis du die aktive Steuerung freigibst. Sperren, Vorlaufregelung und die Sicherheits-Fallbacks sind an der Therme des Entwicklers geprüft. Die gelernten Korrekturen kennen bisher nur mildes Wetter. Die Wärmepumpen-Erweiterung ist eine Vorschau – folgt bald, noch nicht mit einer echten Wärmepumpe getestet; nicht darauf verlassen.
+**Status: Beta.** Alle Steuerungen starten in *Nur planen*: Sie berechnen und zeigen an, was sie tun würden, und schreiben nichts, bis du die aktive Steuerung freigibst. Sperren, Vorlaufregelung und die Sicherheits-Fallbacks sind an der Therme des Entwicklers geprüft. Die gelernten Korrekturen kennen bisher nur mildes Wetter. Die Wärmepumpen-Erweiterung ist eine Vorschau: Sie steuert seit dem 11.10.2026 eine echte Wärmepumpe, aber erst seit wenigen Stunden; nicht darauf verlassen.
 
 ## Entwicklung
 

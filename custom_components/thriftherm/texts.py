@@ -54,15 +54,20 @@ LABELS: dict[str, dict[str, str]] = {
         "short_cycling": "Boiler kept switching on and off",
         "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
         "rooms_slow": "Rooms heating up slowly",
-        "rooms_lagging": "Boiler cycles and a room does not reach its target", "rooms_satisfied": "Rooms warm without demand",
+        "rooms_lagging": "Boiler cycles and a room does not reach its target",
+        "blocked_few_rooms": "No: too few rooms call for heat",
+        "single": "One room", "few": "A few rooms", "majority": "Most rooms", "rooms_satisfied": "Rooms warm without demand",
         "learning": "Learning", "refining": "Refining", "paused": "Paused",
         # heat pump
         "cheaper_than_gas": "Cheaper than central heating", "gas_cheaper": "Central heating cheaper", "learning_run": "Learning run",
         "quick_heat_up": "Quick heat-up", "mode_midea_only": "Mode: heat pump only", "mode_boiler_only": "Mode: boiler only",
         "manual_takeover": "Changed by hand", "midea_unavailable": "Heat pump unavailable", "target_reached": "Target reached",
         "no_demand": "No demand", "blocked": "Blocked", "intake_temperature_unknown": "Intake temperature unknown",
+        "comfort_time_over": "No served room is to be heated (away, off or window open)",
         "outdoor_temperature_unknown": "Outdoor temperature unknown", "outdoor_too_cold": "Too cold outside",
-        "min_run_time": "Minimum run time", "min_off_time": "Minimum off time", "rate_limit": "Waiting between commands",
+        "min_run_time": "Minimum run time",
+        "room_data": "Room sensors",
+        "fan_run_on": "Fan runs on before switching off", "min_off_time": "Minimum off time", "rate_limit": "Waiting between commands",
         "none": "None", "start": "Start", "stop": "Stop", "adjust": "Adjust",
         "unavailable": "Unavailable", "cooling_user": "Cooling (user)", "fan_only": "Fan only", "auto": "Auto",
         "heating_idle": "Heating idle", "heating_warming_up": "Heating warming up", "heating_stable": "Heating",
@@ -107,14 +112,19 @@ LABELS: dict[str, dict[str, str]] = {
         "short_cycling": "Therme taktet",
         "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
         "rooms_slow": "Räume heizen langsam auf",
-        "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht", "rooms_satisfied": "Räume warm ohne Bedarf",
+        "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
+        "blocked_few_rooms": "Nein: zu wenige Räume fordern Wärme an",
+        "single": "Ein Raum", "few": "Wenige Räume", "majority": "Die meisten Räume", "rooms_satisfied": "Räume warm ohne Bedarf",
         "learning": "Einlernen", "refining": "Verfeinern", "paused": "Pausiert",
         "cheaper_than_gas": "Günstiger als die Heizung", "gas_cheaper": "Heizung günstiger", "learning_run": "Lernlauf",
         "quick_heat_up": "Schnell aufheizen", "mode_midea_only": "Modus: nur Wärmepumpe", "mode_boiler_only": "Modus: nur Therme",
         "manual_takeover": "Von Hand geändert", "midea_unavailable": "Wärmepumpe nicht verfügbar", "target_reached": "Ziel erreicht",
         "no_demand": "Kein Bedarf", "blocked": "Gesperrt", "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+        "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
         "outdoor_temperature_unknown": "Außentemperatur unbekannt", "outdoor_too_cold": "Draußen zu kalt",
-        "min_run_time": "Mindestlaufzeit", "min_off_time": "Mindeststillstand", "rate_limit": "Wartezeit zwischen Befehlen",
+        "min_run_time": "Mindestlaufzeit",
+        "room_data": "Raumsensoren",
+        "fan_run_on": "Lüfter läuft vor dem Ausschalten nach", "min_off_time": "Mindeststillstand", "rate_limit": "Wartezeit zwischen Befehlen",
         "none": "Keine", "start": "Start", "stop": "Stopp", "adjust": "Anpassen",
         "unavailable": "Nicht verfügbar", "cooling_user": "Kühlen (Nutzer)", "fan_only": "Nur Lüfter", "auto": "Auto",
         "heating_idle": "Heizen bereit", "heating_warming_up": "Heizen (Warmlauf)", "heating_stable": "Heizen",
@@ -143,7 +153,12 @@ COP_BASES = ("measured", "learned", "prior", "prior_calibrated")
 POWER_SOURCES = ("plug", "midea_internal")
 OUTDOOR_SOURCES = ("last_known",)  # otherwise the entity the value comes from
 CALL_STATES = ("calling", "idle", "stalled", "comfort_ending", "not_allowed")
-_NOT_REASONS = CONTROL_MODES + ACTIONS + COP_BASES + POWER_SOURCES + OUTDOOR_SOURCES + CALL_STATES + ("persistent", "cycle")
+LOAD_CLASSES = ("single", "few", "majority")
+SPREAD_RULES = ("active", "blocked_few_rooms")
+_NOT_REASONS = (
+    CONTROL_MODES + ACTIONS + COP_BASES + POWER_SOURCES + OUTDOOR_SOURCES + CALL_STATES + LOAD_CLASSES + SPREAD_RULES
+    + ("persistent", "cycle")
+)
 REASON_CODES = tuple(k for k in LABELS["en"] if k not in _NOT_REASONS)
 
 

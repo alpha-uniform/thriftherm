@@ -23,6 +23,11 @@ from .models import Override
 if TYPE_CHECKING:
     from .coordinator import ThrifthermCoordinator
 
+LOAD_LOG_COLUMNS = 10
+# Half a day of cycles survives a restart (about 50 kB); the store is written every ten minutes
+# and on every user action, a full day in it would be rewritten for nothing.
+LOAD_LOG_STORED_ROWS = 720
+
 
 def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
     # only rooms still configured: a room created again under a deleted one's name starts fresh
@@ -56,6 +61,9 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
             setattr(coord, key, data[key])
     coord.control_memory = ControlMemory.from_storage(data.get("control_memory"))
     coord.boiler_memory = BoilerMemory.from_storage(data.get("boiler_memory"))
+    stored_log = data.get("boiler_load_log")
+    if isinstance(stored_log, list):
+        coord.load_log.extend(row for row in stored_log if isinstance(row, list) and len(row) == LOAD_LOG_COLUMNS)
     stored = data.get("room_temps")
     if isinstance(stored, dict):
         coord.room_temps = {
@@ -91,6 +99,7 @@ def to_store(coord: ThrifthermCoordinator) -> dict[str, Any]:
         "boosts": coord.boosts,
         "boiler_control_mode": coord.boiler_control_mode,
         "boiler_memory": coord.boiler_memory.to_storage(),
+        "boiler_load_log": list(coord.load_log)[-LOAD_LOG_STORED_ROWS:],
         "room_control_mode": coord.room_control_mode,
         "room_temps": coord.room_temps,
         "room_ctrl_memory": {room: mem.to_storage() for room, mem in coord.room_ctrl_memory.items()},

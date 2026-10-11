@@ -19,10 +19,12 @@ From what
   rooms alone. A room that is called for and does not get there asks for more, and only
   rooms warming up briskly allow less.
 
-Slow on purpose: evidence only after the first 10 minutes of a burner run, a 20 minute
-review window, one step per hour and four per day, each correction within ±10 K, and never
-beyond what the flow limits would swallow. After six steps or a quiet day the steps shrink
-from 1 K ("learning") to 0.5 K ("refining").
+Careful, not slow: evidence only after the first 10 minutes of a burner run and a 20 minute
+review window; 45 minutes before a step up and an hour before a step down; a step up doubles
+after a step up (to 4 K at most), any step halves after one against it (down to 0.5 K), and
+steps down never grow; per day at most 10 K up and 4 K down, each correction within ±10 K,
+and never further than the flow limits let the flow follow. After six steps or a quiet day a
+run of steps starts at 0.5 K ("refining") instead of 1 K ("learning").
 """
 
 from __future__ import annotations
@@ -32,7 +34,16 @@ from statistics import median
 
 from ..const import BOILER_PLAN_HEAT, BOILER_REPORTS_HEATING, BOILER_REPORTS_HOT_WATER, CTRL_OFF
 from ..models import RoomResult
-from .boiler_memory import CORRECTION_LIMIT_K, BoilerInputs, BoilerMemory, cold_weight, correction, curve_flow
+from . import boiler_load as load
+from .boiler_memory import (
+    ADJUSTMENTS_STORED,
+    CORRECTION_LIMIT_K,
+    BoilerInputs,
+    BoilerMemory,
+    cold_weight,
+    correction,
+    curve_flow,
+)
 from .heat_call import CALL_CALLING, CALL_STALLED
 
 BURNING_GAS_W = 1000.0  # a gas meter reading above this is a burning boiler
@@ -51,7 +62,7 @@ REVIEW_S = 1200.0
 SPREAD_LOW_K = 5.0
 SPREAD_HIGH_K = 15.0
 SPREAD_ALPHA = 0.2
-SLOW_RATE_K_H = 0.2
+SLOW_RATE_K_H = load.LAG_RATE_K_H
 DEMAND_ACTIVE = 0.3
 
 # --- a boiler that cycles
@@ -59,16 +70,28 @@ DEMAND_ACTIVE = 0.3
 # to 41 s, the pause stayed at the boiler's lockout (15 min, and the lockout grows as the flow
 # setpoint falls), and the bathroom hung 0.2-0.3 K below target for 14 hours. Less flow is less
 # heat there, not fewer starts.
-LAG_DEFICIT_K = 0.2  # a called room still this far below target
+LAG_DEFICIT_K = load.LAG_DEFICIT_K  # a called room still this far below target
 LAG_MIN_HEAT_S = 1800.0  # after the heating has been released this long
-BRISK_RATE_K_H = 0.5  # every called room rises at least this fast: the curve may come down
+BRISK_RATE_K_H = load.BRISK_RATE_K_H  # every called room rises at least this fast: the curve may come down
 
 # --- the steps
-ADJUST_COOLDOWN_S = 3600.0
-ADJUST_MAX_PER_DAY = 4
+# Steps that grow with certainty. Fixed 1 K steps, four a day, were measured on 2026-10-11: with
+# the flow minimum 10 K too low for the bathroom alone, eight hours brought the correction to
+# +4 K and the room stayed 0.6 K below target. Now a step UP doubles after one before it, and
+# any step against the one before halves: coarse first, fine once the answer has been overshot.
+# Steps DOWN never grow, and each direction has its own allowance for the day: comfort comes
+# before saving, and a curve lowered by 10 K in an afternoon (review 2026-10-11) must not leave
+# the day without a step back up.
+STEP_LEARNING_K = 1.0  # the first step of a run, while "learning"
+STEP_REFINING_K = 0.5  # ... while "refining", and the smallest step
+STEP_MAX_K = 4.0  # the largest step up
+STREAK_S = 3 * 3600.0  # a step this long after the last one starts over at the first step
+ADJUST_COOLDOWN_UP_S = 2700.0  # a room needs about this long to answer a higher flow
+ADJUST_COOLDOWN_DOWN_S = 3600.0
+ADJUST_MAX_UP_K_PER_DAY = 10.0  # what the curve may be raised by within a day ...
+ADJUST_MAX_DOWN_K_PER_DAY = 4.0  # ... and lowered (the four 1 K steps a day of before)
+ADJUSTMENTS_KEPT = ADJUSTMENTS_STORED  # every step of a day is remembered: both allowances are counted from them
 DAY_S = 24 * 3600.0
-STEP_LEARNING_K = 1.0
-STEP_REFINING_K = 0.5
 REFINE_AFTER_ADJUSTMENTS = 6
 
 PHASE_LEARNING = "learning"
@@ -186,58 +209,142 @@ def adjustments_last_day(mem: BoilerMemory, now_ts: float) -> int:
     return len([t for t in mem.adjustments if now_ts - t < DAY_S])
 
 
+def _sizes(mem: BoilerMemory) -> list[float | None]:
+    """The signed size of each remembered step, None for one stored before sizes were kept."""
+    count = len(mem.adjustments)
+    known: list[float | None] = list(mem.adjustment_steps)[-count:] if count else []
+    return [None] * (count - len(known)) + known
+
+
+def moved_last_day(mem: BoilerMemory, now_ts: float, direction: int = 0) -> float:
+    """By how much the curve was moved within the last day: up (1), down (-1) or both added up (0).
+
+    A step stored before sizes were kept was a step of 1 K, its direction unknown: it counts
+    for either direction.
+    """
+    total = 0.0
+    for t, size in zip(mem.adjustments, _sizes(mem), strict=False):
+        if now_ts - t >= DAY_S:
+            continue
+        if size is None:
+            total += STEP_LEARNING_K
+        elif direction == 0 or (size > 0) == (direction > 0):
+            total += abs(size)
+    return total
+
+
+def next_step(mem: BoilerMemory, direction: int, now_ts: float, line: load.LoadLine | None = None) -> float:
+    """The size of a step in this direction now.
+
+    Up after a step up: doubled. Against the step before: halved. Down after a step down, a
+    first step, or one after a step whose size is not known: the first step. With a load
+    class's `line` the step before is the last one taken in that class: a step the bathroom
+    alone took says nothing about the size of the next one for the whole flat.
+    """
+    first = STEP_REFINING_K if phase(mem, now_ts) == PHASE_REFINING else STEP_LEARNING_K
+    if line is not None:
+        last, last_ts = (line.last_step_k, line.last_step_ts) if line.last_step_ts is not None else (None, None)
+    else:
+        sizes = _sizes(mem)
+        last, last_ts = (sizes[-1], mem.adjustments[-1]) if sizes and mem.adjustments else (None, None)
+    if last is None or last_ts is None or last == 0 or now_ts - last_ts > STREAK_S:
+        return first
+    if (last > 0) != (direction > 0):
+        return max(abs(last) / 2.0, STEP_REFINING_K)
+    return min(max(abs(last), STEP_REFINING_K) * 2.0, STEP_MAX_K) if direction > 0 else first
+
+
 def _limited(value: float) -> float:
     return min(max(value, -CORRECTION_LIMIT_K), CORRECTION_LIMIT_K)
 
 
-def apply(inp: BoilerInputs, mem: BoilerMemory, direction: int, reason: str | None) -> BoilerMemory:
+def apply(inp: BoilerInputs, mem: BoilerMemory, direction: int, reason: str | None, cell: str | None = None) -> BoilerMemory:
     """Move the curve by one step at the current outdoor temperature, unless a guard says no.
 
     The step is shared between level and slope by where the outdoor temperature lies between
     the curve's points, scaled so that the flow at this temperature moves by the full step.
+
+    With `cell`, the load class the step is taken under, only that class's line moves; a
+    line that was found first has to be asked for long enough (`boiler_load.ask`). Without
+    one the common correction moves, as it always did.
     """
     now = inp.now_ts
     p = inp.params
     # anti-windup: a correction the flow limits already swallow must not keep growing
-    planned = curve_flow(inp.outdoor_c, p) + correction(mem, inp.outdoor_c)
-    if (direction > 0 and planned >= p.boiler_flow_max) or (direction < 0 and planned <= p.boiler_flow_min):
+    planned = curve_flow(inp.outdoor_c, p) + correction(mem, inp.outdoor_c, cell)
+    room = p.boiler_flow_max - planned if direction > 0 else planned - p.boiler_flow_min
+    if room <= 0:
         return mem
-    if mem.adjustments and now - mem.adjustments[-1] < ADJUST_COOLDOWN_S:
+    line = load.line_of(mem.lines, cell, mem.offset_k, mem.slope_k) if cell else None
+    if line is not None:
+        allowed, line = load.ask(line, direction, now)
+        if not allowed:
+            # a value that was found stays put until the evidence has lasted
+            return mem if line is mem.lines.get(cell) else replace(mem, lines={**mem.lines, cell: line})
+    cooldown = ADJUST_COOLDOWN_UP_S if direction > 0 else ADJUST_COOLDOWN_DOWN_S
+    if mem.adjustments and now - mem.adjustments[-1] < cooldown:
         return mem
-    if adjustments_last_day(mem, now) >= ADJUST_MAX_PER_DAY:
+    allowance = ADJUST_MAX_UP_K_PER_DAY if direction > 0 else ADJUST_MAX_DOWN_K_PER_DAY
+    left = allowance - moved_last_day(mem, now, direction)
+    # no further than the day allows and the flow limit lets the flow follow
+    size = min(next_step(mem, direction, now, line), left, room)
+    if size < STEP_REFINING_K:
         return mem
 
-    step = direction * (STEP_REFINING_K if phase(mem, now) == PHASE_REFINING else STEP_LEARNING_K)
+    step = direction * size
     cold = cold_weight(inp.outdoor_c)
     share = step / (1.0 - cold + cold * cold)
-    level = _limited(mem.offset_k + share * (1.0 - cold))
-    slope = _limited(mem.slope_k + share * cold)
-    moved = (level - mem.offset_k) + (slope - mem.slope_k) * cold
-    if abs(moved) < abs(step) / 2.0:
-        # a limit swallows it: no step is spent on what the flow at this temperature would not feel
+    from_level, from_slope = (mem.offset_k, mem.slope_k) if line is None else (line.level_k, line.slope_k)
+    level = _limited(from_level + share * (1.0 - cold))
+    slope = _limited(from_slope + share * cold)
+    moved = (level - from_level) + (slope - from_slope) * cold
+    if abs(moved) < STEP_REFINING_K:
+        # the ±10 K limit swallows it: no step is spent on what the flow at this temperature would not feel
         return mem
+    known = [size for size in _sizes(mem) if size is not None]
     return replace(
         mem,
-        offset_k=level,
-        slope_k=slope,
-        adjustments=(*mem.adjustments[-9:], now),
+        offset_k=level if line is None else mem.offset_k,
+        slope_k=slope if line is None else mem.slope_k,
+        lines=mem.lines if line is None else {**mem.lines, cell: load.stepped(line, level, slope, round(moved, 3), now)},
+        adjustments=(*mem.adjustments[-(ADJUSTMENTS_KEPT - 1):], now),
+        adjustment_steps=(*known[-(ADJUSTMENTS_KEPT - 1):], round(moved, 3)),
         last_adjust_reason=reason,
         last_review_ts=now,
         samples=0,
     )
 
 
-def learn(inp: BoilerInputs, mem: BoilerMemory, heating: list[RoomResult], burning: bool) -> BoilerMemory:
-    """One cycle of learning while the heating is released; `burning` is the heating flame now."""
+def learn(
+    inp: BoilerInputs, mem: BoilerMemory, heating: list[RoomResult], burning: bool, cell: str | None = None
+) -> BoilerMemory:
+    """One cycle of learning while the heating is released; `burning` is the heating flame now.
+
+    `heating` are the rooms that call. How many of them there are decides whether the spread
+    may judge the curve; `cell` is the load class a step is booked to.
+    """
     now = inp.now_ts
+    share = inp.params.boiler_spread_min_room_share
+    able = len(load.able_rooms(inp.rooms))
+    enough_rooms = load.spread_rule(len(heating), able, share) == load.SPREAD_RULE_ACTIVE
+    if enough_rooms and mem.spread_judging_since_ts is None:
+        # The spread collected while too few rooms called was that of one or two radiators (review
+        # 2026-10-11: carried over, three cycles of the whole flat were judged by the bathroom's 1 K).
+        # Only the spread starts over; the review rhythm and the rooms' progress go on.
+        mem = replace(mem, spread_ema=None, spread_judging_since_ts=now)
+    elif not enough_rooms and mem.spread_judging_since_ts is not None:
+        mem = replace(mem, spread_judging_since_ts=None)
+    # the spread judges only what it has seen under enough rooms for a whole review window
+    judged_by_spread = mem.spread_judging_since_ts is not None and now - mem.spread_judging_since_ts >= REVIEW_S
     if not inp.learning_allowed:
         return mem
     if short_cycling(mem, now):
         direction, reason = cycling_direction(inp, mem)
         if direction:
-            moved = apply(inp, mem, direction, reason)
-            if moved is not mem:
-                return moved
+            after = apply(inp, mem, direction, reason, cell)
+            if len(after.adjustments) != len(mem.adjustments):
+                return after
+            mem = after  # not taken; a found line remembers that it was asked
     if not burning or inp.flow_c is None or inp.return_c is None:
         return mem
     if mem.heating_since_ts is None or now - mem.heating_since_ts < SETTLE_S:
@@ -251,11 +358,14 @@ def learn(inp: BoilerInputs, mem: BoilerMemory, heating: list[RoomResult], burni
     if mem.samples < MIN_SAMPLES or now - mem.last_review_ts < REVIEW_S:
         return mem
 
-    direction, reason = steady_direction(ema, heating)
+    # With only a few rooms calling the spread says little about the curve: one open radiator
+    # returns the water almost as warm as it went out. Then only the rooms' progress counts.
+    direction, reason = steady_direction(ema if judged_by_spread else None, heating)
     if direction == 0:
         return replace(mem, last_review_ts=now)
-    moved = apply(inp, mem, direction, reason)
-    return moved if moved is not mem else replace(mem, last_review_ts=now)
+    after = apply(inp, mem, direction, reason, cell)
+    # reviewed either way: a step that was not taken (a found line still being asked) waits for the next window
+    return after if len(after.adjustments) != len(mem.adjustments) else replace(after, last_review_ts=now)
 
 
 def follow_heating_run(mem: BoilerMemory, burning: bool, now_ts: float) -> BoilerMemory:
@@ -275,7 +385,8 @@ def forget_run(mem: BoilerMemory) -> BoilerMemory:
 def reset(mem: BoilerMemory) -> BoilerMemory:
     """Forget what was learned; the control's own state stays."""
     return replace(
-        mem, offset_k=0.0, slope_k=0.0, adjustments=(), last_adjust_reason=None, spread_ema=None, samples=0, last_review_ts=None
+        mem, offset_k=0.0, slope_k=0.0, lines={}, adjustments=(), adjustment_steps=(), last_adjust_reason=None,
+        spread_ema=None, samples=0, last_review_ts=None,
     )
 
 
@@ -289,9 +400,9 @@ def shown_phase(inp: BoilerInputs, mem: BoilerMemory, burning: bool) -> str:
     return phase(mem, inp.now_ts) if (inp.learning_allowed and at_work) else PHASE_PAUSED
 
 
-def held_back(inp: BoilerInputs, mem: BoilerMemory) -> str | None:
+def held_back(inp: BoilerInputs, mem: BoilerMemory, cell: str | None = None) -> str | None:
     """A step that is due but cannot be taken: cycling asks for less, and the flow is at its minimum."""
     if not short_cycling(mem, inp.now_ts) or cycling_direction(inp, mem)[0] >= 0:
         return None
-    at_minimum = curve_flow(inp.outdoor_c, inp.params) + correction(mem, inp.outdoor_c) <= inp.params.boiler_flow_min
+    at_minimum = curve_flow(inp.outdoor_c, inp.params) + correction(mem, inp.outdoor_c, cell) <= inp.params.boiler_flow_min
     return "short_cycling_at_flow_min" if at_minimum else None

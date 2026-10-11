@@ -42,10 +42,14 @@
           "boiler_flow_min": "Minimale Vorlauftemperatur",
           "boiler_flow_max": "Maximale Vorlauftemperatur",
           "boiler_hot_water_standby": "Warmwasser bereithalten (Warmhalten der Kombitherme, Speicherladung)",
+          "boiler_spread_min_room_share": "Anteil der Räume, die anfordern müssen, bevor die Spreizung die Kurve bewertet",
+          "boiler_load_model": "Eigene Heizkurve für einen Raum, wenige Räume und die Mehrheit",
           "boiler_allow_active_control": "Aktive Thermensteuerung freigeben (sonst nur planen)"
         },
         "data_description": {
-          "boiler_hot_water_standby": "Aus: Bei aktiver Thermensteuerung heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist. Sie springt dann nicht mehr etwa einmal pro Stunde an, um ihren Wärmetauscher warm zu halten. Am Hahn kommt weiter warmes Wasser, nur etwas später. Eingeschaltet lassen, wenn ein Warmwasserspeicher angeschlossen ist: Er würde nicht mehr geladen. Von einem Nutzer gemeldet, an der Testanlage noch nicht gemessen."
+          "boiler_hot_water_standby": "Aus: Bei aktiver Thermensteuerung heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist. Sie springt dann nicht mehr etwa einmal pro Stunde an, um ihren Wärmetauscher warm zu halten. Am Hahn kommt weiter warmes Wasser, nur etwas später. Eingeschaltet lassen, wenn ein Warmwasserspeicher angeschlossen ist: Er würde nicht mehr geladen. Von einem Nutzer gemeldet, an der Testanlage noch nicht gemessen.",
+          "boiler_spread_min_room_share": "Die Spreizung zwischen Vorlauf und Rücklauf sagt nur etwas über die Heizkurve, wenn genug Heizkörper Wärme abnehmen: Ein einzelner offener Heizkörper schickt das Wasser fast so warm zurück, wie es kam, und eine kleine Spreizung hat die Kurve dann fälschlich gesenkt. Fordern weniger Räume an als dieser Anteil der Räume, die gerade Wärme abnehmen können (aufgerundet, mindestens einer), zählt nur, ob die anfordernden Räume vorankommen. Räume, die nur mitheizen, werden nicht gezählt. 0,5 = die Hälfte der Räume.",
+          "boiler_load_model": "Welchen Vorlauf die Wohnung braucht, hängt davon ab, wie viele Heizkörper Wärme abnehmen. An: Thriftherm führt für drei Fälle (ein Raum fordert an, wenige, die Mehrheit) je eine eigene Korrektur der Heizkurve, und ein Lernschritt verändert nur den Fall, in dem er gemacht wurde. Was das Bad allein gelehrt hat, verstellt so nicht den Vorlauf für die ganze Wohnung. Ein Fall ohne eigenen Wert startet mit dem des nächstgelegenen. Ein Wert, der einige Stunden gepasst hat, gilt als gefunden und bewegt sich erst wieder, wenn die Räume länger etwas anderes zeigen. Aus: eine gemeinsame Korrektur für alle Fälle, wie bisher; sie behält, was sie gelernt hatte."
         }
       },
       "midea": {
@@ -59,6 +63,7 @@
           "midea_outlet_temp": "Ausblaslufttemperatur",
           "midea_airflow_curve": "Luftmengenkennlinie (rpm:m³/h, ...)",
           "midea_duct_factor": "Schlauchfaktor (reale Luftmenge / frei ausblasend, 1,0 ohne Schläuche)",
+          "midea_follow_rooms": "Sollwert folgt der Solltemperatur der versorgten Räume (plus Sollwert-Abstand aus den Parametern); das Gerät regelt selbst",
           "midea_room": "Raum, in dem die Wärmepumpe steht"
         }
       },
@@ -164,10 +169,14 @@
           "boiler_flow_min": "Minimale Vorlauftemperatur",
           "boiler_flow_max": "Maximale Vorlauftemperatur",
           "boiler_hot_water_standby": "Warmwasser bereithalten (Warmhalten der Kombitherme, Speicherladung)",
+          "boiler_spread_min_room_share": "Anteil der Räume, die anfordern müssen, bevor die Spreizung die Kurve bewertet",
+          "boiler_load_model": "Eigene Heizkurve für einen Raum, wenige Räume und die Mehrheit",
           "boiler_allow_active_control": "Aktive Thermensteuerung freigeben (sonst nur planen)"
         },
         "data_description": {
-          "boiler_hot_water_standby": "Aus: Bei aktiver Thermensteuerung heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist. Sie springt dann nicht mehr etwa einmal pro Stunde an, um ihren Wärmetauscher warm zu halten. Am Hahn kommt weiter warmes Wasser, nur etwas später. Eingeschaltet lassen, wenn ein Warmwasserspeicher angeschlossen ist: Er würde nicht mehr geladen. Von einem Nutzer gemeldet, an der Testanlage noch nicht gemessen."
+          "boiler_hot_water_standby": "Aus: Bei aktiver Thermensteuerung heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist. Sie springt dann nicht mehr etwa einmal pro Stunde an, um ihren Wärmetauscher warm zu halten. Am Hahn kommt weiter warmes Wasser, nur etwas später. Eingeschaltet lassen, wenn ein Warmwasserspeicher angeschlossen ist: Er würde nicht mehr geladen. Von einem Nutzer gemeldet, an der Testanlage noch nicht gemessen.",
+          "boiler_spread_min_room_share": "Die Spreizung zwischen Vorlauf und Rücklauf sagt nur etwas über die Heizkurve, wenn genug Heizkörper Wärme abnehmen: Ein einzelner offener Heizkörper schickt das Wasser fast so warm zurück, wie es kam, und eine kleine Spreizung hat die Kurve dann fälschlich gesenkt. Fordern weniger Räume an als dieser Anteil der Räume, die gerade Wärme abnehmen können (aufgerundet, mindestens einer), zählt nur, ob die anfordernden Räume vorankommen. Räume, die nur mitheizen, werden nicht gezählt. 0,5 = die Hälfte der Räume.",
+          "boiler_load_model": "Welchen Vorlauf die Wohnung braucht, hängt davon ab, wie viele Heizkörper Wärme abnehmen. An: Thriftherm führt für drei Fälle (ein Raum fordert an, wenige, die Mehrheit) je eine eigene Korrektur der Heizkurve, und ein Lernschritt verändert nur den Fall, in dem er gemacht wurde. Was das Bad allein gelehrt hat, verstellt so nicht den Vorlauf für die ganze Wohnung. Ein Fall ohne eigenen Wert startet mit dem des nächstgelegenen. Ein Wert, der einige Stunden gepasst hat, gilt als gefunden und bewegt sich erst wieder, wenn die Räume länger etwas anderes zeigen. Aus: eine gemeinsame Korrektur für alle Fälle, wie bisher; sie behält, was sie gelernt hatte."
         }
       },
       "midea": {
@@ -180,6 +189,7 @@
           "midea_outlet_temp": "Ausblaslufttemperatur",
           "midea_airflow_curve": "Luftmengenkennlinie (rpm:m³/h, ...)",
           "midea_duct_factor": "Schlauchfaktor (reale Luftmenge / frei ausblasend, 1,0 ohne Schläuche)",
+          "midea_follow_rooms": "Sollwert folgt der Solltemperatur der versorgten Räume (plus Sollwert-Abstand aus den Parametern); das Gerät regelt selbst",
           "midea_room": "Raum, in dem die Wärmepumpe steht"
         }
       },
@@ -205,7 +215,7 @@
           "break_even_margin_on": "Aufschlag auf Break-even für Wechsel zur Wärmepumpe",
           "break_even_margin_off": "Abschlag unter Break-even für Rückkehr zur Therme",
           "midea_min_outdoor_temp": "Minimale Außentemperatur für Heizen mit der Wärmepumpe (Datenblatt)",
-          "midea_setpoint_offset_k": "Sparbetrieb: Sollwert über Ansaugluft, Startwert (wird gelernt)",
+          "midea_setpoint_offset_k": "Sollwert der Wärmepumpe über der Solltemperatur der Räume, sonst über der Ansaugluft als gelernter Startwert",
           "cop_warmup_s": "COP-Warmlaufzeit nach Kompressorstart",
           "cop_min_power_w": "COP: minimale elektrische Leistung",
           "cop_min_delta_t_k": "COP: minimale Lufterwärmung",
@@ -225,6 +235,7 @@
           "override_default_min": "Standarddauer manuelle Übersteuerung",
           "midea_min_run_min": "Mindestlaufzeit Wärmepumpe",
           "midea_min_off_min": "Mindestpause Wärmepumpe",
+          "midea_fan_run_on_min": "Wärmepumpe: Lüfterbetrieb vor dem Ausschalten (0 = sofort aus)",
           "boost_duration_min": "Dauer „Schnell aufheizen“",
           "midea_learning_runs": "Lernläufe erlauben (COP bei neuen Außentemperaturen messen)",
           "midea_allow_active_control": "Aktive Wärmepumpen-Steuerung freigeben (sonst nur planen)",
@@ -327,6 +338,9 @@
           },
           "samples": {
             "name": "Messwerte"
+          },
+          "cycle_cop": {
+            "name": "COP über den letzten Takt"
           },
           "gate_reasons": {
             "name": "Nicht gemessen weil"
@@ -567,9 +581,12 @@
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
               "outdoor_temperature_unknown": "Außentemperatur unbekannt",
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
+              "room_data": "Raumsensoren",
+              "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
               "unavailable": "Nicht verfügbar",
@@ -747,9 +764,12 @@
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
               "outdoor_temperature_unknown": "Außentemperatur unbekannt",
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
+              "room_data": "Raumsensoren",
+              "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
               "unavailable": "Nicht verfügbar",
@@ -842,9 +862,12 @@
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
               "outdoor_temperature_unknown": "Außentemperatur unbekannt",
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
+              "room_data": "Raumsensoren",
+              "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
               "unavailable": "Nicht verfügbar",
@@ -989,9 +1012,12 @@
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
               "outdoor_temperature_unknown": "Außentemperatur unbekannt",
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
+              "room_data": "Raumsensoren",
+              "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
               "unavailable": "Nicht verfügbar",
@@ -1084,9 +1110,12 @@
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
               "outdoor_temperature_unknown": "Außentemperatur unbekannt",
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
+              "room_data": "Raumsensoren",
+              "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
               "unavailable": "Nicht verfügbar",
@@ -1230,9 +1259,12 @@
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
               "outdoor_temperature_unknown": "Außentemperatur unbekannt",
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
+              "room_data": "Raumsensoren",
+              "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
               "unavailable": "Nicht verfügbar",
@@ -1298,6 +1330,9 @@
           "adjustments_last_24h": {
             "name": "Änderungen in 24 h"
           },
+          "moved_last_24h_k": {
+            "name": "Verstellt in 24 h K (auf und ab zusammen)"
+          },
           "last_adjustment_reason": {
             "name": "Letzte Änderung weil",
             "state": {
@@ -1353,9 +1388,12 @@
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
               "outdoor_temperature_unknown": "Außentemperatur unbekannt",
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
+              "room_data": "Raumsensoren",
+              "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
               "unavailable": "Nicht verfügbar",
@@ -1445,9 +1483,12 @@
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
               "outdoor_temperature_unknown": "Außentemperatur unbekannt",
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
+              "room_data": "Raumsensoren",
+              "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
               "unavailable": "Nicht verfügbar",
@@ -1484,6 +1525,30 @@
           },
           "flow_return_spread_k": {
             "name": "Spreizung K"
+          },
+          "calling_rooms": {
+            "name": "Anfordernde Räume"
+          },
+          "rooms_total": {
+            "name": "Räume, die jetzt Wärme abnehmen können"
+          },
+          "spread_rule": {
+            "name": "Spreizung bewertet die Kurve",
+            "state": {
+              "active": "Aktiv",
+              "blocked_few_rooms": "Nein: zu wenige Räume fordern Wärme an"
+            }
+          },
+          "load_class": {
+            "name": "Lastfall jetzt (anfordernde Räume)",
+            "state": {
+              "single": "Ein Raum",
+              "few": "Wenige Räume",
+              "majority": "Die meisten Räume"
+            }
+          },
+          "curve_by_load": {
+            "name": "Heizkurven-Korrektur je Lastfall"
           },
           "paused_because": {
             "name": "Pausiert weil"
@@ -1602,9 +1667,12 @@
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
               "outdoor_temperature_unknown": "Außentemperatur unbekannt",
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
+              "room_data": "Raumsensoren",
+              "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
               "unavailable": "Nicht verfügbar",
@@ -1732,9 +1800,12 @@
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
               "outdoor_temperature_unknown": "Außentemperatur unbekannt",
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
+              "room_data": "Raumsensoren",
+              "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
               "unavailable": "Nicht verfügbar",
@@ -1843,9 +1914,12 @@
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
+              "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
               "outdoor_temperature_unknown": "Außentemperatur unbekannt",
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
+              "room_data": "Raumsensoren",
+              "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
               "unavailable": "Nicht verfügbar",

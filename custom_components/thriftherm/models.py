@@ -195,6 +195,7 @@ class Parameters:
     break_even_margin_off: float = 0.05
     heat_pump_min_outdoor_temp: float = -10.0
     heat_pump_setpoint_offset_k: float = 1.0
+    heat_pump_follow_rooms: bool = False  # the unit gets the served rooms' target plus the offset; False: intake air plus offset
     cop_warmup_s: float = 600.0
     cop_min_power_w: float = 150.0
     cop_min_delta_t_k: float = 3.0
@@ -219,12 +220,15 @@ class Parameters:
     default_heat_rate_heat_pump_k_h: float = 1.2
     heat_pump_min_run_s: float = 1200.0
     heat_pump_min_off_s: float = 600.0
+    heat_pump_fan_run_on_s: float = 900.0  # fan only for this long before the unit is switched off; 0: off at once
     heat_pump_learning_runs: bool = True
     boiler_curve_flow_cold: float = 55.0  # flow temperature at -10 °C outdoor
     boiler_curve_flow_warm: float = 30.0  # flow temperature at +15 °C outdoor
     boiler_flow_min: float = 30.0
     boiler_flow_max: float = 60.0
     boiler_hot_water_standby: bool = True  # False: SetMode disables the keep-warm / cylinder load
+    boiler_spread_min_room_share: float = 0.5  # the spread judges the curve only while this share of the rooms calls
+    boiler_load_model: bool = True  # a curve per load class (how many rooms call); False: one common correction for all
 
 
 @dataclass(frozen=True)
@@ -306,6 +310,7 @@ class CopResult:
     airflow_m3h: float | None
     samples: int
     gate_reasons: tuple[str, ...] = ()
+    cycle_cop: float | None = None  # heat over electricity of the last whole on/off cycle, while it is fresh
 
 
 @dataclass(frozen=True)
@@ -347,6 +352,7 @@ class HeatPumpCommand:
     reason: str
     blockers: tuple[str, ...] = ()
     waiting: str | None = None  # min_run_time / min_off_time / rate_limit
+    delivers: bool = True  # False while a unit that follows the rooms' target idles: its intake air is at the setpoint
 
 
 @dataclass(frozen=True)
@@ -368,12 +374,18 @@ class BoilerCommand:
     spread_k: float | None = None  # smoothed flow/return spread while the boiler heats
     learning_phase: str = "paused"  # learning | refining | paused
     adjustments_last_day: int = 0
+    moved_last_day_k: float = 0.0  # by how much those steps moved the curve, both directions added up
     last_adjust_reason: str | None = None
     hot_water: bool = False  # hot water recognised within the last minutes
     hot_water_seen_ts: float | None = None
     held_back: str | None = None  # a learning step that is due but cannot be taken, e.g. at the flow minimum
     burner_share: float = 0.0  # share of the last hour the burner ran for the heating (0..1)
     burner_starts_last_hour: int = 0
+    calling_rooms: int = 0  # rooms that really ask the boiler for heat (not the ones heating along)
+    rooms_total: int = 0  # rooms whose radiator could take heat right now
+    spread_rule: str | None = None  # active | blocked_few_rooms, None while the heating is not released
+    load_class: str | None = None  # how many rooms call: single | few | majority, None while no room calls
+    curve_by_load: dict | None = None  # the line of each load class: correction now, level, slope, found, hours
 
 
 @dataclass(frozen=True)
