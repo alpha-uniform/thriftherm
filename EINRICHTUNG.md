@@ -233,6 +233,18 @@ Für jeden Raum:
 
 Ein Thermostat, das du von Hand **ausschaltest**, lässt Thriftherm in Ruhe, und dieser Raum fordert die Therme nicht mehr an.
 
+### Versatile Thermostat statt Better Thermostat (Vorschau)
+
+> **Vorschau.** Nach der Dokumentation von Versatile Thermostat gebaut und mit nachgestellten Zuständen getestet, noch nicht mit einer echten Installation.
+
+Als Thermostat eines Raums kannst du auch die Klima-Entität von [Versatile Thermostat](https://github.com/jmcollin78/versatile_thermostat) wählen. Thriftherm schreibt ihr nur die Solltemperatur.
+
+- **Eigene Regeln bleiben bei Versatile Thermostat.** Senkt es den Sollwert selbst ab, weil ein Fenster offen ist, es Last abwirft oder im Sicherheitsmodus ist, hält Thriftherm das nicht für eine Änderung von Hand und schreibt auch nicht dagegen; Versatile Thermostat stellt den angeforderten Wert danach selbst wieder her. Der Raum zeigt solange *Das Thermostat wendet eine eigene Regel an*.
+- **Schaltet es sich bei offenem Fenster aus,** gilt das wie ein ausgeschaltetes Thermostat: Der Raum fordert die Therme nicht an.
+- **Die Funktion „Zentralheizung“ von Versatile Thermostat ausgeschaltet lassen,** wenn Thriftherm die Therme steuert. Sonst schalten zwei an derselben Therme.
+- **Voreinstellungen (Komfort, Eco, Boost) und Anwesenheit** in Versatile Thermostat verstellen den Sollwert als Anforderung. Das liest Thriftherm wie eine Änderung von Hand und macht daraus eine Übersteuerung. Den Zeitplan führst du deshalb in Thriftherm, nicht dort.
+- Die Ventile hinter Versatile Thermostat findet Thriftherm selbst und meldet, wenn eines verstummt.
+
 ## 6. An der Therme
 
 1. **Den Drehknopf auf die höchste Vorlauftemperatur stellen, die du zulassen willst**, zum Beispiel 55 °C. Der Knopf bleibt die Obergrenze und ist das, worauf die Therme zurückfällt, wenn Home Assistant ausfällt. Nicht an den linken Anschlag drehen: An der getesteten Therme ist das Sommerbetrieb und sperrt die Heizung, egal was Thriftherm sendet.

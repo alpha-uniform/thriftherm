@@ -316,10 +316,10 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
     assert control.to_storage() == {
         "offset_k": 1.5, "learning_bins": [[2, 10.0]], "manual_until_ts": None, "running_since_ts": 5.0, "stopped_since_ts": None,
         "last_command_ts": None, "last_hvac_mode": "heat", "last_target": 21.0, "learning_until_ts": None, "last_offset_review_ts": None,
-        "fan_until_ts": None,
+        "fan_until_ts": None, "manual_by": None,
     }
     assert list(control.to_storage()) == [
-        "offset_k", "learning_bins", "manual_until_ts", "running_since_ts", "stopped_since_ts",
+        "offset_k", "learning_bins", "manual_until_ts", "manual_by", "running_since_ts", "stopped_since_ts",
         "last_command_ts", "last_hvac_mode", "last_target", "learning_until_ts", "last_offset_review_ts",
         "fan_until_ts",
     ]
@@ -330,7 +330,7 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
     room = RoomCtrlMemory.from_storage({"last_sent_target": "21", "last_sent_ts": "x", "confirmed": 1, "thermostat_before_send": {}})
     assert room == RoomCtrlMemory(last_sent_target=21.0, last_sent_ts=None, confirmed=True, thermostat_before_send=None)
     assert RoomCtrlMemory.from_storage("nonsense") == RoomCtrlMemory()
-    assert list(room.to_storage()) == ["last_sent_target", "last_sent_ts", "confirmed", "thermostat_before_send"]
+    assert list(room.to_storage()) == ["last_sent_target", "last_sent_ts", "confirmed", "thermostat_before_send", "answered_with"]
 
 
 def test_the_minimum_state_time_still_holds_after_a_restart():

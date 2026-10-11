@@ -140,7 +140,7 @@ async def test_override_and_manual_changes_use_the_default_duration(hass: HomeAs
     coordinator = (await _setup(hass, options={"override_default_min": 45, **RELEASED})).runtime_data
     await coordinator.async_set_override("badezimmer", 22.0, None)
     override = coordinator.overrides["badezimmer"]
-    assert override.until_ts - override.set_at_ts == 45 * 60.0
+    assert override.until_ts - override.set_at_ts == 45 * 60.0 and override.by == "action"
 
     coordinator.overrides.clear()
     coordinator.room_control_mode = "active"
@@ -149,7 +149,7 @@ async def test_override_and_manual_changes_use_the_default_duration(hass: HomeAs
     room = replace(snapshot.rooms["wohnzimmer"], trv_target_temp=20.0)
     snapshot = replace(snapshot, rooms={**snapshot.rooms, "wohnzimmer": room})
     adopted = coordinator._adopt_manual_thermostat_changes(snapshot, 1000.0)
-    assert coordinator.overrides["wohnzimmer"] == Override(20.0, 1000.0 + 45 * 60.0, 1000.0)
+    assert coordinator.overrides["wohnzimmer"] == Override(20.0, 1000.0 + 45 * 60.0, 1000.0, "device")
     assert adopted.rooms["wohnzimmer"].override == coordinator.overrides["wohnzimmer"]
 
 

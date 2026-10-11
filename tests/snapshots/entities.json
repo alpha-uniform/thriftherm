@@ -260,6 +260,29 @@
    "unique_id": "ENTRY_wohnzimmer_window_open",
    "unit_of_measurement": null
   },
+  "button.thriftherm_back_to_automatic": {
+   "attributes": {
+    "friendly_name": "Thriftherm Back to automatic",
+    "icon": "mdi:autorenew"
+   },
+   "capabilities": null,
+   "device": {
+    "identifiers": [
+     "thriftherm/ENTRY"
+    ],
+    "manufacturer": "Thriftherm",
+    "model": "Heating control",
+    "name": "Thriftherm",
+    "via": null
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": "mdi:autorenew",
+   "state": "unknown",
+   "translation_key": "resume_automatic",
+   "unique_id": "ENTRY_resume_automatic",
+   "unit_of_measurement": null
+  },
   "button.thriftherm_badezimmer_quick_heat_up": {
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Quick heat-up",
@@ -699,6 +722,7 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
     "quick_heat_up": false,
@@ -946,6 +970,7 @@
     "action": "none",
     "blockers": [],
     "break_even_cop": 3.5664335664335667,
+    "commands_not_carried_out": 0,
     "commands_sent": false,
     "control_mode": "shadow",
     "decision_cop": 3.344,
@@ -957,6 +982,8 @@
     "icon": "mdi:heat-pump-outline",
     "installed_in_room": null,
     "load": null,
+    "manual_by": null,
+    "manual_until_ts": null,
     "options": [
      "heat",
      "off",
@@ -1434,6 +1461,7 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
     "quick_heat_up": false,
@@ -1825,6 +1853,29 @@
    "unique_id": "ENTRY_wohnzimmer_window_open",
    "unit_of_measurement": null
   },
+  "button.thriftherm_back_to_automatic": {
+   "attributes": {
+    "friendly_name": "Thriftherm Back to automatic",
+    "icon": "mdi:autorenew"
+   },
+   "capabilities": null,
+   "device": {
+    "identifiers": [
+     "thriftherm/ENTRY"
+    ],
+    "manufacturer": "Thriftherm",
+    "model": "Heating control",
+    "name": "Thriftherm",
+    "via": null
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": "mdi:autorenew",
+   "state": "unknown",
+   "translation_key": "resume_automatic",
+   "unique_id": "ENTRY_resume_automatic",
+   "unit_of_measurement": null
+  },
   "button.thriftherm_badezimmer_quick_heat_up": {
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Quick heat-up",
@@ -2297,6 +2348,7 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
     "quick_heat_up": false,
@@ -2790,6 +2842,7 @@
     "action": "none",
     "blockers": [],
     "break_even_cop": 2.891338582677165,
+    "commands_not_carried_out": 0,
     "commands_sent": false,
     "control_mode": "shadow",
     "decision_cop": 3.344,
@@ -2801,6 +2854,8 @@
     "icon": "mdi:heat-pump-outline",
     "installed_in_room": null,
     "load": null,
+    "manual_by": null,
+    "manual_until_ts": null,
     "options": [
      "heat",
      "off",
@@ -3278,6 +3333,7 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
     "quick_heat_up": false,
@@ -3669,6 +3725,29 @@
    "unique_id": "ENTRY_wohnzimmer_window_open",
    "unit_of_measurement": null
   },
+  "button.thriftherm_back_to_automatic": {
+   "attributes": {
+    "friendly_name": "Thriftherm Back to automatic",
+    "icon": "mdi:autorenew"
+   },
+   "capabilities": null,
+   "device": {
+    "identifiers": [
+     "thriftherm/ENTRY"
+    ],
+    "manufacturer": "Thriftherm",
+    "model": "Heating control",
+    "name": "Thriftherm",
+    "via": null
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": "mdi:autorenew",
+   "state": "unknown",
+   "translation_key": "resume_automatic",
+   "unique_id": "ENTRY_resume_automatic",
+   "unit_of_measurement": null
+  },
   "button.thriftherm_badezimmer_quick_heat_up": {
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Quick heat-up",
@@ -4147,6 +4226,7 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
     "quick_heat_up": false,
@@ -4640,6 +4720,7 @@
     "action": "none",
     "blockers": [],
     "break_even_cop": 2.891338582677165,
+    "commands_not_carried_out": 0,
     "commands_sent": false,
     "control_mode": "shadow",
     "decision_cop": 3.344,
@@ -4651,6 +4732,8 @@
     "icon": "mdi:heat-pump-outline",
     "installed_in_room": null,
     "load": null,
+    "manual_by": null,
+    "manual_until_ts": null,
     "options": [
      "heat",
      "off",
@@ -5128,6 +5211,7 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
     "quick_heat_up": false,
@@ -5387,6 +5471,29 @@
    "state": "unknown",
    "translation_key": "room_window_open",
    "unique_id": "ENTRY_wohnzimmer_window_open",
+   "unit_of_measurement": null
+  },
+  "button.thriftherm_back_to_automatic": {
+   "attributes": {
+    "friendly_name": "Thriftherm Back to automatic",
+    "icon": "mdi:autorenew"
+   },
+   "capabilities": null,
+   "device": {
+    "identifiers": [
+     "thriftherm/ENTRY"
+    ],
+    "manufacturer": "Thriftherm",
+    "model": "Heating control",
+    "name": "Thriftherm",
+    "via": null
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": "mdi:autorenew",
+   "state": "unknown",
+   "translation_key": "resume_automatic",
+   "unique_id": "ENTRY_resume_automatic",
    "unit_of_measurement": null
   },
   "datetime.thriftherm_planned_return": {
@@ -5801,6 +5908,7 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
     "quick_heat_up": false,
@@ -6399,6 +6507,7 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
     "quick_heat_up": false,
@@ -6716,6 +6825,29 @@
    "state": "unknown",
    "translation_key": "room_window_open",
    "unique_id": "ENTRY_wohnzimmer_window_open",
+   "unit_of_measurement": null
+  },
+  "button.thriftherm_back_to_automatic": {
+   "attributes": {
+    "friendly_name": "Thriftherm Back to automatic",
+    "icon": "mdi:autorenew"
+   },
+   "capabilities": null,
+   "device": {
+    "identifiers": [
+     "thriftherm/ENTRY"
+    ],
+    "manufacturer": "Thriftherm",
+    "model": "Heating control",
+    "name": "Thriftherm",
+    "via": null
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": "mdi:autorenew",
+   "state": "unknown",
+   "translation_key": "resume_automatic",
+   "unique_id": "ENTRY_resume_automatic",
    "unit_of_measurement": null
   },
   "button.thriftherm_badezimmer_quick_heat_up": {
@@ -7155,6 +7287,7 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
     "quick_heat_up": false,
@@ -7305,6 +7438,7 @@
     "action": "none",
     "blockers": [],
     "break_even_cop": 0.0,
+    "commands_not_carried_out": 0,
     "commands_sent": false,
     "control_mode": "shadow",
     "decision_cop": 3.344,
@@ -7316,6 +7450,8 @@
     "icon": "mdi:heat-pump-outline",
     "installed_in_room": null,
     "load": null,
+    "manual_by": null,
+    "manual_until_ts": null,
     "options": [
      "heat",
      "off",
@@ -7793,6 +7929,7 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
     "quick_heat_up": false,

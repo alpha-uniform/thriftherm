@@ -427,6 +427,7 @@ def evaluate_room(
         internal_gain_w=state.internal_gain_w,
         issues=tuple(issues),
         override_until_ts=override_until,
+        override_by=state.override.by if override_until is not None and state.override is not None else None,
         drying=drying,
         drying_reason=drying_reason,
         preheat_start_ts=preheat_ts,

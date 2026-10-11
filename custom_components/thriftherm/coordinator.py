@@ -11,7 +11,8 @@ from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.const import ATTR_DOMAIN, ATTR_ENTITY_ID, ATTR_SERVICE_DATA, EVENT_CALL_SERVICE
+from homeassistant.core import CALLBACK_TYPE, Context, Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.event import async_track_state_change_event
 from homeassistant.helpers.storage import Store
@@ -65,6 +66,7 @@ from .const import (
     UPDATE_INTERVAL_S,
 )
 from .engines import (
+    hand,
     advisor,
     boiler as boiler_engine,
     boiler_control,
@@ -82,6 +84,7 @@ from .engines.safety import HEAT_PUMP_ISSUE_PREFIX
 from .engines.learning import CoolRateStats, CopMap, HeatRateStats
 from .engines.boiler_memory import BoilerInputs, BoilerMemory, curve_flow
 from .engines.common import round_half
+from .models import SettingChange
 from .engines.heat_pump_control import ControlInputs, ControlMemory
 from .engines.room_control import RoomCtrlMemory
 from .models import (
@@ -123,6 +126,15 @@ type ThrifthermConfigEntry = ConfigEntry["ThrifthermCoordinator"]
 def _modes(allow_active: bool) -> list[str]:
     """Control modes on offer: "active" only once released in the options."""
     return [CTRL_OFF, CTRL_SHADOW, CTRL_ACTIVE] if allow_active else [CTRL_OFF, CTRL_SHADOW]
+
+
+_GONE = ("unavailable", "unknown")
+_BROAD_TARGETS = ("area_id", "device_id", "label_id", "floor_id")
+
+
+@callback
+def _is_climate_call(data: Any) -> bool:
+    return data.get(ATTR_DOMAIN) == "climate"
 
 
 class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -177,6 +189,15 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.call_memory: dict[str, heat_call.CallMemory] = {}
         # echo filter: setpoint changes of each room thermostat and the valves behind it
         self._valves: dict[str, tuple[str, tuple[str, ...]]] = {}  # room -> (thermostat, valves)
+        # Who changed what we command (engines/hand.py): the contexts of our own service calls,
+        # and the last change of mode or setpoint of every thermostat and of the heat pump.
+        self._own_contexts: deque[str] = deque(maxlen=64)
+        self._asked_contexts: deque[str] = deque(maxlen=64)  # service calls others made on what we command
+        self._commanded: frozenset[str] = frozenset()
+        self._last_settings: dict[str, tuple[str, Any]] = {}  # entity -> (mode, setpoint) when last reachable
+        self._setting_changes: dict[str, SettingChange] = {}
+        self._settings_watched_since_ts: float | None = None
+        self._room_memory_before: dict[str, RoomCtrlMemory] = {}  # as it was before this cycle's plan
         self._setpoints: dict[str, deque[tuple[float, float]]] = {}  # entity -> (ts, setpoint)
         self.echoes_ignored: dict[str, tuple[float, float]] = {}  # room -> (ts, value) of the last one
         self._preheat_latch: dict[str, float] = {}
@@ -301,6 +322,85 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if watched:
             self.entry.async_on_unload(async_track_state_change_event(self.hass, list(watched), self._on_watched_change))
         self._track_setpoints()
+        self._track_settings()
+
+    def _track_settings(self) -> None:
+        """Record who changes the mode or the setpoint of what the control commands."""
+        commanded = {room.climate_entity for room in self.builder.rooms if room.climate_entity}
+        if self.has_heat_pump and self.config.get(CONF_HEAT_PUMP_CLIMATE):
+            commanded.add(self.config[CONF_HEAT_PUMP_CLIMATE])
+        if not commanded:
+            return
+        self._commanded = frozenset(commanded)
+        for entity_id in commanded:
+            state = self.hass.states.get(entity_id)
+            if state is not None and state.state not in _GONE:
+                self._last_settings[entity_id] = (state.state, state.attributes.get("temperature"))
+        self.entry.async_on_unload(async_track_state_change_event(self.hass, list(commanded), self._on_setting_change))
+        self.entry.async_on_unload(self.hass.bus.async_listen(EVENT_CALL_SERVICE, self._on_climate_call, _is_climate_call))
+        self._settings_watched_since_ts = time.time()
+
+    @callback
+    def _on_climate_call(self, event: Event) -> None:
+        """Remember a service call somebody else makes on an entity we command.
+
+        An automation triggered by the clock carries neither a person nor a trigger; its call
+        is all that tells the change it causes from one the device made itself.
+        """
+        if event.context.id in self._own_contexts:
+            return
+        data = event.data.get(ATTR_SERVICE_DATA) or {}
+        targets = data.get(ATTR_ENTITY_ID)
+        entities = [targets] if isinstance(targets, str) else list(targets or ())
+        # A call that names entities counts when one of them is commanded: a thermostat wrapper
+        # writing to its own valve names the valve, and must not be taken for somebody asking.
+        # A call by area, device, label, floor or "all" may reach ours; whether it did shows in
+        # the state change that carries its context.
+        broad = "all" in entities or any(key in data for key in _BROAD_TARGETS)
+        if broad or any(entity in self._commanded for entity in entities):
+            self._asked_contexts.append(event.context.id)
+
+    @callback
+    def _on_setting_change(self, event: Event[EventStateChangedData]) -> None:
+        new, old = event.data.get("new_state"), event.data.get("old_state")
+        if new is None or new.state in _GONE:
+            return
+        setting = (new.state, new.attributes.get("temperature"))
+        before = self._last_settings.get(new.entity_id)
+        self._last_settings[new.entity_id] = setting
+        ts = new.last_updated.timestamp()
+        if old is None or old.state in _GONE:
+            # Back from being unreachable: nobody's change in itself. But if the device returns with
+            # another setting than it left with, somebody changed it meanwhile, at the device.
+            if before is not None and before != setting:
+                self._setting_changes[new.entity_id] = SettingChange(
+                    ts, hand.DEVICE, setpoint=before[1] != setting[1], mode=before[0] != setting[0]
+                )
+            return
+        mode, setpoint = new.state != old.state, setting[1] != old.attributes.get("temperature")
+        if not mode and not setpoint:
+            return
+        context = event.context
+        origin = hand.origin(context.id, context.user_id, context.parent_id, self._own_contexts, self._asked_contexts)
+        self._setting_changes[new.entity_id] = SettingChange(ts, origin, setpoint=setpoint, mode=mode)
+
+    def _asked_meanwhile(self, entity_id: str, since_ts: float, setpoint_only: bool = False) -> bool:
+        """Somebody asked for another setting in Home Assistant since this cycle read the states.
+
+        The command about to go out was planned without it and would overwrite it without a
+        trace; left unsent, the next cycle finds the change and takes it for what it is. A change
+        of the same instant counts: had the plan known it, there would be nothing to send.
+        """
+        change = self._setting_changes.get(entity_id)
+        if change is None or change.origin not in hand.DELIBERATE or (setpoint_only and not change.setpoint):
+            return False
+        return change.ts >= since_ts
+
+    def _own_context(self) -> Context:
+        """A context for a command of ours: the change it causes is then known as ours."""
+        context = Context()
+        self._own_contexts.append(context.id)
+        return context
 
     def _track_setpoints(self) -> None:
         """Record every setpoint change of the room thermostats and the valves behind them."""
@@ -352,6 +452,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def _on_watched_change(self, event: Event[EventStateChangedData]) -> None:
         old = event.data.get("old_state")
         new = event.data.get("new_state")
+        # Who changed it has to be on record before the cycle this very change starts: that cycle
+        # runs at once, ahead of any listener registered later. (Seen in a test: a unit switched
+        # off while unreachable came back, and the cycle judged it before the change was noted.)
+        if new is not None and new.entity_id in self._commanded:
+            self._on_setting_change(event)
         # Attribute-only updates (e.g. the Midea climate refreshing every second) must not
         # trigger a cycle; only a changed state (window opened, hvac mode switched) does.
         if old is not None and new is not None and old.state == new.state:
@@ -458,14 +563,18 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_set_override(self, room: str, temperature: float, duration_min: int | None) -> None:
         minutes = duration_min or self._override_default_min
         now = time.time()
-        self.overrides[room] = Override(target=float(temperature), until_ts=now + minutes * 60.0, set_at_ts=now)
+        self.overrides[room] = Override(target=float(temperature), until_ts=now + minutes * 60.0, set_at_ts=now, by=hand.ACTION)
         _LOGGER.info("thriftherm override: %s -> %.1f °C for %d min", room, temperature, minutes)
         await self._async_changed()
 
     async def async_clear_override(self, room: str | None) -> None:
+        """End what was changed by hand: one room's override, or everything and the heat pump's too."""
         if room is None:
             self.overrides.clear()
             self.boosts.clear()
+            if self.control_memory.manual_until_ts is not None:
+                # back to automatic: a unit left heating is taken over by the next cycle
+                self.control_memory = replace(self.control_memory, manual_until_ts=None, manual_by=None)
         else:
             self.overrides.pop(room, None)
             self.boosts.pop(room, None)
@@ -562,6 +671,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 away_return_ts=None if self.away_return_provisional else self.away_return_ts,
                 boosts=self.boosts,
                 room_temps=self.room_temps,
+                setting_changes=self._setting_changes,
+                settings_watched_since_ts=self._settings_watched_since_ts,
             )
             memory_before = self.control_memory  # the heat pump decision moves it on as if its command went through
             result = self._evaluate(snapshot)
@@ -582,8 +693,12 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await executors.async_send_setmode(self.hass, self.boiler_setmode_topic, boiler_cmd.payload)
         command: HeatPumpCommand = result["midea_command"]
         heat_pump_entity = self.config.get(CONF_HEAT_PUMP_CLIMATE)
+        cycle_ts = snapshot.now.timestamp()
         if self.control_mode == CTRL_ACTIVE and self.has_heat_pump and heat_pump_entity and command.action != "none":
-            if not await executors.async_execute_heat_pump(self.hass, heat_pump_entity, command):
+            if self._asked_meanwhile(heat_pump_entity, cycle_ts):
+                # planned without what somebody just asked for: not sent, and not on record as sent
+                self.control_memory = memory_before
+            elif not await executors.async_execute_heat_pump(self.hass, heat_pump_entity, command, self._own_context()):
                 # Not carried out: the moved-on memory would read as a change by hand two minutes
                 # later (3 h hands off, no icing or outdoor block). The command is sent again next
                 # cycle; a call that went through before the failure leaves the unit's mode open,
@@ -595,8 +710,14 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             climate_of = {r.key: r.climate_entity for r in self.builder.rooms}
             for room_cmd in result["room_commands"].values():
                 entity = climate_of.get(room_cmd.room)
-                if room_cmd.send and room_cmd.target is not None and entity:
-                    await executors.async_set_thermostat(self.hass, entity, room_cmd)
+                if not (room_cmd.send and room_cmd.target is not None and entity):
+                    continue
+                if self._asked_meanwhile(entity, cycle_ts, setpoint_only=True):
+                    # planned without what somebody just asked for: not sent, and not on record as sent
+                    if room_cmd.room in self._room_memory_before:
+                        self.room_ctrl_memory[room_cmd.room] = self._room_memory_before[room_cmd.room]
+                    continue
+                await executors.async_set_thermostat(self.hass, entity, room_cmd, self._own_context())
         await self.async_save_store()
         await issues.async_sync(self.hass, self)
         return result
@@ -936,6 +1057,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if state is None or res is None:
                 continue
             before = self.room_ctrl_memory.get(cfg.key, RoomCtrlMemory())
+            self._room_memory_before[cfg.key] = before
             room_cmd, self.room_ctrl_memory[cfg.key] = room_control.decide(
                 cfg.key,
                 self.room_control_mode,
@@ -945,6 +1067,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 state.trv_target_temp,
                 now_ts,
                 before,
+                state.thermostat_own_target,
             )
             if self.room_ctrl_memory[cfg.key].last_sent_target != before.last_sent_target:
                 # A sent setpoint must survive a restart at once: measured 2026-09-26, the store
@@ -1043,22 +1166,36 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             mem = self.room_ctrl_memory.get(key)
             if mem is None:
                 continue
-            value = room_control.manual_change(self.room_control_mode, state.trv_target_temp, mem)
+            # The thermostat's answer to our own setpoint is nobody's hand, whatever value it shows.
+            if room_control.own_answer(state.trv_target_temp, mem, state.thermostat_change):
+                if mem.answered_with != state.trv_target_temp:
+                    self.room_ctrl_memory[key] = replace(mem, answered_with=state.trv_target_temp, confirmed=True)
+                    self._store_dirty = True
+                continue
+            # Asked for in Home Assistant by a person or an automation: a change by hand for certain.
+            # Anything else is one unless the thermostat explains it itself (a rule of its own, an echo).
+            asked = hand.deliberate_since(state.thermostat_change, mem.last_sent_ts, setpoint_only=True)
+            if asked is None and state.thermostat_own_target:
+                continue
+            value = room_control.manual_change(self.room_control_mode, state.trv_target_temp, mem, asked is not None)
             if value is None:
                 continue
-            if self._is_echo(key, value, now_ts):
+            if asked is None and self._is_echo(key, value, now_ts):
                 # not a hand on the knob: keep the plan, room control sends our setpoint again
                 if self.echoes_ignored.get(key, (0.0, None))[1] != value:
                     _LOGGER.info("thriftherm room %s: thermostat jumped to %.1f °C, a late radio echo -> ignored", key, value)
                 self.echoes_ignored[key] = (now_ts, value)
                 continue
             minutes = self._override_default_min
-            override = Override(value, now_ts + minutes * 60.0, now_ts)
+            override = Override(value, now_ts + minutes * 60.0, now_ts, asked or hand.DEVICE)
             self.overrides[key] = override
             self.room_ctrl_memory[key] = RoomCtrlMemory(last_sent_target=value, last_sent_ts=now_ts, confirmed=True)
             changed[key] = replace(state, override=override)
             self._store_dirty = True
-            _LOGGER.info("thriftherm room %s: manual thermostat change to %.1f °C -> override for %d min", key, value, minutes)
+            _LOGGER.info(
+                "thriftherm room %s: thermostat set to %.1f °C by hand (%s) -> override for %d min",
+                key, value, override.by, minutes,
+            )
         if not changed:
             return snapshot
         return replace(snapshot, rooms={**snapshot.rooms, **changed})

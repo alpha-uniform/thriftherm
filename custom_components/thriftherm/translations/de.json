@@ -239,7 +239,7 @@
           "preheat_margin_min": "Rückkehr-Vorheizung Sicherheitsreserve",
           "default_heat_rate_radiator_k_h": "Start-Aufheizrate Heizkörperräume",
           "default_heat_rate_midea_k_h": "Start-Aufheizrate Wärmepumpen-Räume",
-          "override_default_min": "Standarddauer manuelle Übersteuerung",
+          "override_default_min": "Wie lange eine Änderung von Hand gilt (Thermostat und Wärmepumpe)",
           "midea_min_run_min": "Mindestlaufzeit Wärmepumpe",
           "midea_min_off_min": "Mindestpause Wärmepumpe",
           "midea_fan_run_on_min": "Wärmepumpe: Lüfterbetrieb vor dem Ausschalten (0 = sofort aus)",
@@ -594,6 +594,8 @@
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
               "room_data": "Raumsensoren",
+              "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+              "unit_settling": "Wartet, bis das Gerät folgt",
               "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
@@ -611,6 +613,7 @@
               "sustained_inefficiency": "Wärmeabgabe eingebrochen",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
               "no_thermostat": "Kein Thermostat",
               "thermostat_off": "Thermostat aus",
               "thermostat_unavailable": "Thermostat nicht verfügbar",
@@ -634,6 +637,15 @@
           },
           "override_until_ts": {
             "name": "Übersteuert bis"
+          },
+          "override_by": {
+            "name": "Übersteuert durch",
+            "state": {
+              "person": "Jemand in Home Assistant",
+              "automation": "Eine Automation oder ein Skript",
+              "device": "Am Gerät",
+              "action": "Eine Aktion von Thriftherm"
+            }
           },
           "preheat_start_ts": {
             "name": "Vorheizen beginnt"
@@ -777,6 +789,8 @@
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
               "room_data": "Raumsensoren",
+              "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+              "unit_settling": "Wartet, bis das Gerät folgt",
               "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
@@ -794,6 +808,7 @@
               "sustained_inefficiency": "Wärmeabgabe eingebrochen",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
               "no_thermostat": "Kein Thermostat",
               "thermostat_off": "Thermostat aus",
               "thermostat_unavailable": "Thermostat nicht verfügbar",
@@ -875,6 +890,8 @@
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
               "room_data": "Raumsensoren",
+              "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+              "unit_settling": "Wartet, bis das Gerät folgt",
               "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
@@ -892,6 +909,7 @@
               "sustained_inefficiency": "Wärmeabgabe eingebrochen",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
               "no_thermostat": "Kein Thermostat",
               "thermostat_off": "Thermostat aus",
               "thermostat_unavailable": "Thermostat nicht verfügbar",
@@ -930,6 +948,21 @@
           },
           "quick_heat_up_until": {
             "name": "Schnell aufheizen bis"
+          },
+          "manual_until_ts": {
+            "name": "Von Hand geändert, gilt bis"
+          },
+          "manual_by": {
+            "name": "Von Hand geändert durch",
+            "state": {
+              "person": "Jemand in Home Assistant",
+              "automation": "Eine Automation oder ein Skript",
+              "device": "Am Gerät",
+              "action": "Eine Aktion von Thriftherm"
+            }
+          },
+          "commands_not_carried_out": {
+            "name": "Befehle in Folge, die das Gerät nicht ausgeführt hat"
           },
           "recent_commands": {
             "name": "Letzte Befehle"
@@ -1025,6 +1058,8 @@
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
               "room_data": "Raumsensoren",
+              "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+              "unit_settling": "Wartet, bis das Gerät folgt",
               "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
@@ -1042,6 +1077,7 @@
               "sustained_inefficiency": "Wärmeabgabe eingebrochen",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
               "no_thermostat": "Kein Thermostat",
               "thermostat_off": "Thermostat aus",
               "thermostat_unavailable": "Thermostat nicht verfügbar",
@@ -1123,6 +1159,8 @@
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
               "room_data": "Raumsensoren",
+              "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+              "unit_settling": "Wartet, bis das Gerät folgt",
               "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
@@ -1140,6 +1178,7 @@
               "sustained_inefficiency": "Wärmeabgabe eingebrochen",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
               "no_thermostat": "Kein Thermostat",
               "thermostat_off": "Thermostat aus",
               "thermostat_unavailable": "Thermostat nicht verfügbar",
@@ -1272,6 +1311,8 @@
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
               "room_data": "Raumsensoren",
+              "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+              "unit_settling": "Wartet, bis das Gerät folgt",
               "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
@@ -1289,6 +1330,7 @@
               "sustained_inefficiency": "Wärmeabgabe eingebrochen",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
               "no_thermostat": "Kein Thermostat",
               "thermostat_off": "Thermostat aus",
               "thermostat_unavailable": "Thermostat nicht verfügbar",
@@ -1401,6 +1443,8 @@
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
               "room_data": "Raumsensoren",
+              "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+              "unit_settling": "Wartet, bis das Gerät folgt",
               "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
@@ -1418,6 +1462,7 @@
               "sustained_inefficiency": "Wärmeabgabe eingebrochen",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
               "no_thermostat": "Kein Thermostat",
               "thermostat_off": "Thermostat aus",
               "thermostat_unavailable": "Thermostat nicht verfügbar",
@@ -1496,6 +1541,8 @@
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
               "room_data": "Raumsensoren",
+              "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+              "unit_settling": "Wartet, bis das Gerät folgt",
               "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
@@ -1513,6 +1560,7 @@
               "sustained_inefficiency": "Wärmeabgabe eingebrochen",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
               "no_thermostat": "Kein Thermostat",
               "thermostat_off": "Thermostat aus",
               "thermostat_unavailable": "Thermostat nicht verfügbar",
@@ -1680,6 +1728,8 @@
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
               "room_data": "Raumsensoren",
+              "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+              "unit_settling": "Wartet, bis das Gerät folgt",
               "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
@@ -1697,6 +1747,7 @@
               "sustained_inefficiency": "Wärmeabgabe eingebrochen",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
               "no_thermostat": "Kein Thermostat",
               "thermostat_off": "Thermostat aus",
               "thermostat_unavailable": "Thermostat nicht verfügbar",
@@ -1813,6 +1864,8 @@
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
               "room_data": "Raumsensoren",
+              "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+              "unit_settling": "Wartet, bis das Gerät folgt",
               "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
@@ -1830,6 +1883,7 @@
               "sustained_inefficiency": "Wärmeabgabe eingebrochen",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
               "no_thermostat": "Kein Thermostat",
               "thermostat_off": "Thermostat aus",
               "thermostat_unavailable": "Thermostat nicht verfügbar",
@@ -1927,6 +1981,8 @@
               "outdoor_too_cold": "Draußen zu kalt",
               "min_run_time": "Mindestlaufzeit",
               "room_data": "Raumsensoren",
+              "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+              "unit_settling": "Wartet, bis das Gerät folgt",
               "fan_run_on": "Lüfter läuft vor dem Ausschalten nach",
               "min_off_time": "Mindeststillstand",
               "rate_limit": "Wartezeit zwischen Befehlen",
@@ -1944,6 +2000,7 @@
               "sustained_inefficiency": "Wärmeabgabe eingebrochen",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
+              "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
               "no_thermostat": "Kein Thermostat",
               "thermostat_off": "Thermostat aus",
               "thermostat_unavailable": "Thermostat nicht verfügbar",
@@ -2034,6 +2091,9 @@
       }
     },
     "button": {
+      "resume_automatic": {
+        "name": "Zurück zur Automatik"
+      },
       "room_boost": {
         "name": "Schnell aufheizen"
       }
@@ -2077,12 +2137,12 @@
       }
     },
     "clear_override": {
-      "name": "Übersteuerung aufheben",
-      "description": "Übersteuerung eines Raums oder aller Räume entfernen.",
+      "name": "Zurück zur Automatik",
+      "description": "Beendet, was von Hand geändert wurde. Mit Raum: die Übersteuerung dieses Raums. Ohne: jede Übersteuerung und jedes Schnell-Aufheizen, und bei der Wärmepumpe die Zeit nach einer Änderung am Gerät.",
       "fields": {
         "room": {
           "name": "Raum",
-          "description": "Raumschlüssel; leer lassen für alle."
+          "description": "Raumschlüssel; leer lassen für alles."
         }
       }
     },

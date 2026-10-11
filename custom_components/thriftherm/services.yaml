@@ -33,12 +33,12 @@ set_override:
           unit_of_measurement: min
 
 clear_override:
-  name: Clear room override
-  description: Remove the override of one room, or of all rooms if no room is given.
+  name: Back to automatic
+  description: Back to automatic. Removes the override of one room; without a room, every override and quick heat-up and the heat pump's time in hand after a change at the unit.
   fields:
     room:
       name: Room
-      description: Room key; omit to clear all overrides.
+      description: Room key; omit for everything.
       required: false
       example: badezimmer
       selector:
