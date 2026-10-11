@@ -86,6 +86,17 @@ class Override:
     target: float
     until_ts: float
     set_at_ts: float
+    by: str | None = None  # who asked for it (engines/hand.py), None for one stored before that was kept
+
+
+@dataclass(frozen=True)
+class SettingChange:
+    """The last time a commanded setting of a device changed (its mode or its setpoint), and who did it."""
+
+    ts: float
+    origin: str  # engines/hand.py: ours | person | automation | device
+    setpoint: bool = True  # the setpoint changed
+    mode: bool = False  # the mode changed
 
 
 @dataclass(frozen=True)
@@ -112,6 +123,9 @@ class RoomState:
     heat_rate_k_h: float | None = None  # learned heat-up rate for preheat planning
     boost_until_ts: float | None = None  # "quick heat-up" requested until
     trv_hvac_mode: str | None = None  # state of the room thermostat (Better Thermostat), None if unavailable
+    # the thermostat applies a target of its own right now (Versatile Thermostat: window, load shedding, safety)
+    thermostat_own_target: bool = False
+    thermostat_change: SettingChange | None = None  # the last change of the thermostat's mode or target
     thermostat_silent_s: float | None = None  # how long the valve device behind it has not reported
     schedule: ScheduleState | None = None  # None: no schedule helper configured or it is unavailable
     preheat_latch_ts: float | None = None  # comfort start (or away return) preheating already began for
@@ -139,6 +153,8 @@ class HeatPumpState:
     outlet_temp_history: tuple[tuple[float, float], ...] = ()  # (timestamp_s, °C), recent
     history: tuple["HeatPumpSample", ...] = ()  # recent samples for defrost detection
     configured: bool = True  # False: the heat pump add-on is not used
+    setting_change: SettingChange | None = None  # the last change of the unit's mode or setpoint
+    settings_watched_since_ts: float | None = None  # every such change since then is known
 
 
 @dataclass(frozen=True)
@@ -221,6 +237,7 @@ class Parameters:
     default_heat_rate_heat_pump_k_h: float = 1.2
     heat_pump_min_run_s: float = 1200.0
     heat_pump_min_off_s: float = 600.0
+    manual_hold_s: float = 7200.0  # how long a change by hand is respected, on a thermostat and on the heat pump alike
     heat_pump_fan_run_on_s: float = 900.0  # fan only for this long before the unit is switched off; 0: off at once
     heat_pump_learning_runs: bool = True
     boiler_curve_flow_cold: float = 55.0  # flow temperature at -10 °C outdoor
@@ -269,6 +286,7 @@ class RoomResult:
     internal_gain_w: float | None
     issues: tuple[str, ...] = ()
     override_until_ts: float | None = None
+    override_by: str | None = None  # who asked for the override in force (engines/hand.py)
     drying: DryingState = DryingState()
     drying_reason: str | None = None
     preheat_start_ts: float | None = None
@@ -354,6 +372,9 @@ class HeatPumpCommand:
     blockers: tuple[str, ...] = ()
     waiting: str | None = None  # min_run_time / min_off_time / rate_limit
     delivers: bool = True  # False while a unit that follows the rooms' target idles: its intake air is at the setpoint
+    manual_until_ts: float | None = None  # a change by hand is respected until then
+    manual_by: str | None = None  # and who made it (engines/hand.py)
+    not_carried_out: int = 0  # commands in a row the unit did not carry out, though nobody touched it
 
 
 @dataclass(frozen=True)

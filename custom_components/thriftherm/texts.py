@@ -67,6 +67,8 @@ LABELS: dict[str, dict[str, str]] = {
         "outdoor_temperature_unknown": "Outdoor temperature unknown", "outdoor_too_cold": "Too cold outside",
         "min_run_time": "Minimum run time",
         "room_data": "Room sensors",
+        "not_carried_out": "The unit did not carry the command out, sent again",
+        "unit_settling": "Waiting for the unit to follow",
         "fan_run_on": "Fan runs on before switching off", "min_off_time": "Minimum off time", "rate_limit": "Waiting between commands",
         "none": "None", "start": "Start", "stop": "Stop", "adjust": "Adjust",
         "unavailable": "Unavailable", "cooling_user": "Cooling (user)", "fan_only": "Fan only", "auto": "Auto",
@@ -79,7 +81,10 @@ LABELS: dict[str, dict[str, str]] = {
         "persistent": "Icing", "cycle": "Defrost cycle", "frequent_defrost_cycles": "Frequent defrost cycles",
         "icing_lockout_active": "Icing lockout active", "outdoor_coil_iced": "Outdoor coil iced", "sustained_inefficiency": "Heat output collapsed",
         # thermostats
-        "in_sync": "In sync", "waiting_for_thermostat": "Waiting for the thermostat", "no_thermostat": "No thermostat",
+        "in_sync": "In sync", "waiting_for_thermostat": "Waiting for the thermostat",
+        "person": "Somebody in Home Assistant", "automation": "An automation or a script", "device": "At the device",
+        "action": "A Thriftherm action",
+        "thermostat_own_rule": "The thermostat applies a rule of its own", "no_thermostat": "No thermostat",
         "thermostat_off": "Thermostat off", "thermostat_unavailable": "Thermostat unavailable",
         # COP gates
         "airflow_curve_not_calibrated": "airflow not calibrated", "warming_up": "warming up", "electrical_power_missing": "no power reading",
@@ -124,6 +129,8 @@ LABELS: dict[str, dict[str, str]] = {
         "outdoor_temperature_unknown": "Außentemperatur unbekannt", "outdoor_too_cold": "Draußen zu kalt",
         "min_run_time": "Mindestlaufzeit",
         "room_data": "Raumsensoren",
+        "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
+        "unit_settling": "Wartet, bis das Gerät folgt",
         "fan_run_on": "Lüfter läuft vor dem Ausschalten nach", "min_off_time": "Mindeststillstand", "rate_limit": "Wartezeit zwischen Befehlen",
         "none": "Keine", "start": "Start", "stop": "Stopp", "adjust": "Anpassen",
         "unavailable": "Nicht verfügbar", "cooling_user": "Kühlen (Nutzer)", "fan_only": "Nur Lüfter", "auto": "Auto",
@@ -133,7 +140,10 @@ LABELS: dict[str, dict[str, str]] = {
         "last_known": "Letzter bekannter Wert (bis 6 h gehalten)",
         "persistent": "Vereisung", "cycle": "Abtauzyklus", "frequent_defrost_cycles": "Häufige Abtauzyklen",
         "icing_lockout_active": "Vereisungssperre aktiv", "outdoor_coil_iced": "Außenregister vereist", "sustained_inefficiency": "Wärmeabgabe eingebrochen",
-        "in_sync": "Stimmt überein", "waiting_for_thermostat": "Wartet auf das Thermostat", "no_thermostat": "Kein Thermostat",
+        "in_sync": "Stimmt überein", "waiting_for_thermostat": "Wartet auf das Thermostat",
+        "person": "Jemand in Home Assistant", "automation": "Eine Automation oder ein Skript", "device": "Am Gerät",
+        "action": "Eine Aktion von Thriftherm",
+        "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an", "no_thermostat": "Kein Thermostat",
         "thermostat_off": "Thermostat aus", "thermostat_unavailable": "Thermostat nicht verfügbar",
         "airflow_curve_not_calibrated": "Luftmenge nicht kalibriert", "warming_up": "Warmlauf", "electrical_power_missing": "keine Leistungsmessung",
         "electrical_power_below_minimum": "Leistung zu gering", "delta_t_below_minimum": "Temperaturhub zu klein",
@@ -154,9 +164,11 @@ POWER_SOURCES = ("plug", "midea_internal")
 OUTDOOR_SOURCES = ("last_known",)  # otherwise the entity the value comes from
 CALL_STATES = ("calling", "idle", "stalled", "comfort_ending", "not_allowed")
 LOAD_CLASSES = ("single", "few", "majority")
+CHANGED_BY = ("person", "automation", "device", "action")  # who changed something by hand (engines/hand.py)
 SPREAD_RULES = ("active", "blocked_few_rooms")
 _NOT_REASONS = (
     CONTROL_MODES + ACTIONS + COP_BASES + POWER_SOURCES + OUTDOOR_SOURCES + CALL_STATES + LOAD_CLASSES + SPREAD_RULES
+    + CHANGED_BY
     + ("persistent", "cycle")
 )
 REASON_CODES = tuple(k for k in LABELS["en"] if k not in _NOT_REASONS)

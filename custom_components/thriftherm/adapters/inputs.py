@@ -76,6 +76,7 @@ from ..models import (
     RoomState,
     ScheduleState,
     SensorReading,
+    SettingChange,
 )
 from .config import parameters_from_config, prices_from_config, room_configs_from_config
 
@@ -103,6 +104,41 @@ def burning(value: str | None) -> bool | None:
         return float(value.strip().replace(",", ".")) > 0.0
     except ValueError:
         return None
+
+
+# Versatile Thermostat: the managers that replace the requested target with one of their own
+_OWN_TARGET_MANAGERS = (
+    ("window_manager", "window_state"),
+    ("window_manager", "window_auto_state"),
+    ("power_manager", "overpowering_state"),
+    ("safety_manager", "safety_state"),
+)
+
+
+def applies_own_target(attributes: Mapping[str, Any]) -> bool:
+    """True while a room thermostat holds a target that nobody asked it for.
+
+    Versatile Thermostat lowers its target by itself while a window is open (eco or frost
+    temperature), while it sheds load and in its safety mode, and restores what was requested
+    afterwards. It says so in its attributes: the target in force differs from the requested
+    one, or one of those managers is on. Such a target is no turn of the knob.
+    """
+
+    def number(group: str) -> float | None:
+        value = attributes.get(group)
+        raw = value.get("target_temperature") if isinstance(value, Mapping) else None
+        return float(raw) if isinstance(raw, (int, float)) and not isinstance(raw, bool) else None
+
+    in_force, requested = number("current_state"), number("requested_state")
+    if in_force is not None and requested is not None and abs(in_force - requested) > 0.25:
+        return True
+    for group, key in _OWN_TARGET_MANAGERS:
+        manager = attributes.get(group)
+        if isinstance(manager, Mapping) and manager.get(key) == "on":
+            if group == "window_manager" and manager.get("is_window_bypass") is True:
+                continue
+            return True
+    return False
 
 
 def whole_number(value: str | None) -> int | None:
@@ -204,8 +240,8 @@ class SnapshotBuilder:
     def valves_behind(self, climate_entity: str) -> tuple[str, ...]:
         """Every entity of the valve devices a room thermostat drives.
 
-        Better Thermostat names its real thermostats under "thermostat"; any other
-        climate entity is its own valve.
+        Better Thermostat names its real thermostats under "thermostat", Versatile Thermostat
+        under "underlying_entity_ids"; any other climate entity is its own valve.
         """
         cached = self._valve_entities.get(climate_entity)
         if cached is not None:
@@ -223,6 +259,18 @@ class SnapshotBuilder:
             items = raw if isinstance(raw, list) else [raw]
             valves = [i if isinstance(i, str) else i.get("trv") for i in items if isinstance(i, (str, dict))]
             valves = [v for v in valves if isinstance(v, str)]
+        elif entry.platform == "versatile_thermostat" and entry.config_entry_id:
+            # Versatile Thermostat keeps what it drives (valves, climates, switches) in a list;
+            # entries made by older versions have one key per entity
+            vt = self.hass.config_entries.async_get_entry(entry.config_entry_id)
+            if vt is None:
+                return ()
+            stored = {**vt.data, **vt.options}
+            raw = stored.get("underlying_entity_ids") or []
+            items = list(raw) if isinstance(raw, (list, tuple)) else [raw]
+            for kind in ("climate", "valve", "heater"):
+                items.extend(stored.get(f"{kind}_entity{n}_id") for n in ("", "2", "3", "4"))
+            valves = [v for v in items if isinstance(v, str) and v] or [climate_entity]
         found: list[str] = []
         for valve in valves:
             valve_entry = registry.async_get(valve)
@@ -370,6 +418,7 @@ class SnapshotBuilder:
         trv_local = self.valve_temperature(cfg.climate_entity)
         trv_target = self.read_attr_float(climate, "temperature")
         trv_mode = None if climate is None or climate.state in BAD_STATES else climate.state
+        own_target = trv_mode is not None and climate is not None and applies_own_target(climate.attributes)
 
         gain: float | None = None
         for entity_id in cfg.internal_gain_sensors:
@@ -407,6 +456,7 @@ class SnapshotBuilder:
             heat_rate_k_h=heat_rate,
             boost_until_ts=boost_until,
             trv_hvac_mode=trv_mode,
+            thermostat_own_target=own_target,
             thermostat_silent_s=self.thermostat_silent_s(cfg.climate_entity, now),
         )
 
@@ -549,13 +599,19 @@ class SnapshotBuilder:
         away_return_ts: float | None,
         boosts: Mapping[str, float],
         room_temps: Mapping[str, Mapping[str, float]],
+        setting_changes: Mapping[str, SettingChange] | None = None,
+        settings_watched_since_ts: float | None = None,
     ) -> HeatingSnapshot:
         now = dt_util.utcnow()
         local_now = dt_util.as_local(now)
+        changes = setting_changes or {}
         rooms = {
-            cfg.key: self._room_state(
-                cfg, now, overrides.get(cfg.key), drying_states.get(cfg.key), heat_rates.get(cfg.key), boosts.get(cfg.key),
-                room_temps.get(cfg.key),
+            cfg.key: replace(
+                self._room_state(
+                    cfg, now, overrides.get(cfg.key), drying_states.get(cfg.key), heat_rates.get(cfg.key), boosts.get(cfg.key),
+                    room_temps.get(cfg.key),
+                ),
+                thermostat_change=changes.get(cfg.climate_entity) if cfg.climate_entity else None,
             )
             for cfg in self.rooms
         }
@@ -564,7 +620,11 @@ class SnapshotBuilder:
             now=local_now,
             mode=mode,
             rooms=rooms,
-            heat_pump=self._heat_pump_state(now),
+            heat_pump=replace(
+                self._heat_pump_state(now),
+                setting_change=changes.get(str(self.config.get(CONF_HEAT_PUMP_CLIMATE))),
+                settings_watched_since_ts=settings_watched_since_ts,
+            ),
             boiler=self._boiler_state(now),
             outdoor_temp=outdoor,
             outdoor_temp_source=outdoor_source,

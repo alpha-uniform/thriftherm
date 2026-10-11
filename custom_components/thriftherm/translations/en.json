@@ -239,7 +239,7 @@
           "preheat_margin_min": "Return preheat safety margin",
           "default_heat_rate_radiator_k_h": "Default heat-up rate radiator rooms",
           "default_heat_rate_midea_k_h": "Default heat-up rate heat pump rooms",
-          "override_default_min": "Default override duration",
+          "override_default_min": "How long a change by hand is respected (thermostat and heat pump)",
           "midea_min_run_min": "Heat pump minimum run time",
           "midea_min_off_min": "Heat pump minimum pause",
           "midea_fan_run_on_min": "Heat pump: fan only before switching off (0 = off at once)",
@@ -594,6 +594,8 @@
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
               "room_data": "Room sensors",
+              "not_carried_out": "The unit did not carry the command out, sent again",
+              "unit_settling": "Waiting for the unit to follow",
               "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
@@ -611,6 +613,7 @@
               "sustained_inefficiency": "Heat output collapsed",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
+              "thermostat_own_rule": "The thermostat applies a rule of its own",
               "no_thermostat": "No thermostat",
               "thermostat_off": "Thermostat off",
               "thermostat_unavailable": "Thermostat unavailable",
@@ -634,6 +637,15 @@
           },
           "override_until_ts": {
             "name": "Override until"
+          },
+          "override_by": {
+            "name": "Override by",
+            "state": {
+              "person": "Somebody in Home Assistant",
+              "automation": "An automation or a script",
+              "device": "At the device",
+              "action": "A Thriftherm action"
+            }
           },
           "preheat_start_ts": {
             "name": "Pre-heating starts"
@@ -777,6 +789,8 @@
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
               "room_data": "Room sensors",
+              "not_carried_out": "The unit did not carry the command out, sent again",
+              "unit_settling": "Waiting for the unit to follow",
               "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
@@ -794,6 +808,7 @@
               "sustained_inefficiency": "Heat output collapsed",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
+              "thermostat_own_rule": "The thermostat applies a rule of its own",
               "no_thermostat": "No thermostat",
               "thermostat_off": "Thermostat off",
               "thermostat_unavailable": "Thermostat unavailable",
@@ -875,6 +890,8 @@
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
               "room_data": "Room sensors",
+              "not_carried_out": "The unit did not carry the command out, sent again",
+              "unit_settling": "Waiting for the unit to follow",
               "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
@@ -892,6 +909,7 @@
               "sustained_inefficiency": "Heat output collapsed",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
+              "thermostat_own_rule": "The thermostat applies a rule of its own",
               "no_thermostat": "No thermostat",
               "thermostat_off": "Thermostat off",
               "thermostat_unavailable": "Thermostat unavailable",
@@ -930,6 +948,21 @@
           },
           "quick_heat_up_until": {
             "name": "Quick heat-up until"
+          },
+          "manual_until_ts": {
+            "name": "Changed by hand, respected until"
+          },
+          "manual_by": {
+            "name": "Changed by hand by",
+            "state": {
+              "person": "Somebody in Home Assistant",
+              "automation": "An automation or a script",
+              "device": "At the device",
+              "action": "A Thriftherm action"
+            }
+          },
+          "commands_not_carried_out": {
+            "name": "Commands in a row the unit did not carry out"
           },
           "recent_commands": {
             "name": "Recent commands"
@@ -1025,6 +1058,8 @@
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
               "room_data": "Room sensors",
+              "not_carried_out": "The unit did not carry the command out, sent again",
+              "unit_settling": "Waiting for the unit to follow",
               "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
@@ -1042,6 +1077,7 @@
               "sustained_inefficiency": "Heat output collapsed",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
+              "thermostat_own_rule": "The thermostat applies a rule of its own",
               "no_thermostat": "No thermostat",
               "thermostat_off": "Thermostat off",
               "thermostat_unavailable": "Thermostat unavailable",
@@ -1123,6 +1159,8 @@
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
               "room_data": "Room sensors",
+              "not_carried_out": "The unit did not carry the command out, sent again",
+              "unit_settling": "Waiting for the unit to follow",
               "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
@@ -1140,6 +1178,7 @@
               "sustained_inefficiency": "Heat output collapsed",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
+              "thermostat_own_rule": "The thermostat applies a rule of its own",
               "no_thermostat": "No thermostat",
               "thermostat_off": "Thermostat off",
               "thermostat_unavailable": "Thermostat unavailable",
@@ -1272,6 +1311,8 @@
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
               "room_data": "Room sensors",
+              "not_carried_out": "The unit did not carry the command out, sent again",
+              "unit_settling": "Waiting for the unit to follow",
               "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
@@ -1289,6 +1330,7 @@
               "sustained_inefficiency": "Heat output collapsed",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
+              "thermostat_own_rule": "The thermostat applies a rule of its own",
               "no_thermostat": "No thermostat",
               "thermostat_off": "Thermostat off",
               "thermostat_unavailable": "Thermostat unavailable",
@@ -1401,6 +1443,8 @@
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
               "room_data": "Room sensors",
+              "not_carried_out": "The unit did not carry the command out, sent again",
+              "unit_settling": "Waiting for the unit to follow",
               "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
@@ -1418,6 +1462,7 @@
               "sustained_inefficiency": "Heat output collapsed",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
+              "thermostat_own_rule": "The thermostat applies a rule of its own",
               "no_thermostat": "No thermostat",
               "thermostat_off": "Thermostat off",
               "thermostat_unavailable": "Thermostat unavailable",
@@ -1496,6 +1541,8 @@
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
               "room_data": "Room sensors",
+              "not_carried_out": "The unit did not carry the command out, sent again",
+              "unit_settling": "Waiting for the unit to follow",
               "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
@@ -1513,6 +1560,7 @@
               "sustained_inefficiency": "Heat output collapsed",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
+              "thermostat_own_rule": "The thermostat applies a rule of its own",
               "no_thermostat": "No thermostat",
               "thermostat_off": "Thermostat off",
               "thermostat_unavailable": "Thermostat unavailable",
@@ -1680,6 +1728,8 @@
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
               "room_data": "Room sensors",
+              "not_carried_out": "The unit did not carry the command out, sent again",
+              "unit_settling": "Waiting for the unit to follow",
               "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
@@ -1697,6 +1747,7 @@
               "sustained_inefficiency": "Heat output collapsed",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
+              "thermostat_own_rule": "The thermostat applies a rule of its own",
               "no_thermostat": "No thermostat",
               "thermostat_off": "Thermostat off",
               "thermostat_unavailable": "Thermostat unavailable",
@@ -1813,6 +1864,8 @@
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
               "room_data": "Room sensors",
+              "not_carried_out": "The unit did not carry the command out, sent again",
+              "unit_settling": "Waiting for the unit to follow",
               "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
@@ -1830,6 +1883,7 @@
               "sustained_inefficiency": "Heat output collapsed",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
+              "thermostat_own_rule": "The thermostat applies a rule of its own",
               "no_thermostat": "No thermostat",
               "thermostat_off": "Thermostat off",
               "thermostat_unavailable": "Thermostat unavailable",
@@ -1927,6 +1981,8 @@
               "outdoor_too_cold": "Too cold outside",
               "min_run_time": "Minimum run time",
               "room_data": "Room sensors",
+              "not_carried_out": "The unit did not carry the command out, sent again",
+              "unit_settling": "Waiting for the unit to follow",
               "fan_run_on": "Fan runs on before switching off",
               "min_off_time": "Minimum off time",
               "rate_limit": "Waiting between commands",
@@ -1944,6 +2000,7 @@
               "sustained_inefficiency": "Heat output collapsed",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
+              "thermostat_own_rule": "The thermostat applies a rule of its own",
               "no_thermostat": "No thermostat",
               "thermostat_off": "Thermostat off",
               "thermostat_unavailable": "Thermostat unavailable",
@@ -2034,6 +2091,9 @@
       }
     },
     "button": {
+      "resume_automatic": {
+        "name": "Back to automatic"
+      },
       "room_boost": {
         "name": "Quick heat-up"
       }
@@ -2077,12 +2137,12 @@
       }
     },
     "clear_override": {
-      "name": "Clear room override",
-      "description": "Remove the override of one room, or all rooms.",
+      "name": "Back to automatic",
+      "description": "End what was changed by hand. With a room: that room's override. Without: every override and quick heat-up, and the heat pump's time in hand after a change at the unit.",
       "fields": {
         "room": {
           "name": "Room",
-          "description": "Room key; omit to clear all."
+          "description": "Room key; omit for everything."
         }
       }
     },

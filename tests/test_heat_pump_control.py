@@ -194,7 +194,8 @@ def test_active_mode_detects_manual_takeover():
     user_changed = replace(user_changed, target_temp=25.0)
     cmd, new = decide(inp([rr()], mode="active", heat_pump=user_changed), mem)
     assert cmd.plan == "hands_off" and cmd.reason == "manual_takeover"
-    assert new.manual_until_ts == pytest.approx(NOW + 3 * 3600)
+    assert new.manual_until_ts == pytest.approx(NOW + 2 * 3600) and new.manual_by == "device"  # as long as a room override
+    assert (cmd.manual_until_ts, cmd.manual_by) == (new.manual_until_ts, "device")
     cmd2, _ = decide(inp([rr()], mode="active", heat_pump=user_changed, now=NOW + 60), new)
     assert cmd2.plan == "hands_off"
 

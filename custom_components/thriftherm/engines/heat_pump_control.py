@@ -6,7 +6,12 @@ so a shadow period shows exactly what active control would have done.
 
 Principles
 * Hands off whenever the user runs the Midea manually (cool, dry, fan only,
-  auto) or changed our settings: cooling never collides with heating.
+  auto) or changed our settings: cooling never collides with heating. Who
+  changed a setting comes from Home Assistant (engines/hand.py): a person or an
+  automation counts at once, a change at the unit itself once the unit has had
+  time to settle. A unit that merely differs from what was sent, with nobody
+  having touched it, did not carry the command out and gets it again. A change
+  by hand is respected for as long as one on a room thermostat.
 * Blockers (safety fallback, mode, outdoor limit, icing lockout, error code)
   stop a run immediately. Comfort-driven stops respect the minimum run time,
   restarts the minimum off time.
@@ -54,6 +59,7 @@ from ..const import (
     SOURCE_BOTH,
     SOURCE_HEAT_PUMP,
 )
+from . import hand
 from .common import as_dict, as_float, round_half
 from ..models import HeatPumpCommand, HeatPumpState, Parameters, RoomResult
 
@@ -76,8 +82,10 @@ LEARNING_MIN_RATIO = 0.85  # estimate must be at least 85 % of break-even
 DRYING_MAX_OVERSHOOT_K = 1.5  # drying keeps asking for heat, but not without a ceiling
 LEARNING_REPEAT_S = 24 * 3600.0
 LEARNING_RUN_S = 3600.0
-MANUAL_HANDS_OFF_S = 3 * 3600.0
-MANUAL_DETECT_GRACE_S = 120.0
+MANUAL_DETECT_GRACE_S = 120.0  # a unit may take this long to show what it was sent
+NOT_CARRIED_OUT = "not_carried_out"  # the unit differs from our command, and nobody touched it
+SETTLING = "unit_settling"  # it differs, and it is too early to say why
+RETRY_MAX_S = 3600.0  # a command the unit keeps ignoring is repeated ever more rarely, up to this
 FAN_ECO = "auto"
 FAN_BOOST = "high"
 # targets that mean "nobody wants this room warm": a unit that follows the rooms is not run for them.
@@ -105,6 +113,8 @@ class ControlMemory:
     learning_until_ts: float | None = None
     learning_bins: tuple[tuple[int, float], ...] = ()  # (outdoor bin, last learning run ts)
     manual_until_ts: float | None = None
+    manual_by: str | None = None  # who made the change by hand that is respected until then (engines/hand.py)
+    not_carried_out: int = 0  # commands in a row the unit did not carry out though nobody touched it; not stored
     fan_until_ts: float | None = None  # the unit runs its fan on until then, then it is switched off
 
     def to_storage(self) -> dict:
@@ -114,6 +124,7 @@ class ControlMemory:
             "offset_k": self.offset_k,
             "learning_bins": [list(x) for x in self.learning_bins],
             "manual_until_ts": self.manual_until_ts,
+            "manual_by": self.manual_by,
             "running_since_ts": self.running_since_ts,
             "stopped_since_ts": self.stopped_since_ts,
             "last_command_ts": self.last_command_ts,
@@ -135,9 +146,11 @@ class ControlMemory:
             except (TypeError, ValueError, IndexError):
                 continue
         mode = data.get("last_hvac_mode")
+        by = data.get("manual_by")
         return cls(
             learning_bins=tuple(bins),
             last_hvac_mode=mode if isinstance(mode, str) else None,
+            manual_by=by if by in hand.SHOWN else None,
             **{key: as_float(data.get(key)) for key in _STORED_FLOATS},
         )
 
@@ -192,6 +205,50 @@ def room_setpoint(p: Parameters, rooms: tuple[RoomResult, ...]) -> float | None:
     return min(max(round_half(max(r.target for r in wanted) + p.heat_pump_setpoint_offset_k), SETPOINT_MIN), SETPOINT_MAX)
 
 
+def differs(inp: ControlInputs, mem: ControlMemory) -> bool:
+    """The unit shows another mode or setpoint than our last command asked for."""
+    if mem.last_hvac_mode is None:
+        return False
+    unit = inp.heat_pump
+    return (unit.hvac_mode or "off") != mem.last_hvac_mode or (
+        mem.last_hvac_mode == "heat"
+        and mem.last_target is not None
+        and unit.target_temp is not None
+        and abs(unit.target_temp - mem.last_target) >= 0.5
+    )
+
+
+def changed_by(inp: ControlInputs, mem: ControlMemory) -> str | None:
+    """Who set the unit differently from our last command.
+
+    An origin of engines/hand.py for a change by hand, NOT_CARRIED_OUT when the unit differs
+    and nobody touched it, SETTLING while it is too early to say, None when the unit is as we
+    left it.
+    """
+    if mem.last_command_ts is None or not differs(inp, mem):
+        return None
+    unit = inp.heat_pump
+    asked = hand.deliberate_since(unit.setting_change, mem.last_command_ts)
+    if asked is not None:
+        return asked  # somebody asked for it in Home Assistant: no waiting
+    if abs(inp.now_ts - mem.last_command_ts) <= MANUAL_DETECT_GRACE_S:
+        return SETTLING
+    change = unit.setting_change
+    if change is not None and change.ts > mem.last_command_ts:
+        # the unit answering our own command with something else has not carried it out
+        return NOT_CARRIED_OUT if change.origin == hand.OURS else hand.DEVICE
+    watched = unit.settings_watched_since_ts
+    if watched is not None and watched <= mem.last_command_ts:
+        return NOT_CARRIED_OUT  # every change since our command is known, and there was none
+    return hand.DEVICE  # not seen (a restart in between): as before, somebody at the unit
+
+
+def retry_due(mem: ControlMemory, now_ts: float) -> bool:
+    """A command the unit did not carry out is repeated after 2, 4, 8 ... minutes, at most hourly."""
+    wait = min(MANUAL_DETECT_GRACE_S * 2 ** min(mem.not_carried_out, 8), RETRY_MAX_S)
+    return mem.last_command_ts is None or now_ts - mem.last_command_ts >= wait
+
+
 def _blockers(inp: ControlInputs) -> list[str]:
     p = inp.params
     out: list[str] = []
@@ -229,6 +286,18 @@ def _adapt_offset(inp: ControlInputs, mem: ControlMemory, offset: float, heating
 
 
 def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, ControlMemory]:
+    """The command for this cycle and the memory after it; the command also shows what the memory holds."""
+    command, new = _decide(inp, mem)
+    held = new.manual_until_ts is not None and new.manual_until_ts > inp.now_ts
+    return replace(
+        command,
+        manual_until_ts=new.manual_until_ts if held else None,
+        manual_by=new.manual_by if held else None,
+        not_carried_out=new.not_carried_out,
+    ), new
+
+
+def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, ControlMemory]:
     p = inp.params
     now = inp.now_ts
 
@@ -262,10 +331,17 @@ def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Con
         return cmd(HEAT_PUMP_PLAN_HANDS_OFF, "none", "midea_unavailable"), replace(mem, running_since_ts=None)
     # ---- the fan runs on after a stop of ours, then the unit is switched off --------------
     if mem.fan_until_ts is not None:
-        ours = inp.control_mode != CTRL_ACTIVE or (inp.heat_pump.hvac_mode or "off") == "fan_only"
+        shown = inp.heat_pump.hvac_mode or "off"
+        ours = inp.control_mode != CTRL_ACTIVE or shown == "fan_only"
         settling = mem.last_command_ts is not None and now - mem.last_command_ts <= MANUAL_DETECT_GRACE_S
-        if not ours and not settling:
-            mem = replace(mem, fan_until_ts=None, last_hvac_mode=None)  # somebody set another mode: no longer ours to end
+        asked = hand.deliberate_since(inp.heat_pump.setting_change, mem.last_command_ts) is not None
+        if not ours and shown == "off" and (asked or not settling):
+            # switched off at the unit or in Home Assistant: where the run-on was heading anyway.
+            # Not while the unit may still be on its way into fan only and shows "off" in passing.
+            mem = replace(mem, fan_until_ts=None, last_hvac_mode="off")
+        elif not ours and (asked or not settling):
+            # another mode than ours: the run-on is over, and whose change it was is judged below
+            mem = replace(mem, fan_until_ts=None)
         elif now >= mem.fan_until_ts:
             new = replace(mem, fan_until_ts=None, last_command_ts=now, last_hvac_mode="off")
             return cmd(HEAT_PUMP_PLAN_OFF, "stop", "fan_run_on"), new
@@ -280,28 +356,59 @@ def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Con
         )
         return cmd(HEAT_PUMP_PLAN_OFF, "stop", reason, blockers=blockers, stop_to="fan_only" if run_on else "off"), new
 
+    active = inp.control_mode == CTRL_ACTIVE
+    if active and mem.manual_until_ts is not None:
+        # A further change during the time in hand renews it, as on a room thermostat; one after
+        # its end is a new matter. Its end leaves nothing behind, whatever mode the unit is in.
+        change = inp.heat_pump.setting_change
+        during = change is not None and change.origin != hand.OURS and change.ts <= mem.manual_until_ts
+        if during and change.ts + p.manual_hold_s > mem.manual_until_ts + 1.0:
+            by = change.origin if change.origin in hand.DELIBERATE else (mem.manual_by or hand.DEVICE)
+            mem = replace(mem, manual_until_ts=change.ts + p.manual_hold_s, manual_by=by)
+        if mem.manual_until_ts is not None and mem.manual_until_ts <= now:
+            mem = replace(mem, manual_until_ts=None, manual_by=None)
     if inp.run_state in (HEAT_PUMP_COOLING_USER, HEAT_PUMP_FAN_ONLY, HEAT_PUMP_AUTO):
+        # The "off" after our own run-on that the unit did not take leaves it in fan only: that is
+        # not somebody ventilating, and without a second "off" it would stay there for good.
+        ours_left_over = active and inp.run_state == HEAT_PUMP_FAN_ONLY and mem.last_hvac_mode == "off"
+        if ours_left_over and changed_by(inp, mem) == NOT_CARRIED_OUT and retry_due(mem, now):
+            again = replace(mem, last_command_ts=now, not_carried_out=mem.not_carried_out + 1)
+            return cmd(HEAT_PUMP_PLAN_OFF, "stop", NOT_CARRIED_OUT), again
         return cmd(HEAT_PUMP_PLAN_HANDS_OFF, "none", f"manual_mode_{inp.heat_pump.hvac_mode}"), replace(mem, running_since_ts=None)
-    if inp.control_mode == CTRL_ACTIVE:
-        if mem.manual_until_ts is not None and mem.manual_until_ts > now:
+
+    settling = False
+    if active:
+        if mem.manual_until_ts is not None:
             return cmd(HEAT_PUMP_PLAN_HANDS_OFF, "none", "manual_takeover"), mem
-        changed_by_user = (
-            mem.last_hvac_mode is not None
-            and mem.last_command_ts is not None
-            and now - mem.last_command_ts > MANUAL_DETECT_GRACE_S
-            and (
-                (inp.heat_pump.hvac_mode or "off") != mem.last_hvac_mode
-                or (
-                    mem.last_hvac_mode == "heat"
-                    and mem.last_target is not None
-                    and inp.heat_pump.target_temp is not None
-                    and abs(inp.heat_pump.target_temp - mem.last_target) >= 0.5
+        by = changed_by(inp, mem)
+        if by == SETTLING:
+            settling = True
+        elif by == NOT_CARRIED_OUT:
+            # Nobody touched the unit, it just does not show what was sent (seen 2026-10-11: 18 °C
+            # sent, the unit stayed at 23 °C). That is no hand. The command is repeated, ever more
+            # rarely while the unit keeps ignoring it; in between the plan goes on as if it had followed.
+            if retry_due(mem, now):
+                mem = replace(mem, not_carried_out=mem.not_carried_out + 1)
+                if mem.last_hvac_mode != "heat" and inp.heat_pump.hvac_mode == "heat":
+                    return stop(NOT_CARRIED_OUT)  # it was to stop and still heats: stop it again
+                # it was to heat: forget the command, and the plan below sends what is due
+                heating = inp.heat_pump.hvac_mode == "heat"
+                mem = replace(
+                    mem, last_hvac_mode=None, last_target=None, last_command_ts=None,
+                    running_since_ts=mem.running_since_ts if heating else None,
                 )
+        elif by is not None:
+            off_now = inp.heat_pump.hvac_mode != "heat"
+            new = replace(
+                mem, manual_until_ts=now + p.manual_hold_s, manual_by=by, running_since_ts=None, last_hvac_mode=None,
+                fan_until_ts=None, not_carried_out=0,
+                # switched off by hand: the minimum pause counts from now once the unit is ours again
+                stopped_since_ts=now if off_now else mem.stopped_since_ts,
             )
-        )
-        if changed_by_user:
-            new = replace(mem, manual_until_ts=now + MANUAL_HANDS_OFF_S, running_since_ts=None, last_hvac_mode=None)
             return cmd(HEAT_PUMP_PLAN_HANDS_OFF, "none", "manual_takeover"), new
+        elif mem.not_carried_out:
+            # the unit shows what was sent again, or nothing of ours is on record any more
+            mem = replace(mem, not_carried_out=0)
         # A unit found heating without a command of ours on record (control just switched to
         # active, or the hands-off time after a change by hand is over) is taken over as a run
         # that starts now. Without this nothing would ever stop it. No setpoint of ours is on
@@ -321,6 +428,13 @@ def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Con
         if running:
             return stop("blocked", blockers)
         return cmd(HEAT_PUMP_PLAN_OFF, "none", "blocked", blockers=blockers), mem
+
+    # ---- no command while the unit differs and it is too early to say why -------------------
+    # A command sent now would move "our last command" past the change that is still to be judged:
+    # a unit switched off at its remote and then sent a new setpoint looked as if it had not started.
+    if settling:
+        plan = HEAT_PUMP_PLAN_HEAT if running else HEAT_PUMP_PLAN_OFF
+        return cmd(plan, "none", SETTLING, target=mem.last_target if running else None, waiting=SETTLING), mem
 
     # ---- no decision on missing data ---------------------------------------------------
     # Right after a restart the room sensors have not reported yet. "No room is cold" would be

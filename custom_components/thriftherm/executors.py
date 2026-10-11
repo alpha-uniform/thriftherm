@@ -12,7 +12,7 @@ import logging
 import math
 from typing import Any
 
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Context, HomeAssistant
 
 from .models import HeatPumpCommand, RoomCommand
 
@@ -22,7 +22,8 @@ CALL_TIMEOUT_S = 30.0  # a unit that does not answer must not hold up the rest o
 
 
 async def _call(
-    hass: HomeAssistant, domain: str, service: str, data: dict[str, Any], what: str, level: int = logging.WARNING
+    hass: HomeAssistant, domain: str, service: str, data: dict[str, Any], what: str, level: int = logging.WARNING,
+    context: Context | None = None,
 ) -> bool:
     """Perform one service call; False when it failed or timed out, which is logged, never raised.
 
@@ -32,17 +33,20 @@ async def _call(
     """
     try:
         async with asyncio.timeout(CALL_TIMEOUT_S):
-            await hass.services.async_call(domain, service, data, blocking=True)
+            await hass.services.async_call(domain, service, data, blocking=True, context=context)
     except Exception as err:  # noqa: BLE001 - foreign code, see above
         _LOGGER.log(level, "thriftherm %s failed: %s", what, str(err) or type(err).__name__)  # a timeout has no text
         return False
     return True
 
 
-async def async_set_thermostat(hass: HomeAssistant, climate_entity: str, room_cmd: RoomCommand) -> None:
-    """Write a room setpoint to its thermostat."""
+async def async_set_thermostat(
+    hass: HomeAssistant, climate_entity: str, room_cmd: RoomCommand, context: Context | None = None
+) -> None:
+    """Write a room setpoint to its thermostat. `context` marks the change it causes as ours."""
     data = {"entity_id": climate_entity, "temperature": room_cmd.target}
-    if await _call(hass, "climate", "set_temperature", data, f"room {room_cmd.room}: setpoint {room_cmd.target:.1f}"):
+    what = f"room {room_cmd.room}: setpoint {room_cmd.target:.1f}"
+    if await _call(hass, "climate", "set_temperature", data, what, context=context):
         _LOGGER.info("thriftherm room %s: thermostat set to %.1f °C (%s)", room_cmd.room, room_cmd.target, room_cmd.reason)
 
 
@@ -109,7 +113,9 @@ async def async_request_ebus_read(hass: HomeAssistant, topic: str, payload: str 
     return await _call(hass, "mqtt", "publish", data, f"ebusd read request {topic}", logging.DEBUG)
 
 
-async def async_execute_heat_pump(hass: HomeAssistant, entity_id: str, command: HeatPumpCommand) -> bool:
+async def async_execute_heat_pump(
+    hass: HomeAssistant, entity_id: str, command: HeatPumpCommand, context: Context | None = None
+) -> bool:
     """Send a heat pump command as climate service calls; stop at the first failure.
 
     False when a call failed: the command then counts as not carried out.
@@ -131,7 +137,8 @@ async def async_execute_heat_pump(hass: HomeAssistant, entity_id: str, command: 
         if command.target_temp is not None:
             calls.append(("set_temperature", {"temperature": command.target_temp}))
     for service, data in calls:
-        if not await _call(hass, "climate", service, {"entity_id": entity_id, **data}, f"heat pump command {service} {data}"):
+        what = f"heat pump command {service} {data}"
+        if not await _call(hass, "climate", service, {"entity_id": entity_id, **data}, what, context=context):
             return False
     _LOGGER.info("thriftherm heat pump command sent: %s", ", ".join(f"{s} {d}" for s, d in calls))
     return True

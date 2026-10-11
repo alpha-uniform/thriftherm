@@ -66,6 +66,7 @@ OBJECT_IDS: Final[dict[str, dict[str, str]]] = {
     },
     "button": {
         "room_boost": "quick_heat_up",
+        "resume_automatic": "back_to_automatic",
     },
     "datetime": {
         "away_return": "planned_return",

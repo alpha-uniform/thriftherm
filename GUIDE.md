@@ -64,6 +64,33 @@ For every room Thriftherm picks the first rule that applies:
 3. **Away** – away temperature (default 15 °C). Before a return with a chosen time the room is pre-heated to its comfort temperature (not for the provisional 23:59, see section 2). If the air gets too close to its dew point (default margin 3 K) the target is raised against damp.
 4. **Schedule** – comfort temperature inside a schedule block, setback temperature outside. Before a block starts the room is pre-heated so it is warm *when* the block begins.
 
+### Changes by hand
+
+Thriftherm writes setpoints, so it has to know who changed one. Home Assistant says so itself: every change carries where it comes from.
+
+| From | Example | A change by hand? |
+|---|---|---|
+| Thriftherm itself | its own command and the device's answer to it | never |
+| Somebody in Home Assistant | dashboard, app, voice assistant | always, at once |
+| An automation or a script | "23 °C before the shower", also one run by the clock | always, at once |
+| At the device | the knob on a valve, the heat pump's remote, the maker's app; also what changed while the device could not be reached | yes – unless the device explains the change itself (a rule of Versatile Thermostat's own, a late radio echo with Better Thermostat). On the heat pump only once it has had two minutes to follow a command |
+
+What follows is the same for every device:
+
+- **It holds for a fixed time** (parameter *How long a change by hand is respected*, 120 minutes by default). On a room thermostat it becomes the room's override; on the heat pump Thriftherm leaves the unit alone for that long. A further change during that time renews it.
+- **It is shown:** on the room's target sensor (*Override until*, *Override by*) and on the heat pump's command (*Changed by hand, respected until*, *Changed by hand by*).
+- **It ends by itself** or with the button *Back to automatic* (action `thriftherm.clear_override` without a room): that ends every override, every quick heat-up and the heat pump's time in hand at once.
+
+What is no change by hand:
+
+- **The command did not arrive.** If the heat pump shows something else after a command and nobody changed it, the command is sent again: after 2, 4, 8 … minutes, hourly at most, for as long as the unit does not carry it out. The command shows how many in a row (*Commands in a row the unit did not carry out*). Only when Home Assistant was restarted between the command and the difference can the two no longer be told apart; the difference then counts as a change at the unit, as before.
+- **The thermostat rounds.** A thermostat in whole degrees that answers 21.5 °C with 22 °C shows our setpoint as it can hold it – no override, and nothing is written against it.
+- **Switching a thermostat off** asks for no temperature: that makes no override.
+
+This has one limit: when a device writes its state within a few seconds of a command, Home Assistant passes that change on as the command's, whatever changed. A press on the remote in exactly those seconds therefore counts as whoever commanded last.
+
+While somebody cools, dries or ventilates with the heat pump, Thriftherm stays out for as long as that mode is on. A boiler through entities (section 5) has no change by hand: while the control is active the number and the switch are its own; switch to *Plan only* to set them yourself.
+
 Two protections apply on top, always:
 
 | Protection | Default | Behaviour |
@@ -96,7 +123,7 @@ Pre-heating starts at `start = block start − (target − current) / heat-up ra
 | Service | Fields | Use |
 |---|---|---|
 | `thriftherm.set_override` | `room`, `temperature`, `duration_min` (default 120) | temporarily different target for one room |
-| `thriftherm.clear_override` | `room` (optional) | end one or all overrides |
+| `thriftherm.clear_override` | `room` (optional) | back to automatic: end one override, without a room everything changed by hand |
 | `thriftherm.set_away` | `return_time` or `clear_return_time` (both optional) | away mode, with pre-heating for the return or with no end |
 | `thriftherm.clear_away` | – | back to Auto |
 | `thriftherm.boost` | `room`, `duration_min` (default 45) | quick heat-up of one room |
@@ -250,7 +277,7 @@ Settings → Devices & services → Thriftherm → ⋮ → *Download diagnostics
 
 **Why is a room at 15 °C?** It is in away mode. Frost protection (7 °C) is a separate lower limit.
 
-**I turned the thermostat by hand – why does it not change back?** A manual change becomes a temporary override (default 120 minutes). End it with `clear_override`.
+**I turned the thermostat by hand – why does it not change back?** A manual change becomes a temporary override (default 120 minutes). End it with the button *Back to automatic* or `clear_override`; more under *Changes by hand* in section 3.
 
 **Overrides although nobody touched the thermostat?** Better Thermostat rewrites the valve setpoint every few seconds. When a Zigbee reply arrives late, BT takes the old value for a turn of the knob. The **echo filter** (Options → Control parameters, on by default) recognises this: when BT jumps to a value the valve already showed within the last minute and left again (e.g. 16 → 16.5 → 16), the jump is ignored and the planned setpoint is sent again. A real turn of the knob brings a new value and is taken over. The room's *Thermostat plan* sensor shows when an echo was last ignored.
 

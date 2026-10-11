@@ -12,6 +12,7 @@ import time
 from typing import TYPE_CHECKING, Any
 
 from . import learning_reset
+from .engines import hand
 from .engines.boiler_memory import BoilerMemory
 from .engines.common import as_dict, as_float
 from .engines.heat_call import CallMemory
@@ -42,7 +43,9 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
     now = time.time()
     for key, raw in as_dict(data.get("overrides")).items():
         try:
-            ov = Override(float(raw["target"]), float(raw["until_ts"]), float(raw.get("set_at_ts", now)))
+            by = raw.get("by") if isinstance(raw, dict) else None
+            who = by if by in hand.SHOWN else None
+            ov = Override(float(raw["target"]), float(raw["until_ts"]), float(raw.get("set_at_ts", now)), who)
         except (KeyError, TypeError, ValueError):
             continue
         if ov.until_ts > now and key in rooms:
@@ -94,7 +97,9 @@ def to_store(coord: ThrifthermCoordinator) -> dict[str, Any]:
         "heat_rates": coord.heat_rates.to_storage(),
         "cool_rates": coord.cool_rates.to_storage(),
         "midea_block_until": coord.heat_pump_tracker.block_until,
-        "overrides": {k: {"target": o.target, "until_ts": o.until_ts, "set_at_ts": o.set_at_ts} for k, o in coord.overrides.items()},
+        "overrides": {
+            k: {"target": o.target, "until_ts": o.until_ts, "set_at_ts": o.set_at_ts, "by": o.by} for k, o in coord.overrides.items()
+        },
         "away_return_ts": coord.away_return_ts,
         "away_return_provisional": coord.away_return_provisional,
         "mode": coord.mode,

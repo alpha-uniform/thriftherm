@@ -233,6 +233,18 @@ For each room:
 
 A thermostat you switch **off** by hand is left alone by Thriftherm, and that room no longer calls the boiler.
 
+### Versatile Thermostat instead of Better Thermostat (preview)
+
+> **Preview.** Built from Versatile Thermostat's documentation and tested with imitated states, not yet with a real installation.
+
+A room's thermostat can also be the climate entity of [Versatile Thermostat](https://github.com/jmcollin78/versatile_thermostat). Thriftherm only writes its target temperature.
+
+- **Its own rules stay with Versatile Thermostat.** When it lowers the target by itself because a window is open, it sheds load or is in safety mode, Thriftherm does not take that for a change by hand and does not write against it; Versatile Thermostat restores the requested value afterwards. The room shows *The thermostat applies a rule of its own* meanwhile.
+- **If it switches itself off with a window open,** that counts like a thermostat switched off: the room does not call the boiler.
+- **Leave Versatile Thermostat's "central boiler" feature off** while Thriftherm controls the boiler. Otherwise two controllers switch the same boiler.
+- **Presets (comfort, eco, boost) and presence** in Versatile Thermostat change the target as a request. Thriftherm reads that like a change by hand and turns it into an override. So keep the schedule in Thriftherm, not there.
+- Thriftherm finds the valves behind Versatile Thermostat by itself and reports one that goes silent.
+
 ## 6. At the boiler
 
 1. **Turn the front knob to the highest flow temperature you want to allow**, for example 55 °C. The knob stays the upper limit, and it is what the boiler falls back to if Home Assistant stops. Do not turn it to the left stop: on the tested boiler that is summer mode and blocks heating whatever Thriftherm sends.

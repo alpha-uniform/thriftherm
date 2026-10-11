@@ -59,10 +59,37 @@ Auswahl **Betriebsmodus**:
 
 Für jeden Raum gilt die erste zutreffende Regel:
 
-1. **Übersteuerung** (Dienst `set_override` oder Änderung am Thermostat) – bis sie abläuft.
+1. **Übersteuerung** (Aktion `set_override` oder eine Änderung von Hand am Thermostat, siehe unten) – bis sie abläuft.
 2. **Sommerbetrieb** – nur Frostschutztemperatur.
 3. **Abwesend** – Abwesenheitstemperatur (Standard 15 °C). Vor einer Rückkehr mit gewählter Uhrzeit wird auf Komfort vorgeheizt (nicht bei der vorläufigen 23:59, siehe Abschnitt 2). Kommt die Luft ihrem Taupunkt zu nahe (Standard 3 K), wird der Sollwert gegen Feuchte angehoben.
 4. **Zeitplan** – Komforttemperatur in einem Zeitplan-Block, sonst Absenktemperatur. Vor Blockbeginn wird so vorgeheizt, dass es *zu Beginn* warm ist.
+
+### Änderungen von Hand
+
+Thriftherm schreibt Sollwerte und muss deshalb wissen, wer einen Sollwert geändert hat. Das sagt Home Assistant selbst: Jede Änderung trägt mit, woher sie kommt.
+
+| Woher | Beispiel | Gilt als Änderung von Hand? |
+|---|---|---|
+| Thriftherm selbst | der eigene Befehl und die Antwort des Geräts darauf | nie |
+| Jemand in Home Assistant | Dashboard, App, Sprachassistent | immer, sofort |
+| Eine Automation oder ein Skript | „vor dem Duschen 23 °C“, auch nach der Uhr | immer, sofort |
+| Am Gerät | Drehknopf am Ventil, Fernbedienung der Klimaanlage, App des Herstellers; auch was sich änderte, während das Gerät nicht erreichbar war | ja – außer das Gerät erklärt die Änderung selbst (eigene Regel von Versatile Thermostat, verspätetes Funk-Echo bei Better Thermostat). An der Wärmepumpe erst, wenn sie zwei Minuten Zeit hatte, einem Befehl zu folgen |
+
+Was daraus folgt, ist für alle Geräte gleich:
+
+- **Sie gilt eine feste Zeit** (Parameter *Wie lange eine Änderung von Hand gilt*, Standard 120 Minuten). Am Raumthermostat wird sie zur Übersteuerung des Raums; an der Wärmepumpe lässt Thriftherm das Gerät so lange in Ruhe. Eine weitere Änderung in dieser Zeit verlängert sie.
+- **Sie wird angezeigt:** am Sollwert-Sensor des Raums (*Übersteuert bis*, *Übersteuert durch*) und am Steuerbefehl der Wärmepumpe (*Von Hand geändert, gilt bis*, *Von Hand geändert durch*).
+- **Sie endet von selbst** oder mit dem Knopf *Zurück zur Automatik* (Aktion `thriftherm.clear_override` ohne Raum): Das beendet alle Übersteuerungen, jedes Schnell-Aufheizen und die Ruhezeit der Wärmepumpe auf einmal.
+
+Was keine Änderung von Hand ist:
+
+- **Der Befehl kam nicht an.** Zeigt die Wärmepumpe nach einem Befehl etwas anderes, ohne dass es jemand geändert hat, wird der Befehl wiederholt: nach 2, 4, 8 … Minuten, höchstens stündlich, solange das Gerät ihn nicht ausführt. Der Steuerbefehl zeigt, wie oft in Folge (*Befehle in Folge, die das Gerät nicht ausgeführt hat*). Nur wenn Home Assistant zwischen Befehl und Abweichung neu gestartet wurde, lässt sich das nicht mehr unterscheiden; dann gilt die Abweichung wie bisher als Änderung am Gerät.
+- **Das Thermostat rundet.** Antwortet ein Thermostat in ganzen Grad auf 21,5 °C mit 22 °C, ist das unser Sollwert, so wie es ihn halten kann – keine Übersteuerung, und es wird nicht dagegen geschrieben.
+- **Wer ein Thermostat nur ausschaltet,** verlangt keine Temperatur: Daraus wird keine Übersteuerung.
+
+Eine Grenze hat das: Schreibt ein Gerät seinen Zustand wenige Sekunden nach einem Befehl, gibt Home Assistant diese Änderung als die des Befehls aus, was auch immer sich geändert hat. Ein Druck auf die Fernbedienung in genau diesen Sekunden zählt deshalb zu dem, der zuletzt befohlen hat.
+
+Kühlt, entfeuchtet oder lüftet jemand mit der Wärmepumpe, bleibt Thriftherm draußen, solange dieser Modus an ist. Eine Therme über Entitäten (Abschnitt 5) hat keine Handänderung: Solange die Steuerung aktiv ist, gehören Zahl und Schalter ihr; wer selbst stellen will, schaltet auf *Nur planen*.
 
 Zwei Schutzregeln gelten immer zusätzlich:
 
@@ -96,7 +123,7 @@ Beginn = Blockbeginn − (Soll − Ist) / Aufheizrate − Sicherheitszuschlag. D
 | Dienst | Felder | Wofür |
 |---|---|---|
 | `thriftherm.set_override` | `room`, `temperature`, `duration_min` (Standard 120) | vorübergehend anderer Sollwert für einen Raum |
-| `thriftherm.clear_override` | `room` (optional) | eine oder alle Übersteuerungen beenden |
+| `thriftherm.clear_override` | `room` (optional) | zurück zur Automatik: eine Übersteuerung beenden, ohne Raum alles von Hand Geänderte |
 | `thriftherm.set_away` | `return_time` oder `clear_return_time` (beide optional) | Abwesenheit, mit Vorheizen zur Rückkehr oder ohne Ende |
 | `thriftherm.clear_away` | – | zurück auf Automatik |
 | `thriftherm.boost` | `room`, `duration_min` (Standard 45) | einen Raum schnell aufheizen |
@@ -250,7 +277,7 @@ Einstellungen → Geräte & Dienste → Thriftherm → ⋮ → *Diagnose herunte
 
 **Warum steht ein Raum auf 15 °C?** Er ist im Modus Abwesend. Der Frostschutz (7 °C) ist eine eigene, tiefere Grenze.
 
-**Ich habe am Thermostat gedreht – warum stellt es sich nicht zurück?** Eine Handänderung wird zur vorübergehenden Übersteuerung (Standard 120 Minuten). Mit `clear_override` beenden.
+**Ich habe am Thermostat gedreht – warum stellt es sich nicht zurück?** Eine Handänderung wird zur vorübergehenden Übersteuerung (Standard 120 Minuten). Mit dem Knopf *Zurück zur Automatik* oder `clear_override` beenden; mehr unter *Änderungen von Hand* in Abschnitt 3.
 
 **Übersteuerungen, obwohl niemand am Thermostat war?** Better Thermostat schreibt den Sollwert des Heizkörperthermostats alle paar Sekunden neu. Kommt über Zigbee eine Antwort verspätet an, hält BT den alten Wert für einen Dreh am Thermostat. Der **Echo-Filter** (Optionen → Regelparameter, standardmäßig an) erkennt das: Springt BT auf einen Wert, den das Thermostat in der letzten Minute schon hatte und wieder verlassen hatte (z. B. 16 → 16,5 → 16), wird das ignoriert und der geplante Sollwert neu gesendet. Ein echter Dreh bringt einen neuen Wert und wird übernommen. Wann zuletzt ein Echo ignoriert wurde, zeigt der Sensor *Thermostat-Plan* des Raums.
 
