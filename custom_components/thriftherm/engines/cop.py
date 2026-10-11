@@ -19,7 +19,11 @@ from . import psychrometrics as psy
 CARNOT_FRACTION_LIMIT = 0.6
 MEDIAN_WINDOW = 5
 COP_STALE_S = 180.0  # three update cycles without a valid sample
-RH_MAX_AGE_S = 1800.0  # humidity sensors report on change only; RH drifts slowly
+# The intake sensors hang in room air and report on change only. Seen 2026-10-11: in a steady run the
+# humidity did not move for 35 minutes, the reading counted as stale and the COP went back to unknown.
+# Humidity hardly matters for the result (ten points of RH move the heat by under one percent).
+INTAKE_TEMP_MAX_AGE_S = 3600.0
+RH_MAX_AGE_S = 6 * 3600.0
 
 
 def parse_airflow_curve(text: str | None) -> tuple[tuple[float, float], ...]:
@@ -79,6 +83,25 @@ def carnot_limit(indoor_coil_c: float | None, outdoor_coil_c: float | None) -> f
     return (indoor_coil_c + 273.15) / lift
 
 
+def thermal_power_now(heat_pump: HeatPumpState, params: Parameters) -> float | None:
+    """The heat the air carries right now, without the gates of a settled sample.
+
+    For adding up over a whole on/off cycle: the outlet sensor lags, but what it misses
+    at the start it shows after the compressor has stopped, as long as the fan runs.
+    0 with the fan standing, None when it cannot be told.
+    """
+    if not heat_pump.fan_rpm:
+        return 0.0
+    airflow = airflow_from_rpm(params.airflow_curve, heat_pump.fan_rpm)
+    if airflow is None or not (heat_pump.intake_temp.valid and heat_pump.intake_rh.valid and heat_pump.outlet_temp.valid):
+        return None
+    if heat_pump.outlet_temp.value <= heat_pump.intake_temp.value:
+        return 0.0
+    return psy.air_heating_power_w(
+        heat_pump.intake_temp.value, heat_pump.intake_rh.value, heat_pump.outlet_temp.value, None, airflow * params.duct_factor
+    )
+
+
 def instant(heat_pump: HeatPumpState, run_state: str, electrical_power_w: float | None, params: Parameters) -> CopResult:
     """Compute one raw COP sample with all gates applied."""
     gates: list[str] = []
@@ -99,7 +122,7 @@ def instant(heat_pump: HeatPumpState, run_state: str, electrical_power_w: float 
     elif airflow is None:
         gates.append("fan_rpm_outside_curve")
     for name, reading, max_age in (
-        ("intake_temp", heat_pump.intake_temp, RH_MAX_AGE_S),  # intake air is room air: changes slowly, reports on change
+        ("intake_temp", heat_pump.intake_temp, INTAKE_TEMP_MAX_AGE_S),  # room air: changes slowly, reports on change
         ("intake_rh", heat_pump.intake_rh, RH_MAX_AGE_S),
         ("outlet_temp", heat_pump.outlet_temp, params.cop_max_sensor_age_s),
     ):

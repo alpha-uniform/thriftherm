@@ -37,18 +37,25 @@ from ..models import (
 DEMAND_THRESHOLD = 0.05
 
 
-def boiler_source(advice_source: str, heat_pump_plan: str | None, heat_pump_control: str, boiler_control: str) -> str:
+def boiler_source(
+    advice_source: str,
+    heat_pump_plan: str | None,
+    heat_pump_control: str,
+    boiler_control: str,
+    heat_pump_delivers: bool = True,
+) -> str:
     """The source the boiler should act on.
 
     The advice is purely economic. If it names the heat pump but the heat pump
-    is not going to heat — its plan is off, hands off or waiting, or it may only
-    plan while the boiler really acts — blocking the boiler would leave the rooms
+    is not going to heat — its plan is off, hands off or waiting, it idles at its own
+    setpoint, or it may only plan while the boiler really acts — blocking the boiler would leave the rooms
     with no heat from either source. Cost must never override comfort, so the
     boiler takes over in that case.
     """
     if advice_source != SOURCE_HEAT_PUMP:
         return advice_source
-    delivers = heat_pump_plan == HEAT_PUMP_PLAN_HEAT and (heat_pump_control == CTRL_ACTIVE or boiler_control != CTRL_ACTIVE)
+    acts = heat_pump_control == CTRL_ACTIVE or boiler_control != CTRL_ACTIVE
+    delivers = heat_pump_delivers and heat_pump_plan == HEAT_PUMP_PLAN_HEAT and acts
     return SOURCE_HEAT_PUMP if delivers else SOURCE_BOILER
 
 

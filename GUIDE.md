@@ -162,6 +162,17 @@ A room needs a temperature sensor, not a smart thermostat. Everything above stil
 
 **Level and slope:** a learning step on a mild day mostly moves the level of the curve, one in the cold mostly its slope, as a heating curve is set by hand (too cold only in winter: steeper; too cold in between: higher). What is learned in autumn therefore hardly touches the winter. The learning state shows both parts and their sum at the current outdoor temperature.
 
+**How many rooms call:** one open radiator returns the water almost as warm as it went out. The spread therefore judges the curve only while at least half of the rooms that can take heat right now call (a setting, *Share of rooms …* in the boiler options); below that, only the progress of the calling rooms counts. Rooms that merely heat along are not counted as calling. The learning state shows *Rooms calling for heat* and whether the spread judges right now.
+
+**A heating curve per load class:** the flow a flat needs depends on the outdoor temperature and on how many radiators take heat. Thriftherm therefore keeps a correction of the heating curve, with level and slope, for each of three load classes: one room calls, a few, the majority. Six numbers say which flow suits which outdoor temperature and number of rooms.
+
+- **A learning step only moves the class it was taken in.** Measured 2026-10-11: the bathroom alone drove the common correction to +4 K, and three rooms together then started from there.
+- **A class without a value of its own** starts from the nearest class that has one, else from the common correction of before.
+- **A value may be found:** once a class has run for three hours without a lagging room and without a learning step, its value stays put. It is raised again only after a room has missed its target for 45 minutes, and lowered only after the rooms have allowed it for two hours; either may pause for up to 45 minutes without starting over. Only time in which a room called and had been given half an hour counts towards the three hours. The waiting time and the daily allowances of the learning steps are shared by all classes. Without this the learning answers every small deviation and the flow keeps going up and down.
+- **A new class only counts after ten minutes.** With a third room calling on and off, the flow would otherwise change by the minute. When the class changes, the flow moves by the difference between the two curves; the flow limits always hold.
+- The learning state shows the *Load class now* and, under *Heating curve correction per load class*, for each class its correction, level, slope, whether it is found, its hours of operation and how often a room lagged in them.
+- The switch *A heating curve of its own for one room, a few rooms and the majority calling* in the boiler options goes back to one common correction for all; the classes' curves are kept.
+
 **How the burner is told:** by the best sign the installation has: a gas meter, else the boiler's status code, else its pump state. A gas meter is not needed. Burner runs for hot water never count.
 
 **While the boiler cycles, the rooms decide:** a cycling boiler never gives a settled spread. If a room it is heating hangs at least 0.2 K below target and rises more slowly than 0.2 K/h, the curve goes up by one step (reason *Boiler cycles and a room does not reach its target*). While cycling, the curve only comes down when every called room warms up briskly (0.5 K/h or more). Measured 2026-10-10: at a 35 °C flow minimum the burner ran for only 41 s every 15 minutes, and the bathroom stayed just below target for 14 hours.
@@ -170,7 +181,7 @@ The sensor *Boiler burner share* shows the share of the last hour the burner ran
 
 **Short cycling counts too:** a burner that runs for a minute and then waits a quarter of an hour delivers far more than the rooms take, so the flow is too hot. Three such runs within an hour lower the curve by one step — the spread would never settle in such a run, so this is the only signal available in mild weather. It never goes below the minimum flow temperature.
 
-Guards against learning nonsense: the boiler learns only in *Active* mode, 10 minutes after the burner starts, from at least 10 samples, at most one change per hour and four per day, never while hot water is made, a setpoint changed in the last 20 minutes, a boost or drying runs, or the safety state is not OK. It starts in **Learning** (1 K steps) and moves to **Refining** (0.5 K) after six changes or a quiet day.
+Guards against learning nonsense: the boiler learns only in *Active* mode, 10 minutes after the burner starts, from at least 10 samples, at least 45 minutes before a step up and an hour before a step down since the last step, per day at most 10 K up and 4 K down, never while hot water is made, a setpoint changed in the last 20 minutes, a boost or drying runs, or the safety state is not OK. **Steps grow with certainty:** a step up after a step up doubles (1, 2, 4 K, no more); a step against the one before halves, down to 0.5 K – coarse first, then fine. Steps down never grow: comfort comes before saving. No step goes further than the flow can follow within its limits. After three hours without a step a run starts at the first step again: 1 K while **Learning**, 0.5 K while **Refining** (after six changes or a quiet day). Measured 2026-10-11: with fixed 1 K steps, four a day, the correction stood at +4 K after eight hours and the bathroom was still 0.6 K below target.
 
 Sensor *Learning state* shows the phase, the current correction, why it is paused and the last reset. When a setpoint change paused it, it also shows until when and in which room.
 
@@ -191,14 +202,18 @@ Run state, lockout times and manual holds are never reset, so a reset cannot mak
 
 ## 7. Heat pump (optional)
 
-> **Preview – coming soon.** Not yet tested with a real heat pump – do not rely on it. It has only ever run in *Plan only* mode and has never controlled a heat pump. The points below describe what it is built to do.
+> **Preview.** Since 2026-10-11 it actively controls one Midea PortaSplit, so far for a few hours in mild weather only – do not rely on it yet. The points below describe what it is built to do.
 
 - The COP is measured from the airflow (fan speed → m³/h curve) and the temperature and humidity of intake and outlet air, only once the unit has settled.
+- A heat pump that cycles because its setpoint is reached never gives a settled value. The whole cycle counts then: heat and electricity are added up from one compressor start to the next, the off time with its standby power included. This COP (attribute *COP over the last on/off cycle*) is lower than in a continuous run, but it is the one that decides the cost.
+- The **duct factor** corrects the airflow, not the heat: against the resistance of the ducts the fan moves less air at the same speed. Heat the ducts give off on the way stays in the home and is no loss.
 - It is compared with the price of central heat. For district heating the **allocation key** matters: only the consumption share follows your meter, so a saved kWh saves less than its price and the heat pump must reach a higher COP to pay off.
 - The heat pump runs slowly at a high COP. It is blocked below its minimum outdoor temperature (default −10 °C), when icing is detected, or when the user cools with it. Cooling and heating never overlap: while it cools, the rooms it serves keep their radiators at the setback temperature and call no boiler heat. Frost protection still applies.
 - **Where it stands matters.** Without ducts the warm air stays in the room the unit is in. Configure the installation room and the duct factor (1.0 = no ducts); rooms it cannot reach get a repair notice.
 - **Bathroom drying** needs the heat pump: only in a room the heat pump heats and that has a humidity sensor; the room form offers it only once a heat pump is set up. After a shower the heat pump dries the room – only while it can heat and run efficiently, at most 60 minutes, and never above target + 1.5 K. Otherwise the radiator follows the normal window logic.
 - **Quick heat-up** (button per room or `thriftherm.boost`) runs it at full power for a limited time.
+- **Fan run-on:** Thriftherm never switches the heat pump from heating straight to off. It first runs the fan alone for 15 minutes (parameter, 0 = off at once) and is switched off after that. A mode set by hand during that time ends the run-on.
+- **Setpoint follows the rooms** (switch in the heat pump form): the heat pump gets the highest target of the rooms it serves plus the setpoint offset (1 K by default) and regulates by itself. Comfort 21 °C gives 22 °C on the unit, the night setback of 17 °C gives 18 °C. It stays on, day and night, for as long as it is the cheaper source, and is switched off only while nobody wants the rooms it serves warm (away, off, a window open in each of them). *Quick heat-up* then only raises the fan. Once the intake air has reached the setpoint the unit stops heating by itself; if a served room still lacks heat then, the boiler brings it. Without the switch Thriftherm uses the setpoint as a power lever (intake air plus a learned offset) and switches by the rooms' demand.
 
 ## 8. Dashboard sensors worth knowing
 

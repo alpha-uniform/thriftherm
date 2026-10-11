@@ -307,18 +307,21 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
     assert boiler.burns == ((1.0, 61.0),) and boiler.slope_k == 0.0  # only a whole (start, end) pair counts
     assert boiler_control.BoilerMemory.from_storage({"offset_k": None}).offset_k == 0.0
     assert list(boiler.to_storage()) == [
-        "offset_k", "slope_k", "adjustments", "last_adjust_reason", "state", "state_since_ts", "last_flow", "last_flow_ts",
-        "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "burn_since_ts", "burns",
+        "offset_k", "slope_k", "adjustments", "adjustment_steps", "last_adjust_reason", "state", "state_since_ts",
+        "last_flow", "last_flow_ts",
+        "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "burn_since_ts", "burns", "lines",
     ]
 
     control = ControlMemory(offset_k=1.5, learning_bins=((2, 10.0),), running_since_ts=5.0, last_hvac_mode="heat", last_target=21.0)
     assert control.to_storage() == {
         "offset_k": 1.5, "learning_bins": [[2, 10.0]], "manual_until_ts": None, "running_since_ts": 5.0, "stopped_since_ts": None,
         "last_command_ts": None, "last_hvac_mode": "heat", "last_target": 21.0, "learning_until_ts": None, "last_offset_review_ts": None,
+        "fan_until_ts": None,
     }
     assert list(control.to_storage()) == [
         "offset_k", "learning_bins", "manual_until_ts", "running_since_ts", "stopped_since_ts",
         "last_command_ts", "last_hvac_mode", "last_target", "learning_until_ts", "last_offset_review_ts",
+        "fan_until_ts",
     ]
     assert ControlMemory.from_storage({"last_target": "21.5", "learning_bins": [[1], ["x", 2], [3, "4"]]}) == ControlMemory(
         last_target=21.5, learning_bins=((3, 4.0),)

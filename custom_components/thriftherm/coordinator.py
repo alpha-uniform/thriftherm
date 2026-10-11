@@ -53,6 +53,7 @@ from .const import (
     MODE_OFF,
     SAFETY_FALLBACK,
     SAFETY_OK,
+    SOURCE_HEAT_PUMP,
     SOURCE_NONE,
     STORAGE_KEY,
     STORAGE_VERSION,
@@ -104,6 +105,9 @@ OUTDOOR_LAST_KNOWN = "last_known"  # the outdoor source shown while it does
 # After a restart the Zigbee room sensors come back one by one (measured 2026-09-18: the bathroom
 # after 38 s). Until they have, the boiler gets no command instead of a block decided on gaps.
 ROOM_DATA_GRACE_S = 300.0
+# The cycles the boiler learning by load is judged on: about a day at one row a minute (extra
+# cycles started by user actions take their rows from it).
+LOAD_LOG_ROWS = 1440
 
 
 STORE_SAVE_INTERVAL_S = 600.0
@@ -159,6 +163,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # boiler control
         self.boiler_control_mode: str = CTRL_SHADOW
         self.boiler_memory = BoilerMemory()
+        # what the boiler learning by load will be judged on: one compact row per cycle, about a day
+        self.load_log: deque[list] = deque(maxlen=LOAD_LOG_ROWS)
         self.last_learning_reset: dict[str, Any] | None = None
         # room control via Better Thermostat
         self.room_control_mode: str = CTRL_SHADOW
@@ -684,7 +690,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.heat_pump_tracker.track_efficiency(cop_res.value, econ.break_even_cop, params.break_even_margin_off, now_ts)
 
         # --- learning: COP map ---------------------------------------------------
-        if outdoor is not None and self.heat_pump_tracker.map_entry_due(cop_res, now_ts):
+        cycle_cop = self.heat_pump_tracker.take_cycle_cop()
+        if outdoor is not None and cycle_cop is not None:
+            self.cop_map.add(outdoor, cycle_cop)
+            self._store_dirty = True
+        elif outdoor is not None and self.heat_pump_tracker.map_entry_due(cop_res, now_ts):
             self.cop_map.add(outdoor, cop_res.value)
             self._store_dirty = True
 
@@ -736,6 +746,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 outdoor_bin=None if outdoor is None else CopMap.bin_of(outdoor),
                 bin_count=0 if outdoor is None else self.cop_map.bin_count(outdoor),
                 params=params,
+                cheaper=econ.cheaper_source == SOURCE_HEAT_PUMP,
             ),
             self.control_memory,
         )
@@ -788,6 +799,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     command.plan,
                     heat_pump_mode,
                     self.boiler_control_mode,
+                    command.delivers,
                 ),
                 outdoor_c=outdoor,
                 params=params,
@@ -805,6 +817,16 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.boiler_memory,
         )
         self.plan_log.boiler(boiler_cmd, now_ts, self.boiler_control_mode == CTRL_ACTIVE)
+        if self.has_boiler:
+            flow_c, return_c = snapshot.boiler.flow_temp.value_or_none, snapshot.boiler.return_temp.value_or_none
+            self.load_log.append([
+                round(now_ts), outdoor, flow_c, return_c,
+                None if flow_c is None or return_c is None else round(flow_c - return_c, 2),
+                boiler_cmd.calling_rooms, boiler_cmd.rooms_total, round(boiler_cmd.burner_share, 3),
+                boiler_cmd.offset_k,
+                # target minus actual per room, in the order of the configured rooms
+                [None if res.temperature is None else round(res.target - res.temperature, 2) for res in rooms.values()],
+            ])
 
         # --- heat along: while the boiler runs anyway, more open radiators mean fewer starts ---
         sent_rooms = rooms

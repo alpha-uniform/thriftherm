@@ -105,3 +105,16 @@ def test_a_cop_from_an_ended_run_is_not_reported_as_measured():
     last = samples[-1][0]
     assert cop_engine.aggregate(samples, last + 30, PARAMS)[0] is not None
     assert cop_engine.aggregate(samples, last + cop_engine.COP_STALE_S + 1, PARAMS)[0] is None
+
+
+def test_intake_humidity_may_be_hours_old_but_the_intake_temperature_not():
+    """Seen 2026-10-11: in a steady run the humidity did not move for 35 minutes and the COP went unknown."""
+    from dataclasses import replace
+
+    unit = heat_pump_state()
+    old_rh = replace(unit, intake_rh=replace(unit.intake_rh, age_s=2 * 3600.0))
+    assert cop_engine.instant(old_rh, "heating_stable", 800.0, PARAMS).gate_reasons == ()
+    very_old_rh = replace(unit, intake_rh=replace(unit.intake_rh, age_s=7 * 3600.0))
+    assert "intake_rh_stale" in cop_engine.instant(very_old_rh, "heating_stable", 800.0, PARAMS).gate_reasons
+    old_temp = replace(unit, intake_temp=replace(unit.intake_temp, age_s=2 * 3600.0))
+    assert "intake_temp_stale" in cop_engine.instant(old_temp, "heating_stable", 800.0, PARAMS).gate_reasons

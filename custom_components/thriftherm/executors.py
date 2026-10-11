@@ -67,7 +67,8 @@ async def async_execute_heat_pump(hass: HomeAssistant, entity_id: str, command: 
     """
     calls: list[tuple[str, dict[str, Any]]] = []
     if command.action == "stop":
-        calls.append(("set_hvac_mode", {"hvac_mode": "off"}))
+        # "fan_only" first when the fan is to run on; the "off" follows as a stop of its own
+        calls.append(("set_hvac_mode", {"hvac_mode": command.hvac_mode or "off"}))
     else:
         if command.action == "start":
             calls.append(("set_hvac_mode", {"hvac_mode": "heat"}))

@@ -61,6 +61,7 @@ def _cop_attrs(d: Data) -> dict[str, Any]:
     return {
         "raw_sample": c.raw,
         "samples": c.samples,
+        "cycle_cop": c.cycle_cop,
         "gate_reasons": list(c.gate_reasons),
         "airflow_m3h": c.airflow_m3h,
         "duct_factor": d.get("duct_factor"),
@@ -136,9 +137,15 @@ def _learning_attrs(d: Data) -> dict[str, Any]:
         "heating_curve_level_k": c.offset_level_k,
         "heating_curve_slope_k": c.offset_slope_k,
         "adjustments_last_24h": c.adjustments_last_day,
+        "moved_last_24h_k": c.moved_last_day_k,
         "last_adjustment_reason": c.last_adjust_reason,
         "held_back_because": c.held_back,
         "flow_return_spread_k": c.spread_k,
+        "calling_rooms": c.calling_rooms,
+        "rooms_total": c.rooms_total,
+        "spread_rule": c.spread_rule,
+        "load_class": c.load_class,
+        "curve_by_load": c.curve_by_load,
         # nothing blocks it, but it only learns from a running burner
         "paused_because": d.get("learning_blocked_by") or (["no_heating_run"] if c.learning_phase == "paused" else []),
         "paused_until": _iso(d.get("learning_paused_until_ts")),

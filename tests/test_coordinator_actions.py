@@ -205,6 +205,10 @@ async def test_a_failed_heat_pump_command_does_not_count_as_carried_out(hass: Ho
     sent.clear()
     freezer.tick(timedelta(seconds=180))
     await coordinator.async_refresh()
-    assert coordinator.data["midea_command"].action == "start"  # sent again, not taken for a hand on the remote
-    assert ("set_hvac_mode", {"entity_id": "climate.midea", "hvac_mode": "heat"}) in sent
+    # sent again, not taken for a hand on the remote; a unit the first call did switch to heating
+    # is taken over and only gets what is still missing
+    assert coordinator.data["midea_command"].action == ("start" if failing == "set_hvac_mode" else "adjust")
+    target = coordinator.data["midea_command"].target_temp
+    assert ("set_temperature", {"entity_id": "climate.midea", "temperature": target}) in sent
+    assert hass.states.get("climate.midea").state == "heat"
     assert coordinator.control_memory.running_since_ts is not None and coordinator.control_memory.last_hvac_mode == "heat"

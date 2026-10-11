@@ -58,6 +58,7 @@ from .const import (
     CONF_ICING_COIL_DEPRESSION_K,
     CONF_HEAT_PUMP_AIRFLOW_CURVE,
     CONF_HEAT_PUMP_DUCT_FACTOR,
+    CONF_HEAT_PUMP_FOLLOW_ROOMS,
     CONF_HEAT_PUMP_CLIMATE,
     CONF_HEAT_PUMP_INTAKE_RH,
     CONF_HEAT_PUMP_INTAKE_TEMP,
@@ -76,10 +77,13 @@ from .const import (
     CONF_BOILER_FLOW_MAX,
     CONF_BOILER_FLOW_MIN,
     CONF_BOILER_HOT_WATER_STANDBY,
+    CONF_BOILER_LOAD_MODEL,
+    CONF_BOILER_SPREAD_MIN_ROOM_SHARE,
     CONF_HEAT_PUMP_ALLOW_ACTIVE,
     CONF_ROOM_ALLOW_ACTIVE,
     CONF_ROOM_ECHO_FILTER,
     CONF_HEAT_PUMP_LEARNING_RUNS,
+    CONF_HEAT_PUMP_FAN_RUN_ON_MIN,
     CONF_HEAT_PUMP_MIN_OFF_MIN,
     CONF_HEAT_PUMP_MIN_RUN_MIN,
     CONF_PREHEAT_MARGIN_MIN,
@@ -151,10 +155,13 @@ from .const import (
     DEFAULT_BOILER_FLOW_MAX,
     DEFAULT_BOILER_FLOW_MIN,
     DEFAULT_BOILER_HOT_WATER_STANDBY,
+    DEFAULT_BOILER_LOAD_MODEL,
+    DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE,
     DEFAULT_HEAT_PUMP_ALLOW_ACTIVE,
     DEFAULT_ROOM_ALLOW_ACTIVE,
     DEFAULT_ROOM_ECHO_FILTER,
     DEFAULT_HEAT_PUMP_LEARNING_RUNS,
+    DEFAULT_HEAT_PUMP_FAN_RUN_ON_MIN,
     DEFAULT_HEAT_PUMP_MIN_OFF_MIN,
     DEFAULT_HEAT_PUMP_MIN_RUN_MIN,
     DEFAULT_PREHEAT_MARGIN_MIN,
@@ -291,6 +298,8 @@ def schema_boiler(cur: Mapping[str, Any]) -> vol.Schema:
             _req(CONF_BOILER_FLOW_MIN, cur, DEFAULT_BOILER_FLOW_MIN): _number(30, 50, 0.5, "°C"),
             _req(CONF_BOILER_FLOW_MAX, cur, DEFAULT_BOILER_FLOW_MAX): _number(35, 75, 0.5, "°C"),
             _req(CONF_BOILER_HOT_WATER_STANDBY, cur, DEFAULT_BOILER_HOT_WATER_STANDBY): selector.BooleanSelector(),
+            _req(CONF_BOILER_SPREAD_MIN_ROOM_SHARE, cur, DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE): _number(0, 1, 0.05),
+            _req(CONF_BOILER_LOAD_MODEL, cur, DEFAULT_BOILER_LOAD_MODEL): selector.BooleanSelector(),
             _req(CONF_BOILER_ALLOW_ACTIVE, cur, DEFAULT_BOILER_ALLOW_ACTIVE): selector.BooleanSelector(),
         }
     )
@@ -315,6 +324,7 @@ def schema_heat_pump(cur: Mapping[str, Any]) -> vol.Schema:
             _opt(CONF_HEAT_PUMP_OUTLET_TEMP, cur): _entity("sensor"),
             _opt(CONF_HEAT_PUMP_AIRFLOW_CURVE, cur): _text(),
             _req(CONF_HEAT_PUMP_DUCT_FACTOR, cur, DEFAULT_HEAT_PUMP_DUCT_FACTOR): _number(0.3, 1.2, 0.01),
+            _req(CONF_HEAT_PUMP_FOLLOW_ROOMS, cur, False): selector.BooleanSelector(),
             **(
                 {_opt(CONF_HEAT_PUMP_ROOM, cur): selector.SelectSelector(
                     selector.SelectSelectorConfig(options=rooms, mode=selector.SelectSelectorMode.DROPDOWN)
@@ -335,6 +345,7 @@ HEAT_PUMP_KEYS = (
     CONF_HEAT_PUMP_OUTLET_TEMP,
     CONF_HEAT_PUMP_AIRFLOW_CURVE,
     CONF_HEAT_PUMP_DUCT_FACTOR,
+    CONF_HEAT_PUMP_FOLLOW_ROOMS,
     CONF_HEAT_PUMP_ROOM,
 )
 
@@ -386,6 +397,7 @@ def schema_parameters(cur: Mapping[str, Any]) -> vol.Schema:
             _req(CONF_OVERRIDE_DEFAULT_MIN, cur, DEFAULT_OVERRIDE_DEFAULT_MIN): _number(5, 1440, 5, "min"),
             _req(CONF_HEAT_PUMP_MIN_RUN_MIN, cur, DEFAULT_HEAT_PUMP_MIN_RUN_MIN): _number(5, 120, 1, "min"),
             _req(CONF_HEAT_PUMP_MIN_OFF_MIN, cur, DEFAULT_HEAT_PUMP_MIN_OFF_MIN): _number(3, 120, 1, "min"),
+            _req(CONF_HEAT_PUMP_FAN_RUN_ON_MIN, cur, DEFAULT_HEAT_PUMP_FAN_RUN_ON_MIN): _number(0, 60, 1, "min"),
             _req(CONF_BOOST_DURATION_MIN, cur, DEFAULT_BOOST_DURATION_MIN): _number(10, 180, 5, "min"),
             _req(CONF_HEAT_PUMP_LEARNING_RUNS, cur, DEFAULT_HEAT_PUMP_LEARNING_RUNS): selector.BooleanSelector(),
             _req(CONF_HEAT_PUMP_ALLOW_ACTIVE, cur, DEFAULT_HEAT_PUMP_ALLOW_ACTIVE): selector.BooleanSelector(),

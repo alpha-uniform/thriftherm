@@ -65,6 +65,9 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: Thrifth
             "heat_rates": coordinator.heat_rates.to_dict(),
             "cool_rates": coordinator.cool_rates.to_dict(),
             "boiler_memory": coordinator.boiler_memory.to_storage(),
+            # ts, outdoor, flow, return, spread, rooms calling, rooms able, burner share, curve correction used,
+            # target minus actual per room
+            "boiler_load_log": list(coordinator.load_log)[-120:],
         },
         "safety": _command(data.get("safety")),
     }
