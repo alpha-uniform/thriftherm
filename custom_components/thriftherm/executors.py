@@ -70,12 +70,17 @@ async def async_execute_heat_pump(hass: HomeAssistant, entity_id: str, command: 
         # "fan_only" first when the fan is to run on; the "off" follows as a stop of its own
         calls.append(("set_hvac_mode", {"hvac_mode": command.hvac_mode or "off"}))
     else:
+        # Seen 2026-10-11 with a Midea over LAN: the setpoint went out, the fan mode right after
+        # it, and the unit kept its old setpoint - the second call carried the state from before
+        # the first. So nothing is sent that the unit already has, and the setpoint goes last.
+        state = hass.states.get(entity_id)
+        has = state.attributes if state is not None else {}
         if command.action == "start":
             calls.append(("set_hvac_mode", {"hvac_mode": "heat"}))
+        if command.fan_mode and has.get("fan_mode") != command.fan_mode:
+            calls.append(("set_fan_mode", {"fan_mode": command.fan_mode}))
         if command.target_temp is not None:
             calls.append(("set_temperature", {"temperature": command.target_temp}))
-        if command.fan_mode:
-            calls.append(("set_fan_mode", {"fan_mode": command.fan_mode}))
     for service, data in calls:
         if not await _call(hass, "climate", service, {"entity_id": entity_id, **data}, f"heat pump command {service} {data}"):
             return False

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.7 — 2026-10-11
+
+- **A new heat pump setpoint is no longer lost.** Seen 2026-10-11 with a Midea over LAN: the setpoint was sent, the fan mode right after it, and the unit kept its old setpoint. A fan mode the unit already has is no longer sent, and the setpoint goes last.
+
 ## 0.5.6 — 2026-10-11
 
 The boiler learning now knows how many rooms call for heat, and the heat pump add-on controlled a real unit for the first time. The configuration stays at version 3; everything learned so far is kept. The heat pump add-on remains a preview.

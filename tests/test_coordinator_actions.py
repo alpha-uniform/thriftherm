@@ -212,3 +212,27 @@ async def test_a_failed_heat_pump_command_does_not_count_as_carried_out(hass: Ho
     assert ("set_temperature", {"entity_id": "climate.midea", "temperature": target}) in sent
     assert hass.states.get("climate.midea").state == "heat"
     assert coordinator.control_memory.running_since_ts is not None and coordinator.control_memory.last_hvac_mode == "heat"
+
+
+async def test_the_heat_pump_setpoint_goes_last_and_an_unchanged_fan_mode_is_not_sent(hass: HomeAssistant) -> None:
+    """Seen 2026-10-11: setpoint, then fan mode right after it, and the unit kept its old setpoint."""
+    from custom_components.thriftherm import executors
+    from custom_components.thriftherm.models import HeatPumpCommand
+
+    sent: list[tuple[str, dict]] = []
+
+    async def climate_service(call) -> None:
+        sent.append((call.service, {k: v for k, v in call.data.items() if k != "entity_id"}))
+
+    for service in ("set_hvac_mode", "set_temperature", "set_fan_mode"):
+        hass.services.async_register("climate", service, climate_service)
+    command = HeatPumpCommand(plan="heat", action="adjust", hvac_mode="heat", target_temp=18.0, fan_mode="auto", load="eco", reason="x")
+
+    hass.states.async_set("climate.unit", "heat", {"temperature": 23, "fan_mode": "auto"})
+    assert await executors.async_execute_heat_pump(hass, "climate.unit", command)
+    assert sent == [("set_temperature", {"temperature": 18.0})]
+
+    sent.clear()
+    hass.states.async_set("climate.unit", "heat", {"temperature": 23, "fan_mode": "high"})
+    assert await executors.async_execute_heat_pump(hass, "climate.unit", command)
+    assert sent == [("set_fan_mode", {"fan_mode": "auto"}), ("set_temperature", {"temperature": 18.0})]
