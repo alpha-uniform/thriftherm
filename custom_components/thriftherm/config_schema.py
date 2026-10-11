@@ -21,6 +21,9 @@ from .const import (
     CONF_BOILER_PUMP_STATE,
     CONF_BOILER_STATE_NUMBER,
     CONF_BOILER_RETURN_TEMP,
+    CONF_BOILER_FLAME,
+    CONF_BOILER_FLOW_SETPOINT_ENTITY,
+    CONF_BOILER_HEATING_ENABLE_ENTITY,
     CONF_BOILER_SIGNAL,
     CONF_BREAK_EVEN_MARGIN_OFF,
     CONF_BREAK_EVEN_MARGIN_ON,
@@ -287,12 +290,15 @@ def schema_boiler(cur: Mapping[str, Any]) -> vol.Schema:
             _opt(CONF_BOILER_PUMP_STATE, cur): _entity("sensor"),
             _opt(CONF_BOILER_PUMP_RUNNING, cur): _entity(["sensor", "binary_sensor"]),
             _opt(CONF_BOILER_STATE_NUMBER, cur): _entity("sensor"),
-            _opt(CONF_BOILER_HWC_MODE, cur): _entity("sensor"),
+            _opt(CONF_BOILER_HWC_MODE, cur): _entity(["sensor", "binary_sensor"]),
+            _opt(CONF_BOILER_FLAME, cur): _entity(["binary_sensor", "sensor"]),
             _opt(CONF_BOILER_SIGNAL, cur): _entity("binary_sensor"),
             _req(CONF_BOILER_CIRCULATION_L_H, cur, DEFAULT_BOILER_CIRCULATION_L_H): _number(100, 5000, 1, "l/h"),
             _opt(CONF_GAS_VOLUME, cur): _entity("sensor"),
             _opt(CONF_GAS_FLOW, cur): _entity("sensor"),
             _req(CONF_BOILER_EBUS_CIRCUIT, cur, DEFAULT_BOILER_EBUS_CIRCUIT): _text(),
+            _opt(CONF_BOILER_FLOW_SETPOINT_ENTITY, cur): _entity(["number", "input_number"]),
+            _opt(CONF_BOILER_HEATING_ENABLE_ENTITY, cur): _entity(["switch", "input_boolean"]),
             _req(CONF_BOILER_CURVE_COLD, cur, DEFAULT_BOILER_CURVE_COLD): _number(30, 75, 0.5, "°C"),
             _req(CONF_BOILER_CURVE_WARM, cur, DEFAULT_BOILER_CURVE_WARM): _number(30, 60, 0.5, "°C"),
             _req(CONF_BOILER_FLOW_MIN, cur, DEFAULT_BOILER_FLOW_MIN): _number(30, 50, 0.5, "°C"),
@@ -501,6 +507,11 @@ def validate_boiler(user_input: Mapping[str, Any]) -> dict[str, str]:
         errors[CONF_BOILER_CURVE_COLD] = "curve_inverted"
     if value(CONF_BOILER_FLOW_MIN, DEFAULT_BOILER_FLOW_MIN) > value(CONF_BOILER_FLOW_MAX, DEFAULT_BOILER_FLOW_MAX):
         errors[CONF_BOILER_FLOW_MIN] = "flow_min_above_max"
+    # A boiler addressed through entities needs both: a setpoint alone cannot block the heating,
+    # and a switch alone leaves the flow to the boiler.
+    setpoint, enable = user_input.get(CONF_BOILER_FLOW_SETPOINT_ENTITY), user_input.get(CONF_BOILER_HEATING_ENABLE_ENTITY)
+    if bool(setpoint) != bool(enable):
+        errors[CONF_BOILER_HEATING_ENABLE_ENTITY if setpoint else CONF_BOILER_FLOW_SETPOINT_ENTITY] = "boiler_entities_incomplete"
     return errors
 
 

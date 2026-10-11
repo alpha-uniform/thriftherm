@@ -166,6 +166,7 @@ class BoilerState:
     circulation_l_h: float
     pump_running: bool | None = None  # the heating pump itself (ebusd WP), None if not configured
     state_number: int | None = None  # boiler status S.xx (ebusd Statenumber)
+    flame: bool | None = None  # the boiler's own "burner on" (e.g. OpenTherm), None if not configured
 
 
 @dataclass(frozen=True)

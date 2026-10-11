@@ -163,6 +163,25 @@ The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fill
 
 The heating curve does not have to be perfect: Thriftherm learns a correction of up to ±10 K. The form only refuses a curve that is lower at -10 °C than at +15 °C, and a minimum above the maximum.
 
+### 4.3a A boiler without ebusd: through entities (preview)
+
+> **Preview.** Has not run on a real boiler yet – do not rely on it.
+
+A boiler without eBUS can be controlled through two entities that have to exist in Home Assistant already – from an OpenTherm adapter with ESPHome, for example:
+
+| Field | What you choose |
+|---|---|
+| Without ebusd: flow setpoint of the boiler | a **number entity** that sets the flow temperature |
+| Without ebusd: central heating on/off | a **switch** that releases and blocks the heating (hot water is not touched by it) |
+| Burner on | optional: binary sensor "flame" or a sensor "burner output" in percent |
+| Hot water active | optional: binary sensor "hot water active" |
+| Heating pump running | optional: binary sensor "central heating active" |
+| Flow temperature | the flow temperature sensor (needed) |
+
+With the number and the switch chosen nothing goes to ebusd any more; the ebusd circuit and *keep hot water ready* have no effect then. Both are always needed.
+
+One difference to ebusd: an ebusd command runs out after a few minutes and the boiler heats by its knob again. An entity keeps what it was sent. So Thriftherm hands the boiler back itself (heating on) whenever it stops controlling: when switched to *Plan only* and without boiler data with the flow of the heating curve, which then keeps following the outdoor temperature; when Home Assistant stops with the maximum flow, as a knob would stand. Entities Thriftherm never commanded are not touched. If Home Assistant crashes or loses power, the last state stays – a blocked heating included. Check whether your adapter has a timeout of its own for that case.
+
 ### 4.4 Heat pump (optional add-on)
 
 This add-on is a preview and not yet tested with a real heat pump. **Leave every field empty and click *Submit*.** You can add a heat pump later in the options.

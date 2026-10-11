@@ -115,6 +115,12 @@ BOILER_REPORTS_HOT_WATER: Final = "hot_water"
 BOILER_REPORTS_HEATING_AFTER: Final = "heating_after"
 CONF_BOILER_HWC_MODE: Final = "boiler_hwc_mode"
 CONF_BOILER_SIGNAL: Final = "boiler_signal"
+# A boiler addressed through entities instead of ebusd (an OpenTherm gateway on an ESP, any
+# integration that offers the two): a number for the flow setpoint and a switch for the heating.
+# With both chosen nothing goes to ebusd.
+CONF_BOILER_FLOW_SETPOINT_ENTITY: Final = "boiler_flow_setpoint_entity"
+CONF_BOILER_HEATING_ENABLE_ENTITY: Final = "boiler_heating_enable_entity"
+CONF_BOILER_FLAME: Final = "boiler_flame"  # binary sensor: the burner is on
 CONF_BOILER_CIRCULATION_L_H: Final = "boiler_circulation_l_h"
 CONF_GAS_VOLUME: Final = "gas_volume"
 CONF_GAS_FLOW: Final = "gas_flow"

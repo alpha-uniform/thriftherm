@@ -24,6 +24,8 @@ from .adapters.inputs import SnapshotBuilder
 from .const import (
     CONF_BOILER_ALLOW_ACTIVE,
     CONF_BOILER_EBUS_CIRCUIT,
+    CONF_BOILER_FLOW_SETPOINT_ENTITY,
+    CONF_BOILER_HEATING_ENABLE_ENTITY,
     CONF_BOILER_PROFILE,
     CONF_BOOST_DURATION_MIN,
     CONF_HEAT_PUMP_ALLOW_ACTIVE,
@@ -32,6 +34,7 @@ from .const import (
     CONF_OVERRIDE_DEFAULT_MIN,
     CONF_ROOM_ALLOW_ACTIVE,
     CONF_ROOM_ECHO_FILTER,
+    BOILER_PLAN_BLOCK,
     BOILER_PLAN_HEAT,
     CTRL_ACTIVE,
     CTRL_OFF,
@@ -77,7 +80,8 @@ from .engines import (
 from .engines.heat_pump_tracking import HeatPumpTracker
 from .engines.safety import HEAT_PUMP_ISSUE_PREFIX
 from .engines.learning import CoolRateStats, CopMap, HeatRateStats
-from .engines.boiler_memory import BoilerInputs, BoilerMemory
+from .engines.boiler_memory import BoilerInputs, BoilerMemory, curve_flow
+from .engines.common import round_half
 from .engines.heat_pump_control import ControlInputs, ControlMemory
 from .engines.room_control import RoomCtrlMemory
 from .models import (
@@ -182,6 +186,10 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._ebus_signal_lost_since: float | None = None
         self._last_outdoor: tuple[float, float] | None = None  # (°C, timestamp) for sensor outages
         self._ebus_read_ts = 0.0
+        # a boiler addressed through entities keeps what it was sent: None = not yet known this run
+        self._boiler_entities_released: bool | None = None
+        self._boiler_handed_back_flow: float | None = None
+        self._boiler_let_go = False  # handed back for good: this coordinator commands no more
         self._started_ts = time.time()
         self._frost_rooms: tuple[str, ...] = ()
         self._last_room_plans: dict[str, tuple[str, float | None]] = {}
@@ -231,7 +239,16 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return boiler_profiles.profile(self.config.get(CONF_BOILER_PROFILE))
 
     @property
-    def boiler_setmode_topic(self) -> str:
+    def boiler_entities(self) -> tuple[str, str] | None:
+        """(flow setpoint number, heating switch) of a boiler addressed through entities, else None: ebusd."""
+        setpoint = self.config.get(CONF_BOILER_FLOW_SETPOINT_ENTITY)
+        enable = self.config.get(CONF_BOILER_HEATING_ENABLE_ENTITY)
+        return (str(setpoint), str(enable)) if setpoint and enable else None
+
+    @property
+    def boiler_setmode_topic(self) -> str | None:
+        if self.boiler_entities:
+            return None
         return self._ebus_topic(self.boiler_profile.setmode_message, "set")
 
     def _ebus_topic(self, message: str, verb: str) -> str:
@@ -552,12 +569,16 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.last_update_success:
                 # Home Assistant logs the message only, the traceback on debug: once per series here
                 _LOGGER.exception("thriftherm: evaluation failed")
+            # nothing below runs: a boiler addressed through entities must not keep a block meanwhile
+            await self.async_release_boiler()
             raise UpdateFailed(f"evaluation failed: {err}") from err
         # The executors never raise and give up after a timeout, so every command below is tried and
         # the store and the repairs still follow. The boiler goes first: a heat pump that does not
         # answer must not delay its SetMode.
         boiler_cmd: BoilerCommand = result["boiler_command"]
-        if self.has_boiler and self.boiler_control_mode == CTRL_ACTIVE and boiler_cmd.send and boiler_cmd.payload:
+        if self.has_boiler and self.boiler_entities:
+            await self._async_command_boiler_entities(boiler_cmd)
+        elif self.has_boiler and self.boiler_control_mode == CTRL_ACTIVE and boiler_cmd.send and boiler_cmd.payload:
             await executors.async_send_setmode(self.hass, self.boiler_setmode_topic, boiler_cmd.payload)
         command: HeatPumpCommand = result["midea_command"]
         heat_pump_entity = self.config.get(CONF_HEAT_PUMP_CLIMATE)
@@ -568,7 +589,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # cycle; a call that went through before the failure leaves the unit's mode open,
                 # so no manual-change judgement until a command goes through.
                 self.control_memory = replace(memory_before, last_hvac_mode=None)
-        if self.has_boiler:
+        if self.has_boiler and not self.boiler_entities:
             await self._async_keep_boiler_readings_fresh(result["boiler"].gas_power_w, now)
         if self.room_control_mode == CTRL_ACTIVE:
             climate_of = {r.key: r.climate_entity for r in self.builder.rooms}
@@ -579,6 +600,74 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self.async_save_store()
         await issues.async_sync(self.hass, self)
         return result
+
+    def _holds_boiler(self, held: bool) -> None:
+        """Remember across restarts whether the entities hold something of ours."""
+        if self._boiler_entities_released is not (not held):
+            self._boiler_entities_released = not held
+            self._store_dirty = True
+
+    async def _async_command_boiler_entities(self, cmd: BoilerCommand) -> None:
+        """Carry out the plan on a boiler addressed through a number and a switch.
+
+        A SetMode telegram runs out and the boiler returns to its knob; an entity keeps what
+        it was sent. So whenever the control stops commanding (not active, no boiler data,
+        waiting for the rooms) the boiler is handed back: heating on, flow from the plain curve,
+        which keeps following the outdoor temperature while Home Assistant runs.
+        """
+        entities = self.boiler_entities
+        if entities is None or self._boiler_let_go:
+            return
+        active = self.boiler_control_mode == CTRL_ACTIVE
+        if self._boiler_entities_released is None:
+            self._holds_boiler(active)  # only an active control has left anything behind
+        if active and cmd.plan in (BOILER_PLAN_HEAT, BOILER_PLAN_BLOCK):
+            taking_over = self._boiler_entities_released  # what the entities hold is not ours: send whatever is due
+            self._holds_boiler(True)
+            if cmd.send or taking_over:
+                flow = cmd.flow_setpoint if cmd.flow_setpoint is not None else self.builder.params.boiler_flow_min
+                if not await executors.async_send_boiler_entities(self.hass, *entities, flow, not cmd.disable_hc):
+                    # not carried out: due again next cycle, and no block counts as in force
+                    self.boiler_memory = replace(self.boiler_memory, last_payload=None, last_send_ts=None, block_since_ts=None)
+            return
+        flow = self._hand_back_flow()
+        # only a boiler this control handed back follows the curve: entities it never commanded are left alone
+        moved = self._boiler_handed_back_flow is not None and abs(flow - self._boiler_handed_back_flow) >= 1.0
+        if not self._boiler_entities_released or moved:
+            await self._async_hand_back(flow)
+
+    def _hand_back_flow(self) -> float:
+        """The flow a handed-back boiler gets: the plain curve, the maximum when the outdoor temperature is unknown."""
+        params = self.builder.params
+        if self._last_outdoor is None:
+            return params.boiler_flow_max
+        return round_half(curve_flow(self._last_outdoor[0], params))
+
+    async def _async_hand_back(self, flow: float) -> None:
+        entities = self.boiler_entities
+        if entities is not None and await executors.async_send_boiler_entities(self.hass, *entities, flow, True):
+            if not self._boiler_entities_released:
+                _LOGGER.warning("thriftherm: boiler handed back (heating on, flow %.1f °C)", flow)
+            self._holds_boiler(False)
+            if self._boiler_handed_back_flow != flow:
+                self._boiler_handed_back_flow = flow
+                self._store_dirty = True
+
+    async def async_release_boiler(self, final: bool = False) -> None:
+        """Hand a boiler addressed through entities back, if they hold something of ours.
+
+        `final`: nothing of ours runs afterwards (Home Assistant stops, the entry is unloaded).
+        The flow maximum is left behind then, as a knob would be: a curve value frozen on a mild
+        day would cap the boiler in the cold. No later cycle may command again, or a block sent
+        after the hand-back would stay for good.
+        """
+        if self.boiler_entities is None or not self.has_boiler or self._boiler_let_go:
+            return
+        if final:
+            self._boiler_let_go = True
+        if self._boiler_entities_released is not False:
+            return  # never commanded, or handed back already: the entities are not ours to write
+        await self._async_hand_back(self.builder.params.boiler_flow_max if final else self._hand_back_flow())
 
     async def _async_keep_boiler_readings_fresh(self, gas_power_w: float | None, now: float) -> None:
         """Keep flow and return current: high poll priority always, direct reads while gas burns."""
@@ -806,11 +895,16 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 flow_c=snapshot.boiler.flow_temp.value_or_none,
                 return_c=snapshot.boiler.return_temp.value_or_none,
                 gas_power_w=boiler_res.gas_power_w,
-                reported_mode=self.boiler_profile.reported_mode(boiler_res.state_number),
-                status_known=boiler_res.state_number is not None,
+                # the status codes are those of an ebusd profile; a boiler addressed through entities has none
+                reported_mode=None if self.boiler_entities else self.boiler_profile.reported_mode(boiler_res.state_number),
+                status_known=not self.boiler_entities and boiler_res.state_number is not None,
                 # The coarsest burner sign, for installations with neither a gas meter nor a status
-                # code; the learning ranks the three itself (boiler_learning.flame).
-                burner_heating=snapshot.boiler.pump_state == "on" and not bool(boiler_res.hwc_active),
+                # code; the learning ranks the three itself (boiler_learning.flame). The boiler's own
+                # flame sign (OpenTherm) where there is one, else the pump state.
+                burner_heating=(
+                    snapshot.boiler.flame if snapshot.boiler.flame is not None else snapshot.boiler.pump_state == "on"
+                )
+                and not bool(boiler_res.hwc_active),
                 hot_water_active=bool(boiler_res.hwc_active),
                 learning_allowed=not learning_blocked,
             ),

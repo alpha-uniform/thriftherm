@@ -61,6 +61,10 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
             setattr(coord, key, data[key])
     coord.control_memory = ControlMemory.from_storage(data.get("control_memory"))
     coord.boiler_memory = BoilerMemory.from_storage(data.get("boiler_memory"))
+    if data.get("boiler_entities_held") is True:
+        coord._boiler_entities_released = False  # noqa: SLF001 - handed back by the first cycle that does not command
+    # a boiler handed back before the restart keeps following the curve
+    coord._boiler_handed_back_flow = as_float(data.get("boiler_handed_back_flow"))  # noqa: SLF001
     stored_log = data.get("boiler_load_log")
     if isinstance(stored_log, list):
         coord.load_log.extend(row for row in stored_log if isinstance(row, list) and len(row) == LOAD_LOG_COLUMNS)
@@ -95,6 +99,9 @@ def to_store(coord: ThrifthermCoordinator) -> dict[str, Any]:
         "away_return_provisional": coord.away_return_provisional,
         "mode": coord.mode,
         "control_mode": coord.control_mode,
+        # a boiler addressed through entities still holds what the control sent (see the coordinator)
+        "boiler_entities_held": coord._boiler_entities_released is False,  # noqa: SLF001
+        "boiler_handed_back_flow": coord._boiler_handed_back_flow,  # noqa: SLF001
         "control_memory": coord.control_memory.to_storage(),
         "boosts": coord.boosts,
         "boiler_control_mode": coord.boiler_control_mode,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import time
+from dataclasses import replace
 from datetime import timedelta
 
 import pytest
@@ -1278,3 +1279,180 @@ async def test_the_curve_per_load_class_is_shown_recorded_and_kept(hass: HomeAss
     await hass.async_block_till_done()
     assert entry.runtime_data.boiler_memory.lines["majority"].calm_hours >= 4.0
     assert len(entry.runtime_data.load_log) >= len(stored["boiler_load_log"])
+
+
+# ---- a boiler addressed through entities instead of ebusd (e.g. OpenTherm on an ESP) -----
+
+ENTITY_BOILER = {
+    "boiler_allow_active_control": True,
+    "boiler_flow_setpoint_entity": "input_number.boiler_flow",
+    "boiler_heating_enable_entity": "switch.boiler_heating",
+}
+
+
+def _entity_boiler(hass: HomeAssistant, value: str = "35", heating: str = "on", step: float = 0.5) -> list[tuple[str, dict]]:
+    """A number and a switch that take what they are sent; returns the calls made."""
+    calls: list[tuple[str, dict]] = []
+    limits = {"min": 20.0, "max": 80.0, "step": step}
+
+    async def set_value(call) -> None:
+        calls.append(("set_value", dict(call.data)))
+        hass.states.async_set(call.data["entity_id"], str(call.data["value"]), hass.states.get(call.data["entity_id"]).attributes)
+
+    async def turn(call) -> None:
+        calls.append((call.service, dict(call.data)))
+        hass.states.async_set(call.data["entity_id"], "on" if call.service == "turn_on" else "off")
+
+    hass.services.async_register("input_number", "set_value", set_value)  # "number" is taken by the integration itself
+    hass.services.async_register("homeassistant", "turn_on", turn)
+    hass.services.async_register("homeassistant", "turn_off", turn)
+    hass.states.async_set("input_number.boiler_flow", value, limits)
+    hass.states.async_set("switch.boiler_heating", heating)
+    return calls
+
+
+async def test_a_boiler_through_entities_gets_number_and_switch_and_nothing_goes_to_ebusd(hass: HomeAssistant) -> None:
+    published = async_mock_service(hass, "mqtt", "publish")
+    calls = _entity_boiler(hass)
+    await _setup(hass, options=ENTITY_BOILER)
+    assert calls == []  # planning only: nothing is written
+    command = hass.states.get("sensor.thriftherm_boiler_command")
+    assert command.state == "heat"
+    assert command.attributes["setmode_topic"] is None and command.attributes["setmode_payload"] is None
+
+    active = {"entity_id": "select.thriftherm_boiler_control", "option": "active"}
+    await hass.services.async_call("select", "select_option", active, blocking=True)
+    await hass.async_block_till_done()
+    planned = float(hass.states.get("sensor.thriftherm_boiler_flow_setpoint_planned").state)
+    assert calls == [("set_value", {"entity_id": "input_number.boiler_flow", "value": planned})]  # the heating was on already
+    assert published == []  # no SetMode, no read requests
+
+
+async def test_a_block_switches_the_heating_off_first_and_a_release_sets_the_flow_first(hass: HomeAssistant) -> None:
+    calls = _entity_boiler(hass)
+    entry = await _setup(hass, options=ENTITY_BOILER)
+    coordinator = entry.runtime_data
+    coordinator.set_boiler_control_mode("active")
+    hass.states.async_set("sensor.bath_temp", "22.0")
+    hass.states.async_set("sensor.living_temp", "20.0")
+    coordinator.boiler_memory = replace(coordinator.boiler_memory, state="block", state_since_ts=0.0)
+    await coordinator.async_refresh()
+    assert coordinator.data["boiler_command"].plan == "block"
+    assert [c[0] for c in calls] == ["turn_off", "set_value"]
+    assert hass.states.get("switch.boiler_heating").state == "off"
+
+    calls.clear()
+    coordinator.set_boiler_control_mode("shadow")  # the control lets go: the boiler must not stay blocked
+    await coordinator.async_refresh()
+    assert [c[0] for c in calls] == ["set_value", "turn_on"]
+    assert hass.states.get("switch.boiler_heating").state == "on"
+    calls.clear()
+    await coordinator.async_refresh()
+    assert calls == []  # handed back once
+
+
+async def test_a_failed_entity_command_is_tried_again_next_cycle(hass: HomeAssistant) -> None:
+    calls = _entity_boiler(hass)
+    entry = await _setup(hass, options=ENTITY_BOILER)
+    coordinator = entry.runtime_data
+    hass.states.async_set("input_number.boiler_flow", "unavailable")
+    coordinator.set_boiler_control_mode("active")
+    await coordinator.async_refresh()
+    assert calls == [] and coordinator.boiler_memory.last_send_ts is None
+    hass.states.async_set("input_number.boiler_flow", "35", {"min": 20.0, "max": 80.0, "step": 0.5})
+    await coordinator.async_refresh()
+    assert [c[0] for c in calls] == ["set_value"]
+
+
+async def test_the_flow_is_fitted_to_the_number_entity(hass: HomeAssistant) -> None:
+    from custom_components.thriftherm import executors
+
+    calls = _entity_boiler(hass, step=1.0)
+    hass.states.async_set("input_number.boiler_flow", "35", {"min": 30.0, "max": 45.0, "step": 1.0})
+    assert await executors.async_send_boiler_entities(hass, "input_number.boiler_flow", "switch.boiler_heating", 41.5, True)
+    assert await executors.async_send_boiler_entities(hass, "input_number.boiler_flow", "switch.boiler_heating", 60.0, True)
+    assert [c[1]["value"] for c in calls] == [42.0, 45.0]  # on the step, within the limits
+
+
+async def _blocked_entity_boiler(hass: HomeAssistant, calls: list) -> MockConfigEntry:
+    """An active control that has blocked the heating through the entities."""
+    entry = await _setup(hass, options=ENTITY_BOILER)
+    coordinator = entry.runtime_data
+    coordinator.set_boiler_control_mode("active")
+    hass.states.async_set("sensor.bath_temp", "22.0")
+    hass.states.async_set("sensor.living_temp", "20.0")
+    coordinator.boiler_memory = replace(coordinator.boiler_memory, state="block", state_since_ts=0.0)
+    await coordinator.async_refresh()
+    assert coordinator.data["boiler_command"].plan == "block" and hass.states.get("switch.boiler_heating").state == "off"
+    calls.clear()
+    return entry
+
+
+async def test_the_boiler_is_handed_back_for_good_when_home_assistant_stops(hass: HomeAssistant) -> None:
+    from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+
+    calls = _entity_boiler(hass)
+    entry = await _blocked_entity_boiler(hass, calls)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+    await hass.async_block_till_done()
+    assert hass.states.get("switch.boiler_heating").state == "on"
+    assert float(hass.states.get("input_number.boiler_flow").state) == 60.0  # the maximum, as a knob would stand
+    calls.clear()
+    await entry.runtime_data.async_refresh()  # a cycle that still runs after the stop must not block again
+    assert calls == [] and hass.states.get("switch.boiler_heating").state == "on"
+
+
+async def test_the_boiler_is_handed_back_when_the_entry_is_unloaded(hass: HomeAssistant) -> None:
+    calls = _entity_boiler(hass)
+    entry = await _blocked_entity_boiler(hass, calls)
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    assert [c[0] for c in calls] == ["set_value", "turn_on"]
+
+
+async def test_a_failing_evaluation_does_not_leave_the_heating_blocked(hass: HomeAssistant) -> None:
+    calls = _entity_boiler(hass)
+    entry = await _blocked_entity_boiler(hass, calls)
+    coordinator = entry.runtime_data
+    working = coordinator._evaluate
+
+    def broken(snapshot):
+        raise RuntimeError("boom")
+
+    coordinator._evaluate = broken
+    await coordinator.async_refresh()
+    assert hass.states.get("switch.boiler_heating").state == "on"
+    coordinator._evaluate = working
+    await coordinator.async_refresh()
+    assert hass.states.get("switch.boiler_heating").state == "off"  # and the control takes it back
+
+
+async def test_a_hand_back_that_failed_is_made_up_after_a_reload(hass: HomeAssistant) -> None:
+    calls = _entity_boiler(hass)
+    entry = await _blocked_entity_boiler(hass, calls)
+    hass.states.async_set("switch.boiler_heating", "unavailable")  # the gateway is away while the control lets go
+    hass.config_entries.async_update_entry(entry, options={**entry.options, "boiler_allow_active_control": False})
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("select.thriftherm_boiler_control").state != "active"
+    hass.states.async_set("switch.boiler_heating", "off")  # back, as the block left it
+    await entry.runtime_data.async_refresh()
+    assert hass.states.get("switch.boiler_heating").state == "on"
+
+
+async def test_entities_the_control_never_commanded_are_left_alone(hass: HomeAssistant) -> None:
+    calls = _entity_boiler(hass, heating="off")
+    entry = await _setup(hass, options=ENTITY_BOILER)  # planning only
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    assert calls == [] and hass.states.get("switch.boiler_heating").state == "off"
+
+
+async def test_a_handed_back_boiler_follows_the_curve_while_home_assistant_runs(hass: HomeAssistant) -> None:
+    calls = _entity_boiler(hass)
+    entry = await _blocked_entity_boiler(hass, calls)
+    coordinator = entry.runtime_data
+    coordinator.set_boiler_control_mode("shadow")
+    await coordinator.async_refresh()
+    mild = float(hass.states.get("input_number.boiler_flow").state)
+    hass.states.async_set("sensor.outdoor", "-10.0")
+    await coordinator.async_refresh()
+    assert float(hass.states.get("input_number.boiler_flow").state) > mild + 5.0

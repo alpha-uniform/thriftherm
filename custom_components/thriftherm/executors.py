@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 from typing import Any
 
 from homeassistant.core import HomeAssistant
@@ -49,6 +50,54 @@ async def async_send_setmode(hass: HomeAssistant, topic: str, text: str) -> None
     """Publish a SetMode telegram to ebusd. Never retained: a stale retained telegram would outlive us."""
     if await _call(hass, "mqtt", "publish", {"topic": topic, "payload": text, "qos": 0, "retain": False}, "boiler SetMode"):
         _LOGGER.debug("thriftherm boiler SetMode sent: %s", text)
+
+
+def _number_value(state, flow_c: float) -> float:
+    """The flow as the number entity takes it: within its limits, on its step."""
+    attrs = state.attributes
+    value = flow_c
+    try:
+        step = float(attrs.get("step") or 0.0)
+        if step > 0:
+            value = math.floor(value / step + 0.5) * step  # halves up, not to the even neighbour
+        value = min(max(value, float(attrs.get("min", value))), float(attrs.get("max", value)))
+    except (TypeError, ValueError):
+        pass
+    return round(value, 2)
+
+
+async def async_send_boiler_entities(
+    hass: HomeAssistant, setpoint_entity: str, enable_entity: str, flow_c: float, heating_on: bool
+) -> bool:
+    """Command a boiler through a number (flow setpoint) and a switch (central heating on).
+
+    Nothing is written that the entity already has: many gateways store what they are sent.
+    Releasing the heating sends the setpoint first, blocking it the switch first, so the boiler
+    never heats to a setpoint that is about to change. False when an entity is missing or a
+    call failed: the command then counts as not carried out and is tried again.
+    """
+    number, switch = hass.states.get(setpoint_entity), hass.states.get(enable_entity)
+    if number is None or switch is None or "unavailable" in (number.state, switch.state):
+        _LOGGER.warning("thriftherm boiler command not sent: %s or %s is not available", setpoint_entity, enable_entity)
+        return False
+    value = _number_value(number, flow_c)
+    try:
+        has_value = abs(float(number.state) - value) < 0.01
+    except (TypeError, ValueError):
+        has_value = False
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+    if not has_value:
+        calls.append((setpoint_entity.split(".", 1)[0], "set_value", {"entity_id": setpoint_entity, "value": value}))
+    if switch.state != ("on" if heating_on else "off"):
+        calls.append(("homeassistant", "turn_on" if heating_on else "turn_off", {"entity_id": enable_entity}))
+    if not heating_on:
+        calls.reverse()
+    for domain, service, data in calls:
+        if not await _call(hass, domain, service, data, f"boiler command {service} {data}"):
+            return False
+    if calls:
+        _LOGGER.debug("thriftherm boiler command sent: flow %.1f °C, heating %s", value, "on" if heating_on else "off")
+    return True
 
 
 async def async_request_ebus_read(hass: HomeAssistant, topic: str, payload: str = "") -> bool:

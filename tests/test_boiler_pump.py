@@ -40,3 +40,11 @@ def test_the_status_number_is_passed_on():
 def test_parsing_on_off_and_numbers():
     assert on_off("on") is True and on_off("OFF") is False and on_off("unknown") is None and on_off(None) is None
     assert whole_number("8") == 8 and whole_number("8.0") == 8 and whole_number("S.8") is None and whole_number(None) is None
+
+
+def test_the_burner_sign_reads_a_binary_sensor_or_a_burner_output_in_percent():
+    from custom_components.thriftherm.adapters.inputs import burning
+
+    assert burning("on") is True and burning("off") is False
+    assert burning("0.0") is False and burning("0") is False and burning("37.5") is True and burning("12,0") is True
+    assert burning(None) is None and burning("unavailable") is None
