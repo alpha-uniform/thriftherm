@@ -29,7 +29,8 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 BOILER_FIELDS = [
     "boiler_flow_temp", "boiler_return_temp", "boiler_pump_state", "boiler_pump_running", "boiler_state_number",
-    "boiler_hwc_mode", "boiler_signal", "boiler_circulation_l_h", "gas_volume", "gas_flow", "boiler_ebus_circuit",
+    "boiler_hwc_mode", "boiler_flame", "boiler_signal", "boiler_circulation_l_h", "gas_volume", "gas_flow", "boiler_ebus_circuit",
+    "boiler_flow_setpoint_entity", "boiler_heating_enable_entity",
     "boiler_curve_flow_at_minus10", "boiler_curve_flow_at_plus15", "boiler_flow_min", "boiler_flow_max",
     "boiler_hot_water_standby", "boiler_spread_min_room_share", "boiler_load_model",
     "boiler_allow_active_control",
@@ -187,8 +188,10 @@ async def test_options_boiler_step_clears_what_was_left_empty(hass: HomeAssistan
     await hass.async_block_till_done()
     assert {k: entry.options[k] for k in BOILER_FIELDS} == {
         "boiler_flow_temp": "sensor.flow2", "boiler_return_temp": None, "boiler_pump_state": None,
-        "boiler_pump_running": None, "boiler_state_number": None, "boiler_hwc_mode": None, "boiler_signal": None,
+        "boiler_pump_running": None, "boiler_state_number": None, "boiler_hwc_mode": None, "boiler_flame": None,
+        "boiler_signal": None,
         "boiler_circulation_l_h": 860.0, "gas_volume": None, "gas_flow": None, "boiler_ebus_circuit": "bai",
+        "boiler_flow_setpoint_entity": None, "boiler_heating_enable_entity": None,
         "boiler_curve_flow_at_minus10": 55.0, "boiler_curve_flow_at_plus15": 30.0, "boiler_flow_min": 30.0,
         "boiler_flow_max": 60.0, "boiler_hot_water_standby": True, "boiler_spread_min_room_share": 0.5,
         "boiler_load_model": True, "boiler_allow_active_control": False,
@@ -280,7 +283,7 @@ async def test_options_boiler_step_fills_only_empty_fields(hass: HomeAssistant) 
     result = await _open(hass, entry, "boiler")
     assert result["description_placeholders"] == {"detected": "Found: Vaillant (bai), 6 of 6 values — please check."}
     shown = _prefilled(result)
-    assert {k: shown.get(k) for k in BOILER_FIELDS[:10] if k != "boiler_circulation_l_h"} == {
+    assert {k: shown.get(k) for k in BOILER_FIELDS[:11] if k not in ("boiler_circulation_l_h", "boiler_flame")} == {
         "boiler_flow_temp": "sensor.flow", "boiler_return_temp": "sensor.return", "boiler_pump_state": "sensor.pump",
         "boiler_pump_running": found["boiler_pump_running"], "boiler_state_number": found["boiler_state_number"],
         "boiler_hwc_mode": found["boiler_hwc_mode"], "boiler_signal": "binary_sensor.ebus",
@@ -542,3 +545,19 @@ def test_heat_pump_ticks_appear_only_with_a_heat_pump():
 
     assert {CONF_ROOM_DRYING, CONF_ROOM_HEAT_PUMP} <= fields(True)
     assert not {CONF_ROOM_DRYING, CONF_ROOM_HEAT_PUMP} & fields(False)
+
+
+async def test_a_boiler_through_entities_needs_the_setpoint_and_the_switch(hass: HomeAssistant) -> None:
+    entry = await _setup(hass)
+    setpoint, switch = "boiler_flow_setpoint_entity", "boiler_heating_enable_entity"
+    for only, at in ((setpoint, switch), (switch, setpoint)):
+        result = await _open(hass, entry, "boiler")
+        entity = "number.flow_setpoint" if only == "boiler_flow_setpoint_entity" else "switch.heating"
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {only: entity})
+        assert result["type"] == "form" and result["errors"] == {at: "boiler_entities_incomplete"}
+    result = await _open(hass, entry, "boiler")
+    both = {"boiler_flow_setpoint_entity": "number.flow_setpoint", "boiler_heating_enable_entity": "switch.heating"}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], both)
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+    assert {k: entry.options[k] for k in both} == both

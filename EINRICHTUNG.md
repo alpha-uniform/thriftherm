@@ -163,6 +163,25 @@ Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme un
 
 Die Heizkurve muss nicht perfekt sein: Thriftherm lernt eine Korrektur von bis zu ±10 K. Das Formular lehnt nur eine Kurve ab, die bei -10 °C niedriger liegt als bei +15 °C, und ein Minimum über dem Maximum.
 
+### 4.3a Therme ohne ebusd: über Entitäten (Vorschau)
+
+> **Vorschau.** Noch an keiner echten Therme gelaufen; nicht darauf verlassen.
+
+Hat deine Therme kein eBUS, lässt sie sich über zwei Entitäten steuern, die schon in Home Assistant sein müssen – etwa von einem OpenTherm-Adapter mit ESPHome:
+
+| Feld | Was du wählst |
+|---|---|
+| Ohne ebusd: Vorlauf-Sollwert der Therme | eine **Zahl-Entität**, die den Vorlauf vorgibt |
+| Ohne ebusd: Heizung an/aus | einen **Schalter**, der die Heizung freigibt und sperrt (Warmwasser bleibt davon unberührt) |
+| Brenner an | optional: Binärsensor „Flamme“ oder ein Sensor „Brennerleistung“ in Prozent |
+| Warmwasser aktiv | optional: Binärsensor „Warmwasser aktiv“ |
+| Heizungspumpe läuft | optional: Binärsensor „Heizung aktiv“ |
+| Vorlauftemperatur | der Temperatursensor des Vorlaufs (nötig) |
+
+Sind Zahl und Schalter gewählt, geht nichts mehr an ebusd; der ebusd-Kreis und *Warmwasser bereithalten* haben dann keine Wirkung. Es braucht immer beide.
+
+Ein Unterschied zu ebusd: Ein ebusd-Befehl läuft nach einigen Minuten ab, und die Therme heizt wieder nach ihrem Drehknopf. Eine Entität behält, was ihr gesendet wurde. Thriftherm gibt die Therme deshalb selbst zurück (Heizung an), sobald es nicht mehr steuert: beim Umschalten auf *Nur planen* und ohne Thermendaten mit dem Vorlauf der Heizkurve, der dann weiter der Außentemperatur folgt; beim Beenden von Home Assistant mit dem maximalen Vorlauf, so wie ein Drehknopf stünde. Entitäten, die Thriftherm nie gesteuert hat, fasst es nicht an. Stürzt Home Assistant ab oder fällt der Strom aus, bleibt der letzte Zustand stehen – auch eine gesperrte Heizung. Prüfe, ob dein Adapter für diesen Fall eine eigene Zeitüberwachung hat.
+
 ### 4.4 Wärmepumpe (optionales Zusatzmodul)
 
 Diese Erweiterung ist eine Vorschau und noch nicht mit einer echten Wärmepumpe getestet. **Alle Felder leer lassen und auf *Absenden* klicken.** Eine Wärmepumpe lässt sich später in den Optionen ergänzen.

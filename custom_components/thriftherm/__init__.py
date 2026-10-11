@@ -181,6 +181,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
         # Home Assistant does not unload entries when it stops: without this, up to ten minutes
         # of learning and controller timers would be lost on every restart.
         await coordinator.async_save_store(force=True)
+        # a boiler addressed through entities keeps a block for good once nothing commands it
+        await coordinator.async_release_boiler(final=True)
 
     # not listen_once: its remover would log an error on an unload after the stop
     entry.async_on_unload(hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, _save_on_stop))
@@ -227,6 +229,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) 
     if hasattr(entry, "runtime_data"):
         # learning and user state changed since the last periodic save must survive a restart
         await entry.runtime_data.async_save_store(force=True)
+        await entry.runtime_data.async_release_boiler(final=True)
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded and entry.disabled_by is not None:
         # disabled: no cycle checks the repairs any more (a reload keeps them, its first cycle syncs)

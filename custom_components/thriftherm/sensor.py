@@ -86,7 +86,7 @@ def _boiler_attrs(d: Data) -> dict[str, Any]:
     return {
         "control_mode": d.get("boiler_control_mode"),
         "commands_sent": d.get("boiler_control_mode") == CTRL_ACTIVE,
-        "setmode_payload": c.payload,
+        "setmode_payload": c.payload if d.get("boiler_setmode_topic") else None,
         "setmode_topic": d.get("boiler_setmode_topic"),
         "heating_blocked": c.disable_hc,
         "reason": c.reason,

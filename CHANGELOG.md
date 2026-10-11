@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0b1 — 2026-10-12 (pre-release)
+
+- **A boiler without eBUS can be controlled through entities (preview).** With a number entity for the flow setpoint and a switch for the central heating chosen in the boiler step, the control writes to those instead of sending ebusd telegrams – an OpenTherm adapter on an ESP offers both. Nothing is written that the entity already has, the flow is fitted to the number's limits and step, and a failed call is tried again the next cycle. An entity keeps what it was sent, so the boiler is handed back (heating on) whenever the control stops commanding: with the flow of the plain curve, which keeps following the outdoor temperature, when switched to plan only, without boiler data or while the evaluation fails; with the maximum flow when Home Assistant stops or the entry is unloaded. Whether the entities still hold a command is stored, so a hand-back that failed is made up after a restart. A flame binary sensor or a burner output in percent can serve as the burner sign, and "hot water active" may be a binary sensor. Not yet run on a real boiler.
+
 ## 0.5.7 — 2026-10-11
 
 - **A new heat pump setpoint is no longer lost.** Seen 2026-10-11 with a Midea over LAN: the setpoint was sent, the fan mode right after it, and the unit kept its old setpoint. A fan mode the unit already has is no longer sent, and the setpoint goes last.

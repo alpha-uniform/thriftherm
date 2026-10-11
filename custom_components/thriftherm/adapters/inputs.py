@@ -27,6 +27,7 @@ from ..const import (
     CONF_BOILER_PUMP_STATE,
     CONF_BOILER_STATE_NUMBER,
     CONF_BOILER_RETURN_TEMP,
+    CONF_BOILER_FLAME,
     CONF_BOILER_SIGNAL,
     CONF_GAS_FLOW,
     CONF_GAS_VOLUME,
@@ -91,6 +92,17 @@ def on_off(value: str | None) -> bool | None:
     if text in ("off", "false", "0"):
         return False
     return None
+
+
+def burning(value: str | None) -> bool | None:
+    """The burner sign from a binary sensor (on/off) or from a burner output in percent (above 0)."""
+    known = on_off(value)
+    if known is not None or value is None:
+        return known
+    try:
+        return float(value.strip().replace(",", ".")) > 0.0
+    except ValueError:
+        return None
 
 
 def whole_number(value: str | None) -> int | None:
@@ -503,6 +515,7 @@ class SnapshotBuilder:
             circulation_l_h=float(cfg.get(CONF_BOILER_CIRCULATION_L_H, DEFAULT_BOILER_CIRCULATION_L_H)),
             pump_running=on_off(self.read_text(cfg.get(CONF_BOILER_PUMP_RUNNING))),
             state_number=whole_number(self.read_text(cfg.get(CONF_BOILER_STATE_NUMBER))),
+            flame=burning(self.read_text(cfg.get(CONF_BOILER_FLAME))),
         )
 
     # ------------------------------------------------------------------ outdoor
@@ -573,7 +586,7 @@ class SnapshotBuilder:
         # The gas meter and the pump say when the burner runs. A short burn lasts about
         # as long as one update cycle, so waiting for the next cycle loses it - and a lost
         # burn is a lost cycling signal. Both are quiet while the burner is off.
-        for key in (CONF_HEAT_PUMP_CLIMATE, CONF_GAS_FLOW, CONF_BOILER_PUMP_STATE, CONF_BOILER_PUMP_RUNNING):
+        for key in (CONF_HEAT_PUMP_CLIMATE, CONF_GAS_FLOW, CONF_BOILER_PUMP_STATE, CONF_BOILER_PUMP_RUNNING, CONF_BOILER_FLAME):
             if self.config.get(key):
                 watched.add(self.config[key])
         return watched
