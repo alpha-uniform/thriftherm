@@ -16,6 +16,7 @@ This guide takes you from nothing to a working Thriftherm installation, one step
 | [6](#6-at-the-boiler) | Set the knob, check the pump mode | at the boiler |
 | [7](#7-plan-only-first-then-active) | Watch for a few days, then go active | Home Assistant |
 | [8](#8-troubleshooting) | If something does not work | – |
+| [9](#9-example-dashboard-optional) | Paste a ready-made dashboard | Home Assistant |
 
 Have district heating or no own boiler? Skip steps 2 and 6; the setup dialog leaves out the boiler for you.
 
@@ -244,6 +245,8 @@ One difference to ebusd: an ebusd command runs out after a few minutes and the b
 
 This add-on has been tried on a Midea PortaSplit. Without a heat pump: **leave every field empty and click *Submit*.** You can add a heat pump later in the options.
 
+Without a smart plug and sensors at the intake and outlet, Thriftherm cannot measure the COP. Then pick your unit under **COP values of this model** if it is listed (so far the Midea PortaSplit). Thriftherm then decides on values measured on the same model instead of a general curve.
+
 Once a heat pump is set up, *Configure* has the further entry **Heat pump: fine tuning**. It holds the release of the active control, the setpoint offset, minimum run time and minimum pause and, in sections that are folded at first, bathroom drying, COP measurement and defrost. Without a heat pump the entry does not show.
 
 ### 4.5 Outdoor conditions
@@ -350,3 +353,12 @@ Everything about daily use – modes, schedules, away mode, learning – is in t
 ## 8. Troubleshooting
 
 No ebusd values, a boiler that does not take the setpoint, a thermostat that hangs: what to do then is in [Troubleshooting](TROUBLESHOOTING.md). It is ordered by what you see and also answers frequent questions from daily use.
+
+## 9. Example dashboard (optional)
+
+A ready-made dashboard is in [`dashboards/thriftherm.en.yaml`](dashboards/thriftherm.en.yaml) (German labels: [`dashboards/thriftherm.yaml`](dashboards/thriftherm.yaml)). It shows first what heats now and why.
+
+1. Settings > Dashboards > *Add dashboard* > *New dashboard from scratch*.
+2. Open the dashboard, pencil top right, then ⋮ > *Raw configuration editor*. Replace everything with the file's content and save.
+3. Adapt the room blocks: the example rooms are `badezimmer` and `wohnzimmer`. Copy one block per room and put in the room key from your entity IDs.
+4. Without a heat pump the *Heat pump* view only shows "unavailable". You can delete it.

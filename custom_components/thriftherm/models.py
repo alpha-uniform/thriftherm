@@ -242,6 +242,7 @@ class Parameters:
     cop_max_raw: float = 7.0
     airflow_curve: tuple[tuple[float, float], ...] = ()  # (rpm, m3/h)
     duct_factor: float = 1.0  # real airflow / free-blowing airflow (hoses attached)
+    heat_pump_cop_profile: str = "none"  # a COP map measured on the same model (engines/cop_profiles.py)
     cop_settle_max_k_per_min: float = 0.5  # outlet sensor must have settled
     icing_block_min: float = 120.0
     defrost_coil_rise_k: float = 5.0

@@ -87,6 +87,7 @@ from .engines import (
 )
 from .engines.heat_pump_tracking import HeatPumpTracker
 from .engines.safety import HEAT_PUMP_ISSUE_PREFIX
+from .engines import cop_profiles
 from .engines.learning import CoolRateStats, CopMap, HeatRateStats
 from .engines.boiler_memory import BoilerInputs, BoilerMemory, curve_flow
 from .engines.common import round_half
@@ -1125,7 +1126,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # --- economics: measured COP while running, else learned / prior estimate --------
         if outdoor is not None:
-            estimate, estimate_basis = self.cop_map.estimate(outdoor)
+            estimate, estimate_basis = self.cop_map.estimate(outdoor, cop_profiles.profile(params.heat_pump_cop_profile))
         else:
             estimate, estimate_basis = None, None
         decision_cop = cop_res.value if cop_res.value is not None else estimate

@@ -272,7 +272,7 @@ Ohne den Schalter nutzt Thriftherm den Sollwert als Leistungshebel (Ansaugluft p
 | *Raum*: Zeitplan-Helfer fehlt | der gewählte Zeitplan wurde gelöscht. Neu anlegen oder einen anderen wählen. |
 | *Raum*: Heizkörperthermostat antwortet nicht | ein Ventil hat sich seit zweieinhalb Stunden nicht gemeldet, obwohl es Befehle bekam. Es hängt meist am Funk oder an der Batterie; der Raum fordert die Therme so lange nicht an. Batterie prüfen, Ventil neu anlernen oder aus- und einschalten. |
 | Keine Daten von der Therme | ebusd liefert nichts Brauchbares; nichts wird gesendet, die Therme läuft über ihren Drehknopf. ebusd-App und Adapter prüfen. |
-| Luftmenge der Wärmepumpe nicht kalibriert | keine Luftmengen-Kennlinie, daher kein COP; bis dahin gilt das Datenblatt. |
+| Luftmenge der Wärmepumpe nicht kalibriert | keine Luftmengen-Kennlinie, daher kein COP; bis dahin gilt das Datenblatt oder, falls gewählt, die *COP-Werte dieses Modells*. |
 | Wärmepumpe versorgt Räume ohne Schläuche | keine Schläuche eingetragen, die warme Luft bleibt im Aufstellraum. Schläuche montieren und Schlauchfaktor setzen oder die Räume abwählen. |
 
 Manches zeigt sich ohne Meldung: Ein Raumfühler, der seit sechs Stunden still ist, zählt nicht mehr, die eigene Temperatur des Ventils springt ein (hinter Better Thermostat das Ventil selbst, nicht Better Thermostat, das den Raumfühler nur wiederholt), und der *Sicherheitsstatus* geht auf *Eingeschränkt*.

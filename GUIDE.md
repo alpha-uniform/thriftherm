@@ -272,7 +272,7 @@ Without the switch Thriftherm uses the setpoint as a power lever (intake air plu
 | *Room*: schedule helper missing | the selected schedule was deleted. Recreate it or pick another. |
 | *Room*: radiator thermostat not responding | a valve has not reported for two and a half hours although it was sent commands. Usually the radio link or the battery; the room does not call the boiler meanwhile. Check the battery, pair the valve again or switch it off and on. |
 | No data from the boiler | ebusd delivers nothing usable; nothing is sent, the boiler runs on its knob. Check the ebusd app and adapter. |
-| Heat pump airflow not calibrated | no airflow curve, so no COP; the data sheet is used meanwhile. |
+| Heat pump airflow not calibrated | no airflow curve, so no COP; the data sheet is used meanwhile, or the *COP values of this model* if picked. |
 | Heat pump assigned to rooms it cannot reach | no ducts configured, so the warm air stays in its own room. Fit ducts and set the duct factor, or untick those rooms. |
 
 Some problems show up without a notice: a room sensor quiet for six hours no longer counts, the valve's own temperature stands in (behind Better Thermostat the valve itself, not Better Thermostat, which repeats the room sensor), and *Safety state* goes to *Degraded*.

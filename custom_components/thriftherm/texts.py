@@ -79,6 +79,7 @@ LABELS: dict[str, dict[str, str]] = {
         "heating_idle": "Heating idle", "heating_warming_up": "Heating warming up", "heating_stable": "Heating",
         # COP basis and power source
         "measured": "Measured", "learned": "Learned", "prior": "Starting curve", "prior_calibrated": "Starting curve (calibrated)",
+        "profile": "Measured on the same model",
         "plug": "Smart plug", "midea_internal": "Heat pump's own value", "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
         "last_known": "Last known value (held up to 6 h)",
         "gas_meter": "Gas meter, by what the boiler was doing", "boiler_counters": "The boiler's own counters (estimate)",
@@ -145,6 +146,7 @@ LABELS: dict[str, dict[str, str]] = {
         "unavailable": "Nicht verfügbar", "cooling_user": "Kühlen (Nutzer)", "fan_only": "Nur Lüfter", "auto": "Auto",
         "heating_idle": "Heizen bereit", "heating_warming_up": "Heizen (Warmlauf)", "heating_stable": "Heizen",
         "measured": "Gemessen", "learned": "Gelernt", "prior": "Startkurve", "prior_calibrated": "Startkurve (kalibriert)",
+        "profile": "Gemessen am gleichen Modell",
         "plug": "Zwischenstecker", "midea_internal": "Eigener Wert der Wärmepumpe", "nominal_circulation_estimate": "Schätzung aus Nenn-Umlaufmenge (±30 %)",
         "last_known": "Letzter bekannter Wert (bis 6 h gehalten)",
         "gas_meter": "Gaszähler, nach dem Betrieb der Therme", "boiler_counters": "Eigene Zähler der Therme (Schätzung)",
@@ -171,7 +173,7 @@ CONTROL_MODES = ("off", "shadow", "active")
 LEARNING_PHASES = ("learning", "refining", "paused")
 ACTIONS = ("none", "start", "stop", "adjust")
 DEFROST_KINDS = ("none", "persistent", "cycle")
-COP_BASES = ("measured", "learned", "prior", "prior_calibrated")
+COP_BASES = ("measured", "learned", "prior", "prior_calibrated", "profile")
 POWER_SOURCES = ("plug", "midea_internal")
 OUTDOOR_SOURCES = ("last_known",)  # otherwise the entity the value comes from
 CALL_STATES = ("calling", "idle", "stalled", "comfort_ending", "not_allowed")

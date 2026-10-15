@@ -2,6 +2,13 @@
 
 [English](CHANGELOG.md) | **Deutsch**
 
+## 0.6.1 – 16.10.2026
+
+### Neu
+
+- **COP-Werte eines Modells für Geräte ohne Sensoren.** Ohne Zwischenstecker und Fühler an Ansaugung und Ausblas konnte Thriftherm nur nach einer allgemeinen Kurve entscheiden. Im Wärmepumpen-Formular bietet *COP-Werte dieses Modells* jetzt Werte an, die am gleichen Modell gemessen wurden; bisher die Midea PortaSplit (ein Gerät, 2 bis 16 °C draußen). Was dein eigenes Gerät misst, geht immer vor.
+- **Ein Beispiel-Dashboard** zum Einfügen in Home Assistant, auf Deutsch und Englisch: was gerade heizt und warum, die Räume, die Therme, die Wärmepumpe und der Verlauf. Siehe Schritt 9 der Einrichtung.
+
 ## 0.6.0 – 15.10.2026
 
 Der Vorlauf der Therme wird je Raum gelernt, ein Aufheiztempo nach Wunsch bringt langsame Räume schneller auf Temperatur, und das Gas wird getrennt nach Heizung und Warmwasser gezählt. Die Wärmepumpen-Erweiterung ist keine Vorschau mehr. Wer von 0.5.7 kommt: Die Konfiguration bleibt bei Version 3, alles Gelernte bleibt erhalten.

@@ -16,6 +16,7 @@ Diese Anleitung bringt dich Schritt für Schritt von null zu einer laufenden Thr
 | [6](#6-an-der-therme) | Drehknopf stellen, Pumpenmodus prüfen | an der Therme |
 | [7](#7-erst-nur-planen-dann-aktiv) | Ein paar Tage beobachten, dann aktiv schalten | Home Assistant |
 | [8](#8-wenn-etwas-nicht-klappt) | Wenn etwas nicht klappt | – |
+| [9](#9-beispiel-dashboard-optional) | Ein fertiges Dashboard einfügen | Home Assistant |
 
 Fernwärme oder keine eigene Therme? Dann überspringst du die Schritte 2 und 6; der Einrichtungsdialog lässt die Therme von selbst weg.
 
@@ -244,6 +245,8 @@ Ein Unterschied zu ebusd: Ein ebusd-Befehl läuft nach einigen Minuten ab, und d
 
 Erprobt ist diese Erweiterung an einer Midea PortaSplit. Ohne Wärmepumpe: **Alle Felder leer lassen und auf *Absenden* klicken.** Eine Wärmepumpe lässt sich später in den Optionen ergänzen.
 
+Hast du keinen Zwischenstecker und keine Fühler an Ansaugung und Ausblas, kann Thriftherm den COP nicht messen. Wähle dann unter **COP-Werte dieses Modells** dein Gerät, falls es dort steht (bisher die Midea PortaSplit). Thriftherm rechnet dann mit Werten, die am gleichen Modell gemessen wurden, statt mit einer allgemeinen Kurve.
+
 Ist eine Wärmepumpe eingerichtet, gibt es unter *Konfigurieren* den zusätzlichen Punkt **Wärmepumpe: Feineinstellung**. Dort stehen die Freigabe der aktiven Steuerung, der Sollwert-Abstand, Mindestlaufzeit und Mindestpause und, in eingeklappten Abschnitten, Bad-Trocknung, COP-Messung und Abtauen. Ohne Wärmepumpe erscheint der Punkt nicht.
 
 ### 4.5 Außenbedingungen
@@ -350,3 +353,12 @@ Alles zum Alltag – Modi, Zeitpläne, Abwesenheit, Lernen – steht in der [Anl
 ## 8. Wenn etwas nicht klappt
 
 Keine ebusd-Werte, eine Therme, die den Sollwert nicht annimmt, ein Thermostat, das hängt: Was dann zu tun ist, steht in der [Fehlersuche](FEHLERSUCHE.md). Sie ist nach dem geordnet, was du siehst, und beantwortet auch häufige Fragen aus dem Alltag.
+
+## 9. Beispiel-Dashboard (optional)
+
+Ein fertiges Dashboard liegt in [`dashboards/thriftherm.yaml`](dashboards/thriftherm.yaml). Es zeigt zuerst, was gerade heizt und warum.
+
+1. Einstellungen > Dashboards > *Dashboard hinzufügen* > *Neues Dashboard von Grund auf*.
+2. Dashboard öffnen, Stift oben rechts, dann ⋮ > *Raw-Konfigurationseditor*. Alles durch den Inhalt der Datei ersetzen und speichern.
+3. Raumblöcke anpassen: Die Beispielräume heißen `badezimmer` und `wohnzimmer`. Für jeden eigenen Raum einen Block kopieren und den Raumschlüssel aus deinen Entitäts-IDs einsetzen.
+4. Ohne Wärmepumpe zeigt die Ansicht *Wärmepumpe* nur „nicht verfügbar“. Du kannst sie löschen.

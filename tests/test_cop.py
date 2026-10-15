@@ -182,3 +182,24 @@ def test_the_heat_of_the_moment_is_unknown_without_a_fan_speed_or_with_an_old_ou
     at_rest = replace(at_rest, outlet_temp=replace(at_rest.outlet_temp, age_s=PARAMS.cop_max_sensor_age_s + 1))
     assert cop_engine.thermal_power_now(at_rest, PARAMS) == 0.0
     assert cop_engine.thermal_power_now(replace(at_rest, compressor_hz=30.0), PARAMS) is None
+
+
+# ---- a COP map measured on the same model (2026-10-15)
+def test_without_own_measurements_the_shipped_map_of_the_model_counts():
+    from custom_components.thriftherm.engines import cop_profiles
+    from custom_components.thriftherm.engines.learning import CopMap, prior_cop
+
+    portasplit = cop_profiles.profile("midea_portasplit")
+    empty = CopMap()
+    assert empty.estimate(3.0, portasplit) == (3.47, "profile")  # the bin measured on the model
+    assert empty.estimate(13.0, portasplit) == (4.81, "profile")
+    cold, basis = empty.estimate(-8.0, portasplit)  # beyond what was measured: the curve, calibrated by the model
+    assert basis == "profile" and cold < prior_cop(-8.0) and cold > prior_cop(-8.0) * 0.5
+    assert empty.estimate(3.0) == (round(prior_cop(3.0) * 0.8, 3), "prior")  # none chosen: as before
+    assert cop_profiles.profile("none") is None and cop_profiles.profile("unknown") is None
+
+    own = CopMap()
+    for _ in range(6):
+        own.add(3.0, 2.9)
+    assert own.estimate(3.0, portasplit) == (2.9, "learned")  # what the unit measured comes first
+    assert own.estimate(-8.0, portasplit)[1] == "prior_calibrated"  # and calibrates the curve itself
