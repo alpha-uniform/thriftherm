@@ -37,7 +37,7 @@ Have district heating or no own boiler? Skip steps 2 and 6; the setup dialog lea
 
 **A central room controller on the eBUS terminal has to go.** If a room controller is already connected to your boiler's eBUS terminal, disconnect it; the eBUS adapter goes on the same terminal. Thriftherm takes over the controller's job, and two controllers on the eBUS would keep overwriting each other's setpoints.
 
-Since 2026-10-11 the **heat pump** add-on has controlled one Midea PortaSplit every day, also at 2 °C outside with icing and defrosting. You can skip it completely. If you want to use it, it needs the heat pump's climate entity, a smart plug measuring its power, the temperature and humidity of its intake air and the temperature of its outlet air.
+The **heat pump** add-on controls an air conditioner in heating mode, tried on a Midea PortaSplit. You can skip it completely. If you want to use it, it needs the heat pump's climate entity, a smart plug measuring its power, the temperature and humidity of its intake air and the temperature of its outlet air.
 
 ### What works with your equipment
 
@@ -242,7 +242,7 @@ One difference to ebusd: an ebusd command runs out after a few minutes and the b
 
 ### 4.4 Heat pump (optional add-on)
 
-Since 2026-10-11 this add-on has controlled one Midea PortaSplit every day, also at 2 °C outside with icing and defrosting. Without a heat pump: **leave every field empty and click *Submit*.** You can add a heat pump later in the options.
+This add-on has been tried on a Midea PortaSplit. Without a heat pump: **leave every field empty and click *Submit*.** You can add a heat pump later in the options.
 
 Once a heat pump is set up, *Configure* has the further entry **Heat pump: fine tuning**. It holds the release of the active control, the setpoint offset, minimum run time and minimum pause and, in sections that are folded at first, bathroom drying, COP measurement and defrost. Without a heat pump the entry does not show.
 
@@ -290,6 +290,7 @@ For each room:
 2. Add one Better Thermostat for the room: select the room's radiator thermostat(s), the **same room temperature sensor** you gave Thriftherm, and the room's **window contacts**.
 3. If you give it an outdoor temperature sensor, set the outdoor temperature at which it switches off **high enough, for example 25 °C** – or leave the outdoor sensor empty. Otherwise Better Thermostat blocks heating that Thriftherm asks for.
 4. In Thriftherm, select this Better Thermostat as the room's thermostat (options → *Rooms* → room → *Edit*), if you left it empty in step 4.6.
+5. If turning the knob on a valve is to count as a change by hand, switch **off** the room's **Child lock** switch in Better Thermostat. With it on, Better Thermostat sets the valve back, and the turn does not count.
 
 A thermostat you switch **off** by hand is left alone by Thriftherm, and that room no longer calls the boiler.
 

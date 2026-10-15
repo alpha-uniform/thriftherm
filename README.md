@@ -13,7 +13,7 @@
 ![Status: Beta](https://img.shields.io/badge/Status-Beta-orange)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/alphauniform)
 
-**Bedarfsgerecht heizen mit Home Assistant.** Thriftherm heizt jeden Raum nach seinem Zeitplan und gibt deiner Gastherme eine Regelung, die ihr bisher fehlte. Mit Fernwärme geht es auch, und eine Wärmepumpe kann dazukommen.
+**Bedarfsgerecht heizen mit Home Assistant.** Thriftherm heizt jeden Raum nach seinem Zeitplan und gibt deiner Gastherme eine Regelung, die ihr bisher fehlte. Mit Fernwärme geht es auch, und eine Wärmepumpe kann dazukommen: eine Klimaanlage im Heizbetrieb wie die **Midea PortaSplit**, die Thriftherm steuert und deren COP es misst.
 
 ## Was Thriftherm bei dir tut
 
@@ -57,7 +57,7 @@ An Therme und Thermostate werden keine Befehle gesendet, bis du selbst auf *Akti
 - [Funktionsweise](FUNKTIONSWEISE.md): wie Thriftherm entscheidet, mit Schwellen, Lernschritten und Regeln
 - [Fehlersuche](FEHLERSUCHE.md): wenn etwas nicht klappt, geordnet nach dem, was du siehst
 - [Weniger ebusd-Werte abfragen](EBUSD.md): optional, für frischere Werte von Vorlauf und Rücklauf
-- [Änderungen](CHANGELOG.md): was jede Version bringt (auf Englisch)
+- [Änderungen](CHANGELOG.de.md): was jede Version bringt
 
 **Sprachen:** Thriftherm spricht Deutsch oder Englisch, je nach Sprache von Home Assistant. Mehr dazu in der [Anleitung](ANLEITUNG.md).
 
@@ -111,7 +111,7 @@ Die vollständige Liste steht in der [Einrichtungsanleitung, Schritt 1](EINRICHT
 
 **Das Schreiben an eine Gastherme geschieht auf deine Verantwortung.** Über ebusd wird nur die Nachricht `SetMode` genutzt, Installateur-Parameter werden nie geschrieben; bei einer Therme über Entitäten (Vorschau) nur die zwei Entitäten, die du auswählst. Den Pumpenmodus zu ändern ist eine einmalige Entscheidung, die du selbst triffst.
 
-**Status: Beta.** Alle Steuerungen starten in *Nur planen*: Sie berechnen und zeigen an, was sie tun würden, und schreiben nichts, bis du die aktive Steuerung freigibst. Sperren, Vorlaufregelung und die Sicherheits-Fallbacks sind an der Therme des Entwicklers geprüft. Die gelernten Korrekturen kennen bisher Außentemperaturen bis hinunter zu 2 °C, noch keinen Frost. Die Wärmepumpen-Erweiterung steuert seit dem 11.10.2026 beim Entwickler täglich eine Midea PortaSplit, auch bei 2 °C draußen, als sie vereiste und abtauen musste. Andere Geräte sind noch nicht erprobt.
+**Status: Beta.** Alle Steuerungen starten in *Nur planen*: Sie berechnen und zeigen an, was sie tun würden, und schreiben nichts, bis du die aktive Steuerung freigibst. Sperren, Vorlaufregelung und die Sicherheits-Fallbacks sind an der Therme des Entwicklers geprüft. Die gelernten Korrekturen kennen bisher Außentemperaturen bis hinunter zu 2 °C, noch keinen Frost. Die Wärmepumpen-Erweiterung steuert beim Entwickler eine Midea PortaSplit, auch mit Vereisung und Abtauen; andere Geräte sind noch nicht erprobt.
 
 ## Entwicklung
 

@@ -222,7 +222,7 @@ Run state, lockout times and manual holds are never reset, so a reset cannot mak
 
 ## 7. Heat pump (optional)
 
-Since 2026-10-11 it has controlled one Midea PortaSplit every day, also at 2 °C outside with icing and defrosting. Other units have not been tried yet.
+It has been tried on a Midea PortaSplit, icing and defrosting included; other units not yet.
 
 - **COP:** Thriftherm measures it from the air the heat pump takes in and blows out, and from its electricity. When it cycles, the whole cycle counts, off time included (attribute *COP over the last on/off cycle*); that value decides the cost ([measuring the COP](HOW_IT_WORKS.md#measuring-the-cop)).
 - **Cost:** the heat pump runs slowly at a high COP. It is compared with the price of central heat. For district heating the **allocation key** matters: only the consumption share follows your meter. A saved kWh therefore saves less than its price, and the heat pump must reach a higher COP to pay off.
