@@ -5,6 +5,7 @@
 #   > ⋮ > Raw-Konfigurationseditor > alles ersetzen durch diese Datei > Speichern.
 #
 # Nur Standard-Karten von Home Assistant, keine Zusatzkarten aus HACS.
+# Die Textkarten brauchen Home Assistant 2025.1 oder neuer.
 #
 # RÄUME ANPASSEN (wichtig):
 #   Die Ansicht "Räume" und die Ansicht "Verlauf" enthalten zwei Beispielräume:
@@ -16,11 +17,16 @@
 #   Deine Raumschlüssel findest du unter Einstellungen > Geräte & Dienste
 #   > Entitäten, Suche "thriftherm_" und "target_temperature".
 #
+# THERMOSTAT JE RAUM:
+#   "climate.badezimmer" und "climate.wohnzimmer" stehen für das Thermostat,
+#   das du in Thriftherm dem Raum gegeben hast (z. B. Better Thermostat).
+#   Es liefert die gemessene Raumtemperatur. Durch deine Entität ersetzen.
+#
 # Nicht jeder Raum hat alle Entitäten:
 #   - "Fenster offen" gibt es nur mit Fensterkontakt.
-#   - "Thermostat-Plan" gibt es nur mit Thermostat (z. B. Better Thermostat).
+#   - "Thermostat-Plan" gibt es nur mit Thermostat.
 #   - "Schnell aufheizen" gibt es nur mit Thermostat oder Wärmepumpe im Raum.
-#   Fehlt eine, zeigt die Karte "Entität nicht verfügbar". Dann die Zeile löschen.
+#   Fehlt eine, zeigt die Karte "Entität nicht verfügbar". Dann die Karte löschen.
 #
 # Ohne Wärmepumpe: die Ansicht "Wärmepumpe" ganz löschen.
 # Ohne Gastherme (z. B. Fernwärme): die Ansicht "Therme" ganz löschen.
@@ -58,8 +64,7 @@ views:
           - type: tile
             entity: sensor.thriftherm_cheaper_heat_source
             name: Günstiger
-          # Sicherheitsstatus. Bei "Eingeschränkt" oder "Fallback" stehen
-          # die Gründe unten in der Karte darunter.
+          # Sicherheitsstatus. Ist er nicht OK, stehen die Gründe darunter.
           - type: tile
             entity: sensor.thriftherm_safety_state
             name: Sicherheit
@@ -98,6 +103,33 @@ views:
               columns: full
             features:
               - type: select-options
+          # Rückkehr: nur sichtbar im Modus "Abwesend".
+          - type: entities
+            visibility:
+              - condition: state
+                entity: select.thriftherm_operating_mode
+                state: away
+            entities:
+              - entity: datetime.thriftherm_planned_return
+                name: Rückkehr
+          # Hebt alle Änderungen von Hand auf (Thermostat, Wärmepumpe, Übersteuerung).
+          - type: tile
+            entity: button.thriftherm_back_to_automatic
+            name: Zurück zur Automatik
+            icon: mdi:restore
+            hide_state: true
+            grid_options:
+              columns: full
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.thriftherm_back_to_automatic
+            icon_tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.thriftherm_back_to_automatic
           # Die drei Steuerungen. "Nur planen" rechnet nur, sendet aber nichts.
           # Ohne Wärmepumpe oder ohne Therme fehlt die jeweilige Zeile: löschen.
           - type: entities
@@ -110,22 +142,6 @@ views:
                 name: Räume
               - entity: sensor.thriftherm_automation_state
                 name: Automatik
-          # Abwesend: geplante Rückkehr (wird beim Modus "Abwesend" genutzt).
-          - type: entities
-            entities:
-              - entity: datetime.thriftherm_planned_return
-                name: Rückkehr
-          # Hebt alle Änderungen von Hand auf (Thermostat, Wärmepumpe, Übersteuerung).
-          - type: button
-            name: Zurück zur Automatik
-            icon: mdi:restore
-            entity: button.thriftherm_back_to_automatic
-            show_state: false
-            tap_action:
-              action: perform-action
-              perform_action: button.press
-              target:
-                entity_id: button.thriftherm_back_to_automatic
 
       # Block: Außentemperatur, Grundlage vieler Entscheidungen.
       - type: grid
@@ -149,56 +165,69 @@ views:
       # === Raumblock: badezimmer (Beispiel; kopieren und Raumschlüssel ersetzen) ===
       - type: grid
         cards:
+          # Überschrift; das Fenster-Symbol erscheint nur bei offenem Fenster.
           - type: heading
             heading: Badezimmer
             icon: mdi:shower
-          # Solltemperatur jetzt, dazu der Grund und wer übersteuert hat.
-          - type: entities
-            entities:
-              - entity: sensor.thriftherm_badezimmer_target_temperature
-                name: Soll jetzt
-              - type: attribute
-                entity: sensor.thriftherm_badezimmer_target_temperature
-                attribute: reason
-                name: Grund
-              - type: attribute
-                entity: sensor.thriftherm_badezimmer_target_temperature
-                attribute: override_by
-                name: Übersteuert von
-          # Heizbedarf in Prozent.
+            badges:
+              - type: entity
+                entity: binary_sensor.thriftherm_badezimmer_window_open
+                visibility:
+                  - condition: state
+                    entity: binary_sensor.thriftherm_badezimmer_window_open
+                    state: "on"
+          # Gemessene Temperatur (vom Thermostat) und Heizbedarf.
+          - type: tile
+            entity: climate.badezimmer
+            name: Ist
+            state_content: current_temperature
           - type: tile
             entity: sensor.thriftherm_badezimmer_heat_demand
             name: Heizbedarf
-          # Fenster offen pausiert das Heizen (nur mit Fensterkontakt).
-          - type: tile
-            entity: binary_sensor.thriftherm_badezimmer_window_open
-            name: Fenster
+          # Soll jetzt mit Grund. Eine Änderung von Hand steht nur da, wenn es eine gibt.
+          - type: markdown
+            content: |
+              {% set e = 'sensor.thriftherm_badezimmer_target_temperature' %}
+              {% set f = 'binary_sensor.thriftherm_badezimmer_window_open' %}
+              **Soll {{ '%.1f' | format(states(e) | float(0)) | replace('.', ',') }} °C**, {{ state_attr_translated(e, 'reason') }}
+              {%- if is_state(f, 'on') %}
+
+              Fenster offen, Heizen pausiert
+              {%- endif %}
+              {%- if state_attr(e, 'override_by') %}
+
+              Von Hand geändert: {{ state_attr_translated(e, 'override_by') }}
+              {%- if state_attr(e, 'override_until_ts') %}, bis {{ state_attr(e, 'override_until_ts') | timestamp_custom('%H:%M') }} Uhr{% endif %}
+              {%- endif %}
           # Was Thriftherm dem Thermostat gibt (nur mit Thermostat).
           - type: tile
             entity: sensor.thriftherm_badezimmer_thermostat_plan
             name: Thermostat
-          # Darf der Raum heizen? Wenn nein, steht der Grund oben unter "Grund".
-          - type: tile
-            entity: binary_sensor.thriftherm_badezimmer_heating_allowed
-            name: Heizen erlaubt
-          # Komfort- und Absenktemperatur zum Einstellen.
-          - type: entities
-            entities:
-              - entity: number.thriftherm_badezimmer_comfort_temperature
-                name: Komfort
-              - entity: number.thriftherm_badezimmer_setback_temperature
-                name: Absenkung
           # Schnell aufheizen: Raum heizt sofort auf Komfort.
-          - type: button
+          - type: tile
+            entity: button.thriftherm_badezimmer_quick_heat_up
             name: Schnell aufheizen
             icon: mdi:fire
-            entity: button.thriftherm_badezimmer_quick_heat_up
-            show_state: false
+            hide_state: true
             tap_action:
               action: perform-action
               perform_action: button.press
               target:
                 entity_id: button.thriftherm_badezimmer_quick_heat_up
+            icon_tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.thriftherm_badezimmer_quick_heat_up
+          # Komfort- und Absenktemperatur zum Einstellen.
+          - type: entities
+            entities:
+              - entity: number.thriftherm_badezimmer_comfort_temperature
+                name: Komfort
+                icon: mdi:sun-thermometer
+              - entity: number.thriftherm_badezimmer_setback_temperature
+                name: Absenkung
+                icon: mdi:thermometer-low
 
       # === Raumblock: wohnzimmer (zweites Beispiel) ===
       - type: grid
@@ -206,49 +235,63 @@ views:
           - type: heading
             heading: Wohnzimmer
             icon: mdi:sofa
-          - type: entities
-            entities:
-              - entity: sensor.thriftherm_wohnzimmer_target_temperature
-                name: Soll jetzt
-              - type: attribute
-                entity: sensor.thriftherm_wohnzimmer_target_temperature
-                attribute: reason
-                name: Grund
-              - type: attribute
-                entity: sensor.thriftherm_wohnzimmer_target_temperature
-                attribute: override_by
-                name: Übersteuert von
+            badges:
+              - type: entity
+                entity: binary_sensor.thriftherm_wohnzimmer_window_open
+                visibility:
+                  - condition: state
+                    entity: binary_sensor.thriftherm_wohnzimmer_window_open
+                    state: "on"
+          - type: tile
+            entity: climate.wohnzimmer
+            name: Ist
+            state_content: current_temperature
           - type: tile
             entity: sensor.thriftherm_wohnzimmer_heat_demand
             name: Heizbedarf
-          - type: tile
-            entity: binary_sensor.thriftherm_wohnzimmer_window_open
-            name: Fenster
+          - type: markdown
+            content: |
+              {% set e = 'sensor.thriftherm_wohnzimmer_target_temperature' %}
+              {% set f = 'binary_sensor.thriftherm_wohnzimmer_window_open' %}
+              **Soll {{ '%.1f' | format(states(e) | float(0)) | replace('.', ',') }} °C**, {{ state_attr_translated(e, 'reason') }}
+              {%- if is_state(f, 'on') %}
+
+              Fenster offen, Heizen pausiert
+              {%- endif %}
+              {%- if state_attr(e, 'override_by') %}
+
+              Von Hand geändert: {{ state_attr_translated(e, 'override_by') }}
+              {%- if state_attr(e, 'override_until_ts') %}, bis {{ state_attr(e, 'override_until_ts') | timestamp_custom('%H:%M') }} Uhr{% endif %}
+              {%- endif %}
           - type: tile
             entity: sensor.thriftherm_wohnzimmer_thermostat_plan
             name: Thermostat
           - type: tile
-            entity: binary_sensor.thriftherm_wohnzimmer_heating_allowed
-            name: Heizen erlaubt
-          - type: entities
-            entities:
-              - entity: number.thriftherm_wohnzimmer_comfort_temperature
-                name: Komfort
-              - entity: number.thriftherm_wohnzimmer_setback_temperature
-                name: Absenkung
-          - type: button
+            entity: button.thriftherm_wohnzimmer_quick_heat_up
             name: Schnell aufheizen
             icon: mdi:fire
-            entity: button.thriftherm_wohnzimmer_quick_heat_up
-            show_state: false
+            hide_state: true
             tap_action:
               action: perform-action
               perform_action: button.press
               target:
                 entity_id: button.thriftherm_wohnzimmer_quick_heat_up
+            icon_tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.thriftherm_wohnzimmer_quick_heat_up
+          - type: entities
+            entities:
+              - entity: number.thriftherm_wohnzimmer_comfort_temperature
+                name: Komfort
+                icon: mdi:sun-thermometer
+              - entity: number.thriftherm_wohnzimmer_setback_temperature
+                name: Absenkung
+                icon: mdi:thermometer-low
 
   # ---------------------------------------------------------------------------
-  # Ansicht 3: Therme. Nur mit Gastherme über ebusd. Sonst Ansicht löschen.
+  # Ansicht 3: Therme. Nur mit Gastherme. Sonst Ansicht löschen.
   # ---------------------------------------------------------------------------
   - title: Therme
     path: therme
@@ -265,35 +308,37 @@ views:
           - type: tile
             entity: sensor.thriftherm_boiler_command
             name: Befehl
+          # Vorlauf-Soll gibt es nur, solange die Therme heizen darf.
           - type: tile
             entity: sensor.thriftherm_boiler_flow_setpoint_planned
             name: Vorlauf-Soll
-          # Grund, Sperren und Steuermodus des Befehls.
+            visibility:
+              - condition: state
+                entity: sensor.thriftherm_boiler_flow_setpoint_planned
+                state_not:
+                  - unknown
+                  - unavailable
           - type: entities
             entities:
               - type: attribute
                 entity: sensor.thriftherm_boiler_command
                 attribute: reason
                 name: Grund
-              - type: attribute
-                entity: sensor.thriftherm_boiler_command
-                attribute: blockers
-                name: Gesperrt wegen
-              - type: attribute
-                entity: sensor.thriftherm_boiler_command
-                attribute: control_mode
-                name: Steuerung
+                icon: mdi:information-outline
               - type: attribute
                 entity: sensor.thriftherm_boiler_command
                 attribute: heating_curve_flow
                 name: Vorlauf laut Heizkurve
+                icon: mdi:chart-bell-curve-cumulative
                 suffix: °C
           - type: tile
             entity: binary_sensor.thriftherm_boiler_space_heating_active
             name: Heizbetrieb
+            icon: mdi:radiator
           - type: tile
             entity: binary_sensor.thriftherm_boiler_hot_water_active
             name: Warmwasser
+            icon: mdi:water-thermometer
           - type: tile
             entity: binary_sensor.thriftherm_boiler_data_available
             name: Daten da
@@ -312,17 +357,20 @@ views:
           - type: tile
             entity: sensor.thriftherm_boiler_burner_share
             name: Brenneranteil
-          # Gasleistung braucht einen Gasdurchfluss-Sensor.
+          # Gasleistung braucht einen Gaszähler oder eine Vaillant-Therme.
           - type: tile
             entity: sensor.thriftherm_gas_power
             name: Gasleistung
+            icon: mdi:fire
           # Gas für Heizung und Warmwasser (Zählerstände in kWh).
           - type: tile
             entity: sensor.thriftherm_gas_for_heating
             name: Gas Heizung
+            icon: mdi:radiator
           - type: tile
             entity: sensor.thriftherm_gas_for_hot_water
             name: Gas Warmwasser
+            icon: mdi:water-thermometer
 
       # Block: Lernen. Thriftherm lernt die Heizkurve selbst nach.
       - type: grid
@@ -330,27 +378,31 @@ views:
           - type: heading
             heading: Lernen
             icon: mdi:school
-          - type: entities
-            entities:
-              - entity: sensor.thriftherm_learning_state
-                name: Lernstatus
-              - type: attribute
-                entity: sensor.thriftherm_learning_state
-                attribute: flow_set_by
-                name: Vorlauf bestimmt von
-              - type: attribute
-                entity: sensor.thriftherm_learning_state
-                attribute: paused_because
-                name: Pausiert wegen
-              - type: attribute
-                entity: sensor.thriftherm_learning_state
-                attribute: heat_up_extra_k
-                name: Aufheiz-Zuschlag (Grad)
-              - type: attribute
-                entity: sensor.thriftherm_learning_state
-                attribute: heating_curve_offset_k
-                name: Heizkurve verschoben um
-                suffix: Grad
+          - type: markdown
+            content: |
+              {% set e = 'sensor.thriftherm_learning_state' %}
+              {% set warum = {
+                'no_heating_run': 'die Therme gerade nicht heizt',
+                'rooms_heating_up': 'ein Raum mit Zuschlag aufheizt',
+                'setpoint_recently_changed': 'ein Sollwert gerade geändert wurde',
+                'quick_heat_up': 'ein Raum schnell aufheizt',
+                'drying_mode': 'das Bad getrocknet wird',
+                'boiler_control_not_active': 'die Thermensteuerung nicht aktiv ist',
+                'hot_water_recent': 'gerade Warmwasser lief'} %}
+              {% set p = state_attr(e, 'paused_because') or [] %}
+              **{{ state_translated(e) }}**
+              {%- if p %}, weil {% for c in p %}{{ warum.get(c, 'die Sicherheit eingeschränkt ist' if c.startswith('safety_') else c) }}{% if not loop.last %} und {% endif %}{% endfor %}{% endif %}
+
+              Heizkurve verschoben um {{ '%.1f' | format(state_attr(e, 'heating_curve_offset_k') | float(0)) | replace('.', ',') }} Grad
+              {%- if state_attr(e, 'flow_set_by') %}
+
+              Den Vorlauf bestimmt: {{ state_attr(e, 'flow_set_by') }}
+              {%- endif %}
+              {%- set z = state_attr(e, 'heat_up_extra_k') or {} %}
+              {%- if z %}
+
+              Aufheiz-Zuschlag: {% for raum, k in z.items() %}{{ raum }} {{ '%.1f' | format(k) | replace('.', ',') }} Grad{% if not loop.last %}, {% endif %}{% endfor %}
+              {%- endif %}
 
   # ---------------------------------------------------------------------------
   # Ansicht 4: Wärmepumpe. Nur mit eingerichteter Wärmepumpe. Sonst löschen.
@@ -361,14 +413,6 @@ views:
     type: sections
     max_columns: 3
     sections:
-      - type: grid
-        cards:
-          - type: markdown
-            content: >-
-              Diese Seite gilt nur, wenn in Thriftherm eine Wärmepumpe
-              eingerichtet ist. Ohne Wärmepumpe zeigen alle Karten
-              "nicht verfügbar". Dann diese Ansicht einfach löschen.
-
       # Block: Befehl und ob die Wärmepumpe heizen darf.
       - type: grid
         cards:
@@ -381,30 +425,31 @@ views:
           - type: tile
             entity: sensor.thriftherm_heat_pump_run_state
             name: Betrieb
-          - type: tile
-            entity: binary_sensor.thriftherm_heat_pump_available_for_heating
-            name: Verfügbar
+          - type: entities
+            entities:
+              - type: attribute
+                entity: sensor.thriftherm_heat_pump_command
+                attribute: reason
+                name: Grund
+                icon: mdi:information-outline
           - type: tile
             entity: binary_sensor.thriftherm_heat_pump_blocked_for_heating
-            name: Gesperrt
+            name: Sperre
           - type: tile
             entity: binary_sensor.thriftherm_defrost_or_icing_suspected
             name: Abtauen
-          # Warum gesperrt oder warum dieser Befehl.
+          # Nur sichtbar, wenn die Wärmepumpe gesperrt ist: der Grund.
           - type: entities
+            visibility:
+              - condition: state
+                entity: binary_sensor.thriftherm_heat_pump_blocked_for_heating
+                state: "on"
             entities:
               - type: attribute
                 entity: binary_sensor.thriftherm_heat_pump_blocked_for_heating
                 attribute: reason
                 name: Gesperrt wegen
-              - type: attribute
-                entity: sensor.thriftherm_heat_pump_command
-                attribute: reason
-                name: Grund für den Befehl
-              - type: attribute
-                entity: sensor.thriftherm_heat_pump_command
-                attribute: blockers
-                name: Hindernisse
+                icon: mdi:lock-alert
 
       # Block: Leistung und Wirkungsgrad.
       - type: grid
@@ -412,12 +457,21 @@ views:
           - type: heading
             heading: Leistung
             icon: mdi:flash
+          # Gemessen nur, solange sie heizt.
           - type: tile
             entity: sensor.thriftherm_heat_pump_cop
-            name: COP
+            name: COP gemessen
           - type: tile
             entity: sensor.thriftherm_break_even_cop
-            name: COP ab dem sie sich lohnt
+            name: Lohnt sich ab COP
+          # Der COP, mit dem Thriftherm gerade rechnet (auch im Stillstand).
+          - type: entities
+            entities:
+              - type: attribute
+                entity: sensor.thriftherm_heat_pump_command
+                attribute: decision_cop
+                name: COP, mit dem Thriftherm rechnet
+                icon: mdi:calculator-variant
           - type: tile
             entity: sensor.thriftherm_heat_pump_thermal_power
             name: Wärmeleistung
@@ -452,25 +506,25 @@ views:
     type: sections
     max_columns: 2
     sections:
-      # Solltemperaturen der Räume über 24 Stunden. Die gemessene Raumtemperatur
-      # kommt von deinem eigenen Sensor: dessen Entität unten ergänzen
-      # (Kommentarzeichen entfernen und Namen anpassen).
+      # Je Raum: gemessene Temperatur, Soll und wann geheizt wurde (vom Thermostat).
       - type: grid
         cards:
           - type: history-graph
-            title: Räume, Soll und Ist (24 h)
+            title: Badezimmer (24 h)
             hours_to_show: 24
             grid_options:
               columns: full
             entities:
-              - entity: sensor.thriftherm_badezimmer_target_temperature
-                name: Badezimmer Soll
-              # - entity: sensor.DEIN_BADEZIMMER_TEMPERATURSENSOR
-              #   name: Badezimmer Ist
-              - entity: sensor.thriftherm_wohnzimmer_target_temperature
-                name: Wohnzimmer Soll
-              # - entity: sensor.DEIN_WOHNZIMMER_TEMPERATURSENSOR
-              #   name: Wohnzimmer Ist
+              - entity: climate.badezimmer
+                name: Badezimmer
+          - type: history-graph
+            title: Wohnzimmer (24 h)
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: climate.wohnzimmer
+                name: Wohnzimmer
           # Heizbedarf der Räume in Prozent.
           - type: history-graph
             title: Heizbedarf (24 h)
