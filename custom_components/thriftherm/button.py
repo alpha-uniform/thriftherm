@@ -1,4 +1,4 @@
-"""Buttons: quick heat-up per room, and back to automatic for everything changed by hand.
+"""Buttons: quick heat-up per room, drying where a room has it, and back to automatic for everything changed by hand.
 
 The boost raises the room to its comfort temperature ahead of schedule. That
 works through Better Thermostat just as well as through the heat pump, so the
@@ -23,6 +23,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, a
         for room in coordinator.builder.rooms
         if room.climate_entity or (coordinator.has_heat_pump and room.served_by_heat_pump)
     ]
+    if coordinator.has_heat_pump:
+        # where the drying mode is switched on: the automatic waits for a shower, the button does not
+        dried = [r for r in coordinator.builder.rooms if r.bathroom_drying and r.served_by_heat_pump]
+        buttons.extend(DryingButton(coordinator, r.key) for r in dried)
     buttons.append(ResumeButton(coordinator))  # an override can be set by action in any installation
     async_add_entities(buttons)
 
@@ -60,3 +64,21 @@ class BoostButton(SettingEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_boost(self._room_key, None)
+
+
+class DryingButton(SettingEntity, ButtonEntity):
+    """Dry the room now: the heat pump's strongest fan and the drying temperature, for the time limit of a drying.
+
+    For what the humidity trigger does not see or sees late: laundry, a wet floor, the end of a
+    long shower. Back to automatic ends it.
+    """
+
+    _attr_translation_key = "room_drying"
+    _attr_icon = "mdi:water-off-outline"
+
+    def __init__(self, coordinator: ThrifthermCoordinator, room_key: str) -> None:
+        super().__init__(coordinator, "drying", room_key)
+        self.suggest_english_entity_id()
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_start_drying(self._room_key)

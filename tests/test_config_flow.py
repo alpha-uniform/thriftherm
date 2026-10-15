@@ -29,31 +29,58 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 BOILER_FIELDS = [
     "boiler_flow_temp", "boiler_return_temp", "boiler_pump_state", "boiler_pump_running", "boiler_state_number",
-    "boiler_hwc_mode", "boiler_flame", "boiler_signal", "boiler_circulation_l_h", "gas_volume", "gas_flow", "boiler_ebus_circuit",
+    "boiler_hwc_mode", "boiler_flame", "boiler_signal", "boiler_circulation_l_h", "gas_volume", "gas_flow",
+    "boiler_nominal_input_kw", "boiler_ebus_circuit",
     "boiler_flow_setpoint_entity", "boiler_heating_enable_entity",
     "boiler_curve_flow_at_minus10", "boiler_curve_flow_at_plus15", "boiler_flow_min", "boiler_flow_max",
-    "boiler_hot_water_standby", "boiler_spread_min_room_share", "boiler_load_model",
+    "boiler_heat_up_rate_k_h", "boiler_hot_water_standby", "boiler_spread_min_room_share", "boiler_load_model",
     "boiler_allow_active_control",
 ]
 OUTDOOR_FIELDS = ["outdoor_temp_sensors", "outdoor_rh_sensor", "weather_entity"]
+# in the order of the form; the sections' fields follow where their heading stands
 PARAMETER_DEFAULTS = {
-    "sensor_max_age_min": 720.0, "window_grace_s": 90.0, "frost_protection_temp": 7.0, "away_temp": 15.0,
+    "override_default_min": 120.0, "boost_duration_min": 45.0, "away_temp": 15.0, "frost_protection_temp": 7.0,
+    "window_grace_s": 90.0, "preheat_margin_min": 20.0, "default_heat_rate_radiator_k_h": 0.8,
+    "room_allow_active_control": False, "room_echo_filter": True,
     "demand_full_delta_k": 2.0, "trend_weight_h": 0.5, "internal_gain_threshold_w": 150.0,
-    "internal_gain_factor_per_w": 0.001, "break_even_margin_on": 0.1, "break_even_margin_off": 0.05,
-    "midea_min_outdoor_temp": -10.0, "midea_setpoint_offset_k": 1.0, "cop_warmup_s": 600.0, "cop_min_power_w": 150.0,
-    "cop_min_delta_t_k": 3.0, "cop_min_samples": 12.0, "cop_settle_max_k_per_min": 0.5, "icing_block_min": 120.0,
-    "defrost_coil_rise_k": 5.0, "defrost_max_cycles_90min": 3.0, "icing_coil_depression_k": 8.0,
-    "drying_target_temp": 22.0, "drying_abs_humidity_rise_g_m3": 2.5, "drying_max_min": 60.0,
-    "away_dewpoint_margin_k": 3.0, "preheat_margin_min": 20.0, "default_heat_rate_radiator_k_h": 0.8,
-    "default_heat_rate_midea_k_h": 1.2, "override_default_min": 120.0, "midea_min_run_min": 20.0,
-    "midea_min_off_min": 10.0, "midea_fan_run_on_min": 15.0, "boost_duration_min": 45.0, "midea_learning_runs": True,
-    "midea_allow_active_control": False, "room_allow_active_control": False, "room_echo_filter": True,
+    "internal_gain_factor_per_w": 0.001, "sensor_max_age_min": 720.0, "away_dewpoint_margin_k": 3.0,
 }
+PARAMETER_SECTIONS = {
+    "windows_preheat": ["window_grace_s", "preheat_margin_min", "default_heat_rate_radiator_k_h"],
+    "release": ["room_allow_active_control", "room_echo_filter"],
+    "expert": [
+        "demand_full_delta_k", "trend_weight_h", "internal_gain_threshold_w", "internal_gain_factor_per_w",
+        "sensor_max_age_min", "away_dewpoint_margin_k",
+    ],
+}
+TUNING_DEFAULTS = {
+    "midea_allow_active_control": False, "midea_setpoint_offset_k": 1.0, "midea_min_outdoor_temp": -10.0,
+    "default_heat_rate_midea_k_h": 1.2,
+    "break_even_margin_on": 0.1, "break_even_margin_off": 0.05, "midea_min_run_min": 20.0, "midea_min_off_min": 10.0,
+    "midea_fan_run_on_min": 15.0, "midea_learning_runs": True,
+    "drying_target_temp": 22.0, "drying_abs_humidity_rise_g_m3": 2.5, "drying_max_min": 60.0,
+    "cop_warmup_s": 600.0, "cop_min_power_w": 150.0, "cop_min_delta_t_k": 3.0, "cop_min_samples": 12.0,
+    "cop_settle_max_k_per_min": 0.5,
+    "icing_block_min": 120.0, "defrost_coil_rise_k": 5.0, "defrost_max_cycles_90min": 3.0, "icing_coil_depression_k": 8.0,
+}
+TUNING_SECTIONS = ["switching", "drying", "cop", "icing"]
 ROOM_CHOICES = [{"value": "badezimmer", "label": "Badezimmer"}, {"value": "wohnzimmer", "label": "Wohnzimmer"}]
 
 
 def _fields(result) -> list[str]:
-    return [str(marker) for marker in result["data_schema"].schema]
+    """The fields of a form in its order; those of a section stand where its heading does."""
+    return [str(marker) for marker in config_schema._markers(result["data_schema"])]
+
+
+def _headings(result) -> dict[str, bool]:
+    """The sections of a form, and whether each one starts folded."""
+    from homeassistant.data_entry_flow import section
+
+    return {
+        str(marker): value.options["collapsed"]
+        for marker, value in result["data_schema"].schema.items()
+        if isinstance(value, section)
+    }
 
 
 def _selector_options(result, field: str) -> list:
@@ -81,6 +108,7 @@ def test_step_keys_are_exactly_the_fields_they_clear():
     )
     assert config_schema.OUTDOOR_KEYS == tuple(OUTDOOR_FIELDS)
     assert config_schema.PARAMETER_KEYS == tuple(PARAMETER_DEFAULTS)
+    assert tuple(TUNING_DEFAULTS) == config_schema.HEAT_PUMP_TUNING_KEYS
 
 
 def test_every_key_the_code_reads_is_kept():
@@ -115,7 +143,9 @@ async def test_options_system_step_asks_for_prices_and_boiler_before_saving(hass
     """Audit 2026-09-28: a switch saved at once, so district heating never got its prices."""
     entry = await _setup(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["menu_options"] == ["system", "prices", "boiler", "midea", "outdoor", "parameters", "rooms", "reset_learning"]
+    assert result["menu_options"] == [
+        "system", "prices", "boiler", "midea", "midea_tuning", "outdoor", "parameters", "rooms", "reset_learning",
+    ]
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "system"})
     assert result["step_id"] == "system" and _fields(result) == ["system_type"]
     assert result["errors"] is None
@@ -190,10 +220,12 @@ async def test_options_boiler_step_clears_what_was_left_empty(hass: HomeAssistan
         "boiler_flow_temp": "sensor.flow2", "boiler_return_temp": None, "boiler_pump_state": None,
         "boiler_pump_running": None, "boiler_state_number": None, "boiler_hwc_mode": None, "boiler_flame": None,
         "boiler_signal": None,
-        "boiler_circulation_l_h": 860.0, "gas_volume": None, "gas_flow": None, "boiler_ebus_circuit": "bai",
+        "boiler_circulation_l_h": 860.0, "gas_volume": None, "gas_flow": None, "boiler_nominal_input_kw": None,
+        "boiler_ebus_circuit": "bai",
         "boiler_flow_setpoint_entity": None, "boiler_heating_enable_entity": None,
         "boiler_curve_flow_at_minus10": 55.0, "boiler_curve_flow_at_plus15": 30.0, "boiler_flow_min": 30.0,
-        "boiler_flow_max": 60.0, "boiler_hot_water_standby": True, "boiler_spread_min_room_share": 0.5,
+        "boiler_flow_max": 60.0, "boiler_heat_up_rate_k_h": 0.0, "boiler_hot_water_standby": True,
+        "boiler_spread_min_room_share": 0.5,
         "boiler_load_model": True, "boiler_allow_active_control": False,
     }
     assert entry.options["midea_climate"] == "climate.midea"  # other groups untouched
@@ -268,7 +300,7 @@ async def test_config_flow_without_ebusd_asks_for_the_entities(hass: HomeAssista
     assert _prefilled(result) == {
         "boiler_circulation_l_h": 860.0, "boiler_ebus_circuit": "bai", "boiler_curve_flow_at_minus10": 55.0,
         "boiler_curve_flow_at_plus15": 30.0, "boiler_flow_min": 30.0, "boiler_flow_max": 60.0,
-        "boiler_hot_water_standby": True, "boiler_spread_min_room_share": 0.5,
+        "boiler_heat_up_rate_k_h": 0.0, "boiler_hot_water_standby": True, "boiler_spread_min_room_share": 0.5,
         "boiler_load_model": True, "boiler_allow_active_control": False,
     }
     data = await _confirm_boiler_and_finish(hass, result, _prefilled(result))
@@ -353,14 +385,68 @@ async def test_options_outdoor_step_clears_what_was_left_empty(hass: HomeAssista
 
 
 async def test_options_parameters_step_fills_defaults(hass: HomeAssistant) -> None:
+    """The values of everyday use on top, the rest under headings; stored flat as before."""
     entry = await _setup(hass)
     result = await _open(hass, entry, "parameters")
     assert result["step_id"] == "parameters" and _fields(result) == list(PARAMETER_DEFAULTS)
+    assert _headings(result) == {"windows_preheat": False, "release": False, "expert": True}
     assert result["errors"] is None
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {"frost_protection_temp": 8})
+    answer = {"frost_protection_temp": 8, "windows_preheat": {}, "release": {}, "expert": {"demand_full_delta_k": 1.5}}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], answer)
     assert result["type"] == "create_entry"
     await hass.async_block_till_done()
-    assert {k: entry.options[k] for k in PARAMETER_DEFAULTS} == {**PARAMETER_DEFAULTS, "frost_protection_temp": 8.0}
+    changed = {"frost_protection_temp": 8.0, "demand_full_delta_k": 1.5}
+    assert {k: entry.options[k] for k in PARAMETER_DEFAULTS} == {**PARAMETER_DEFAULTS, **changed}
+    assert not set(PARAMETER_SECTIONS) & set(entry.options)  # a heading is no setting
+    assert not set(TUNING_DEFAULTS) & set(entry.options)  # the heat pump's values are not this form's to clear
+
+
+async def test_options_heat_pump_tuning_has_its_own_form(hass: HomeAssistant) -> None:
+    """22 of the 37 control parameters concerned the heat pump only, spread over three places of one list."""
+    entry = await _setup(hass, options={**_entry_data(), "midea_min_run_min": 30.0, "cop_min_samples": 20.0})
+    result = await _open(hass, entry, "midea_tuning")
+    assert result["step_id"] == "midea_tuning" and _fields(result) == list(TUNING_DEFAULTS)
+    assert _headings(result) == {"switching": False, "drying": True, "cop": True, "icing": True}
+    shown = {str(m): m.default() for m in config_schema._markers(result["data_schema"])}
+    assert shown == {**TUNING_DEFAULTS, "midea_min_run_min": 30.0, "cop_min_samples": 20.0}  # what is stored, also in a section
+    answer = {"midea_allow_active_control": True, "switching": {"midea_min_off_min": 12}, "drying": {}, "cop": {}, "icing": {}}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], answer)
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+    changed = {"midea_allow_active_control": True, "midea_min_run_min": 30.0, "midea_min_off_min": 12.0, "cop_min_samples": 20.0}
+    assert {k: entry.options[k] for k in TUNING_DEFAULTS} == {**TUNING_DEFAULTS, **changed}
+    assert not set(TUNING_SECTIONS) & set(entry.options)
+
+
+async def test_options_offer_the_heat_pump_tuning_only_with_a_heat_pump(hass: HomeAssistant) -> None:
+    entry = await _setup(hass, options={**_entry_data(), "midea_climate": None})
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert "midea" in result["menu_options"] and "midea_tuning" not in result["menu_options"]
+
+
+def test_every_field_and_heading_of_the_two_forms_has_its_wording():
+    """A field inside a section takes its label from the section; one left in the step's own list shows its key."""
+    import json
+    from pathlib import Path
+
+    from homeassistant.data_entry_flow import section
+
+    component = Path(config_schema.__file__).parent
+    for name in ("strings.json", "translations/en.json", "translations/de.json"):
+        steps = json.loads((component / name).read_text(encoding="utf-8"))["options"]["step"]
+        forms = {"parameters": config_schema.schema_parameters, "midea_tuning": config_schema.schema_heat_pump_tuning}
+        for step, schema_fn in forms.items():
+            texts = steps[step]
+            assert texts["title"] and texts["description"] and step in steps["init"]["menu_options"]
+            top, sections = [], {}
+            for marker, value in schema_fn({}).schema.items():
+                if isinstance(value, section):
+                    sections[str(marker)] = [str(m) for m in value.schema.schema]
+                else:
+                    top.append(str(marker))
+            assert list(texts["data"]) == top, (name, step)
+            assert {k: list(v["data"]) for k, v in texts["sections"].items()} == sections, (name, step)
+            assert all(v["name"] for v in texts["sections"].values())
 
 
 async def test_options_midea_step_validates_and_offers_the_rooms(hass: HomeAssistant) -> None:
@@ -483,7 +569,7 @@ async def test_a_temperature_changed_in_the_room_form_wins_over_the_dashboard(ha
     await entry.runtime_data.async_set_room_temperature("badezimmer", "setback", 16.0)
     await entry.runtime_data.async_set_room_temperature("wohnzimmer", "comfort", 20.0)
 
-    await _edit_bathroom(hass, entry, priority=2)  # temperatures untouched: the dashboard value stays
+    await _edit_bathroom(hass, entry, priority=2, setback_temp=16.0)  # temperatures as shown: the dashboard value stays
     assert entry.runtime_data.room_temperature("badezimmer", "setback") == 16.0
 
     await _edit_bathroom(hass, entry, priority=2, comfort_temp=22.0)
@@ -492,6 +578,26 @@ async def test_a_temperature_changed_in_the_room_form_wins_over_the_dashboard(ha
     assert coordinator.room_temperature("badezimmer", "setback") == 17.0  # the pair the form checked
     assert coordinator.room_temperature("wohnzimmer", "comfort") == 20.0  # other rooms keep theirs
     assert hass.states.get("number.thriftherm_badezimmer_setback_temperature").state == "17.0"
+
+
+async def test_the_room_form_shows_and_keeps_the_temperatures_in_force(hass: HomeAssistant) -> None:
+    """Review 2026-10-13: the form showed the comfort of the options after the dashboard had changed it, and saved
+    with only the setback changed, it put that old comfort back."""
+    entry = await _setup(hass)
+    await entry.runtime_data.async_set_room_temperature("badezimmer", "comfort", 22.5)
+    result = await _open(hass, entry, "rooms")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "badezimmer", "action": "edit"})
+    shown = _prefilled(result)
+    assert (shown["comfort_temp"], shown["setback_temp"]) == (22.5, 17.0)
+
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {**shown, "setback_temp": 16.0})
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data  # reloaded
+    assert coordinator.room_temperature("badezimmer", "comfort") == 22.5
+    assert coordinator.room_temperature("badezimmer", "setback") == 16.0
+    room = next(r for r in entry.options["rooms"] if r["key"] == "badezimmer")
+    assert (room["comfort_temp"], room["setback_temp"]) == (22.5, 16.0)  # the options now say what applies
 
 
 async def test_setup_stops_on_a_fahrenheit_installation(hass: HomeAssistant) -> None:
@@ -561,3 +667,75 @@ async def test_a_boiler_through_entities_needs_the_setpoint_and_the_switch(hass:
     assert result["type"] == "create_entry"
     await hass.async_block_till_done()
     assert {k: entry.options[k] for k in both} == both
+
+
+# ------------------------------------------------------------------ review 2026-10-13
+@pytest.mark.parametrize("curve", ["0:0,900:600", "600:450", "600:450,600:500", "400:0,900:600", "-100:50,900:600"])
+async def test_an_airflow_curve_the_engine_cannot_use_is_refused(hass: HomeAssistant, curve: str) -> None:
+    """A curve starting at 0 rpm was accepted and stopped every cycle with a division by zero."""
+    entry = await _setup(hass)
+    result = await _open(hass, entry, "midea")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"midea_airflow_curve": curve})
+    assert result["errors"] == {"midea_airflow_curve": "invalid_airflow_curve"}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"midea_airflow_curve": "400:250,900:600"})
+    assert result["type"] == "create_entry"
+
+
+async def test_a_field_emptied_before_a_refused_answer_stays_empty(hass: HomeAssistant) -> None:
+    entry = await _setup(hass)
+    assert entry.runtime_data.config["midea_power"] == "sensor.midea_power"
+    result = await _open(hass, entry, "midea")
+    assert _prefilled(result)["midea_power"] == "sensor.midea_power"
+    # the power sensor emptied (so missing from the answer) and the curve mistyped
+    answer = {"midea_climate": "climate.midea", "midea_airflow_curve": "bad"}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], answer)
+    assert result["errors"] == {"midea_airflow_curve": "invalid_airflow_curve"}
+    shown = _prefilled(result)
+    assert "midea_power" not in shown and shown["midea_airflow_curve"] == "bad"  # the answer, not the stored value
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"midea_climate": "climate.midea"})
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+    assert entry.options["midea_power"] is None
+
+
+async def test_a_second_setup_is_refused_by_home_assistant_itself(hass: HomeAssistant) -> None:
+    """The manifest says single_config_entry; no unique id is needed for that."""
+    await _setup(hass)
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    assert result["type"] == "abort" and result["reason"] == "single_instance_allowed"
+
+
+async def test_the_numbers_take_what_the_room_form_takes(hass: HomeAssistant) -> None:
+    await _setup(hass)
+    comfort = hass.states.get("number.thriftherm_badezimmer_comfort_temperature")
+    setback = hass.states.get("number.thriftherm_badezimmer_setback_temperature")
+    assert (comfort.attributes["min"], comfort.attributes["max"]) == (10.0, 28.0)
+    assert (setback.attributes["min"], setback.attributes["max"]) == (5.0, 25.0)
+    call = {"entity_id": "number.thriftherm_badezimmer_setback_temperature", "value": 8}
+    await hass.services.async_call("number", "set_value", call, blocking=True)  # was refused: below 10
+    assert hass.states.get("number.thriftherm_badezimmer_setback_temperature").state == "8.0"
+
+
+async def test_a_found_value_the_user_emptied_is_not_offered_again(hass: HomeAssistant) -> None:
+    """The search filled every empty field on every visit: a gas meter taken out came back with the next save."""
+    entry = await _setup(hass)
+    _boiler(hass)
+    _gas_volume(hass, "sensor.gas_meter_volume")
+    result = await _open(hass, entry, "boiler")
+    shown = _prefilled(result)
+    assert shown["gas_volume"] == "sensor.gas_meter_volume"  # found and offered
+    answer = {key: value for key, value in shown.items() if key != "gas_volume"}  # the user empties it
+    result = await hass.config_entries.options.async_configure(result["flow_id"], answer)
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+    assert entry.options["gas_volume"] is None and entry.options["boiler_fill_declined"] == ["gas_volume"]
+
+    result = await _open(hass, entry, "boiler")
+    shown = _prefilled(result)
+    assert "gas_volume" not in shown  # left empty, as the user left it
+    assert shown["boiler_pump_running"] == entry.options["boiler_pump_running"]  # the rest is as stored
+    by_hand = {**shown, "gas_volume": "sensor.gas_meter_volume"}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], by_hand)
+    await hass.async_block_till_done()
+    assert entry.options["gas_volume"] == "sensor.gas_meter_volume" and entry.options["boiler_fill_declined"] == []
+

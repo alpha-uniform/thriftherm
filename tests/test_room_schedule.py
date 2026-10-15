@@ -69,3 +69,14 @@ def test_schedule_entity_is_watched_for_instant_updates(hass=None):
         {"key": "bad", "name": "Bad", "temperature_sensor": "sensor.t", "schedule_entity": "schedule.heizplan_bad"}
     ])
     assert rooms[0].schedule_entity == "schedule.heizplan_bad"
+
+
+def test_preheating_goes_to_the_temperature_of_the_coming_block():
+    cfg = room_config("wohnzimmer", comfort=21.0, setback=17.0)
+    soon = MON_NIGHT + timedelta(hours=1)
+    waiting = _with(room_state(cfg, temp=18.0), schedule=ScheduleState(active=False, next_start=soon))
+    res = room_engine.evaluate_room(_with(waiting, schedule_next_temp=19.5), MON_NIGHT, "auto", PARAMS)
+    assert res.target == 19.5 and res.target_reason == "schedule_preheat"
+    # a block below the setback is nothing to preheat for
+    low = room_engine.evaluate_room(_with(waiting, schedule_next_temp=15.0), MON_NIGHT + timedelta(minutes=50), "auto", PARAMS)
+    assert low.target == 17.0

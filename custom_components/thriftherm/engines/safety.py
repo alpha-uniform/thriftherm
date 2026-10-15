@@ -1,6 +1,6 @@
 """Safety engine: validity of inputs, frost protection, fallback states.
 
-Rules (see architecture §16):
+Rules:
 - A single failing sensor never disables heating permanently.
 - If every room temperature is missing, the system is in `fallback`.
 - Any missing or stale critical input degrades the state and is reported.
@@ -52,8 +52,8 @@ def evaluate(snapshot: HeatingSnapshot, rooms: dict[str, RoomResult], previous_f
         issues.append(f"boiler_flow_temp_invalid:{boiler.flow_temp.reason}")
 
     heat_pump = snapshot.heat_pump
-    if heat_pump.configured and heat_pump.plug_power.entity_id and not heat_pump.available:
-        issues.append("midea_unavailable")
+    if heat_pump.configured and not heat_pump.available:
+        issues.append("midea_unavailable")  # with or without a plug that measures its power
     if heat_pump.configured and heat_pump.error_code not in (None, 0):
         issues.append(f"midea_error_code:{heat_pump.error_code}")
     if heat_pump.configured and heat_pump.plug_power.entity_id and not heat_pump.plug_power.valid:

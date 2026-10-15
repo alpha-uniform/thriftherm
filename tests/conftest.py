@@ -21,6 +21,14 @@ from custom_components.thriftherm.models import (
 pytest_plugins = "pytest_homeassistant_custom_component"
 
 
+@pytest.fixture(autouse=True)
+def units_show_at_once(monkeypatch):
+    """The mocked climate services change no state: no test waits for a unit to show a call."""
+    from custom_components.thriftherm import executors
+
+    monkeypatch.setattr(executors, "SHOWN_WAIT_S", 0.0)
+
+
 def reading(value: float | None, valid: bool = True, entity_id: str = "sensor.x", age_s: float = 10.0, reason=None) -> SensorReading:
     if value is None:
         return SensorReading(entity_id, None, age_s, False, reason or "unavailable")
@@ -86,7 +94,6 @@ def heat_pump_state(
     return HeatPumpState(
         available=available,
         hvac_mode=hvac_mode if available else None,
-        hvac_action=None,
         target_temp=22.0,
         indoor_temp=21.0,
         outdoor_temp=5.0,

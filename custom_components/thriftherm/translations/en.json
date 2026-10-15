@@ -39,20 +39,24 @@
           "boiler_circulation_l_h": "Nominal circulation flow of the pump",
           "gas_volume": "Gas meter volume (m³, total)",
           "gas_flow": "Gas meter instantaneous flow (m³/h)",
+          "boiler_nominal_input_kw": "Without a gas meter: nominal heat input of the boiler (type plate, kW)",
           "boiler_ebus_circuit": "ebusd circuit of the boiler (usually bai)",
           "boiler_curve_flow_at_minus10": "Heating curve: flow temperature at -10 °C outdoor",
           "boiler_curve_flow_at_plus15": "Heating curve: flow temperature at +15 °C outdoor",
           "boiler_flow_min": "Minimum flow temperature",
           "boiler_flow_max": "Maximum flow temperature",
+          "boiler_heat_up_rate_k_h": "Heat-up speed (°C per hour, 0 = off)",
           "boiler_hot_water_standby": "Keep hot water ready (keep-warm of a combi boiler, cylinder loading)",
           "boiler_spread_min_room_share": "Share of rooms that must call before the spread judges the curve",
-          "boiler_load_model": "A heating curve of its own for one room, a few rooms and the majority calling",
+          "boiler_load_model": "A heating curve of its own per room, for one room, a few rooms and the majority calling",
           "boiler_allow_active_control": "Release active boiler control (otherwise plan only)"
         },
         "data_description": {
+          "boiler_nominal_input_kw": "Only for the two sensors “Gas for heating” and “Gas for hot water”, and only read when no gas meter is set above. A Vaillant boiler adds up its burner output itself (ebusd PrEnergySumHc1-3 and PrEnergySumHwc1-3); with the nominal heat input from the type plate (Q or Qn, the larger value of a range, e.g. 22.2) that becomes kWh as on the gas bill. Leave empty if you have a gas meter or another boiler.",
           "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation.",
-          "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms.",
-          "boiler_load_model": "The flow a flat needs depends on how many radiators take heat. On: Thriftherm keeps a correction of the heating curve for each of three cases (one room calls, a few, the majority), and a learning step only moves the case it was taken in, so what the bathroom alone taught does not shift the flow for the whole flat. A case that has no value yet starts from the nearest one that has. A value that has served for some hours counts as found and only moves again on evidence that lasts. Off: one common correction for all cases, as before; it keeps what it had learned."
+          "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms. The heating curve per load class counts more rooms than this share as the majority (0.5: three of four rooms).",
+          "boiler_load_model": "The flow a flat needs depends on how many radiators take heat, and on each radiator: a small one in a cold room needs a hotter flow than a large one. On: Thriftherm keeps a correction of the heating curve for each room in each of three cases (one room calls, a few, the majority). Of the rooms that want heat, the one that needs the most sets the flow; the others' valves take less. A room that does not get there raises only its own value, so what the bathroom alone taught does not shift the flow for the whole flat. A room without a value starts from its own in the nearest case. A value that has served for some hours counts as found and only moves again on evidence that lasts. Off: one common correction for all rooms and cases, as before; it keeps what it had learned.",
+          "boiler_heat_up_rate_k_h": "How fast a room is to warm up while the boiler heats it, for every heat-up of a room that is 1 °C or more below its target (after a raise, the setback or an open window). Slower than this, Thriftherm raises the flow for this room every 20 minutes and remembers per room how much it took, as the start for its next heat-up; much faster, it lowers it again. More speed burns more gas. Only acts with active boiler control. 0 leaves the flow as before: heating curve, learned correction and up to 8 °C extra while a room is far below target."
         }
       },
       "midea": {
@@ -66,7 +70,7 @@
           "midea_outlet_temp": "Outlet air temperature",
           "midea_airflow_curve": "Airflow curve (rpm:m³/h, ...)",
           "midea_duct_factor": "Duct factor (real airflow / free-blowing, 1.0 without hoses)",
-          "midea_follow_rooms": "Setpoint follows the served rooms' target (plus the setpoint offset from the parameters); the unit regulates by itself",
+          "midea_follow_rooms": "Setpoint follows the served rooms' target (plus the setpoint offset from “Heat pump: fine tuning”); the unit regulates by itself",
           "midea_room": "Room the heat pump stands in"
         }
       },
@@ -96,7 +100,8 @@
           "schedule_weekday": "Comfort windows Mon–Fri",
           "schedule_weekend": "Comfort windows Sat–Sun",
           "add_another": "Add another room",
-          "bathroom_drying_mode": "Bathroom drying with the heat pump (keep heating while airing after showers)",
+          "bathroom_drying_mode": "Bathroom drying with the heat pump",
+          "bathroom_drying_automatic": "Start the drying by itself after a shower (off: only with the button “Dry now”)",
           "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows below)"
         }
       }
@@ -105,7 +110,7 @@
       "invalid_schedule": "Invalid schedule, use HH:MM-HH:MM,HH:MM-HH:MM",
       "setback_above_comfort": "Setback temperature must not exceed comfort temperature",
       "duplicate_room": "A room with this name already exists",
-      "invalid_airflow_curve": "Invalid airflow curve, use rpm:m3h,rpm:m3h",
+      "invalid_airflow_curve": "Invalid airflow curve. Give at least two points as rpm:m3h,rpm:m3h, every speed and flow above 0 and no speed twice",
       "curve_inverted": "The flow at -10 °C must not be lower than at +15 °C",
       "boiler_entities_incomplete": "Choose both, the flow setpoint and the heating switch, or neither",
       "flow_min_above_max": "The minimum flow temperature must not be above the maximum",
@@ -113,7 +118,6 @@
       "drying_needs_humidity": "Bathroom drying needs the room humidity sensor"
     },
     "abort": {
-      "single_instance_allowed": "Only one Thriftherm can be configured",
       "celsius_only": "Thriftherm works in °C only. Please switch Home Assistant to the metric unit system first."
     }
   },
@@ -126,6 +130,7 @@
           "prices": "Prices",
           "boiler": "Gas boiler and gas meter",
           "midea": "Heat pump (optional add-on)",
+          "midea_tuning": "Heat pump: fine tuning",
           "outdoor": "Outdoor conditions",
           "parameters": "Control parameters",
           "rooms": "Rooms",
@@ -170,20 +175,24 @@
           "boiler_circulation_l_h": "Nominal circulation flow of the pump",
           "gas_volume": "Gas meter volume (m³, total)",
           "gas_flow": "Gas meter instantaneous flow (m³/h)",
+          "boiler_nominal_input_kw": "Without a gas meter: nominal heat input of the boiler (type plate, kW)",
           "boiler_ebus_circuit": "ebusd circuit of the boiler (usually bai)",
           "boiler_curve_flow_at_minus10": "Heating curve: flow temperature at -10 °C outdoor",
           "boiler_curve_flow_at_plus15": "Heating curve: flow temperature at +15 °C outdoor",
           "boiler_flow_min": "Minimum flow temperature",
           "boiler_flow_max": "Maximum flow temperature",
+          "boiler_heat_up_rate_k_h": "Heat-up speed (°C per hour, 0 = off)",
           "boiler_hot_water_standby": "Keep hot water ready (keep-warm of a combi boiler, cylinder loading)",
           "boiler_spread_min_room_share": "Share of rooms that must call before the spread judges the curve",
-          "boiler_load_model": "A heating curve of its own for one room, a few rooms and the majority calling",
+          "boiler_load_model": "A heating curve of its own per room, for one room, a few rooms and the majority calling",
           "boiler_allow_active_control": "Release active boiler control (otherwise plan only)"
         },
         "data_description": {
+          "boiler_nominal_input_kw": "Only for the two sensors “Gas for heating” and “Gas for hot water”, and only read when no gas meter is set above. A Vaillant boiler adds up its burner output itself (ebusd PrEnergySumHc1-3 and PrEnergySumHwc1-3); with the nominal heat input from the type plate (Q or Qn, the larger value of a range, e.g. 22.2) that becomes kWh as on the gas bill. Leave empty if you have a gas meter or another boiler.",
           "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation.",
-          "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms.",
-          "boiler_load_model": "The flow a flat needs depends on how many radiators take heat. On: Thriftherm keeps a correction of the heating curve for each of three cases (one room calls, a few, the majority), and a learning step only moves the case it was taken in, so what the bathroom alone taught does not shift the flow for the whole flat. A case that has no value yet starts from the nearest one that has. A value that has served for some hours counts as found and only moves again on evidence that lasts. Off: one common correction for all cases, as before; it keeps what it had learned."
+          "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms. The heating curve per load class counts more rooms than this share as the majority (0.5: three of four rooms).",
+          "boiler_load_model": "The flow a flat needs depends on how many radiators take heat, and on each radiator: a small one in a cold room needs a hotter flow than a large one. On: Thriftherm keeps a correction of the heating curve for each room in each of three cases (one room calls, a few, the majority). Of the rooms that want heat, the one that needs the most sets the flow; the others' valves take less. A room that does not get there raises only its own value, so what the bathroom alone taught does not shift the flow for the whole flat. A room without a value starts from its own in the nearest case. A value that has served for some hours counts as found and only moves again on evidence that lasts. Off: one common correction for all rooms and cases, as before; it keeps what it had learned.",
+          "boiler_heat_up_rate_k_h": "How fast a room is to warm up while the boiler heats it, for every heat-up of a room that is 1 °C or more below its target (after a raise, the setback or an open window). Slower than this, Thriftherm raises the flow for this room every 20 minutes and remembers per room how much it took, as the start for its next heat-up; much faster, it lowers it again. More speed burns more gas. Only acts with active boiler control. 0 leaves the flow as before: heating curve, learned correction and up to 8 °C extra while a room is far below target."
         }
       },
       "midea": {
@@ -196,8 +205,58 @@
           "midea_outlet_temp": "Outlet air temperature",
           "midea_airflow_curve": "Airflow curve (rpm:m³/h, ...)",
           "midea_duct_factor": "Duct factor (real airflow / free-blowing, 1.0 without hoses)",
-          "midea_follow_rooms": "Setpoint follows the served rooms' target (plus the setpoint offset from the parameters); the unit regulates by itself",
+          "midea_follow_rooms": "Setpoint follows the served rooms' target (plus the setpoint offset from “Heat pump: fine tuning”); the unit regulates by itself",
           "midea_room": "Room the heat pump stands in"
+        }
+      },
+      "midea_tuning": {
+        "title": "Heat pump: fine tuning",
+        "description": "How the heat pump is run. The entities and the airflow are set under *Heat pump*.",
+        "data": {
+          "midea_allow_active_control": "Release active control (otherwise plan only)",
+          "midea_setpoint_offset_k": "Setpoint above the rooms' target, or above intake air as a learned start value",
+          "midea_min_outdoor_temp": "Minimum outdoor temperature for heating (data sheet)",
+          "default_heat_rate_midea_k_h": "Default heat-up rate heat pump rooms"
+        },
+        "sections": {
+          "switching": {
+            "name": "When it runs",
+            "data": {
+              "break_even_margin_on": "Margin above break-even to prefer the heat pump",
+              "break_even_margin_off": "Margin below break-even to return to boiler",
+              "midea_min_run_min": "Minimum run time",
+              "midea_min_off_min": "Minimum pause",
+              "midea_fan_run_on_min": "Fan only before switching off (0 = off at once)",
+              "midea_learning_runs": "Allow learning runs (measure COP at new outdoor temperatures)"
+            }
+          },
+          "drying": {
+            "name": "Bathroom drying",
+            "data": {
+              "drying_target_temp": "Target temperature",
+              "drying_abs_humidity_rise_g_m3": "Trigger: rise in absolute humidity",
+              "drying_max_min": "Longest duration"
+            }
+          },
+          "cop": {
+            "name": "COP measurement",
+            "data": {
+              "cop_warmup_s": "Warm-up time after compressor start",
+              "cop_min_power_w": "Minimum electrical power",
+              "cop_min_delta_t_k": "Minimum air temperature rise",
+              "cop_min_samples": "Minimum valid samples",
+              "cop_settle_max_k_per_min": "Max. outlet temperature slope (settled)"
+            }
+          },
+          "icing": {
+            "name": "Defrost and icing",
+            "data": {
+              "icing_block_min": "Lockout after icing / inefficiency",
+              "defrost_coil_rise_k": "Defrost: outdoor coil rise within 2 min",
+              "defrost_max_cycles_90min": "Defrost: max. cycles per 90 min",
+              "icing_coil_depression_k": "Icing: outdoor coil below outdoor air by"
+            }
+          }
         }
       },
       "outdoor": {
@@ -210,47 +269,43 @@
       },
       "parameters": {
         "title": "Control parameters",
+        "description": "The values of everyday use come first. The sections below them rarely need a change.",
         "data": {
-          "sensor_max_age_min": "Max. sensor age",
-          "window_grace_s": "Window open grace period",
-          "frost_protection_temp": "Frost protection temperature",
-          "away_temp": "Away temperature",
-          "demand_full_delta_k": "Deviation for 100 % demand",
-          "trend_weight_h": "Trend look-ahead",
-          "internal_gain_threshold_w": "Internal gain threshold",
-          "internal_gain_factor_per_w": "Internal gain demand reduction per W",
-          "break_even_margin_on": "Margin above break-even to prefer the heat pump",
-          "break_even_margin_off": "Margin below break-even to return to boiler",
-          "midea_min_outdoor_temp": "Minimum outdoor temperature for heat pump heating (data sheet)",
-          "midea_setpoint_offset_k": "Heat pump setpoint above the rooms' target, or above intake air as a learned start value",
-          "cop_warmup_s": "COP warm-up time after compressor start",
-          "cop_min_power_w": "COP minimum electrical power",
-          "cop_min_delta_t_k": "COP minimum air temperature rise",
-          "cop_min_samples": "COP minimum valid samples",
-          "cop_settle_max_k_per_min": "COP: max. outlet temperature slope (settled)",
-          "icing_block_min": "Heat pump lockout after icing / inefficiency",
-          "defrost_coil_rise_k": "Defrost: outdoor coil rise within 2 min",
-          "defrost_max_cycles_90min": "Defrost: max. cycles per 90 min",
-          "icing_coil_depression_k": "Icing: outdoor coil below outdoor air by",
-          "drying_target_temp": "Bathroom drying (heat pump only): target temperature",
-          "drying_abs_humidity_rise_g_m3": "Bathroom drying (heat pump only): trigger, rise in absolute humidity",
-          "drying_max_min": "Bathroom drying (heat pump only): max. duration",
-          "away_dewpoint_margin_k": "Away: dew-point margin for humidity guard",
-          "preheat_margin_min": "Return preheat safety margin",
-          "default_heat_rate_radiator_k_h": "Default heat-up rate radiator rooms",
-          "default_heat_rate_midea_k_h": "Default heat-up rate heat pump rooms",
           "override_default_min": "How long a change by hand is respected (thermostat and heat pump)",
-          "midea_min_run_min": "Heat pump minimum run time",
-          "midea_min_off_min": "Heat pump minimum pause",
-          "midea_fan_run_on_min": "Heat pump: fan only before switching off (0 = off at once)",
           "boost_duration_min": "Quick heat-up duration",
-          "midea_learning_runs": "Allow learning runs (measure COP at new outdoor temperatures)",
-          "midea_allow_active_control": "Release active heat pump control (otherwise plan only)",
-          "room_allow_active_control": "Release active room control (write setpoints to the thermostats)",
-          "room_echo_filter": "Echo filter for Better Thermostat (advanced)"
+          "away_temp": "Away temperature",
+          "frost_protection_temp": "Frost protection temperature"
         },
-        "data_description": {
-          "room_echo_filter": "Better Thermostat rewrites the valve setpoint every few seconds. Over Zigbee a reply can arrive after the next write, and Better Thermostat then takes the old value for a turn of the knob. Thriftherm used to turn that into a two-hour override. With the filter on, a jump back to a value the valve already showed and left within the last minute (e.g. 16 → 16.5 → 16) is ignored and the plan's setpoint is sent again. A real turn of the knob on the thermostat or a change in the app brings a new value and is still taken over. Only applies to rooms whose thermostat is a Better Thermostat. Recommended: on."
+        "sections": {
+          "windows_preheat": {
+            "name": "Windows and preheating",
+            "data": {
+              "window_grace_s": "Window open grace period",
+              "preheat_margin_min": "Return preheat safety margin",
+              "default_heat_rate_radiator_k_h": "Default heat-up rate radiator rooms"
+            }
+          },
+          "release": {
+            "name": "Releases",
+            "data": {
+              "room_allow_active_control": "Release active room control (write setpoints to the thermostats)",
+              "room_echo_filter": "Echo filter for Better Thermostat"
+            },
+            "data_description": {
+              "room_echo_filter": "Better Thermostat rewrites the valve setpoint every few seconds. Over Zigbee a reply can arrive after the next write, and Better Thermostat then takes the old value for a turn of the knob. Thriftherm used to turn that into a two-hour override. With the filter on, a jump back to a value the valve already showed and left within the last minute (e.g. 16 → 16.5 → 16) is ignored and the plan's setpoint is sent again. A real turn of the knob on the thermostat or a change in the app brings a new value and is still taken over. Only applies to rooms whose thermostat is a Better Thermostat. Recommended: on."
+            }
+          },
+          "expert": {
+            "name": "Advanced",
+            "data": {
+              "demand_full_delta_k": "Deviation for 100 % demand",
+              "trend_weight_h": "Trend look-ahead",
+              "internal_gain_threshold_w": "Internal gain threshold",
+              "internal_gain_factor_per_w": "Internal gain demand reduction per W",
+              "sensor_max_age_min": "Max. sensor age",
+              "away_dewpoint_margin_k": "Away: dew-point margin for humidity guard"
+            }
+          }
         }
       },
       "rooms": {
@@ -276,7 +331,8 @@
           "setback_temp": "Setback temperature",
           "schedule_weekday": "Comfort windows Mon–Fri",
           "schedule_weekend": "Comfort windows Sat–Sun",
-          "bathroom_drying_mode": "Bathroom drying with the heat pump (keep heating while airing after showers)",
+          "bathroom_drying_mode": "Bathroom drying with the heat pump",
+          "bathroom_drying_automatic": "Start the drying by itself after a shower (off: only with the button “Dry now”)",
           "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows below)"
         }
       },
@@ -296,7 +352,7 @@
       "invalid_schedule": "Invalid schedule, use HH:MM-HH:MM,HH:MM-HH:MM",
       "setback_above_comfort": "Setback temperature must not exceed comfort temperature",
       "duplicate_room": "A room with this name already exists",
-      "invalid_airflow_curve": "Invalid airflow curve, use rpm:m3h,rpm:m3h",
+      "invalid_airflow_curve": "Invalid airflow curve. Give at least two points as rpm:m3h,rpm:m3h, every speed and flow above 0 and no speed twice",
       "no_scope": "Choose at least one area.",
       "curve_inverted": "The flow at -10 °C must not be lower than at +15 °C",
       "boiler_entities_incomplete": "Choose both, the flow setpoint and the heating switch, or neither",
@@ -326,8 +382,8 @@
     "learning_scope": {
       "options": {
         "boiler": "Boiler: heating curve correction",
-        "heat_pump": "Heat pump: COP map, setpoint correction, icing lockout",
-        "rooms": "Rooms: heat-up rates"
+        "heat_pump": "Heat pump: COP map, setpoint correction (an icing lockout stays)",
+        "rooms": "Rooms: heat-up rates, cool-down coefficients"
       }
     },
     "room_choice": {
@@ -410,7 +466,7 @@
         "name": "Cheaper heat source",
         "state": {
           "midea": "Heat pump",
-          "boiler": "Gas boiler",
+          "boiler": "Central heating",
           "unknown": "Unknown"
         },
         "state_attributes": {
@@ -424,6 +480,42 @@
       },
       "gas_energy": {
         "name": "Gas energy"
+      },
+      "gas_energy_heating": {
+        "name": "Gas for heating",
+        "state_attributes": {
+          "source": {
+            "name": "Source",
+            "state": {
+              "gas_meter": "Gas meter, by what the boiler was doing",
+              "boiler_counters": "The boiler's own counters (estimate)"
+            }
+          },
+          "hot_water_share_pct": {
+            "name": "Hot water share %"
+          },
+          "unassigned_kwh": {
+            "name": "Not assigned kWh (burnt while nobody watched)"
+          }
+        }
+      },
+      "gas_energy_hot_water": {
+        "name": "Gas for hot water",
+        "state_attributes": {
+          "source": {
+            "name": "Source",
+            "state": {
+              "gas_meter": "Gas meter, by what the boiler was doing",
+              "boiler_counters": "The boiler's own counters (estimate)"
+            }
+          },
+          "hot_water_share_pct": {
+            "name": "Hot water share %"
+          },
+          "unassigned_kwh": {
+            "name": "Not assigned kWh (burnt while nobody watched)"
+          }
+        }
       },
       "boiler_thermal_power_estimate": {
         "name": "Boiler thermal power (estimate)",
@@ -453,7 +545,7 @@
       "active_source_advice": {
         "name": "Recommended heat source",
         "state": {
-          "boiler": "Gas boiler",
+          "boiler": "Central heating",
           "midea": "Heat pump",
           "both": "Both",
           "none": "None"
@@ -551,10 +643,11 @@
               "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
               "drying_ended_window_ineffective": "Ended: window open without effect",
-              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
               "frost_protection": "Frost protection",
@@ -571,6 +664,7 @@
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_lagging_at_flow_min": "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
@@ -610,7 +704,7 @@
               "frequent_defrost_cycles": "Frequent defrost cycles",
               "icing_lockout_active": "Icing lockout active",
               "outdoor_coil_iced": "Outdoor coil iced",
-              "sustained_inefficiency": "Heat output collapsed",
+              "sustained_inefficiency": "Heat too expensive (COP below break-even)",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
               "thermostat_own_rule": "The thermostat applies a rule of its own",
@@ -629,7 +723,8 @@
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
               "hot_water_recent": "hot water recently",
-              "no_heating_run": "boiler not heating right now"
+              "no_heating_run": "boiler not heating right now",
+              "rooms_heating_up": "a room heats up on an extra"
             }
           },
           "quick_heat_up": {
@@ -746,10 +841,11 @@
               "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
               "drying_ended_window_ineffective": "Ended: window open without effect",
-              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
               "frost_protection": "Frost protection",
@@ -766,6 +862,7 @@
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_lagging_at_flow_min": "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
@@ -805,7 +902,7 @@
               "frequent_defrost_cycles": "Frequent defrost cycles",
               "icing_lockout_active": "Icing lockout active",
               "outdoor_coil_iced": "Outdoor coil iced",
-              "sustained_inefficiency": "Heat output collapsed",
+              "sustained_inefficiency": "Heat too expensive (COP below break-even)",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
               "thermostat_own_rule": "The thermostat applies a rule of its own",
@@ -824,7 +921,8 @@
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
               "hot_water_recent": "hot water recently",
-              "no_heating_run": "boiler not heating right now"
+              "no_heating_run": "boiler not heating right now",
+              "rooms_heating_up": "a room heats up on an extra"
             }
           },
           "blockers": {
@@ -847,10 +945,11 @@
               "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
               "drying_ended_window_ineffective": "Ended: window open without effect",
-              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
               "frost_protection": "Frost protection",
@@ -867,6 +966,7 @@
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_lagging_at_flow_min": "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
@@ -906,7 +1006,7 @@
               "frequent_defrost_cycles": "Frequent defrost cycles",
               "icing_lockout_active": "Icing lockout active",
               "outdoor_coil_iced": "Outdoor coil iced",
-              "sustained_inefficiency": "Heat output collapsed",
+              "sustained_inefficiency": "Heat too expensive (COP below break-even)",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
               "thermostat_own_rule": "The thermostat applies a rule of its own",
@@ -925,11 +1025,15 @@
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
               "hot_water_recent": "hot water recently",
-              "no_heating_run": "boiler not heating right now"
+              "no_heating_run": "boiler not heating right now",
+              "rooms_heating_up": "a room heats up on an extra"
             }
           },
           "eco_offset_k": {
-            "name": "Setpoint correction K"
+            "name": "Setpoint correction (degrees)"
+          },
+          "boiler_helps": {
+            "name": "Boiler helps a heat pump room"
           },
           "decision_cop": {
             "name": "COP used"
@@ -1015,10 +1119,11 @@
               "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
               "drying_ended_window_ineffective": "Ended: window open without effect",
-              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
               "frost_protection": "Frost protection",
@@ -1035,6 +1140,7 @@
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_lagging_at_flow_min": "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
@@ -1074,7 +1180,7 @@
               "frequent_defrost_cycles": "Frequent defrost cycles",
               "icing_lockout_active": "Icing lockout active",
               "outdoor_coil_iced": "Outdoor coil iced",
-              "sustained_inefficiency": "Heat output collapsed",
+              "sustained_inefficiency": "Heat too expensive (COP below break-even)",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
               "thermostat_own_rule": "The thermostat applies a rule of its own",
@@ -1093,7 +1199,8 @@
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
               "hot_water_recent": "hot water recently",
-              "no_heating_run": "boiler not heating right now"
+              "no_heating_run": "boiler not heating right now",
+              "rooms_heating_up": "a room heats up on an extra"
             }
           },
           "blockers": {
@@ -1116,10 +1223,11 @@
               "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
               "drying_ended_window_ineffective": "Ended: window open without effect",
-              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
               "frost_protection": "Frost protection",
@@ -1136,6 +1244,7 @@
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_lagging_at_flow_min": "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
@@ -1175,7 +1284,7 @@
               "frequent_defrost_cycles": "Frequent defrost cycles",
               "icing_lockout_active": "Icing lockout active",
               "outdoor_coil_iced": "Outdoor coil iced",
-              "sustained_inefficiency": "Heat output collapsed",
+              "sustained_inefficiency": "Heat too expensive (COP below break-even)",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
               "thermostat_own_rule": "The thermostat applies a rule of its own",
@@ -1194,17 +1303,18 @@
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
               "hot_water_recent": "hot water recently",
-              "no_heating_run": "boiler not heating right now"
+              "no_heating_run": "boiler not heating right now",
+              "rooms_heating_up": "a room heats up on an extra"
             }
           },
           "heating_curve_flow": {
             "name": "Heating curve flow °C"
           },
           "learned_offset_k": {
-            "name": "Learned correction K"
+            "name": "Learned correction (degrees)"
           },
           "flow_return_spread_k": {
-            "name": "Flow/return spread K"
+            "name": "Flow/return spread (degrees)"
           },
           "learning_phase": {
             "name": "Learning phase",
@@ -1268,10 +1378,11 @@
               "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
               "drying_ended_window_ineffective": "Ended: window open without effect",
-              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
               "frost_protection": "Frost protection",
@@ -1288,6 +1399,7 @@
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_lagging_at_flow_min": "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
@@ -1327,7 +1439,7 @@
               "frequent_defrost_cycles": "Frequent defrost cycles",
               "icing_lockout_active": "Icing lockout active",
               "outdoor_coil_iced": "Outdoor coil iced",
-              "sustained_inefficiency": "Heat output collapsed",
+              "sustained_inefficiency": "Heat too expensive (COP below break-even)",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
               "thermostat_own_rule": "The thermostat applies a rule of its own",
@@ -1346,7 +1458,8 @@
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
               "hot_water_recent": "hot water recently",
-              "no_heating_run": "boiler not heating right now"
+              "no_heating_run": "boiler not heating right now",
+              "rooms_heating_up": "a room heats up on an extra"
             }
           },
           "commands_sent": {
@@ -1369,19 +1482,19 @@
         },
         "state_attributes": {
           "heating_curve_offset_k": {
-            "name": "Heating curve correction K"
+            "name": "Heating curve correction (degrees)"
           },
           "heating_curve_level_k": {
-            "name": "Level correction K (at every outdoor temperature)"
+            "name": "Level correction in degrees (at every outdoor temperature)"
           },
           "heating_curve_slope_k": {
-            "name": "Slope correction K (in full at -10 °C)"
+            "name": "Slope correction in degrees (in full at -10 °C)"
           },
           "adjustments_last_24h": {
             "name": "Adjustments in 24 h"
           },
           "moved_last_24h_k": {
-            "name": "Moved in 24 h K (up and down added)"
+            "name": "Moved in 24 h in degrees (up and down added)"
           },
           "last_adjustment_reason": {
             "name": "Last adjustment because",
@@ -1400,10 +1513,11 @@
               "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
               "drying_ended_window_ineffective": "Ended: window open without effect",
-              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
               "frost_protection": "Frost protection",
@@ -1420,6 +1534,7 @@
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_lagging_at_flow_min": "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
@@ -1459,7 +1574,7 @@
               "frequent_defrost_cycles": "Frequent defrost cycles",
               "icing_lockout_active": "Icing lockout active",
               "outdoor_coil_iced": "Outdoor coil iced",
-              "sustained_inefficiency": "Heat output collapsed",
+              "sustained_inefficiency": "Heat too expensive (COP below break-even)",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
               "thermostat_own_rule": "The thermostat applies a rule of its own",
@@ -1478,7 +1593,8 @@
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
               "hot_water_recent": "hot water recently",
-              "no_heating_run": "boiler not heating right now"
+              "no_heating_run": "boiler not heating right now",
+              "rooms_heating_up": "a room heats up on an extra"
             }
           },
           "held_back_because": {
@@ -1498,10 +1614,11 @@
               "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
               "drying_ended_window_ineffective": "Ended: window open without effect",
-              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
               "frost_protection": "Frost protection",
@@ -1518,6 +1635,7 @@
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_lagging_at_flow_min": "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
@@ -1557,7 +1675,7 @@
               "frequent_defrost_cycles": "Frequent defrost cycles",
               "icing_lockout_active": "Icing lockout active",
               "outdoor_coil_iced": "Outdoor coil iced",
-              "sustained_inefficiency": "Heat output collapsed",
+              "sustained_inefficiency": "Heat too expensive (COP below break-even)",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
               "thermostat_own_rule": "The thermostat applies a rule of its own",
@@ -1576,11 +1694,12 @@
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
               "hot_water_recent": "hot water recently",
-              "no_heating_run": "boiler not heating right now"
+              "no_heating_run": "boiler not heating right now",
+              "rooms_heating_up": "a room heats up on an extra"
             }
           },
           "flow_return_spread_k": {
-            "name": "Flow/return spread K"
+            "name": "Flow/return spread (degrees)"
           },
           "calling_rooms": {
             "name": "Rooms calling for heat"
@@ -1603,8 +1722,17 @@
               "majority": "Most rooms"
             }
           },
+          "flow_set_by": {
+            "name": "Room that sets the flow"
+          },
+          "heat_up_extra_k": {
+            "name": "Heat-up extra per room in degrees (in force while it heats up, else where the next heat-up starts)"
+          },
+          "rooms_heating_up": {
+            "name": "Rooms heating up on an extra"
+          },
           "curve_by_load": {
-            "name": "Heating curve correction per load class"
+            "name": "Heating curve correction per load class and room"
           },
           "paused_because": {
             "name": "Paused because"
@@ -1622,7 +1750,7 @@
             "name": "Room cool-down coefficients (1/h)"
           },
           "room_heating_power_k_h": {
-            "name": "Heating power per room (K/h, losses removed)"
+            "name": "Heating power per room (degrees per hour, losses removed)"
           },
           "cop_bins": {
             "name": "COP map points"
@@ -1637,7 +1765,7 @@
             }
           },
           "midea_eco_offset_k": {
-            "name": "Heat pump setpoint correction K"
+            "name": "Heat pump setpoint correction (degrees)"
           },
           "last_reset": {
             "name": "Last reset"
@@ -1685,10 +1813,11 @@
               "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
               "drying_ended_window_ineffective": "Ended: window open without effect",
-              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
               "frost_protection": "Frost protection",
@@ -1705,6 +1834,7 @@
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_lagging_at_flow_min": "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
@@ -1744,7 +1874,7 @@
               "frequent_defrost_cycles": "Frequent defrost cycles",
               "icing_lockout_active": "Icing lockout active",
               "outdoor_coil_iced": "Outdoor coil iced",
-              "sustained_inefficiency": "Heat output collapsed",
+              "sustained_inefficiency": "Heat too expensive (COP below break-even)",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
               "thermostat_own_rule": "The thermostat applies a rule of its own",
@@ -1763,7 +1893,8 @@
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
               "hot_water_recent": "hot water recently",
-              "no_heating_run": "boiler not heating right now"
+              "no_heating_run": "boiler not heating right now",
+              "rooms_heating_up": "a room heats up on an extra"
             }
           }
         }
@@ -1821,10 +1952,11 @@
               "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
               "drying_ended_window_ineffective": "Ended: window open without effect",
-              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
               "frost_protection": "Frost protection",
@@ -1841,6 +1973,7 @@
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_lagging_at_flow_min": "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
@@ -1880,7 +2013,7 @@
               "frequent_defrost_cycles": "Frequent defrost cycles",
               "icing_lockout_active": "Icing lockout active",
               "outdoor_coil_iced": "Outdoor coil iced",
-              "sustained_inefficiency": "Heat output collapsed",
+              "sustained_inefficiency": "Heat too expensive (COP below break-even)",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
               "thermostat_own_rule": "The thermostat applies a rule of its own",
@@ -1899,7 +2032,8 @@
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
               "hot_water_recent": "hot water recently",
-              "no_heating_run": "boiler not heating right now"
+              "no_heating_run": "boiler not heating right now",
+              "rooms_heating_up": "a room heats up on an extra"
             }
           }
         }
@@ -1938,10 +2072,11 @@
               "heat_pump_cooling": "Heat pump cooling: radiator at setback",
               "drying_active": "Drying",
               "drying_started_humidity_load": "Started: humidity after a shower",
+              "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
               "drying_ended_window_ineffective": "Ended: window open without effect",
-              "drying_ended_midea_unavailable": "Ended: heat pump not available",
+              "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
               "frost_protection": "Frost protection",
@@ -1958,6 +2093,7 @@
               "spread_large": "Flow/return spread large",
               "short_cycling": "Boiler kept switching on and off",
               "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+              "rooms_lagging_at_flow_min": "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts",
               "rooms_slow": "Rooms heating up slowly",
               "rooms_lagging": "Boiler cycles and a room does not reach its target",
               "rooms_satisfied": "Rooms warm without demand",
@@ -1997,7 +2133,7 @@
               "frequent_defrost_cycles": "Frequent defrost cycles",
               "icing_lockout_active": "Icing lockout active",
               "outdoor_coil_iced": "Outdoor coil iced",
-              "sustained_inefficiency": "Heat output collapsed",
+              "sustained_inefficiency": "Heat too expensive (COP below break-even)",
               "in_sync": "In sync",
               "waiting_for_thermostat": "Waiting for the thermostat",
               "thermostat_own_rule": "The thermostat applies a rule of its own",
@@ -2016,7 +2152,8 @@
               "setpoint_recently_changed": "setpoint changed recently",
               "boiler_control_not_active": "boiler control not active",
               "hot_water_recent": "hot water recently",
-              "no_heating_run": "boiler not heating right now"
+              "no_heating_run": "boiler not heating right now",
+              "rooms_heating_up": "a room heats up on an extra"
             }
           },
           "started_ts": {
@@ -2033,7 +2170,7 @@
         "name": "Operating mode",
         "state": {
           "auto": "Auto",
-          "boiler_only": "Boiler only",
+          "boiler_only": "Central heating only",
           "midea_only": "Heat pump only",
           "off": "Summer (heating off)",
           "away": "Away"
@@ -2096,6 +2233,9 @@
       },
       "room_boost": {
         "name": "Quick heat-up"
+      },
+      "room_drying": {
+        "name": "Dry now"
       }
     },
     "number": {

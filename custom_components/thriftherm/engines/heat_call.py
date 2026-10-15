@@ -5,7 +5,7 @@ Pure logic, no Home Assistant import.
 Measured 2026-09-24 to 26 (one radiator open, 17 °C outside): the boiler fires
 with at least 8 kW, one radiator takes about 1 kW. It burns for a minute, then
 waits in its lockout for twelve. 88 starts in 44 hours, and the bathroom spent
-2.5 hours climbing the last 0.3 K while the boiler kept doing that. Three rules
+2.5 hours climbing the last 0.3 K while the boiler kept doing that. Four rules
 answer it:
 
 * Hysteresis: a room starts calling at CALL_ON_K below its target and stops

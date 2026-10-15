@@ -16,14 +16,17 @@ NO_DEFROST = DefrostResult(
 ON_W, OFF_W = 360.0, 12.0
 
 
-def sample(tracker: HeatPumpTracker, ts: float, on: bool, defrost: DefrostResult = NO_DEFROST, outlet: float | None = None):
+def sample(
+    tracker: HeatPumpTracker, ts: float, on: bool, defrost: DefrostResult = NO_DEFROST, outlet: float | None = None,
+    fan_rpm: float | None = 600.0,
+):
     unit = heat_pump_state(
         compressor_hz=24.0 if on else 0.0,
         running_s=300.0 if on else None,
         plug_power=ON_W if on else OFF_W,
         intake=(22.0, 45.0),
         outlet=((outlet if outlet is not None else (34.0 if on else 22.0)), None),
-        fan_rpm=600.0,
+        fan_rpm=fan_rpm,
     )
     res = HeatPumpResult(
         run_state="heating_warming_up" if on else "heating_idle",
@@ -98,3 +101,26 @@ def test_every_whole_cycle_is_measured_anew(cycles: int):
     tracker = HeatPumpTracker()
     res = run_cycles(tracker, cycles)
     assert res.cycle_cop is not None and tracker.cycle_cop[0] == cycles * 20 * 60.0
+
+
+def test_a_cycle_with_an_unknown_fan_speed_is_spoiled_not_counted_as_without_heat():
+    tracker = HeatPumpTracker()
+    for minute in range(21):
+        res = sample(tracker, minute * 60.0, on=(minute % 20) < 10, fan_rpm=None if minute == 5 else 600.0)
+    assert res.cycle_cop is None and tracker.take_cycle_cop() is None
+
+
+def test_the_cop_of_a_cycle_enters_the_map_once_however_many_settled_samples_are_still_counted():
+    tracker = HeatPumpTracker()
+    stable = HeatPumpResult("heating_stable", 800.0, "plug", True)
+    entries = []
+    for minute in range(1, 33):
+        # a quarter of an hour of settled samples, then the outlet air stays cold: no settled value any more
+        unit = heat_pump_state() if minute <= 14 else heat_pump_state(outlet=(21.0, None))
+        if minute == 20:
+            tracker.cycle_cop, tracker.cycle_cop_new = (minute * 60.0, 4.2), 4.2  # a whole cycle closes
+        res = tracker.cop(SimpleNamespace(heat_pump=unit), stable, NO_DEFROST, PARAMS, minute * 60.0)
+        if (value := tracker.take_cycle_cop()) is not None or tracker.map_entry_due(res, minute * 60.0):
+            entries.append((minute, value if value is not None else res.value))
+    assert res.value == 4.2 and res.samples >= 12  # the cycle's COP is reported, next to the count of older samples
+    assert [entry for entry in entries if entry[0] >= 20] == [(20, 4.2)]

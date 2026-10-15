@@ -1,11 +1,13 @@
+from dataclasses import replace
 from datetime import datetime, time
 
 import pytest
 
+from custom_components.thriftherm.engines import psychrometrics as psy
 from custom_components.thriftherm.engines import room as room_engine
 from custom_components.thriftherm.models import Parameters, TimeWindow
 
-from .conftest import PARAMS, room_config, room_state
+from .conftest import PARAMS, reading, room_config, room_state
 
 
 def test_parse_schedule():
@@ -50,7 +52,7 @@ def test_window_status_grace_and_unknown():
     assert room_engine.window_status((("b.w", "on", 30.0),), 90.0) == (False, False, None)
     assert room_engine.window_status((("b.w", "off", None),), 90.0) == (False, False, None)
     assert room_engine.window_status((("b.w", None, None),), 90.0) == (None, True, None)
-    assert room_engine.window_status((("b.a", None, None), ("b.b", "off", None)), 90.0) == (False, False, None)
+    assert room_engine.window_status((("b.a", None, None), ("b.b", "off", None)), 90.0) == (False, True, None)
     assert room_engine.window_status((), 90.0) == (None, False, None)
 
 
@@ -115,3 +117,66 @@ def test_a_window_to_2359_covers_the_last_minute():
     assert not evening.contains(time(22, 0))
     late = parse_schedule("18:00-23:59")[0]
     assert late.contains(time(23, 59, 59)) and not late.contains(time(17, 59))
+
+
+def test_a_dead_contact_among_several_is_reported_and_the_room_keeps_heating():
+    # found in the code 2026-10-13: a dead contact beside a closed one counted as closed and raised nothing
+    dead, shut, open_ = ("b.a", None, None), ("b.b", "off", None), ("b.c", "on", 120.0)
+    assert room_engine.window_status((dead, shut), 90.0) == (False, True, None)
+    assert room_engine.window_status((dead, shut, open_), 90.0) == (True, True, 120.0)  # an open one still means open
+    assert room_engine.window_status((("b.a", "opening", None), shut), 90.0) == (False, True, None)
+
+    st = replace(room_state(room_config("kueche"), temp=16.0), window_readings=(dead, shut))
+    res = room_engine.evaluate_room(st, datetime(2026, 1, 12, 18, 0), "auto", PARAMS)
+    assert res.window_unknown and "window_contacts_unavailable" in res.issues
+    assert res.window_open is False and res.heating_allowed and res.demand > 0.0
+
+
+def test_a_window_to_2359_ends_at_midnight_also_during_its_last_minute():
+    # found in the code 2026-10-13: at 23:59 the end lay a day ahead, and the room called the boiler for that minute
+    parse = room_engine.parse_schedule
+    cfg = replace(room_config("wohnzimmer"), schedule_weekday=parse("06:00-23:59"), schedule_weekend=parse("08:00-23:59"))
+    for clock in (time(23, 20), time(23, 59), time(23, 59, 30)):
+        tuesday = datetime.combine(datetime(2026, 10, 13), clock)
+        assert room_engine.comfort_end(cfg, tuesday) == datetime(2026, 10, 14, 0, 0)
+    all_day = replace(cfg, schedule_weekday=parse("00:00-23:59"), schedule_weekend=parse("00:00-23:59"))
+    assert room_engine.comfort_end(all_day, datetime(2026, 10, 13, 23, 59, 30)) is None
+
+
+def test_the_hours_after_midnight_belong_to_the_evening_before():
+    # found in the code 2026-10-13: the rest of a window across midnight was judged by the new day's windows
+    parse = room_engine.parse_schedule
+    cfg = replace(room_config("wohnzimmer"), schedule_weekday=parse("22:00-02:00"), schedule_weekend=parse("08:00-23:00"))
+    friday_late, saturday_early = datetime(2026, 10, 16, 23, 30), datetime(2026, 10, 17, 0, 30)
+    sunday_late, monday_early = datetime(2026, 10, 18, 23, 30), datetime(2026, 10, 19, 0, 30)
+
+    def reason(at: datetime) -> str:
+        return room_engine.scheduled_target(cfg, at)[1]
+
+    # Friday's window runs to 02:00 on Saturday, whatever the weekend says
+    assert reason(friday_late) == reason(saturday_early) == "schedule_comfort"
+    saturday_2 = datetime(2026, 10, 17, 2, 0)
+    assert room_engine.comfort_end(cfg, friday_late) == room_engine.comfort_end(cfg, saturday_early) == saturday_2
+    assert reason(saturday_2) == "schedule_setback"
+    # Sunday has no window across midnight: Monday's comfort starts at 22:00, and it is preheated for
+    assert reason(sunday_late) == reason(monday_early) == "schedule_setback"
+    monday_22 = datetime(2026, 10, 19, 22, 0)
+    assert room_engine.next_comfort_start(cfg, sunday_late) == room_engine.next_comfort_start(cfg, monday_early) == monday_22
+    # within the week nothing changes
+    wednesday = datetime(2026, 10, 14, 0, 30)
+    assert reason(wednesday) == "schedule_comfort" and reason(wednesday.replace(hour=12)) == "schedule_setback"
+
+
+def test_humidity_values_come_from_the_room_sensor_alone():
+    # found in the code 2026-10-13: with the room temperature stale and its humidity still valid, the valve's
+    # temperature (at the radiator) made the absolute humidity jump, and a drying started
+    cfg = replace(room_config("badezimmer", heat_pump=True), bathroom_drying=True)
+    now = datetime(2026, 1, 12, 18, 0)
+    usual = psy.absolute_humidity_g_m3(20.5, 75.0)
+    history = tuple((now.timestamp() - 3 * 3600 + i * 300, usual) for i in range(30))
+    st = replace(
+        room_state(cfg, temp=20.5, rh=75.0, trv_local=22.5), temperature=reading(20.5, valid=False), abs_humidity_history=history
+    )
+    res = room_engine.evaluate_room(st, now, "auto", PARAMS)
+    assert res.temperature == 22.5 and res.dew_point_c is None and res.abs_humidity_g_m3 is None
+    assert not res.drying.active

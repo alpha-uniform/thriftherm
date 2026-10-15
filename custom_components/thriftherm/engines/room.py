@@ -14,14 +14,16 @@ Target precedence (highest first):
 
 from __future__ import annotations
 
+from dataclasses import replace
 from statistics import median
 
-from datetime import datetime, time, timedelta
+from datetime import date, datetime, time, timedelta
 
 from ..const import MODE_AWAY, MODE_OFF
 from ..models import DryingState, Parameters, RoomConfig, RoomResult, RoomState, ScheduleState, TimeWindow
 from . import psychrometrics as psy
 
+_LAST_MINUTE = time(23, 59)  # how the form says "to the end of the day" (models.TimeWindow)
 WINDOW_OPEN_STATES = ("on", "open", "true")
 WINDOW_CLOSED_STATES = ("off", "closed", "false")
 
@@ -31,6 +33,12 @@ DRYING_RH_RISE_WINDOW_S = 20 * 60.0
 DRYING_END_DEWPOINT_MARGIN_K = 4.0
 DRYING_END_ABS_MARGIN_G_M3 = 1.0
 DRYING_WINDOW_NO_EFFECT_S = 20 * 60.0
+# The humidity climbs for as long as the shower runs. Drying means the strongest fan and more
+# heat: after the shower, not on wet skin. So the load only gives notice, and the drying starts
+# once the climb is over: no new highest value for three minutes, or after twenty at the latest.
+DRYING_AFTER_PEAK_S = 180.0
+DRYING_PEAK_STEP_G_M3 = 0.2  # less than this above the highest value is no climb, the sensors flicker
+DRYING_WAIT_MAX_S = 20 * 60.0
 SCHEDULE_PREHEAT_HORIZON_S = 12 * 3600.0
 # A valve that has not reported for this long takes no commands either: its room must
 # not call the boiler. Valves here report at least every 15 minutes, but a Zigbee valve left
@@ -64,21 +72,45 @@ def scheduled_target(cfg: RoomConfig, at: datetime, schedule: ScheduleState | No
         if schedule.active:
             return (schedule.temperature if schedule.temperature is not None else cfg.comfort_temp), "schedule_comfort"
         return cfg.setback_temp, "schedule_setback"
-    windows = cfg.schedule_weekend if at.weekday() >= 5 else cfg.schedule_weekday
-    if any(w.contains(at.time()) for w in windows):
+    if _window_at(cfg, at) is not None:
         return cfg.comfort_temp, "schedule_comfort"
     return cfg.setback_temp, "schedule_setback"
 
 
+def _windows_on(cfg: RoomConfig, day: date) -> tuple[TimeWindow, ...]:
+    return cfg.schedule_weekend if day.weekday() >= 5 else cfg.schedule_weekday
+
+
+def _window_at(cfg: RoomConfig, at: datetime) -> tuple[TimeWindow, date] | None:
+    """The comfort window running at `at` and the day it began on, None outside of one.
+
+    The hours after midnight of a window across midnight belong to the day it began on:
+    Friday's "22:00-02:00" still runs on Saturday at 00:30, whatever the weekend's windows say,
+    and Sunday's windows decide over Monday at 00:30.
+    """
+    clock = at.time()
+    for w in _windows_on(cfg, at.date()):
+        if (clock >= w.start) if w.start > w.end else w.contains(clock):
+            return w, at.date()
+    yesterday = at.date() - timedelta(days=1)
+    for w in _windows_on(cfg, yesterday):
+        if w.start > w.end and clock < w.end:
+            return w, yesterday
+    return None
+
+
 def next_comfort_start(cfg: RoomConfig, now: datetime, schedule: ScheduleState | None = None) -> datetime | None:
-    """Start of the next comfort block (schedule helper) or comfort window."""
+    """Start of the next comfort block (schedule helper) or comfort window.
+
+    A window begins on its own day only: the hours after midnight of a window across midnight
+    are no start, they continue the evening before (see `_window_at`).
+    """
     if schedule is not None:
         return None if schedule.active else schedule.next_start
-    for day in range(3):
-        date = (now + timedelta(days=day)).date()
-        windows = cfg.schedule_weekend if date.weekday() >= 5 else cfg.schedule_weekday
-        for w in sorted(windows, key=lambda w: w.start):
-            start = datetime.combine(date, w.start, tzinfo=now.tzinfo)
+    for ahead in range(3):
+        day = (now + timedelta(days=ahead)).date()
+        for w in sorted(_windows_on(cfg, day), key=lambda w: w.start):
+            start = datetime.combine(day, w.start, tzinfo=now.tzinfo)
             if start > now:
                 return start
     return None
@@ -89,18 +121,19 @@ def comfort_end(cfg: RoomConfig, now: datetime, schedule: ScheduleState | None =
     if schedule is not None:
         return schedule.next_end if schedule.active else None
 
-    def window_at(at: datetime) -> TimeWindow | None:
-        windows = cfg.schedule_weekend if at.weekday() >= 5 else cfg.schedule_weekday
-        return next((w for w in windows if w.contains(at.time())), None)
-
     at, end = now, None
     for _ in range(8):  # windows that follow each other (e.g. "00:00-23:59" every day) are one
-        w = window_at(at)
-        if w is None:
+        running = _window_at(cfg, at)
+        if running is None:
             return end
-        end = datetime.combine(at.date(), w.end, tzinfo=at.tzinfo)
-        if end <= at:
-            end += timedelta(days=1)
+        w, began = running
+        if w.end == _LAST_MINUTE:
+            # "to 23:59" is to the end of the day. Taken as 23:59 plus a day whenever it had passed,
+            # the end lay a day ahead during that last minute: the room called the boiler for one
+            # cycle every night at 23:59.
+            end = datetime.combine(began + timedelta(days=1), time(), tzinfo=at.tzinfo)
+        else:
+            end = datetime.combine(began + timedelta(days=1 if w.start > w.end else 0), w.end, tzinfo=at.tzinfo)
         at = end + timedelta(minutes=1)
     return None  # comfort all week
 
@@ -170,17 +203,31 @@ def target_temperature(
             if now_ts >= preheat_ts or _latched(state, away_return_ts):
                 return target_at_return, "away_preheat", preheat_ts
         if temperature is not None and dew_point is not None and temperature - dew_point < params.away_dewpoint_margin_k:
-            return max(target, temperature + 1.0), "away_humidity_guard", preheat_ts
+            # One degree above the room, but never above its comfort temperature: a humidity sensor
+            # stuck near 100 % would otherwise pull the target up with the room, degree by degree.
+            return max(target, min(temperature + 1.0, cfg.comfort_temp)), "away_humidity_guard", preheat_ts
         return target, reason, preheat_ts
 
     target, reason = scheduled_target(cfg, now, state.schedule)
-    if reason == "schedule_setback" and temperature is not None:
+    if reason == "schedule_setback":
         # start early and slowly instead of late and fast: reach comfort at the window start
         start = next_comfort_start(cfg, now, state.schedule)
         if start is not None and start.timestamp() - now_ts <= SCHEDULE_PREHEAT_HORIZON_S:
-            preheat_ts = preheat_start(start.timestamp(), cfg.comfort_temp, temperature, _default_rate(state, params), params.preheat_margin_s)
+            ahead = cfg.comfort_temp
+            if state.schedule_next_temp is not None:
+                # the coming block of a schedule helper names its own temperature
+                ahead = max(state.schedule_next_temp, target)
+            if temperature is None:
+                # No reading, as in the first minute after a restart: a preheating that began goes on
+                # (it fell back to the setback for that minute, and the heat pump was set down with it),
+                # none begins.
+                if _latched(state, start.timestamp()):
+                    return ahead, "schedule_preheat", None
+                return target, reason, None
+            rate = _default_rate(state, params)
+            preheat_ts = preheat_start(start.timestamp(), ahead, temperature, rate, params.preheat_margin_s)
             if now_ts >= preheat_ts or _latched(state, start.timestamp()):
-                return cfg.comfort_temp, "schedule_preheat", preheat_ts
+                return ahead, "schedule_preheat", preheat_ts
             return target, reason, preheat_ts
     return target, reason, None
 
@@ -228,26 +275,27 @@ def window_status(
 
     Returns (open, unknown, open_since_s). `open` is True once any contact has
     been open for at least `grace_s`; None when no contact delivers a state.
+    `unknown` is True when any contact delivers none: a window with a dead contact
+    may stand open unseen, even while the others report.
     """
     if not readings:
         return None, False, None
-    any_known = False
+    known = 0
     longest_open: float | None = None
     for _entity, state, open_since in readings:
-        if state is None:
-            continue
-        s = state.lower()
+        s = "" if state is None else state.lower()
         if s in WINDOW_OPEN_STATES:
-            any_known = True
+            known += 1
             if open_since is None or open_since >= grace_s:
                 longest_open = max(longest_open or 0.0, open_since or grace_s)
         elif s in WINDOW_CLOSED_STATES:
-            any_known = True
-    if not any_known:
+            known += 1
+    unknown = known < len(readings)
+    if not known:
         return None, True, None
     if longest_open is not None:
-        return True, False, longest_open
-    return False, False, None
+        return True, unknown, longest_open
+    return False, unknown, None
 
 
 def demand(
@@ -294,25 +342,48 @@ def evaluate_drying(
     """Return the new drying state and a reason string.
 
     Drying is done with Midea air only. When the Midea cannot heat (manual
-    mode, lockout, too cold outside) the mode does not start, and an active
-    one ends, so the radiator follows the normal window logic.
+    mode, lockout, too cold outside) the mode does not start, and one under
+    way waits without effect, so the radiator follows the normal window logic.
     """
     cfg = state.config
     prev = state.drying
-    if not cfg.bathroom_drying or not cfg.served_by_heat_pump or temperature is None or rh is None or abs_humidity is None:
+    if not cfg.bathroom_drying or not cfg.served_by_heat_pump:
         return DryingState(), None
+    under_way = prev.started_ts is not None  # drying, or waiting for the heat pump with its start time kept
+    if under_way and now_ts - prev.started_ts > params.drying_max_s:
+        # One started by hand leaves no guard time: it says nothing about the air a shower brings later.
+        return DryingState(ended_ts=prev.ended_ts if prev.manual else now_ts), "drying_ended_timeout"
     if not heat_pump_heat_possible:
-        return DryingState(), ("drying_ended_midea_unavailable" if prev.active else None)
+        if under_way:
+            # Not ended: seen 2026-10-13, the unit was not there yet in the first cycle after a restart,
+            # and a drying asked for with the button was gone. It goes on when the heat pump is back,
+            # with the time it has left.
+            return replace(prev, active=False), "drying_waiting_for_the_heat_pump"
+        # Whatever interrupts here or below, the guard time of the last drying stays: dropped for one
+        # cycle (heat pump unavailable, a reading missing), the same air started another hour.
+        return DryingState(ended_ts=prev.ended_ts), None
+    if under_way and not prev.active:
+        prev = replace(prev, active=True)  # the heat pump is back
+    running = under_way
+    if running and prev.manual:
+        return prev, "drying_active"  # asked for: it runs its time, whatever the humidity and the window
+    if not cfg.drying_automatic:
+        # Only with the button: no shower starts a drying, and one that was started by a shower
+        # before the automatic was switched off ends here. The guard time of the last one stays.
+        return DryingState(ended_ts=prev.ended_ts), None
+    if temperature is None or rh is None or abs_humidity is None:
+        # A missing reading says nothing about the air. A running drying goes on with its start
+        # time: ended and started anew with the next reading, its time limit never applied.
+        return (prev, "drying_active") if running else (DryingState(ended_ts=prev.ended_ts), None)
 
     baseline = humidity_baseline(state.abs_humidity_history, now_ts)
+    window_open_long = window_open_since_s is not None and window_open_since_s > DRYING_WINDOW_NO_EFFECT_S
 
-    if prev.active and prev.started_ts is not None:
+    if running:
         base = prev.baseline_abs_humidity if prev.baseline_abs_humidity is not None else baseline
-        elapsed = now_ts - prev.started_ts
-        if elapsed > params.drying_max_s:
-            return DryingState(ended_ts=now_ts), "drying_ended_timeout"
-        if window_open_since_s is not None and window_open_since_s > DRYING_WINDOW_NO_EFFECT_S and base is not None and abs_humidity > base + DRYING_END_ABS_MARGIN_G_M3:
-            return DryingState(), "drying_ended_window_ineffective"
+        if window_open_long and base is not None and abs_humidity > base + DRYING_END_ABS_MARGIN_G_M3:
+            # with the guard time of a drying that ran out: the air that ended it would start it again
+            return DryingState(ended_ts=now_ts), "drying_ended_window_ineffective"
         dew_margin_ok = dew_point is not None and temperature - dew_point >= DRYING_END_DEWPOINT_MARGIN_K
         abs_ok = base is None or abs_humidity <= base + DRYING_END_ABS_MARGIN_G_M3
         if dew_margin_ok and abs_ok:
@@ -323,16 +394,27 @@ def evaluate_drying(
         # the baseline still holds the air from before the shower: the same humidity would
         # start the drying again a minute after its time limit (measured 2026-09-25)
         return DryingState(ended_ts=prev.ended_ts), None
+    if window_open_long:
+        # No start that the next cycle ends as "window ineffective": that went on and off every
+        # cycle. The drying may start once the window is shut.
+        return DryingState(), None
 
     # not active: check triggers
     rise_abs = None if baseline is None else abs_humidity - baseline
     trig_abs = rise_abs is not None and rise_abs > params.drying_abs_humidity_rise_g_m3
-    # relative-humidity based trigger uses the abs history timestamps with rh re-derived is not available;
-    # the caller passes rh directly, so use a coarse rule: high RH and a large recent absolute rise
+    # second trigger: air that is damp already (above 70 % relative humidity) needs a smaller rise
+    # over the baseline, 60 % of the configured one
     trig_rh = rh > DRYING_RH_TRIGGER_PCT and rise_abs is not None and rise_abs > params.drying_abs_humidity_rise_g_m3 * 0.6
-    if trig_abs or trig_rh:
-        return DryingState(True, now_ts, baseline), "drying_started_humidity_load"
-    return DryingState(), None
+    if not (trig_abs or trig_rh):
+        return DryingState(), None  # also when a load had been noticed: the air cleared by itself
+    wet_since = prev.wet_since_ts if prev.wet_since_ts is not None else now_ts
+    before = baseline if prev.wet_since_ts is None else prev.baseline_abs_humidity  # the air from before the shower
+    climbing = prev.peak_abs_humidity is None or abs_humidity > prev.peak_abs_humidity + DRYING_PEAK_STEP_G_M3
+    peak, peak_ts = (abs_humidity, now_ts) if climbing or prev.peak_ts is None else (prev.peak_abs_humidity, prev.peak_ts)
+    if now_ts - peak_ts >= DRYING_AFTER_PEAK_S or now_ts - wet_since >= DRYING_WAIT_MAX_S:
+        return DryingState(True, now_ts, before), "drying_started_humidity_load"
+    waiting = DryingState(baseline_abs_humidity=before, wet_since_ts=wet_since, peak_abs_humidity=peak, peak_ts=peak_ts)
+    return waiting, "drying_waiting_for_the_shower_to_end"
 
 
 # ---------------------------------------------------------------------------
@@ -359,9 +441,13 @@ def evaluate_room(
     dew_point = None
     abs_hum = None
     rh = state.humidity.value_or_none
-    if temp is not None and rh is not None:
-        dew_point = psy.dew_point_c(temp, rh)
-        abs_hum = psy.absolute_humidity_g_m3(temp, rh)
+    # Relative humidity belongs to the temperature it was measured at. The valve's reading stands
+    # in for a failed room sensor, but it sits at the radiator: paired with the room's humidity
+    # the absolute humidity jumps, and a drying starts.
+    own_temp = state.temperature.value_or_none
+    if own_temp is not None and rh is not None:
+        dew_point = psy.dew_point_c(own_temp, rh)
+        abs_hum = psy.absolute_humidity_g_m3(own_temp, rh)
 
     target, target_reason, preheat_ts = target_temperature(state, now, mode, params, temp, dew_point, away_return_ts)
     preheat_for_ts: float | None = None
@@ -435,4 +521,5 @@ def evaluate_room(
         boost_active=boost_active,
         preheat_for_ts=preheat_for_ts,
         comfort_end_ts=None if end is None else end.timestamp(),
+        thermostat_heating=state.thermostat_heating,
     )

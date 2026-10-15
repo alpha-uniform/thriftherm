@@ -23,7 +23,8 @@ class ThrifthermBinaryDescription(BinarySensorEntityDescription):
     value_fn: Callable[[Any], bool | None]
     attr_fn: Callable[[Any], dict[str, Any]] | None = None
     heat_pump_addon: bool = False  # only created when a Midea heat pump is configured
-    boiler_only: bool = False  # needs an own boiler reachable over ebusd
+    boiler_only: bool = False  # needs an own boiler (on ebusd, or addressed through entities)
+    room_needs: str | None = None  # for a room's entity: what the room must have (a field of its configuration)
 
 
 def _desc(key: str, **kwargs: Any) -> ThrifthermBinaryDescription:
@@ -98,6 +99,7 @@ SYSTEM_BINARY: tuple[ThrifthermBinaryDescription, ...] = (
 ROOM_BINARY: tuple[ThrifthermBinaryDescription, ...] = (
     _room_desc(
         "window_open",
+        room_needs="window_sensors",
         device_class=BinarySensorDeviceClass.WINDOW,
         value_fn=lambda r: r.window_open,
         attr_fn=lambda r: {"unknown": r.window_unknown},
@@ -111,6 +113,7 @@ ROOM_BINARY: tuple[ThrifthermBinaryDescription, ...] = (
     _room_desc(
         "drying_mode",
         heat_pump_addon=True,
+        room_needs="bathroom_drying",
         device_class=BinarySensorDeviceClass.RUNNING,
         value_fn=lambda r: r.drying.active,
         attr_fn=lambda r: {
@@ -126,7 +129,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, a
     coordinator = entry.runtime_data
     entities: list[BinarySensorEntity] = [DescribedBinary(coordinator, d) for d in SYSTEM_BINARY if is_wanted(coordinator, d)]
     for room in coordinator.builder.rooms:
-        entities.extend(DescribedBinary(coordinator, d, room.key) for d in ROOM_BINARY if is_wanted(coordinator, d))
+        entities.extend(DescribedBinary(coordinator, d, room.key) for d in ROOM_BINARY if is_wanted(coordinator, d, room))
     async_add_entities(entities)
 
 

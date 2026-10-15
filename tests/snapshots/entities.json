@@ -1,33 +1,5 @@
 {
  "district": {
-  "binary_sensor.thriftherm_badezimmer_drying_mode": {
-   "attributes": {
-    "baseline_abs_humidity_g_m3": null,
-    "device_class": "running",
-    "friendly_name": "Thriftherm Badezimmer Drying mode",
-    "reason": null,
-    "started_ts": null
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_badezimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "running",
-   "original_icon": null,
-   "state": "off",
-   "translation_key": "room_drying_mode",
-   "unique_id": "ENTRY_badezimmer_drying_mode",
-   "unit_of_measurement": null
-  },
   "binary_sensor.thriftherm_badezimmer_heating_allowed": {
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Heating allowed",
@@ -180,34 +152,6 @@
    "unique_id": "ENTRY_override_active",
    "unit_of_measurement": null
   },
-  "binary_sensor.thriftherm_wohnzimmer_drying_mode": {
-   "attributes": {
-    "baseline_abs_humidity_g_m3": null,
-    "device_class": "running",
-    "friendly_name": "Thriftherm Wohnzimmer Drying mode",
-    "reason": null,
-    "started_ts": null
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "running",
-   "original_icon": null,
-   "state": "off",
-   "translation_key": "room_drying_mode",
-   "unique_id": "ENTRY_wohnzimmer_drying_mode",
-   "unit_of_measurement": null
-  },
   "binary_sensor.thriftherm_wohnzimmer_heating_allowed": {
    "attributes": {
     "friendly_name": "Thriftherm Wohnzimmer Heating allowed",
@@ -232,32 +176,6 @@
    "state": "on",
    "translation_key": "room_heating_allowed",
    "unique_id": "ENTRY_wohnzimmer_heating_allowed",
-   "unit_of_measurement": null
-  },
-  "binary_sensor.thriftherm_wohnzimmer_window_open": {
-   "attributes": {
-    "device_class": "window",
-    "friendly_name": "Thriftherm Wohnzimmer Window open",
-    "unknown": false
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "window",
-   "original_icon": null,
-   "state": "unknown",
-   "translation_key": "room_window_open",
-   "unique_id": "ENTRY_wohnzimmer_window_open",
    "unit_of_measurement": null
   },
   "button.thriftherm_back_to_automatic": {
@@ -371,15 +289,15 @@
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Setback temperature",
     "icon": "mdi:thermometer-low",
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5,
     "unit_of_measurement": "°C"
    },
    "capabilities": {
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5
    },
@@ -441,15 +359,15 @@
    "attributes": {
     "friendly_name": "Thriftherm Wohnzimmer Setback temperature",
     "icon": "mdi:thermometer-low",
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5,
     "unit_of_measurement": "°C"
    },
    "capabilities": {
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5
    },
@@ -969,6 +887,7 @@
    "attributes": {
     "action": "none",
     "blockers": [],
+    "boiler_helps": false,
     "break_even_cop": 3.5664335664335667,
     "commands_not_carried_out": 0,
     "commands_sent": false,
@@ -1191,7 +1110,9 @@
     "curve_by_load": {},
     "device_class": "enum",
     "flow_return_spread_k": null,
+    "flow_set_by": null,
     "friendly_name": "Thriftherm Learning state",
+    "heat_up_extra_k": {},
     "heating_curve_level_k": 0.0,
     "heating_curve_offset_k": 0.0,
     "heating_curve_slope_k": 0.0,
@@ -1215,6 +1136,7 @@
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
+    "rooms_heating_up": [],
     "rooms_total": 2,
     "setpoint_changed_in": [],
     "spread_rule": null
@@ -1353,30 +1275,6 @@
    "unique_id": "ENTRY_safety_state",
    "unit_of_measurement": null
   },
-  "sensor.thriftherm_wohnzimmer_absolute_humidity": {
-   "attributes": null,
-   "capabilities": {
-    "state_class": "measurement"
-   },
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": null,
-   "original_icon": "mdi:water-percent",
-   "state": null,
-   "translation_key": "room_abs_humidity",
-   "unique_id": "ENTRY_wohnzimmer_abs_humidity",
-   "unit_of_measurement": "g/m³"
-  },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
    "attributes": null,
    "capabilities": {
@@ -1399,30 +1297,6 @@
    "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
-   "unit_of_measurement": "°C"
-  },
-  "sensor.thriftherm_wohnzimmer_dew_point": {
-   "attributes": null,
-   "capabilities": {
-    "state_class": "measurement"
-   },
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "temperature",
-   "original_icon": null,
-   "state": null,
-   "translation_key": "room_dew_point",
-   "unique_id": "ENTRY_wohnzimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_heat_demand": {
@@ -1521,34 +1395,6 @@
   }
  },
  "gas_heat_pump": {
-  "binary_sensor.thriftherm_badezimmer_drying_mode": {
-   "attributes": {
-    "baseline_abs_humidity_g_m3": null,
-    "device_class": "running",
-    "friendly_name": "Thriftherm Badezimmer Drying mode",
-    "reason": null,
-    "started_ts": null
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_badezimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "running",
-   "original_icon": null,
-   "state": "off",
-   "translation_key": "room_drying_mode",
-   "unique_id": "ENTRY_badezimmer_drying_mode",
-   "unit_of_measurement": null
-  },
   "binary_sensor.thriftherm_badezimmer_heating_allowed": {
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Heating allowed",
@@ -1773,34 +1619,6 @@
    "unique_id": "ENTRY_override_active",
    "unit_of_measurement": null
   },
-  "binary_sensor.thriftherm_wohnzimmer_drying_mode": {
-   "attributes": {
-    "baseline_abs_humidity_g_m3": null,
-    "device_class": "running",
-    "friendly_name": "Thriftherm Wohnzimmer Drying mode",
-    "reason": null,
-    "started_ts": null
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "running",
-   "original_icon": null,
-   "state": "off",
-   "translation_key": "room_drying_mode",
-   "unique_id": "ENTRY_wohnzimmer_drying_mode",
-   "unit_of_measurement": null
-  },
   "binary_sensor.thriftherm_wohnzimmer_heating_allowed": {
    "attributes": {
     "friendly_name": "Thriftherm Wohnzimmer Heating allowed",
@@ -1825,32 +1643,6 @@
    "state": "on",
    "translation_key": "room_heating_allowed",
    "unique_id": "ENTRY_wohnzimmer_heating_allowed",
-   "unit_of_measurement": null
-  },
-  "binary_sensor.thriftherm_wohnzimmer_window_open": {
-   "attributes": {
-    "device_class": "window",
-    "friendly_name": "Thriftherm Wohnzimmer Window open",
-    "unknown": false
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "window",
-   "original_icon": null,
-   "state": "unknown",
-   "translation_key": "room_window_open",
-   "unique_id": "ENTRY_wohnzimmer_window_open",
    "unit_of_measurement": null
   },
   "button.thriftherm_back_to_automatic": {
@@ -1964,15 +1756,15 @@
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Setback temperature",
     "icon": "mdi:thermometer-low",
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5,
     "unit_of_measurement": "°C"
    },
    "capabilities": {
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5
    },
@@ -2034,15 +1826,15 @@
    "attributes": {
     "friendly_name": "Thriftherm Wohnzimmer Setback temperature",
     "icon": "mdi:thermometer-low",
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5,
     "unit_of_measurement": "°C"
    },
    "capabilities": {
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5
    },
@@ -2841,6 +2633,7 @@
    "attributes": {
     "action": "none",
     "blockers": [],
+    "boiler_helps": false,
     "break_even_cop": 2.891338582677165,
     "commands_not_carried_out": 0,
     "commands_sent": false,
@@ -3063,7 +2856,9 @@
     "curve_by_load": {},
     "device_class": "enum",
     "flow_return_spread_k": null,
+    "flow_set_by": "Badezimmer",
     "friendly_name": "Thriftherm Learning state",
+    "heat_up_extra_k": {},
     "heating_curve_level_k": 0.0,
     "heating_curve_offset_k": 0.0,
     "heating_curve_slope_k": 0.0,
@@ -3087,6 +2882,7 @@
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
+    "rooms_heating_up": [],
     "rooms_total": 2,
     "setpoint_changed_in": [],
     "spread_rule": "active"
@@ -3225,30 +3021,6 @@
    "unique_id": "ENTRY_safety_state",
    "unit_of_measurement": null
   },
-  "sensor.thriftherm_wohnzimmer_absolute_humidity": {
-   "attributes": null,
-   "capabilities": {
-    "state_class": "measurement"
-   },
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": null,
-   "original_icon": "mdi:water-percent",
-   "state": null,
-   "translation_key": "room_abs_humidity",
-   "unique_id": "ENTRY_wohnzimmer_abs_humidity",
-   "unit_of_measurement": "g/m³"
-  },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
    "attributes": null,
    "capabilities": {
@@ -3271,30 +3043,6 @@
    "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
-   "unit_of_measurement": "°C"
-  },
-  "sensor.thriftherm_wohnzimmer_dew_point": {
-   "attributes": null,
-   "capabilities": {
-    "state_class": "measurement"
-   },
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "temperature",
-   "original_icon": null,
-   "state": null,
-   "translation_key": "room_dew_point",
-   "unique_id": "ENTRY_wohnzimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_heat_demand": {
@@ -3393,34 +3141,6 @@
   }
  },
  "gas_heat_pump_released": {
-  "binary_sensor.thriftherm_badezimmer_drying_mode": {
-   "attributes": {
-    "baseline_abs_humidity_g_m3": null,
-    "device_class": "running",
-    "friendly_name": "Thriftherm Badezimmer Drying mode",
-    "reason": null,
-    "started_ts": null
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_badezimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "running",
-   "original_icon": null,
-   "state": "off",
-   "translation_key": "room_drying_mode",
-   "unique_id": "ENTRY_badezimmer_drying_mode",
-   "unit_of_measurement": null
-  },
   "binary_sensor.thriftherm_badezimmer_heating_allowed": {
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Heating allowed",
@@ -3645,34 +3365,6 @@
    "unique_id": "ENTRY_override_active",
    "unit_of_measurement": null
   },
-  "binary_sensor.thriftherm_wohnzimmer_drying_mode": {
-   "attributes": {
-    "baseline_abs_humidity_g_m3": null,
-    "device_class": "running",
-    "friendly_name": "Thriftherm Wohnzimmer Drying mode",
-    "reason": null,
-    "started_ts": null
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "running",
-   "original_icon": null,
-   "state": "off",
-   "translation_key": "room_drying_mode",
-   "unique_id": "ENTRY_wohnzimmer_drying_mode",
-   "unit_of_measurement": null
-  },
   "binary_sensor.thriftherm_wohnzimmer_heating_allowed": {
    "attributes": {
     "friendly_name": "Thriftherm Wohnzimmer Heating allowed",
@@ -3697,32 +3389,6 @@
    "state": "on",
    "translation_key": "room_heating_allowed",
    "unique_id": "ENTRY_wohnzimmer_heating_allowed",
-   "unit_of_measurement": null
-  },
-  "binary_sensor.thriftherm_wohnzimmer_window_open": {
-   "attributes": {
-    "device_class": "window",
-    "friendly_name": "Thriftherm Wohnzimmer Window open",
-    "unknown": false
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "window",
-   "original_icon": null,
-   "state": "unknown",
-   "translation_key": "room_window_open",
-   "unique_id": "ENTRY_wohnzimmer_window_open",
    "unit_of_measurement": null
   },
   "button.thriftherm_back_to_automatic": {
@@ -3836,15 +3502,15 @@
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Setback temperature",
     "icon": "mdi:thermometer-low",
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5,
     "unit_of_measurement": "°C"
    },
    "capabilities": {
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5
    },
@@ -3906,15 +3572,15 @@
    "attributes": {
     "friendly_name": "Thriftherm Wohnzimmer Setback temperature",
     "icon": "mdi:thermometer-low",
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5,
     "unit_of_measurement": "°C"
    },
    "capabilities": {
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5
    },
@@ -4719,6 +4385,7 @@
    "attributes": {
     "action": "none",
     "blockers": [],
+    "boiler_helps": false,
     "break_even_cop": 2.891338582677165,
     "commands_not_carried_out": 0,
     "commands_sent": false,
@@ -4941,7 +4608,9 @@
     "curve_by_load": {},
     "device_class": "enum",
     "flow_return_spread_k": null,
+    "flow_set_by": "Badezimmer",
     "friendly_name": "Thriftherm Learning state",
+    "heat_up_extra_k": {},
     "heating_curve_level_k": 0.0,
     "heating_curve_offset_k": 0.0,
     "heating_curve_slope_k": 0.0,
@@ -4965,6 +4634,7 @@
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
+    "rooms_heating_up": [],
     "rooms_total": 2,
     "setpoint_changed_in": [],
     "spread_rule": "active"
@@ -5103,30 +4773,6 @@
    "unique_id": "ENTRY_safety_state",
    "unit_of_measurement": null
   },
-  "sensor.thriftherm_wohnzimmer_absolute_humidity": {
-   "attributes": null,
-   "capabilities": {
-    "state_class": "measurement"
-   },
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": null,
-   "original_icon": "mdi:water-percent",
-   "state": null,
-   "translation_key": "room_abs_humidity",
-   "unique_id": "ENTRY_wohnzimmer_abs_humidity",
-   "unit_of_measurement": "g/m³"
-  },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
    "attributes": null,
    "capabilities": {
@@ -5149,30 +4795,6 @@
    "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
-   "unit_of_measurement": "°C"
-  },
-  "sensor.thriftherm_wohnzimmer_dew_point": {
-   "attributes": null,
-   "capabilities": {
-    "state_class": "measurement"
-   },
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "temperature",
-   "original_icon": null,
-   "state": null,
-   "translation_key": "room_dew_point",
-   "unique_id": "ENTRY_wohnzimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_heat_demand": {
@@ -5447,32 +5069,6 @@
    "unique_id": "ENTRY_wohnzimmer_heating_allowed",
    "unit_of_measurement": null
   },
-  "binary_sensor.thriftherm_wohnzimmer_window_open": {
-   "attributes": {
-    "device_class": "window",
-    "friendly_name": "Thriftherm Wohnzimmer Window open",
-    "unknown": false
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "window",
-   "original_icon": null,
-   "state": "unknown",
-   "translation_key": "room_window_open",
-   "unique_id": "ENTRY_wohnzimmer_window_open",
-   "unit_of_measurement": null
-  },
   "button.thriftherm_back_to_automatic": {
    "attributes": {
     "friendly_name": "Thriftherm Back to automatic",
@@ -5559,15 +5155,15 @@
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Setback temperature",
     "icon": "mdi:thermometer-low",
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5,
     "unit_of_measurement": "°C"
    },
    "capabilities": {
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5
    },
@@ -5629,15 +5225,15 @@
    "attributes": {
     "friendly_name": "Thriftherm Wohnzimmer Setback temperature",
     "icon": "mdi:thermometer-low",
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5,
     "unit_of_measurement": "°C"
    },
    "capabilities": {
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5
    },
@@ -6237,7 +5833,9 @@
     "curve_by_load": {},
     "device_class": "enum",
     "flow_return_spread_k": null,
+    "flow_set_by": "Badezimmer",
     "friendly_name": "Thriftherm Learning state",
+    "heat_up_extra_k": {},
     "heating_curve_level_k": 0.0,
     "heating_curve_offset_k": 0.0,
     "heating_curve_slope_k": 0.0,
@@ -6261,6 +5859,7 @@
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
+    "rooms_heating_up": [],
     "rooms_total": 2,
     "setpoint_changed_in": [],
     "spread_rule": "active"
@@ -6399,30 +5998,6 @@
    "unique_id": "ENTRY_safety_state",
    "unit_of_measurement": null
   },
-  "sensor.thriftherm_wohnzimmer_absolute_humidity": {
-   "attributes": null,
-   "capabilities": {
-    "state_class": "measurement"
-   },
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": null,
-   "original_icon": "mdi:water-percent",
-   "state": null,
-   "translation_key": "room_abs_humidity",
-   "unique_id": "ENTRY_wohnzimmer_abs_humidity",
-   "unit_of_measurement": "g/m³"
-  },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
    "attributes": null,
    "capabilities": {
@@ -6445,30 +6020,6 @@
    "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
-   "unit_of_measurement": "°C"
-  },
-  "sensor.thriftherm_wohnzimmer_dew_point": {
-   "attributes": null,
-   "capabilities": {
-    "state_class": "measurement"
-   },
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "temperature",
-   "original_icon": null,
-   "state": null,
-   "translation_key": "room_dew_point",
-   "unique_id": "ENTRY_wohnzimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_heat_demand": {
@@ -6567,34 +6118,6 @@
   }
  },
  "heat_pump_only": {
-  "binary_sensor.thriftherm_badezimmer_drying_mode": {
-   "attributes": {
-    "baseline_abs_humidity_g_m3": null,
-    "device_class": "running",
-    "friendly_name": "Thriftherm Badezimmer Drying mode",
-    "reason": null,
-    "started_ts": null
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_badezimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "running",
-   "original_icon": null,
-   "state": "off",
-   "translation_key": "room_drying_mode",
-   "unique_id": "ENTRY_badezimmer_drying_mode",
-   "unit_of_measurement": null
-  },
   "binary_sensor.thriftherm_badezimmer_heating_allowed": {
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Heating allowed",
@@ -6747,34 +6270,6 @@
    "unique_id": "ENTRY_override_active",
    "unit_of_measurement": null
   },
-  "binary_sensor.thriftherm_wohnzimmer_drying_mode": {
-   "attributes": {
-    "baseline_abs_humidity_g_m3": null,
-    "device_class": "running",
-    "friendly_name": "Thriftherm Wohnzimmer Drying mode",
-    "reason": null,
-    "started_ts": null
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "running",
-   "original_icon": null,
-   "state": "off",
-   "translation_key": "room_drying_mode",
-   "unique_id": "ENTRY_wohnzimmer_drying_mode",
-   "unit_of_measurement": null
-  },
   "binary_sensor.thriftherm_wohnzimmer_heating_allowed": {
    "attributes": {
     "friendly_name": "Thriftherm Wohnzimmer Heating allowed",
@@ -6799,32 +6294,6 @@
    "state": "on",
    "translation_key": "room_heating_allowed",
    "unique_id": "ENTRY_wohnzimmer_heating_allowed",
-   "unit_of_measurement": null
-  },
-  "binary_sensor.thriftherm_wohnzimmer_window_open": {
-   "attributes": {
-    "device_class": "window",
-    "friendly_name": "Thriftherm Wohnzimmer Window open",
-    "unknown": false
-   },
-   "capabilities": null,
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "window",
-   "original_icon": null,
-   "state": "unknown",
-   "translation_key": "room_window_open",
-   "unique_id": "ENTRY_wohnzimmer_window_open",
    "unit_of_measurement": null
   },
   "button.thriftherm_back_to_automatic": {
@@ -6938,15 +6407,15 @@
    "attributes": {
     "friendly_name": "Thriftherm Badezimmer Setback temperature",
     "icon": "mdi:thermometer-low",
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5,
     "unit_of_measurement": "°C"
    },
    "capabilities": {
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5
    },
@@ -7008,15 +6477,15 @@
    "attributes": {
     "friendly_name": "Thriftherm Wohnzimmer Setback temperature",
     "icon": "mdi:thermometer-low",
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5,
     "unit_of_measurement": "°C"
    },
    "capabilities": {
-    "max": 28.0,
-    "min": 10.0,
+    "max": 25.0,
+    "min": 5.0,
     "mode": "box",
     "step": 0.5
    },
@@ -7437,6 +6906,7 @@
    "attributes": {
     "action": "none",
     "blockers": [],
+    "boiler_helps": false,
     "break_even_cop": 0.0,
     "commands_not_carried_out": 0,
     "commands_sent": false,
@@ -7659,7 +7129,9 @@
     "curve_by_load": {},
     "device_class": "enum",
     "flow_return_spread_k": null,
+    "flow_set_by": null,
     "friendly_name": "Thriftherm Learning state",
+    "heat_up_extra_k": {},
     "heating_curve_level_k": 0.0,
     "heating_curve_offset_k": 0.0,
     "heating_curve_slope_k": 0.0,
@@ -7683,6 +7155,7 @@
     "room_cooling_rates": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
+    "rooms_heating_up": [],
     "rooms_total": 2,
     "setpoint_changed_in": [],
     "spread_rule": null
@@ -7821,30 +7294,6 @@
    "unique_id": "ENTRY_safety_state",
    "unit_of_measurement": null
   },
-  "sensor.thriftherm_wohnzimmer_absolute_humidity": {
-   "attributes": null,
-   "capabilities": {
-    "state_class": "measurement"
-   },
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": null,
-   "original_icon": "mdi:water-percent",
-   "state": null,
-   "translation_key": "room_abs_humidity",
-   "unique_id": "ENTRY_wohnzimmer_abs_humidity",
-   "unit_of_measurement": "g/m³"
-  },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
    "attributes": null,
    "capabilities": {
@@ -7867,30 +7316,6 @@
    "state": null,
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
-   "unit_of_measurement": "°C"
-  },
-  "sensor.thriftherm_wohnzimmer_dew_point": {
-   "attributes": null,
-   "capabilities": {
-    "state_class": "measurement"
-   },
-   "device": {
-    "identifiers": [
-     "thriftherm/ENTRY_room_wohnzimmer"
-    ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
-     "thriftherm/ENTRY"
-    ]
-   },
-   "options": {},
-   "original_device_class": "temperature",
-   "original_icon": null,
-   "state": null,
-   "translation_key": "room_dew_point",
-   "unique_id": "ENTRY_wohnzimmer_dew_point",
    "unit_of_measurement": "°C"
   },
   "sensor.thriftherm_wohnzimmer_heat_demand": {

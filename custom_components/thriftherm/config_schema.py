@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 import voluptuous as vol
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 from homeassistant.util import slugify
 
@@ -13,6 +14,8 @@ from .const import (
     CONF_AWAY_DEWPOINT_MARGIN,
     CONF_AWAY_TEMP,
     CONF_BOILER_CIRCULATION_L_H,
+    CONF_BOILER_FILL_DECLINED,
+    CONF_BOILER_NOMINAL_INPUT_KW,
     CONF_BOILER_EFFICIENCY,
     CONF_BOILER_FLOW_TEMP,
     CONF_BOILER_HWC_MODE,
@@ -27,12 +30,8 @@ from .const import (
     CONF_BOILER_SIGNAL,
     CONF_BREAK_EVEN_MARGIN_OFF,
     CONF_BREAK_EVEN_MARGIN_ON,
-    CONF_COP_EMA_TAU_S,
-    CONF_COP_MAX_RAW,
-    CONF_COP_MAX_SENSOR_AGE_S,
     CONF_COP_MIN_DELTA_T,
     CONF_COP_MIN_POWER_W,
-    CONF_COP_MIN_RAW,
     CONF_COP_MIN_SAMPLES,
     CONF_COP_SETTLE_MAX_K_PER_MIN,
     CONF_COP_WARMUP_S,
@@ -79,6 +78,7 @@ from .const import (
     CONF_BOILER_EBUS_CIRCUIT,
     CONF_BOILER_FLOW_MAX,
     CONF_BOILER_FLOW_MIN,
+    CONF_BOILER_HEAT_UP_RATE,
     CONF_BOILER_HOT_WATER_STANDBY,
     CONF_BOILER_LOAD_MODEL,
     CONF_BOILER_SPREAD_MIN_ROOM_SHARE,
@@ -94,6 +94,7 @@ from .const import (
     CONF_ROOM_CLIMATE,
     CONF_ROOM_COMFORT_TEMP,
     CONF_ROOM_DRYING,
+    CONF_ROOM_DRYING_AUTO,
     CONF_ROOM_GAIN_SENSORS,
     CONF_ROOM_HUMIDITY,
     CONF_ROOM_KEY,
@@ -157,6 +158,7 @@ from .const import (
     DEFAULT_BOILER_EBUS_CIRCUIT,
     DEFAULT_BOILER_FLOW_MAX,
     DEFAULT_BOILER_FLOW_MIN,
+    DEFAULT_BOILER_HEAT_UP_RATE,
     DEFAULT_BOILER_HOT_WATER_STANDBY,
     DEFAULT_BOILER_LOAD_MODEL,
     DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE,
@@ -170,6 +172,7 @@ from .const import (
     DEFAULT_PREHEAT_MARGIN_MIN,
     DEFAULT_ROOM_COMFORT_TEMP,
     DEFAULT_ROOM_SETBACK_TEMP,
+    ROOM_TEMP_RANGES,
     DEFAULT_SCHEDULE_WEEKDAY,
     DEFAULT_SCHEDULE_WEEKEND,
     DEFAULT_SENSOR_MAX_AGE_MIN,
@@ -215,12 +218,34 @@ def _req(key: str, current: Mapping[str, Any], default: Any = None) -> vol.Requi
     return vol.Required(key, default=value)
 
 
+def _section(fields: dict[Any, Any], collapsed: bool = False) -> section:
+    """A group of fields under a heading of its own; one that folds shows only its heading at first."""
+    return section(vol.Schema(fields), {"collapsed": collapsed})
+
+
+def _markers(schema: vol.Schema) -> Iterable[Any]:
+    for marker, value in schema.schema.items():
+        if isinstance(value, section):
+            yield from _markers(value.schema)
+        else:
+            yield marker
+
+
 def keys_of(schema_fn: Callable[[Mapping[str, Any]], vol.Schema]) -> tuple[str, ...]:
-    """The keys a step stores, read off its form.
+    """The keys a step stores, read off its form, the fields inside its sections included.
 
     Only for steps whose fields never depend on the current configuration.
     """
-    return tuple(marker.schema for marker in schema_fn({}).schema)
+    return tuple(marker.schema for marker in _markers(schema_fn({})))
+
+
+def flatten_sections(schema: vol.Schema, user_input: Mapping[str, Any]) -> dict[str, Any]:
+    """The answer of a form with sections as the flat keys that are stored: a section is only a heading."""
+    sections = {marker.schema for marker, value in schema.schema.items() if isinstance(value, section)}
+    flat = {key: value for key, value in user_input.items() if key not in sections}
+    for name in sections:
+        flat.update(user_input.get(name) or {})
+    return flat
 
 
 # ---------------------------------------------------------------------------
@@ -296,6 +321,7 @@ def schema_boiler(cur: Mapping[str, Any]) -> vol.Schema:
             _req(CONF_BOILER_CIRCULATION_L_H, cur, DEFAULT_BOILER_CIRCULATION_L_H): _number(100, 5000, 1, "l/h"),
             _opt(CONF_GAS_VOLUME, cur): _entity("sensor"),
             _opt(CONF_GAS_FLOW, cur): _entity("sensor"),
+            _opt(CONF_BOILER_NOMINAL_INPUT_KW, cur): _number(3, 100, 0.1, "kW"),
             _req(CONF_BOILER_EBUS_CIRCUIT, cur, DEFAULT_BOILER_EBUS_CIRCUIT): _text(),
             _opt(CONF_BOILER_FLOW_SETPOINT_ENTITY, cur): _entity(["number", "input_number"]),
             _opt(CONF_BOILER_HEATING_ENABLE_ENTITY, cur): _entity(["switch", "input_boolean"]),
@@ -303,6 +329,11 @@ def schema_boiler(cur: Mapping[str, Any]) -> vol.Schema:
             _req(CONF_BOILER_CURVE_WARM, cur, DEFAULT_BOILER_CURVE_WARM): _number(30, 60, 0.5, "°C"),
             _req(CONF_BOILER_FLOW_MIN, cur, DEFAULT_BOILER_FLOW_MIN): _number(30, 50, 0.5, "°C"),
             _req(CONF_BOILER_FLOW_MAX, cur, DEFAULT_BOILER_FLOW_MAX): _number(35, 75, 0.5, "°C"),
+            _req(CONF_BOILER_HEAT_UP_RATE, cur, DEFAULT_BOILER_HEAT_UP_RATE): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0, max=3, step=0.25, unit_of_measurement="°C/h", mode=selector.NumberSelectorMode.SLIDER
+                )
+            ),
             _req(CONF_BOILER_HOT_WATER_STANDBY, cur, DEFAULT_BOILER_HOT_WATER_STANDBY): selector.BooleanSelector(),
             _req(CONF_BOILER_SPREAD_MIN_ROOM_SHARE, cur, DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE): _number(0, 1, 0.05),
             _req(CONF_BOILER_LOAD_MODEL, cur, DEFAULT_BOILER_LOAD_MODEL): selector.BooleanSelector(),
@@ -369,58 +400,113 @@ def schema_outdoor(cur: Mapping[str, Any]) -> vol.Schema:
 OUTDOOR_KEYS = keys_of(schema_outdoor)
 
 
+SECTION_WINDOWS = "windows_preheat"
+SECTION_RELEASE = "release"
+SECTION_EXPERT = "expert"
+SECTION_SWITCHING = "switching"
+SECTION_DRYING = "drying"
+SECTION_COP = "cop"
+SECTION_ICING = "icing"
+
+
 def schema_parameters(cur: Mapping[str, Any]) -> vol.Schema:
+    """What applies to every installation: the values of everyday use first, the rest under headings.
+
+    The heat pump has a form of its own (`schema_heat_pump_tuning`): it made up more than half of
+    this one, and an installation without a heat pump saw all of it.
+    """
     return vol.Schema(
         {
-            _req(CONF_SENSOR_MAX_AGE_MIN, cur, DEFAULT_SENSOR_MAX_AGE_MIN): _number(5, 720, 1, "min"),
-            _req(CONF_WINDOW_GRACE_S, cur, DEFAULT_WINDOW_GRACE_S): _number(0, 900, 1, "s"),
-            _req(CONF_FROST_TEMP, cur, DEFAULT_FROST_TEMP): _number(3, 12, 0.5, "°C"),
-            _req(CONF_AWAY_TEMP, cur, DEFAULT_AWAY_TEMP): _number(8, 20, 0.5, "°C"),
-            _req(CONF_DEMAND_FULL_DELTA, cur, DEFAULT_DEMAND_FULL_DELTA): _number(0.5, 5, 0.1, "°C"),
-            _req(CONF_TREND_WEIGHT_H, cur, DEFAULT_TREND_WEIGHT_H): _number(0, 2, 0.1, "h"),
-            _req(CONF_GAIN_THRESHOLD_W, cur, DEFAULT_GAIN_THRESHOLD_W): _number(0, 2000, 10, "W"),
-            _req(CONF_GAIN_FACTOR, cur, DEFAULT_GAIN_FACTOR): _number(0, 0.01, "any", "1/W"),
-            _req(CONF_BREAK_EVEN_MARGIN_ON, cur, DEFAULT_BREAK_EVEN_MARGIN_ON): _number(0, 0.5, 0.01),
-            _req(CONF_BREAK_EVEN_MARGIN_OFF, cur, DEFAULT_BREAK_EVEN_MARGIN_OFF): _number(0, 0.5, 0.01),
-            _req(CONF_HEAT_PUMP_MIN_OUTDOOR_TEMP, cur, DEFAULT_HEAT_PUMP_MIN_OUTDOOR_TEMP): _number(-20, 10, 0.5, "°C"),
-            _req(CONF_HEAT_PUMP_SETPOINT_OFFSET, cur, DEFAULT_HEAT_PUMP_SETPOINT_OFFSET): _number(0, 5, 0.5, "°C"),
-            _req(CONF_COP_WARMUP_S, cur, DEFAULT_COP_WARMUP_S): _number(0, 1800, 10, "s"),
-            _req(CONF_COP_MIN_POWER_W, cur, DEFAULT_COP_MIN_POWER_W): _number(0, 2000, 10, "W"),
-            _req(CONF_COP_MIN_DELTA_T, cur, DEFAULT_COP_MIN_DELTA_T): _number(0, 15, 0.5, "°C"),
-            _req(CONF_COP_MIN_SAMPLES, cur, DEFAULT_COP_MIN_SAMPLES): _number(1, 120, 1),
-            _req(CONF_COP_SETTLE_MAX_K_PER_MIN, cur, DEFAULT_COP_SETTLE_MAX_K_PER_MIN): _number(0.1, 5, 0.1, "°C/min"),
-            _req(CONF_ICING_BLOCK_MIN, cur, DEFAULT_ICING_BLOCK_MIN): _number(10, 720, 5, "min"),
-            _req(CONF_DEFROST_COIL_RISE_K, cur, DEFAULT_DEFROST_COIL_RISE_K): _number(2, 20, 0.5, "°C"),
-            _req(CONF_DEFROST_MAX_CYCLES_90MIN, cur, DEFAULT_DEFROST_MAX_CYCLES_90MIN): _number(1, 10, 1),
-            _req(CONF_ICING_COIL_DEPRESSION_K, cur, DEFAULT_ICING_COIL_DEPRESSION_K): _number(3, 20, 0.5, "°C"),
-            _req(CONF_DRYING_TARGET_TEMP, cur, DEFAULT_DRYING_TARGET_TEMP): _number(18, 26, 0.5, "°C"),
-            _req(CONF_DRYING_ABS_HUMIDITY_RISE, cur, DEFAULT_DRYING_ABS_HUMIDITY_RISE): _number(0.5, 8, 0.1, "g/m³"),
-            _req(CONF_DRYING_MAX_MIN, cur, DEFAULT_DRYING_MAX_MIN): _number(10, 240, 5, "min"),
-            _req(CONF_AWAY_DEWPOINT_MARGIN, cur, DEFAULT_AWAY_DEWPOINT_MARGIN): _number(1, 8, 0.5, "°C"),
-            _req(CONF_PREHEAT_MARGIN_MIN, cur, DEFAULT_PREHEAT_MARGIN_MIN): _number(0, 120, 5, "min"),
-            _req(CONF_DEFAULT_HEAT_RATE_RADIATOR, cur, DEFAULT_DEFAULT_HEAT_RATE_RADIATOR): _number(0.1, 5, 0.1, "°C/h"),
-            _req(CONF_DEFAULT_HEAT_RATE_HEAT_PUMP, cur, DEFAULT_DEFAULT_HEAT_RATE_HEAT_PUMP): _number(0.1, 5, 0.1, "°C/h"),
             _req(CONF_OVERRIDE_DEFAULT_MIN, cur, DEFAULT_OVERRIDE_DEFAULT_MIN): _number(5, 1440, 5, "min"),
-            _req(CONF_HEAT_PUMP_MIN_RUN_MIN, cur, DEFAULT_HEAT_PUMP_MIN_RUN_MIN): _number(5, 120, 1, "min"),
-            _req(CONF_HEAT_PUMP_MIN_OFF_MIN, cur, DEFAULT_HEAT_PUMP_MIN_OFF_MIN): _number(3, 120, 1, "min"),
-            _req(CONF_HEAT_PUMP_FAN_RUN_ON_MIN, cur, DEFAULT_HEAT_PUMP_FAN_RUN_ON_MIN): _number(0, 60, 1, "min"),
             _req(CONF_BOOST_DURATION_MIN, cur, DEFAULT_BOOST_DURATION_MIN): _number(10, 180, 5, "min"),
-            _req(CONF_HEAT_PUMP_LEARNING_RUNS, cur, DEFAULT_HEAT_PUMP_LEARNING_RUNS): selector.BooleanSelector(),
+            _req(CONF_AWAY_TEMP, cur, DEFAULT_AWAY_TEMP): _number(8, 20, 0.5, "°C"),
+            _req(CONF_FROST_TEMP, cur, DEFAULT_FROST_TEMP): _number(3, 12, 0.5, "°C"),
+            vol.Required(SECTION_WINDOWS): _section(
+                {
+                    _req(CONF_WINDOW_GRACE_S, cur, DEFAULT_WINDOW_GRACE_S): _number(0, 900, 1, "s"),
+                    _req(CONF_PREHEAT_MARGIN_MIN, cur, DEFAULT_PREHEAT_MARGIN_MIN): _number(0, 120, 5, "min"),
+                    _req(CONF_DEFAULT_HEAT_RATE_RADIATOR, cur, DEFAULT_DEFAULT_HEAT_RATE_RADIATOR): _number(0.1, 5, 0.1, "°C/h"),
+                }
+            ),
+            vol.Required(SECTION_RELEASE): _section(
+                {
+                    _req(CONF_ROOM_ALLOW_ACTIVE, cur, DEFAULT_ROOM_ALLOW_ACTIVE): selector.BooleanSelector(),
+                    _req(CONF_ROOM_ECHO_FILTER, cur, DEFAULT_ROOM_ECHO_FILTER): selector.BooleanSelector(),
+                }
+            ),
+            vol.Required(SECTION_EXPERT): _section(
+                {
+                    _req(CONF_DEMAND_FULL_DELTA, cur, DEFAULT_DEMAND_FULL_DELTA): _number(0.5, 5, 0.1, "°C"),
+                    _req(CONF_TREND_WEIGHT_H, cur, DEFAULT_TREND_WEIGHT_H): _number(0, 2, 0.1, "h"),
+                    _req(CONF_GAIN_THRESHOLD_W, cur, DEFAULT_GAIN_THRESHOLD_W): _number(0, 2000, 10, "W"),
+                    _req(CONF_GAIN_FACTOR, cur, DEFAULT_GAIN_FACTOR): _number(0, 0.01, "any", "1/W"),
+                    _req(CONF_SENSOR_MAX_AGE_MIN, cur, DEFAULT_SENSOR_MAX_AGE_MIN): _number(5, 720, 1, "min"),
+                    _req(CONF_AWAY_DEWPOINT_MARGIN, cur, DEFAULT_AWAY_DEWPOINT_MARGIN): _number(1, 8, 0.5, "°C"),
+                },
+                collapsed=True,
+            ),
+        }
+    )
+
+
+def schema_heat_pump_tuning(cur: Mapping[str, Any]) -> vol.Schema:
+    """How the heat pump is run: only offered once a heat pump is configured."""
+    return vol.Schema(
+        {
             _req(CONF_HEAT_PUMP_ALLOW_ACTIVE, cur, DEFAULT_HEAT_PUMP_ALLOW_ACTIVE): selector.BooleanSelector(),
-            _req(CONF_ROOM_ALLOW_ACTIVE, cur, DEFAULT_ROOM_ALLOW_ACTIVE): selector.BooleanSelector(),
-            _req(CONF_ROOM_ECHO_FILTER, cur, DEFAULT_ROOM_ECHO_FILTER): selector.BooleanSelector(),
+            _req(CONF_HEAT_PUMP_SETPOINT_OFFSET, cur, DEFAULT_HEAT_PUMP_SETPOINT_OFFSET): _number(0, 5, 0.5, "°C"),
+            _req(CONF_HEAT_PUMP_MIN_OUTDOOR_TEMP, cur, DEFAULT_HEAT_PUMP_MIN_OUTDOOR_TEMP): _number(-20, 10, 0.5, "°C"),
+            _req(CONF_DEFAULT_HEAT_RATE_HEAT_PUMP, cur, DEFAULT_DEFAULT_HEAT_RATE_HEAT_PUMP): _number(0.1, 5, 0.1, "°C/h"),
+            vol.Required(SECTION_SWITCHING): _section(
+                {
+                    _req(CONF_BREAK_EVEN_MARGIN_ON, cur, DEFAULT_BREAK_EVEN_MARGIN_ON): _number(0, 0.5, 0.01),
+                    _req(CONF_BREAK_EVEN_MARGIN_OFF, cur, DEFAULT_BREAK_EVEN_MARGIN_OFF): _number(0, 0.5, 0.01),
+                    _req(CONF_HEAT_PUMP_MIN_RUN_MIN, cur, DEFAULT_HEAT_PUMP_MIN_RUN_MIN): _number(5, 120, 1, "min"),
+                    _req(CONF_HEAT_PUMP_MIN_OFF_MIN, cur, DEFAULT_HEAT_PUMP_MIN_OFF_MIN): _number(3, 120, 1, "min"),
+                    _req(CONF_HEAT_PUMP_FAN_RUN_ON_MIN, cur, DEFAULT_HEAT_PUMP_FAN_RUN_ON_MIN): _number(0, 60, 1, "min"),
+                    _req(CONF_HEAT_PUMP_LEARNING_RUNS, cur, DEFAULT_HEAT_PUMP_LEARNING_RUNS): selector.BooleanSelector(),
+                }
+            ),
+            vol.Required(SECTION_DRYING): _section(
+                {
+                    _req(CONF_DRYING_TARGET_TEMP, cur, DEFAULT_DRYING_TARGET_TEMP): _number(18, 26, 0.5, "°C"),
+                    _req(CONF_DRYING_ABS_HUMIDITY_RISE, cur, DEFAULT_DRYING_ABS_HUMIDITY_RISE): _number(0.5, 8, 0.1, "g/m³"),
+                    _req(CONF_DRYING_MAX_MIN, cur, DEFAULT_DRYING_MAX_MIN): _number(10, 240, 5, "min"),
+                },
+                collapsed=True,
+            ),
+            vol.Required(SECTION_COP): _section(
+                {
+                    _req(CONF_COP_WARMUP_S, cur, DEFAULT_COP_WARMUP_S): _number(0, 1800, 10, "s"),
+                    _req(CONF_COP_MIN_POWER_W, cur, DEFAULT_COP_MIN_POWER_W): _number(0, 2000, 10, "W"),
+                    _req(CONF_COP_MIN_DELTA_T, cur, DEFAULT_COP_MIN_DELTA_T): _number(0, 15, 0.5, "°C"),
+                    _req(CONF_COP_MIN_SAMPLES, cur, DEFAULT_COP_MIN_SAMPLES): _number(1, 120, 1),
+                    _req(CONF_COP_SETTLE_MAX_K_PER_MIN, cur, DEFAULT_COP_SETTLE_MAX_K_PER_MIN): _number(0.1, 5, 0.1, "°C/min"),
+                },
+                collapsed=True,
+            ),
+            vol.Required(SECTION_ICING): _section(
+                {
+                    _req(CONF_ICING_BLOCK_MIN, cur, DEFAULT_ICING_BLOCK_MIN): _number(10, 720, 5, "min"),
+                    _req(CONF_DEFROST_COIL_RISE_K, cur, DEFAULT_DEFROST_COIL_RISE_K): _number(2, 20, 0.5, "°C"),
+                    _req(CONF_DEFROST_MAX_CYCLES_90MIN, cur, DEFAULT_DEFROST_MAX_CYCLES_90MIN): _number(1, 10, 1),
+                    _req(CONF_ICING_COIL_DEPRESSION_K, cur, DEFAULT_ICING_COIL_DEPRESSION_K): _number(3, 20, 0.5, "°C"),
+                },
+                collapsed=True,
+            ),
         }
     )
 
 
 PARAMETER_KEYS = keys_of(schema_parameters)
+HEAT_PUMP_TUNING_KEYS = keys_of(schema_heat_pump_tuning)
 
 # every top-level key the integration reads; anything else in a stored entry is a leftover
 CONFIG_KEYS = frozenset(
     (
-        *SYSTEM_KEYS, *PRICE_KEYS, *BOILER_KEYS, CONF_BOILER_PROFILE, *HEAT_PUMP_KEYS, *OUTDOOR_KEYS, *PARAMETER_KEYS, CONF_ROOMS,
-        # read with a default, never asked for
-        CONF_COP_EMA_TAU_S, CONF_COP_MAX_RAW, CONF_COP_MAX_SENSOR_AGE_S, CONF_COP_MIN_RAW,
+        *SYSTEM_KEYS, *PRICE_KEYS, *BOILER_KEYS, CONF_BOILER_PROFILE, *HEAT_PUMP_KEYS, *HEAT_PUMP_TUNING_KEYS, *OUTDOOR_KEYS,
+        *PARAMETER_KEYS, CONF_ROOMS,
+        CONF_BOILER_FILL_DECLINED,  # kept by the boiler step itself, never asked for
     )
 )
 
@@ -458,11 +544,12 @@ def schema_room(cur: Mapping[str, Any], allow_add_another: bool, heat_pump: bool
     if heat_pump:
         fields[_req(CONF_ROOM_HEAT_PUMP, cur, False)] = selector.BooleanSelector()
         fields[_req(CONF_ROOM_DRYING, cur, False)] = selector.BooleanSelector()
+        fields[_req(CONF_ROOM_DRYING_AUTO, cur, True)] = selector.BooleanSelector()
     fields.update({
         _opt(CONF_ROOM_GAIN_SENSORS, cur): _entity("sensor", multiple=True),
         _opt(CONF_ROOM_SCHEDULE_ENTITY, cur): _entity("schedule"),
-        _req(CONF_ROOM_COMFORT_TEMP, cur, DEFAULT_ROOM_COMFORT_TEMP): _number(10, 28, 0.5, "°C"),
-        _req(CONF_ROOM_SETBACK_TEMP, cur, DEFAULT_ROOM_SETBACK_TEMP): _number(5, 25, 0.5, "°C"),
+        _req(CONF_ROOM_COMFORT_TEMP, cur, DEFAULT_ROOM_COMFORT_TEMP): _number(*ROOM_TEMP_RANGES["comfort"], 0.5, "°C"),
+        _req(CONF_ROOM_SETBACK_TEMP, cur, DEFAULT_ROOM_SETBACK_TEMP): _number(*ROOM_TEMP_RANGES["setback"], 0.5, "°C"),
         _req(CONF_ROOM_SCHEDULE_WEEKDAY, cur, DEFAULT_SCHEDULE_WEEKDAY): _text(),
         _req(CONF_ROOM_SCHEDULE_WEEKEND, cur, DEFAULT_SCHEDULE_WEEKEND): _text(),
     })
@@ -517,8 +604,13 @@ def validate_boiler(user_input: Mapping[str, Any]) -> dict[str, str]:
 
 def validate_heat_pump(user_input: Mapping[str, Any]) -> dict[str, str]:
     try:
-        parse_airflow_curve(user_input.get(CONF_HEAT_PUMP_AIRFLOW_CURVE))
+        curve = parse_airflow_curve(user_input.get(CONF_HEAT_PUMP_AIRFLOW_CURVE))
     except (ValueError, TypeError):
+        return {CONF_HEAT_PUMP_AIRFLOW_CURVE: "invalid_airflow_curve"}
+    # One point draws no line, the engine divides by the lowest speed, and a speed given twice
+    # leaves the flow open. An empty curve is allowed: the COP is then not measured.
+    speeds = [rpm for rpm, _ in curve]
+    if curve and (len(curve) < 2 or len(set(speeds)) < len(speeds) or min(speeds) <= 0 or min(flow for _, flow in curve) <= 0):
         return {CONF_HEAT_PUMP_AIRFLOW_CURVE: "invalid_airflow_curve"}
     return {}
 

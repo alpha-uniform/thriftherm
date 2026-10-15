@@ -61,21 +61,20 @@ def air_heating_power_w(
     intake_t: float,
     intake_rh: float,
     outlet_t: float,
-    outlet_rh: float | None,
     airflow_m3h: float,
     p_pa: float = STANDARD_PRESSURE_PA,
 ) -> float:
-    """Sensible+latent heating power delivered to an air stream.
+    """Heating power delivered to an air stream.
 
     Uses the enthalpy difference per kg of dry air and the intake-side density
-    (the airflow is measured/estimated on the intake side). If the outlet
-    humidity is unknown, the humidity ratio is assumed constant across the
-    unit, which holds for a heat pump in heating mode.
+    (the airflow is measured/estimated on the intake side). Heating adds no water
+    to the air, so the humidity ratio is the same on both sides of the unit. A
+    measured outlet humidity only adds error: at 35 °C each point of RH is about
+    0.4 g/kg, and a stale reading once turned COP 3.4 into 8.1.
     """
-    x_in = humidity_ratio(intake_t, intake_rh, p_pa)
-    x_out = humidity_ratio(outlet_t, outlet_rh, p_pa) if outlet_rh is not None else x_in
+    x = humidity_ratio(intake_t, intake_rh, p_pa)
     rho_in = moist_air_density_kg_m3(intake_t, intake_rh, p_pa)
     mass_flow_moist = airflow_m3h / 3600.0 * rho_in
-    mass_flow_dry = mass_flow_moist / (1.0 + x_in)
-    dh = specific_enthalpy_j_kg(outlet_t, x_out) - specific_enthalpy_j_kg(intake_t, x_in)
+    mass_flow_dry = mass_flow_moist / (1.0 + x)
+    dh = specific_enthalpy_j_kg(outlet_t, x) - specific_enthalpy_j_kg(intake_t, x)
     return mass_flow_dry * dh

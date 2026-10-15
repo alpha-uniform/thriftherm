@@ -15,6 +15,10 @@ from ..const import (
 from ..models import HeatPumpResult, HeatPumpState, Parameters
 
 PLAUSIBILITY_TOLERANCE = 0.15
+HEATING_STATES = (HEAT_PUMP_HEATING_IDLE, HEAT_PUMP_HEATING_WARMING_UP, HEAT_PUMP_HEATING_STABLE)
+# Modes somebody runs the unit in by hand. The control keeps its hands off in all of them, "auto"
+# included, so none of them counts as available for heating: the boiler serves the rooms meanwhile.
+USER_STATES = (HEAT_PUMP_COOLING_USER, HEAT_PUMP_FAN_ONLY, HEAT_PUMP_AUTO)
 
 
 def electrical_power(heat_pump: HeatPumpState) -> tuple[float | None, str | None]:
@@ -62,9 +66,9 @@ def evaluate(heat_pump: HeatPumpState, params: Parameters) -> HeatPumpResult:
     heating_available = (
         heat_pump.available
         and heat_pump.error_code in (None, 0)
-        and state not in (HEAT_PUMP_COOLING_USER, HEAT_PUMP_FAN_ONLY, HEAT_PUMP_UNAVAILABLE)
+        and state not in (*USER_STATES, HEAT_PUMP_UNAVAILABLE)
     )
-    if state in (HEAT_PUMP_COOLING_USER, HEAT_PUMP_FAN_ONLY):
+    if state in USER_STATES:
         issues.append("user_mode_active_not_available_for_heating")
 
     return HeatPumpResult(

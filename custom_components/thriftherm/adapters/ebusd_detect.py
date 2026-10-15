@@ -19,6 +19,7 @@ from homeassistant.helpers import entity_registry as er
 from .. import boiler_profiles
 from ..const import (
     CONF_BOILER_EBUS_CIRCUIT,
+    CONF_BOILER_FILL_DECLINED,
     CONF_BOILER_FLOW_TEMP,
     CONF_BOILER_PROFILE,
     CONF_BOILER_PUMP_RUNNING,
@@ -76,9 +77,12 @@ def prefill(current: Mapping[str, Any], detection: Detection) -> dict[str, Any]:
     Boiler values come only from the boiler the configuration already points at
     (same profile and circuit), or, while no boiler value is configured at all,
     from the boiler found, together with its circuit and profile. A configured
-    entity is never replaced. The eBUS signal and the gas meter fill any empty field.
+    entity is never replaced. The eBUS signal and the gas meter fill any empty field. A field
+    the user emptied although a value had been found for it is left empty: somebody who takes
+    the gas meter out does not want it back with the next visit to the form.
     """
     fill: dict[str, Any] = {}
+    declined = set(current.get(CONF_BOILER_FILL_DECLINED) or ())
     if detection.profile is not None:
         configured = any(current.get(key) for key in _ROLE_KEYS)
         circuit = str(current.get(CONF_BOILER_EBUS_CIRCUIT) or DEFAULT_BOILER_EBUS_CIRCUIT).strip()
@@ -90,7 +94,7 @@ def prefill(current: Mapping[str, Any], detection: Detection) -> dict[str, Any]:
             roles = boiler_profiles.profile(detection.profile).roles
             fill.update({k: v for k, v in detection.entities.items() if k in roles and not current.get(k)})
     fill.update({k: detection.entities[k] for k in _OPTIONAL_KEYS if k in detection.entities and not current.get(k)})
-    return fill
+    return {key: value for key, value in fill.items() if key not in declined}
 
 
 def _circuits(mqtt: Mapping[tuple[str, str], str]) -> list[str]:

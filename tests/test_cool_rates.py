@@ -26,8 +26,6 @@ def test_a_clean_cool_down_is_learned():
     learned = _cool(stats, "wohnzimmer", 1_000_000.0, [21.0, 20.7, 20.3, 20.0], 5.0)
     assert learned is not None
     assert stats.rate("wohnzimmer") == pytest.approx(0.0215, abs=0.002)
-    # what that means in practice: at a 16 K gradient the room loses about a third of a degree per hour
-    assert stats.drop_per_hour("wohnzimmer", 21.0, 5.0) == pytest.approx(0.34, abs=0.05)
 
 
 def test_heating_window_and_small_gradient_are_not_cool_downs():
@@ -50,6 +48,19 @@ def test_a_room_that_warms_up_again_restarts_the_episode():
     stats.observe("kuche", 2 * HOUR, 21.2, 5.0, heating=False, window_open=False)  # sun, cooking, a guest
     assert stats.episodes["kuche"].start_temp == 21.2
     assert stats.observe("kuche", 3 * HOUR, 21.2, 5.0, heating=True, window_open=False) is None
+
+
+def test_a_cool_down_ends_at_its_lowest_point_whatever_the_room_does_after():
+    # 21 -> 19 °C in eight hours at 4 °C outside: 0.25 K/h at a gradient of 16 K, k about 0.0156 per hour
+    night = [round(21.0 - 2.0 * i / 480, 1) for i in range(481)]
+    sun = [round(19.0 + 1.5 * i / 180, 1) for i in range(1, 181)]  # then the morning sun, slowly: no jump to restart on
+    stats = CoolRateStats()
+    learned = [stats.observe("wohnzimmer", i * 60.0, temp, 4.0, False, False) for i, temp in enumerate(night + sun)]
+    assert [k for k in learned if k is not None] == [pytest.approx(0.0156, abs=0.001)]  # was 0.0029 with the rise counted in
+
+    held = CoolRateStats()  # three hours down to the setback, then held there for six
+    down = [round(21.0 - 1.5 * i / 180, 1) for i in range(181)]
+    assert _cool(held, "bad", 0.0, down + [19.5] * 360, 4.0, step=60.0) == pytest.approx(1.5 / 3.0 / 16.25, abs=0.001)
 
 
 def test_too_short_or_too_small_is_ignored():

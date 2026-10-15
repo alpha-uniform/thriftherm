@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 import pytest
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Context, HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
@@ -134,3 +134,71 @@ async def test_an_open_window_in_versatile_thermostat_is_no_turn_of_the_knob(has
     hass.states.async_set("climate.bath_vt", "heat", vtherm(22.5, 22.5))  # somebody asks for 22.5: that is a hand
     await coordinator.async_refresh()
     assert coordinator.overrides["badezimmer"].target == 22.5
+
+
+# ------------------------------------------------------------------ the knob at a valve behind it
+VALVE, VT = "climate.bath_trv", "climate.bath_vt"
+
+
+async def _regulating(hass: HomeAssistant, freezer):
+    """Room control active; Versatile Thermostat has our 21 °C, its valve the 18.5 °C it regulates with."""
+    freezer.move_to(datetime(2026, 9, 27, 14, 30, tzinfo=dt_util.UTC))
+    set_temp = async_mock_service(hass, "climate", "set_temperature")
+    _register(hass, {"underlying_entity_ids": [VALVE]})
+    _set_states(hass)
+    hass.states.async_set(VALVE, "heat", {"temperature": 18.5, "current_temperature": 19.4})
+    hass.states.async_set(VT, "heat", vtherm(17.0, 17.0))
+    coordinator = await _setup_room_control(hass)
+    assert set_temp[-1].data == {"entity_id": VT, "temperature": 21.0}
+    freezer.tick(timedelta(seconds=5))
+    hass.states.async_set(VT, "heat", vtherm(21.0, 21.0))
+    await coordinator.async_refresh()
+    return coordinator, set_temp
+
+
+def _room_target(hass: HomeAssistant):
+    state = hass.states.get("sensor.thriftherm_badezimmer_target_temperature")
+    return float(state.state), state.attributes["reason"], state.attributes["override_by"]
+
+
+async def test_a_knob_turned_at_a_valve_behind_versatile_thermostat_becomes_an_override(hass: HomeAssistant, freezer) -> None:
+    coordinator, set_temp = await _regulating(hass, freezer)
+    freezer.tick(timedelta(minutes=10))
+    hass.states.async_set(VALVE, "heat", {"temperature": 17.0, "current_temperature": 19.4})  # three clicks down
+    await coordinator.async_refresh()
+    assert _room_target(hass) == (21.0, "schedule_comfort", None)  # too early: it might still pass the turn on
+
+    freezer.tick(timedelta(seconds=6))  # it keeps its 21 °C
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert _room_target(hass) == (19.5, "override", "device")  # 1.5 K less than the room had
+    assert set_temp[-1].data == {"entity_id": VT, "temperature": 19.5}  # told to the thermostat, not to its valve
+
+
+async def test_what_versatile_thermostat_writes_to_its_valve_is_no_turn(hass: HomeAssistant, freezer) -> None:
+    coordinator, set_temp = await _regulating(hass, freezer)
+    sent = len(set_temp)
+    for seconds, setpoint in ((600, 19.0), (300, 20.5)):  # its regulation, by service call
+        freezer.tick(timedelta(seconds=seconds))
+        context = Context()
+        call = {"domain": "climate", "service": "set_temperature", "service_data": {"entity_id": VALVE, "temperature": setpoint}}
+        hass.bus.async_fire("call_service", call, context=context)
+        hass.states.async_set(VALVE, "heat", {"temperature": setpoint, "current_temperature": 19.4}, context=context)
+    freezer.tick(timedelta(seconds=10))
+    await coordinator.async_refresh()
+    assert coordinator._knob_turns == {} and _room_target(hass) == (21.0, "schedule_comfort", None)
+    assert len(set_temp) == sent
+
+
+async def test_a_turn_versatile_thermostat_follows_counts_once(hass: HomeAssistant, freezer) -> None:
+    """With "follow underlying temperature change" it takes the valve's value as its own target."""
+    coordinator, _ = await _regulating(hass, freezer)
+    freezer.tick(timedelta(minutes=10))
+    hass.states.async_set(VALVE, "heat", {"temperature": 20.0, "current_temperature": 19.4})  # the knob: 1.5 K up
+    freezer.tick(timedelta(seconds=0.5))
+    hass.states.async_set(VT, "heat", vtherm(20.0, 20.0))  # it follows: the valve's 20 °C is now what was requested
+    freezer.tick(timedelta(seconds=10))
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert _room_target(hass) == (20.0, "override", "device")  # its target, not that plus the turn
+    assert coordinator._knob_turns == {}

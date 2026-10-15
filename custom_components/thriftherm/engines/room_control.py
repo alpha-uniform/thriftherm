@@ -1,18 +1,21 @@
-"""Room control: hand the room targets to Better Thermostat.
+"""Room control: hand the room targets to the room thermostats.
 
-Pure logic, no Home Assistant import. Better Thermostat keeps doing the local
-work (external room sensor, window contacts, valve calibration); this module
-only decides which setpoint each room thermostat should have.
+Pure logic, no Home Assistant import. The room thermostat (Better Thermostat,
+Versatile Thermostat or a plain climate entity) keeps doing the local work
+(external room sensor, window contacts, valve calibration); this module only
+decides which setpoint each room thermostat should have.
 
 Principles
 * Only the target temperature is written. The thermostat's mode stays with
-  the user and Better Thermostat: a thermostat that is "off" (summer) is left
-  alone.
+  the user and the room thermostat: a thermostat that is "off" (summer) is
+  left alone.
 * A setpoint is sent when it differs from the thermostat by more than
   rounding, at most once a minute; an unconfirmed setpoint is retried after
-  five minutes.
+  five minutes. It stays within what the thermostat accepts.
 * A manual change on the thermostat (after our value had been confirmed)
   becomes a temporary override in the integration instead of being fought.
+  A change asked for in Home Assistant by a person or an automation is
+  deliberate and becomes one at once, confirmed or not.
 * A target the thermostat applies by itself (Versatile Thermostat with an open
   window, shedding load or in safety mode) is neither a manual change nor
   written against: the thermostat restores the requested target afterwards.
@@ -69,9 +72,19 @@ class RoomCtrlMemory:
         )
 
 
-def thermostat_setpoint(target: float) -> float:
-    """Better Thermostat works in 0.5 °C steps between 5 and 30 °C."""
-    return min(max(round_half(target), SETPOINT_MIN), SETPOINT_MAX)
+def thermostat_setpoint(target: float, min_temp: float | None = None, max_temp: float | None = None) -> float:
+    """The setpoint a room thermostat gets for a target: in 0.5 °C steps, within what it accepts.
+
+    `min_temp` and `max_temp` are the thermostat's own limits; where it names none, those of
+    Better Thermostat apply (5 and 30 °C). Home Assistant rejects a setpoint outside of them:
+    the frost target of 7 °C for a thermostat that starts at 8 was sent, and rejected, every
+    five minutes for good.
+    """
+    low = SETPOINT_MIN if min_temp is None else min_temp
+    high = SETPOINT_MAX if max_temp is None else max_temp
+    if low > high:  # limits that make no sense are none
+        low, high = SETPOINT_MIN, SETPOINT_MAX
+    return min(max(round_half(target), low), high)
 
 
 # Better Thermostat, calibrating by target temperature, rewrites the valve setpoint every few
@@ -96,6 +109,47 @@ def is_echo(value: float, valve_history: tuple[tuple[float, float], ...], change
         if changed_ts - ECHO_WINDOW_S <= ts <= changed_ts + 1.0 and (not sequence or sequence[-1] != setpoint):
             sequence.append(setpoint)
     return sum(1 for setpoint in sequence if abs(setpoint - value) < 0.05) >= 2
+
+
+KNOB_STEP_K = 0.5  # the smallest turn of a knob
+KNOB_MAX_K = 15.0  # more than this is no turn of a knob
+# A room thermostat that judges a turn does so within a second: it takes it over as its own
+# target, or it sets its valve back (Better Thermostat with its child lock on). Only when it has
+# done neither by then is the turn taken from the valve.
+KNOB_WAIT_S = 5.0
+
+
+def knob_turn(
+    old: float,
+    new: float,
+    history_before: tuple[tuple[float, float], ...],
+    changed_ts: float,
+    asked: tuple[float, ...] = (),
+) -> float | None:
+    """By how much somebody turned the knob of a valve behind a room thermostat, None if it was no turn.
+
+    A room thermostat such as Better Thermostat writes its own setpoint to the valve and does
+    not always pass a turn of the knob on. Where it sets the valve back (seen 2026-10-12: the
+    valve went from 16 to 14.5 °C, and 0.9 s later Better Thermostat had set it back to 16),
+    the turn is left to the thermostat. A turn the room thermostat neither takes over nor sets
+    back within KNOB_WAIT_S is taken from the valve. The caller has made sure that no service
+    call stands behind the change; what is left to rule out here:
+
+    * the valve's late answer to a command: `asked` are the setpoints commands asked of it
+      within the last minute,
+    * a late radio echo: a value the valve showed within the minute before (see `is_echo`).
+
+    The turn is a difference, not a temperature: the valve shows the thermostat's corrected
+    setpoint, not the room's target. Three clicks down are 1.5 K less for the room.
+    """
+    delta = new - old
+    if not KNOB_STEP_K - 0.05 <= abs(delta) <= KNOB_MAX_K:
+        return None
+    if any(abs(new - value) <= TOLERANCE_K for value in asked):
+        return None
+    if any(changed_ts - ECHO_WINDOW_S <= ts < changed_ts and abs(setpoint - new) < 0.05 for ts, setpoint in history_before):
+        return None
+    return round(delta * 2.0) / 2.0
 
 
 def manual_change(
@@ -159,9 +213,18 @@ def decide(
     now_ts: float,
     mem: RoomCtrlMemory,
     own_target: bool = False,
+    min_temp: float | None = None,
+    max_temp: float | None = None,
 ) -> tuple[RoomCommand, RoomCtrlMemory]:
-    def cmd(plan: str, reason: str, target: float | None = None, send: bool = False, manual: float | None = None) -> RoomCommand:
-        return RoomCommand(room, plan, target, send, reason, thermostat_target, manual)
+    """The setpoint plan for one room thermostat and what to remember of it.
+
+    `min_temp` and `max_temp` are the limits the thermostat names (see `thermostat_setpoint`).
+    The limited setpoint is what is sent and remembered: the thermostat showing it is in sync,
+    and nobody's hand.
+    """
+
+    def cmd(plan: str, reason: str, target: float | None = None, send: bool = False) -> RoomCommand:
+        return RoomCommand(room, plan, target, send, reason, thermostat_target)
 
     if control_mode == CTRL_OFF:
         return cmd(ROOM_PLAN_DISABLED, "control_off"), mem
@@ -172,7 +235,7 @@ def decide(
     if hvac_mode == "off":
         return cmd(ROOM_PLAN_HANDS_OFF, "thermostat_off"), mem
 
-    desired = thermostat_setpoint(result.target)
+    desired = thermostat_setpoint(result.target, min_temp, max_temp)
     active = control_mode == CTRL_ACTIVE
     if own_target:
         # The thermostat holds a target of its own (Versatile Thermostat: window open, load

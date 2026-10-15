@@ -75,3 +75,18 @@ def test_new_target_is_sent_after_rate_limit():
     assert cmd.plan == "hold" and cmd.reason == "rate_limit"
     cmd, _ = run(target=17.0, thermostat=21.0, mem=replace(mem, last_sent_ts=NOW - 61))
     assert cmd.plan == "set" and cmd.target == 17.0
+
+
+def test_a_setpoint_stays_within_what_the_thermostat_accepts():
+    # found in the code 2026-10-13: the frost target of 7 °C for a thermostat that starts at 8 was
+    # rejected by Home Assistant and sent again every five minutes for good
+    assert thermostat_setpoint(7.0, 8.0, 28.0) == 8.0 and thermostat_setpoint(29.5, 8.0, 28.0) == 28.0
+    assert thermostat_setpoint(4.2, 4.0, 35.0) == 4.0 and thermostat_setpoint(33.0, 4.0, 35.0) == 33.0  # its limits, not 5 and 30
+    assert thermostat_setpoint(40.0, 28.0, 8.0) == 30.0  # limits that make no sense are none
+
+    frost = rr(7.0, "mode_off_frost_protection")
+    cmd, mem = decide("badezimmer", "active", frost, True, "heat", 21.0, NOW, RoomCtrlMemory(), min_temp=8.0, max_temp=28.0)
+    assert (cmd.plan, cmd.target, cmd.send) == ("set", 8.0, True) and mem.last_sent_target == 8.0
+    cmd, mem = decide("badezimmer", "active", frost, True, "heat", 8.0, NOW + 30, mem, min_temp=8.0, max_temp=28.0)
+    assert cmd.reason == "in_sync" and not cmd.send and mem.confirmed
+    assert manual_change("active", 8.0, mem) is None  # the thermostat at its limit is nobody's hand

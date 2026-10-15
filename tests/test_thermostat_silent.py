@@ -135,6 +135,49 @@ async def test_a_stale_room_sensor_falls_back_to_the_valve_not_to_better_thermos
     assert result.temperature == 22.4 and any(i.startswith("using_trv_local_temperature") for i in result.issues)
 
 
+async def test_a_replaced_valve_is_watched_without_a_reload(hass: HomeAssistant, freezer) -> None:
+    # found in the code 2026-10-13: the valves were looked up once. A broken valve replaced and Better
+    # Thermostat pointed at the new one: the room counted as silent and called no boiler until a reload
+    _register_bt_and_valve(hass)
+    freezer.move_to(START)
+    _set_states(hass)
+    hass.states.async_set("climate.bath_bt", "heat", {"temperature": 21.0})
+    hass.states.async_set("climate.bath_trv", "heat", {"temperature": 18.5})
+    data = _entry_data()
+    data["rooms"][0]["climate_entity"] = "climate.bath_bt"
+    builder = SnapshotBuilder(hass, data)
+    assert "climate.bath_trv" in builder.valves_behind("climate.bath_bt")
+
+    er.async_get(hass).async_get_or_create("climate", "mqtt", "trv_new", suggested_object_id="bath_trv_new")
+    bt = hass.config_entries.async_entries("better_thermostat")[0]
+    hass.config_entries.async_update_entry(bt, options={"thermostat": ["climate.bath_trv_new"]})
+    hass.states.async_remove("climate.bath_trv")
+    freezer.move_to(START + timedelta(hours=4))
+    hass.states.async_set("climate.bath_trv_new", "heat", {"temperature": 21.0})
+    snap = builder.build("auto", {}, {}, {}, None, {}, {})
+    assert builder.valves_behind("climate.bath_bt") == ("climate.bath_trv_new",)
+    bath = snap.rooms["badezimmer"]
+    assert bath.thermostat_silent_s == pytest.approx(0.0, abs=1)
+    assert room_engine.evaluate_room(bath, snap.now, snap.mode, PARAMS).heating_allowed
+
+
+async def test_a_room_thermostat_without_a_measuring_valve_is_no_stand_in_for_the_room_sensor(hass: HomeAssistant) -> None:
+    # found in the code 2026-10-13: with no valve temperature behind it, the room thermostat's own
+    # temperature was taken, and that is the (dead) room sensor again
+    _register_bt_and_valve(hass)
+    registry = er.async_get(hass)
+    vt = MockConfigEntry(domain="versatile_thermostat", data={"underlying_entity_ids": ["switch.bath_relay"]})
+    vt.add_to_hass(hass)
+    registry.async_get_or_create("climate", "versatile_thermostat", "vt_bath", suggested_object_id="bath_vt", config_entry=vt)
+    for thermostat in ("climate.bath_bt", "climate.bath_vt", "climate.plain_trv"):
+        hass.states.async_set(thermostat, "heat", {"temperature": 21.0, "current_temperature": 20.5})
+    hass.states.async_set("climate.bath_trv", "unavailable")
+    builder = SnapshotBuilder(hass, _entry_data())
+    assert builder.valve_temperature("climate.bath_bt") is None  # its valve is unavailable
+    assert builder.valve_temperature("climate.bath_vt") is None  # it drives a switch
+    assert builder.valve_temperature("climate.plain_trv") == 20.5  # a valve of its own measures itself
+
+
 async def test_a_plain_thermostat_is_its_own_valve(hass: HomeAssistant, freezer) -> None:
     freezer.move_to(START)
     er.async_get(hass).async_get_or_create("climate", "mqtt", "plain", suggested_object_id="plain_trv")

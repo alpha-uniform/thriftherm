@@ -1,4 +1,4 @@
-"""Adaptive statistics (architecture §14a). Deterministic, inspectable, resettable.
+"""Adaptive statistics. Deterministic, inspectable, resettable.
 
 * CopMap      – mean COP per outdoor-temperature bin ; falls back to a
                 prior curve scaled by a factor learned from the measured bins
@@ -32,7 +32,7 @@ PRIOR_COP_POINTS: tuple[tuple[float, float], ...] = ((-10.0, 2.2), (-7.0, 2.5), 
 # Duct losses and real operation keep a portable split below its fiche: start at 80 %.
 PRIOR_CALIBRATION_DEFAULT = 0.8
 PRIOR_CALIBRATION_RANGE = (0.3, 1.5)
-MIN_BIN_COUNT = 5
+MIN_BIN_COUNT = 5  # samples from which a bin counts as known: for the estimate, the calibration and the learning runs
 
 
 def prior_cop(outdoor_c: float) -> float:
@@ -86,7 +86,7 @@ class CopMap:
     def add(self, outdoor_c: float, cop: float) -> None:
         self.bins.setdefault(self.bin_of(outdoor_c), CopBin()).add(cop)
 
-    def expected(self, outdoor_c: float, min_count: int = 5) -> float | None:
+    def expected(self, outdoor_c: float, min_count: int = MIN_BIN_COUNT) -> float | None:
         """Expected COP at this outdoor temperature, from the bin or its neighbours."""
         idx = self.bin_of(outdoor_c)
         for candidate in (idx, idx - 1, idx + 1):
@@ -140,6 +140,18 @@ class CopMap:
         return cm
 
 
+@dataclass
+class Episode:
+    """An ongoing heat-up or cool-down observation for one room."""
+
+    start_ts: float
+    start_temp: float
+    last_ts: float
+    last_temp: float
+    gradient_sum: float = 0.0  # sum of (room - outdoor) over the samples
+    samples: int = 0
+
+
 # ---------------------------------------------------------------------------
 # Cool-down learning
 # ---------------------------------------------------------------------------
@@ -154,18 +166,20 @@ COOL_MIN_GRADIENT_K = 5.0  # indoors must be this much warmer than outdoors
 COOL_K_MIN = 0.002  # 1/h; below this nothing measurable happens
 COOL_K_MAX = 0.25  # a room that loses a quarter of its gradient per hour is a tent
 COOL_KEEP = 10
+COOL_END_RISE_K = 0.2  # this far above its lowest point the room is warming again, by sun or by itself
 
 
 @dataclass
-class CoolEpisode:
-    """An ongoing cool-down observation for one room."""
+class CoolEpisode(Episode):
+    """A cool-down ends at its lowest point: `last_ts`, `last_temp` and the gradients stand for the way down to it.
 
-    start_ts: float
-    start_temp: float
-    last_ts: float
-    last_temp: float
-    gradient_sum: float = 0.0
-    samples: int = 0
+    What comes after (a room held at its setback temperature, a slow rise in the morning sun) is no
+    cooling any more. Counted in, it stretched the time over the same drop and gave a coefficient
+    several times too low. Its gradients wait here and count once the room falls further.
+    """
+
+    since_low_sum: float = 0.0
+    since_low_samples: int = 0
 
 
 @dataclass
@@ -182,19 +196,24 @@ class CoolRateStats:
         ep = self.episodes.get(room)
         gradient = None if temp is None or outdoor is None else temp - outdoor
         if temp is None or heating or window_open or gradient is None or gradient < COOL_MIN_GRADIENT_K:
-            return self._close(room, ep, ts)
+            return self._close(room, ep)
         if ep is None:
             self.episodes[room] = CoolEpisode(ts, temp, ts, temp, gradient, 1)
             return None
-        if temp > ep.last_temp + 0.3:  # warmed up again: not a clean cool-down
+        if temp >= ep.last_temp + COOL_END_RISE_K:  # warming again: the cool-down ended at its lowest point
+            learned = self._close(room, ep)
             self.episodes[room] = CoolEpisode(ts, temp, ts, temp, gradient, 1)
-            return None
-        ep.last_ts, ep.last_temp = ts, temp
-        ep.gradient_sum += gradient
-        ep.samples += 1
+            return learned
+        ep.since_low_sum += gradient
+        ep.since_low_samples += 1
+        if temp < ep.last_temp:
+            ep.last_ts, ep.last_temp = ts, temp
+            ep.gradient_sum += ep.since_low_sum
+            ep.samples += ep.since_low_samples
+            ep.since_low_sum, ep.since_low_samples = 0.0, 0
         return None
 
-    def _close(self, room: str, ep: CoolEpisode | None, ts: float) -> float | None:
+    def _close(self, room: str, ep: CoolEpisode | None) -> float | None:
         if ep is None:
             return None
         del self.episodes[room]
@@ -216,11 +235,6 @@ class CoolRateStats:
     def rate(self, room: str) -> float | None:
         lst = self.rates.get(room)
         return round(median(lst), 5) if lst else None
-
-    def drop_per_hour(self, room: str, room_temp: float, outdoor: float) -> float | None:
-        """What the room loses in an hour at this gradient, in K."""
-        k = self.rate(room)
-        return None if k is None else round(k * max(room_temp - outdoor, 0.0), 2)
 
     def forget(self, rooms: Iterable[str] | None = None) -> None:
         if rooms is None:
@@ -249,18 +263,6 @@ class CoolRateStats:
 # Heat-up rate learning
 # ---------------------------------------------------------------------------
 @dataclass
-class Episode:
-    """An ongoing heat-up observation for one room."""
-
-    start_ts: float
-    start_temp: float
-    last_ts: float
-    last_temp: float
-    gradient_sum: float = 0.0  # sum of (room - outdoor) over the samples
-    samples: int = 0
-
-
-@dataclass
 class HeatRateStats:
     """Median heat-up rate per room (K/h) from the last episodes."""
 
@@ -276,7 +278,7 @@ class HeatRateStats:
         """Feed one sample. Returns a newly learned rate when an episode closes, else None."""
         ep = self.episodes.get(room)
         if temp is None or not heating or window_open:
-            return self._close(room, ep, ts)
+            return self._close(room, ep)
         gradient = None if outdoor is None else temp - outdoor
         if ep is None:
             self.episodes[room] = Episode(ts, temp, ts, temp, gradient or 0.0, 1 if gradient is not None else 0)
@@ -290,7 +292,7 @@ class HeatRateStats:
             ep.samples += 1
         return None
 
-    def _close(self, room: str, ep: Episode | None, ts: float) -> float | None:
+    def _close(self, room: str, ep: Episode | None) -> float | None:
         if ep is None:
             return None
         del self.episodes[room]

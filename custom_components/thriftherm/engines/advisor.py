@@ -1,6 +1,6 @@
 """Advisory heat-source selection.
 
-Produces the heat-source recommendation the arbiter would act on, together
+Produces the heat-source recommendation the controllers act on, together
 with human-readable reasons. Hysteresis, minimum run times and probing runs
 are handled by the controllers; the advisory keeps the priority
 order Safety → Frost → Device protection → DHW → Mode → Comfort → Economics.
@@ -47,8 +47,8 @@ def boiler_source(
     """The source the boiler should act on.
 
     The advice is purely economic. If it names the heat pump but the heat pump
-    is not going to heat — its plan is off, hands off or waiting, it idles at its own
-    setpoint, or it may only plan while the boiler really acts — blocking the boiler would leave the rooms
+    is not going to heat — its plan is off, hands off or waiting, it does not get a
+    served room warm, or it may only plan while the boiler really acts — blocking the boiler would leave the rooms
     with no heat from either source. Cost must never override comfort, so the
     boiler takes over in that case.
     """
@@ -70,14 +70,15 @@ def advise(
     heat_pump_block_reason: str | None = None,
     decision_cop: float | None = None,
     decision_cop_basis: str | None = None,
-    boiler_calls: frozenset[str] | None = None,
+    *,
+    boiler_calls: frozenset[str],
     heat_pump_acts: bool = True,
 ) -> Advice:
     """`decision_cop` is the COP the economics used: measured while the heat pump runs,
     otherwise the learned or prior estimate (`decision_cop_basis`).
 
     `boiler_calls` are the rooms that call the boiler (engines/heat_call.py, with
-    hysteresis); without it a demand above DEMAND_THRESHOLD calls, as before.
+    hysteresis).
     `heat_pump_acts` is False while the heat pump only plans and the boiler really
     heats: the cost comparison is then not shown as if it decided anything."""
     reasons: list[Reason] = []
@@ -92,11 +93,8 @@ def advise(
     # only radiators that may open can take the boiler's heat (window shut, thermostat not off)
     boiler_only_radiator = {k: r for k, r in boiler_only_rooms.items() if r.heating_allowed}
 
-    def demand_of(group: dict[str, RoomResult]) -> float:
-        return max((r.demand or 0.0) for r in group.values()) if group else 0.0
-
     def calls(r: RoomResult) -> bool:
-        return (r.demand or 0.0) > DEMAND_THRESHOLD if boiler_calls is None else r.key in boiler_calls
+        return r.key in boiler_calls
 
     def any_calls(group: dict[str, RoomResult]) -> bool:
         return any(calls(r) for r in group.values())

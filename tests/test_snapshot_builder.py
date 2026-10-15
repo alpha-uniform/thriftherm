@@ -6,10 +6,13 @@ from datetime import datetime, timedelta
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_component import DATA_INSTANCES
+from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 
 from custom_components.thriftherm.adapters.inputs import SnapshotBuilder
 from custom_components.thriftherm.const import CONF_HEAT_PUMP_OUTLET_TEMP, CONF_OUTDOOR_RH_SENSOR, CONF_WEATHER_ENTITY
+from custom_components.thriftherm.engines import room as room_engine
 
 from .test_integration import _entry_data, _set_states
 
@@ -225,8 +228,6 @@ async def test_a_gas_flow_left_hanging_is_no_reading(hass: HomeAssistant, freeze
     freezer.move_to(START + timedelta(minutes=71))
     boiler = _build(builder).boiler
     assert not boiler.gas_flow_m3h.valid and boiler.gas_flow_m3h.reason == "stale"
-    # without a meter reading there is nothing to check the flow against: it stays as it was
-    assert SnapshotBuilder(hass, _entry_data()).build("auto", {}, {}, {}, None, {}, {}).boiler.gas_flow_m3h.valid
 
     # an idle 0 stands for hours and still counts
     hass.states.async_set("sensor.gas_flow", "0")
@@ -252,3 +253,195 @@ async def test_a_schedule_block_to_midnight_has_no_comfort_end(hass: HomeAssista
     evening = now.replace(hour=23, minute=55)
     hass.states.async_set("schedule.bath", "on", {"next_event": evening.isoformat()})
     assert _build(builder).rooms["badezimmer"].schedule.next_end == evening
+
+
+async def test_a_gas_flow_without_a_meter_reading_goes_by_its_own_age(hass: HomeAssistant, freezer) -> None:
+    # found in the code 2026-10-13: with no meter reading configured the check was skipped, and a
+    # flow of 1.2 m³/h still meant "burning" ten hours after its last report
+    freezer.move_to(START)
+    _set_states(hass)
+    builder = SnapshotBuilder(hass, _entry_data())  # a gas flow, no meter reading
+    freezer.move_to(START + timedelta(minutes=9))
+    assert _build(builder).boiler.gas_flow_m3h.valid
+    freezer.move_to(START + timedelta(hours=10))
+    flow = _build(builder).boiler.gas_flow_m3h
+    assert not flow.valid and flow.reason == "stale"
+    hass.states.async_set("sensor.gas_flow", "1.3")
+    assert _build(builder).boiler.gas_flow_m3h.valid
+
+
+async def test_the_weather_gives_the_humidity_beside_a_working_outdoor_sensor(hass: HomeAssistant, freezer) -> None:
+    # found in the code 2026-10-13: the weather's humidity was only used together with its temperature
+    freezer.move_to(START)
+    _set_states(hass)
+    hass.states.async_set("weather.home", "cloudy", {"temperature": 3.0, "humidity": 90})
+    snap = _build(SnapshotBuilder(hass, {**_entry_data(), CONF_WEATHER_ENTITY: "weather.home"}))  # no humidity sensor
+    assert (snap.outdoor_temp.value, snap.outdoor_temp_source) == (4.0, "sensor.outdoor")
+    assert (snap.outdoor_rh.value, snap.outdoor_rh.entity_id, snap.outdoor_rh.valid) == (90.0, "weather.home", True)
+
+
+async def test_the_limits_of_a_room_thermostat_are_read(hass: HomeAssistant) -> None:
+    _set_states(hass)
+    hass.states.async_set("climate.bath_trv", "heat", {"temperature": 21.0, "min_temp": 8, "max_temp": 28})
+    config = _entry_data()
+    config["rooms"][0]["climate_entity"] = "climate.bath_trv"
+    rooms = _build(SnapshotBuilder(hass, config)).rooms
+    assert (rooms["badezimmer"].thermostat_min_temp, rooms["badezimmer"].thermostat_max_temp) == (8.0, 28.0)
+    assert (rooms["wohnzimmer"].thermostat_min_temp, rooms["wohnzimmer"].thermostat_max_temp) == (None, None)
+
+
+BERLIN = dt_util.get_time_zone("Europe/Berlin")
+
+
+async def _rooms_with_schedules(hass: HomeAssistant, freezer, now: datetime, bath: list[dict], living: list[dict]):
+    """Both rooms on a schedule helper of their own, each with the same blocks every day."""
+    await hass.config.async_set_time_zone("Europe/Berlin")
+    freezer.move_to(now)
+    days = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+    helpers = {key: {"name": key, **dict.fromkeys(days, blocks)} for key, blocks in (("bath", bath), ("living", living))}
+    assert await async_setup_component(hass, "schedule", {"schedule": helpers})
+    await hass.async_block_till_done()
+    _set_states(hass)
+    config = _entry_data()
+    config["rooms"][0]["schedule_entity"] = "schedule.bath"
+    config["rooms"][1]["schedule_entity"] = "schedule.living"
+    snap = _build(SnapshotBuilder(hass, config))
+    for helper in ("schedule.bath", "schedule.living"):  # each keeps a timer for its next block
+        await hass.data[DATA_INSTANCES]["schedule"].get_entity(helper).async_remove()
+    return snap, snap.rooms["badezimmer"], snap.rooms["wohnzimmer"]
+
+
+def _block(start: str, end: str, temperature: float | None = None) -> dict:
+    return {"from": start, "to": end, **({} if temperature is None else {"data": {"temperature": temperature}})}
+
+
+async def test_schedule_blocks_that_follow_each_other_are_one_comfort_time(hass: HomeAssistant, freezer) -> None:
+    # found in the code 2026-10-13: 06:00-12:00 at 20 °C and 12:00-22:00 at 21 °C; 12:00 counted as
+    # the comfort end, so the room did not call the boiler from 11:30 to 12:00 every day
+    tuesday = datetime(2026, 10, 13, 11, 40, tzinfo=BERLIN)
+    warmer = [_block("06:00:00", "12:00:00", 20), _block("12:00:00", "22:00:00", 21)]
+    colder = [_block("06:00:00", "12:00:00"), _block("12:00:00", "22:00:00", 17)]
+    snap, bath, living = await _rooms_with_schedules(hass, freezer, tuesday, warmer, colder)
+    assert bath.schedule.active and bath.schedule.temperature == 20.0
+    assert bath.schedule.next_end == tuesday.replace(hour=22, minute=0)
+    assert room_engine.evaluate_room(bath, snap.now, "auto", snap.params).comfort_end_ts == bath.schedule.next_end.timestamp()
+    # a block that asks for less than the one before it does end the comfort
+    assert living.schedule.active and living.schedule.next_end == tuesday.replace(hour=12, minute=0)
+
+
+async def test_a_block_to_2359_goes_on_into_the_next_days_block_at_midnight(hass: HomeAssistant, freezer) -> None:
+    """Test of 2026-10-15: two days of 00:00-23:59 ended the comfort at 23:59; the room stopped calling at 23:29."""
+    wednesday = datetime(2026, 10, 14, 23, 20, tzinfo=BERLIN)
+    all_day = [_block("00:00:00", "23:59:00")]
+    evening = [_block("17:30:00", "23:59:00")]
+    snap, bath, living = await _rooms_with_schedules(hass, freezer, wednesday, all_day, evening)
+    assert bath.schedule.active and bath.schedule.next_end is None  # comfort all week
+    assert room_engine.evaluate_room(bath, snap.now, "auto", snap.params).comfort_end_ts is None
+    assert living.schedule.next_end == wednesday.replace(hour=23, minute=59)  # no block the next morning: it ends
+
+
+async def test_a_schedule_block_to_midnight_ends_where_the_next_day_does_not_go_on(hass: HomeAssistant, freezer) -> None:
+    tuesday = datetime(2026, 10, 13, 23, 40, tzinfo=BERLIN)
+    all_day = [_block("00:00:00", "24:00:00")]
+    evening = [_block("06:00:00", "08:00:00"), _block("18:00:00", "24:00:00")]
+    _, bath, living = await _rooms_with_schedules(hass, freezer, tuesday, all_day, evening)
+    assert bath.schedule.active and bath.schedule.next_end is None  # comfort all week
+    assert living.schedule.active and living.schedule.next_end == datetime(2026, 10, 14, 0, 0, tzinfo=BERLIN)
+
+
+async def test_preheating_for_a_schedule_block_goes_to_the_temperature_it_names(hass: HomeAssistant, freezer) -> None:
+    tuesday = datetime(2026, 10, 13, 5, 40, tzinfo=BERLIN)
+    named = [_block("06:00:00", "12:00:00", 20)]
+    plain = [_block("06:00:00", "12:00:00")]
+    snap, bath, living = await _rooms_with_schedules(hass, freezer, tuesday, named, plain)
+    assert not bath.schedule.active and bath.schedule.next_start == tuesday.replace(hour=6, minute=0)
+    assert bath.schedule_next_temp == 20.0 and living.schedule_next_temp is None
+    res = room_engine.evaluate_room(bath, snap.now, "auto", snap.params)  # 18.5 °C in the room, comfort temperature 21
+    assert (res.target, res.target_reason) == (20.0, "schedule_preheat")
+    res = room_engine.evaluate_room(living, snap.now, "auto", snap.params)  # 17.0 °C in the room, comfort temperature 18.5
+    assert (res.target, res.target_reason) == (18.5, "schedule_preheat")
+
+
+async def test_a_window_open_when_the_control_starts_counts_as_open_at_once(hass: HomeAssistant, freezer) -> None:
+    """Seen 2026-10-13: the study's door stood open all day and counted as shut for two minutes after each restart."""
+    freezer.move_to(START)
+    _set_states(hass)
+    hass.states.async_set("binary_sensor.bath_window", "unavailable")  # not back yet after the restart
+    builder = _builder(hass)
+    grace = builder.params.window_grace_s
+
+    def window(seconds: float, state: str | None = None):
+        freezer.move_to(START + timedelta(seconds=seconds))
+        if state is not None:
+            hass.states.async_set("binary_sensor.bath_window", state)
+        return room_engine.window_status(_build(builder).rooms["badezimmer"].window_readings, grace)
+
+    assert window(0)[0] is None
+    assert window(40, "on") == (True, False, grace)  # back, open: its last change is the restart, not an opening
+    assert window(600) == (True, False, 560.0)  # and it is timed from then on (drying: "window open long")
+    # shut and opened again while the control runs: that is an opening, with its grace
+    assert window(700, "off")[0] is False
+    assert window(760, "on")[0] is False and window(849)[0] is False and window(850)[0] is True
+
+    # shut when the control started and opened in its first minutes: the grace applies as well
+    hass.states.async_set("binary_sensor.bath_window", "off")
+    builder = _builder(hass)
+    assert window(1000)[0] is False
+    assert window(1030, "on")[0] is False and window(1120)[0] is True
+
+
+async def test_the_plug_power_of_a_running_heat_pump_counts_for_six_minutes(hass: HomeAssistant, freezer) -> None:
+    """Review 2026-10-13: ten minutes kept the draw of a plug gone quiet long after the compressor had stopped."""
+    freezer.move_to(START)
+    _set_states(hass)
+    hass.states.async_set("sensor.midea_power", "380.0")
+    running = {**hass.states.get("climate.midea").attributes, "compressor_frequency": 52, "realtime_power": 365.0}
+    hass.states.async_set("climate.midea", "heat", running)
+    builder = _builder(hass)
+
+    def heat_pump(seconds: float):
+        freezer.move_to(START + timedelta(seconds=seconds))
+        return _build(builder).heat_pump
+
+    pump = heat_pump(180)  # the longest the plug was quiet while the unit ran (measured 2026-10-13)
+    assert pump.plug_power.valid and pump.history[-1].power_w == 380.0
+    pump = heat_pump(361)
+    assert not pump.plug_power.valid and pump.plug_power.reason == "stale"
+    assert pump.history[-1].power_w == 365.0  # the unit's own value stands in
+
+    # stopped, the plug still showing the draw from before: that is no steady standby, it stays stale
+    hass.states.async_set("climate.midea", "heat", {**running, "compressor_frequency": 0})
+    assert not heat_pump(420).plug_power.valid
+
+
+async def test_a_steady_standby_draw_holds_while_the_compressor_stands(hass: HomeAssistant, freezer) -> None:
+    """A plug reports only what changes: measured 2026-10-14, plugs at a steady 0 W said nothing for more than 20 minutes."""
+    freezer.move_to(START)
+    _set_states(hass)
+    hass.states.async_set("sensor.midea_power", "1.6")  # the unit stands (fan_only, compressor at 0)
+    builder = _builder(hass)
+    freezer.move_to(START + timedelta(hours=2))
+    plug = _build(builder).heat_pump.plug_power
+    assert plug.valid and plug.value == 1.6 and plug.reason is None
+
+    # the compressor runs, yet the plug still says 1.6 W: that is a plug gone quiet
+    attributes = {**hass.states.get("climate.midea").attributes, "compressor_frequency": 40}
+    hass.states.async_set("climate.midea", "heat", attributes)
+    plug = _build(builder).heat_pump.plug_power
+    assert not plug.valid and plug.reason == "stale"
+
+
+async def test_a_thermostat_says_whether_its_valve_is_open(hass: HomeAssistant) -> None:
+    """Better Thermostat and Versatile Thermostat name it in `hvac_action`; a room whose valve is shut does not lag."""
+    _set_states(hass)
+    config = _entry_data()
+    config["rooms"][0]["climate_entity"] = "climate.bath_trv"
+    builder = SnapshotBuilder(hass, config)
+    seen = []
+    for action in ("heating", "preheating", "idle", "off", None, "cooling"):
+        said = {} if action is None else {"hvac_action": action}
+        hass.states.async_set("climate.bath_trv", "heat", {"temperature": 21.0, **said})
+        seen.append(_build(builder).rooms["badezimmer"].thermostat_heating)
+    assert seen == [True, True, False, False, None, None]
+    hass.states.async_set("climate.bath_trv", "unavailable", {"hvac_action": "heating"})
+    assert _build(builder).rooms["badezimmer"].thermostat_heating is None

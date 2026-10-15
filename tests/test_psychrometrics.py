@@ -33,13 +33,13 @@ def test_humidity_ratio_and_enthalpy():
 
 def test_air_heating_power_sensible_case():
     # 500 m³/h heated from 20 °C to 38 °C at constant humidity ratio ≈ 3.0 kW
-    p = psy.air_heating_power_w(20.0, 45.0, 38.0, None, 500.0)
+    p = psy.air_heating_power_w(20.0, 45.0, 38.0, 500.0)
     assert p == pytest.approx(3000, rel=0.06)
     assert p > 0
 
 
 def test_air_heating_power_zero_when_no_delta():
-    assert psy.air_heating_power_w(20.0, 45.0, 20.0, None, 500.0) == pytest.approx(0.0, abs=1e-6)
+    assert psy.air_heating_power_w(20.0, 45.0, 20.0, 500.0) == pytest.approx(0.0, abs=1e-6)
 
 
 def test_density_decreases_with_temperature():

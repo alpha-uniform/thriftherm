@@ -3,7 +3,7 @@ from datetime import datetime
 
 from custom_components.thriftherm.engines import room as room_engine, safety
 
-from .conftest import PARAMS, boiler_state, heat_pump_state, room_config, room_state, snapshot
+from .conftest import MISSING, PARAMS, boiler_state, heat_pump_state, room_config, room_state, snapshot
 
 NOW = datetime(2026, 1, 12, 18, 0)
 
@@ -62,6 +62,15 @@ def test_a_heat_pump_fault_alone_is_listed_but_does_not_degrade(two_rooms):
     assert res.state == "ok" and "midea_unavailable" in res.issues
     alone = replace(snap, prices=replace(snap.prices, system_type="none"))  # the heat pump is the only heat source
     assert safety.evaluate(alone, _rooms_results(alone)).state == "degraded"
+
+
+def test_an_unreachable_heat_pump_is_listed_with_or_without_a_plug_that_measures_it(two_rooms):
+    no_plug = replace(heat_pump_state(available=False, error_code=None), plug_power=MISSING)
+    snap = snapshot(two_rooms, heat_pump=no_plug)
+    assert safety.evaluate(snap, _rooms_results(snap)).issues == ("midea_unavailable",)
+    unused = replace(no_plug, configured=False)  # the add-on is not used: nothing to report
+    snap = snapshot(two_rooms, heat_pump=unused)
+    assert safety.evaluate(snap, _rooms_results(snap)).issues == ()
 
 
 def test_without_rooms_hands_off():

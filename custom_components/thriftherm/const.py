@@ -54,7 +54,7 @@ BOILER_PLAN_HANDS_OFF: Final = "hands_off"
 BOILER_PLAN_DISABLED: Final = "disabled"
 BOILER_PLANS: Final = [BOILER_PLAN_HEAT, BOILER_PLAN_BLOCK, BOILER_PLAN_HANDS_OFF, BOILER_PLAN_DISABLED]
 
-# Room control via Better Thermostat
+# Room control via the room thermostats
 ROOM_PLAN_SET: Final = "set"
 ROOM_PLAN_HOLD: Final = "hold"
 ROOM_PLAN_HANDS_OFF: Final = "hands_off"
@@ -124,6 +124,9 @@ CONF_BOILER_FLAME: Final = "boiler_flame"  # binary sensor: the burner is on
 CONF_BOILER_CIRCULATION_L_H: Final = "boiler_circulation_l_h"
 CONF_GAS_VOLUME: Final = "gas_volume"
 CONF_GAS_FLOW: Final = "gas_flow"
+CONF_BOILER_NOMINAL_INPUT_KW: Final = "boiler_nominal_input_kw"
+# boiler fields the search had a value for and the user emptied all the same: not suggested again
+CONF_BOILER_FILL_DECLINED: Final = "boiler_fill_declined"
 
 DEFAULT_BOILER_CIRCULATION_L_H: Final = 860.0
 
@@ -135,6 +138,7 @@ CONF_BOILER_CURVE_WARM: Final = "boiler_curve_flow_at_plus15"
 CONF_BOILER_FLOW_MIN: Final = "boiler_flow_min"
 CONF_BOILER_FLOW_MAX: Final = "boiler_flow_max"
 CONF_BOILER_HOT_WATER_STANDBY: Final = "boiler_hot_water_standby"
+CONF_BOILER_HEAT_UP_RATE: Final = "boiler_heat_up_rate_k_h"
 CONF_BOILER_SPREAD_MIN_ROOM_SHARE: Final = "boiler_spread_min_room_share"
 CONF_BOILER_LOAD_MODEL: Final = "boiler_load_model"
 CONF_BOILER_ALLOW_ACTIVE: Final = "boiler_allow_active_control"
@@ -145,6 +149,7 @@ DEFAULT_BOILER_CURVE_WARM: Final = 30.0
 DEFAULT_BOILER_FLOW_MIN: Final = 30.0  # minimum of the atmoTEC (d.05)
 DEFAULT_BOILER_FLOW_MAX: Final = 60.0  # below d.71 (75 °C)
 DEFAULT_BOILER_HOT_WATER_STANDBY: Final = True  # what the boiler does without us
+DEFAULT_BOILER_HEAT_UP_RATE: Final = 0.0  # off: the flow as before, curve and demand boost
 DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE: Final = 0.5
 DEFAULT_BOILER_LOAD_MODEL: Final = True
 DEFAULT_BOILER_ALLOW_ACTIVE: Final = False
@@ -184,8 +189,10 @@ CONF_ROOM_SETBACK_TEMP: Final = "setback_temp"
 CONF_ROOM_SCHEDULE_WEEKDAY: Final = "schedule_weekday"
 CONF_ROOM_SCHEDULE_WEEKEND: Final = "schedule_weekend"
 CONF_ROOM_DRYING: Final = "bathroom_drying_mode"
+CONF_ROOM_DRYING_AUTO: Final = "bathroom_drying_automatic"  # start by itself after a shower; off: only with the button
 CONF_ROOM_SCHEDULE_ENTITY: Final = "schedule_entity"
 
+ROOM_TEMP_RANGES: Final = {"comfort": (10.0, 28.0), "setback": (5.0, 25.0)}  # the room form and the number entities
 DEFAULT_ROOM_COMFORT_TEMP: Final = 20.0
 DEFAULT_ROOM_SETBACK_TEMP: Final = 17.0
 DEFAULT_SCHEDULE_WEEKDAY: Final = "06:00-22:00"
@@ -210,11 +217,7 @@ CONF_HEAT_PUMP_FOLLOW_ROOMS: Final = "midea_follow_rooms"  # the unit gets the s
 CONF_COP_WARMUP_S: Final = "cop_warmup_s"
 CONF_COP_MIN_POWER_W: Final = "cop_min_power_w"
 CONF_COP_MIN_DELTA_T: Final = "cop_min_delta_t_k"
-CONF_COP_MAX_SENSOR_AGE_S: Final = "cop_max_sensor_age_s"
 CONF_COP_MIN_SAMPLES: Final = "cop_min_samples"
-CONF_COP_EMA_TAU_S: Final = "cop_ema_tau_s"
-CONF_COP_MIN_RAW: Final = "cop_min_raw"
-CONF_COP_MAX_RAW: Final = "cop_max_raw"
 CONF_HEAT_PUMP_DUCT_FACTOR: Final = "midea_duct_factor"
 CONF_HEAT_PUMP_ROOM: Final = "midea_room"  # room the unit itself stands in
 CONF_COP_SETTLE_MAX_K_PER_MIN: Final = "cop_settle_max_k_per_min"
@@ -258,11 +261,7 @@ DEFAULT_HEAT_PUMP_SETPOINT_OFFSET: Final = 1.0
 DEFAULT_COP_WARMUP_S: Final = 600
 DEFAULT_COP_MIN_POWER_W: Final = 150.0
 DEFAULT_COP_MIN_DELTA_T: Final = 3.0
-DEFAULT_COP_MAX_SENSOR_AGE_S: Final = 300
 DEFAULT_COP_MIN_SAMPLES: Final = 12
-DEFAULT_COP_EMA_TAU_S: Final = 300
-DEFAULT_COP_MIN_RAW: Final = 0.5
-DEFAULT_COP_MAX_RAW: Final = 7.0
 DEFAULT_HEAT_PUMP_DUCT_FACTOR: Final = 1.0
 DEFAULT_COP_SETTLE_MAX_K_PER_MIN: Final = 0.5
 DEFAULT_ICING_BLOCK_MIN: Final = 120

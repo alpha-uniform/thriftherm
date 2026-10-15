@@ -37,7 +37,57 @@ Fernwärme oder keine eigene Therme? Dann überspringst du die Schritte 2 und 6;
 
 **Ein zentraler Raumregler an der eBUS-Klemme muss weichen.** Hängt an der eBUS-Klemme deiner Therme schon ein Raumregler, klemmst du ihn ab; an dieselbe Klemme kommt der eBUS-Adapter. Thriftherm übernimmt die Aufgabe des Reglers, und zwei Regler am eBUS würden sich gegenseitig die Vorgaben überschreiben.
 
-Die **Wärmepumpen**-Erweiterung ist eine Vorschau und noch nicht mit einer echten Wärmepumpe getestet. Du kannst sie ganz weglassen. Willst du sie ausprobieren, braucht sie die Climate-Entität der Wärmepumpe, einen Zwischenstecker, der ihre Leistung misst, Temperatur und Feuchte ihrer Ansaugluft und die Temperatur ihrer Ausblasluft.
+Die **Wärmepumpen**-Erweiterung steuert seit dem 11.10.2026 täglich eine Midea PortaSplit, auch bei 2 °C draußen mit Vereisung und Abtauen. Du kannst sie ganz weglassen. Willst du sie nutzen, braucht sie die Climate-Entität der Wärmepumpe, einen Zwischenstecker, der ihre Leistung misst, Temperatur und Feuchte ihrer Ansaugluft und die Temperatur ihrer Ausblasluft.
+
+### Was mit deiner Ausstattung geht
+
+Im ersten Einrichtungsschritt wählst du, welche Heizung du hast. Schritte, die nicht passen, lässt der Dialog weg. Die Tabelle zeigt, was Thriftherm dann für dich tut.
+
+| Funktion | Eigene Therme über ebusd (Kern) | + Better Thermostat | + Wärmepumpe | Nur Wärmepumpe, keine Therme | Zentral- oder Fernwärme¹ |
+|---|:-:|:-:|:-:|:-:|:-:|
+| **Räume** | | | | | |
+| Solltemperaturen aus Zeitplänen (Komfort, Absenkung, Zeitplan-Helfer) | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Vorheizen, damit der Raum zu Beginn des Zeitplans warm ist | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Abwesenheit mit Vorheizen zur Rückkehr | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Solltemperatur eines Raums vorübergehend übersteuern | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Fenster offen: Der Raum fordert keine Wärme mehr an | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Gelernte Aufheiz- und Abkühlrate je Raum | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Sollwerte an die Thermostate; Drehen von Hand wird zur vorübergehenden Übersteuerung | – | ✓ | ✓ | – | ✓ |
+| Knopf „Schnell aufheizen“ je Raum | – | ✓ | ✓ | ✓ | ✓ |
+| Frostschutz, auch im Sommerbetrieb | ✓ | ✓ | ✓ | – | ✓ |
+| **Therme** | | | | | |
+| Vorlauf aus Heizkurve, Wärmebedarf der Räume und Spreizung Vorlauf/Rücklauf | ✓ | ✓ | ✓ | – | – |
+| Heizbetrieb gesperrt, wenn kein Raum Wärme braucht; Warmwasser unberührt | ✓ | ✓ | ✓ | – | – |
+| Gelernte Korrektur der Heizkurve je Raum: Der Raum, der am meisten braucht, bestimmt den Vorlauf | ✓ | ✓ | ✓ | – | – |
+| Aufheiztempo nach Wunsch: mehr Vorlauf für einen Raum, der zu langsam warm wird, gelernt je Raum | ✓ | ✓ | ✓ | – | – |
+| Warmwasser-Erkennung: Das Lernen pausiert nach dem Duschen | ✓ | ✓ | ✓ | – | – |
+| Sommerbetrieb über eBUS: Heizung aus, Warmwasser läuft weiter | ✓ | ✓ | ✓ | – | – |
+| Rückfall auf den Drehknopf der Therme, wenn Home Assistant ausfällt | ✓ | ✓ | ✓ | – | – |
+| **Wärmepumpe** | | | | | |
+| Steuerung der Wärmepumpe: langsam mit hohem COP, volle Leistung bei „Schnell aufheizen“ | – | – | ✓ | ✓ | ✓² |
+| COP aus Luftmenge und Enthalpie der Luft; Erkennung von Abtauen und Vereisung | – | – | ✓ | ✓ | ✓² |
+| Kostenvergleich mit der zentralen Wärmequelle | – | – | ✓ | – | ✓² |
+| Bad-Trocknung | – | – | ✓ | ✓ | ✓² |
+| **Immer** | | | | | |
+| Erst *Nur planen*, *Aktiv* erst nach deiner Freigabe; ein Grund für jede Entscheidung; Reparaturmeldungen | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+✓ geht · – nicht verfügbar. Jede „+“-Spalte enthält die Spalten links davon. In der Spalte „Nur Wärmepumpe“ gelten die Raum-Zeilen für die Räume, die die Wärmepumpe erreicht.
+
+¹ Zentralheizung, Fernwärme oder Wärme vom Vermieter: keine eigene Therme. Die Räume steuert Thriftherm über Better Thermostat, an die Wärmeversorgung wird nie etwas geschrieben.
+
+² Mit der Wärmepumpen-Erweiterung. Der Kostenvergleich rechnet dann mit dem Grenzpreis der Fernwärme, siehe [Bei Fernwärme](#bei-fernwärme).
+
+**Gut zu wissen:**
+
+- **Eine Wärmepumpe ohne Therme funktioniert.** Im ersten Einrichtungsschritt *Keine – nur Wärmepumpe und Raumsteuerung* wählen.
+- **Bad-Trocknung braucht die Wärmepumpe.** Sie trocknet mit der warmen Luft der Wärmepumpe, nur in einem Raum, den die Wärmepumpe beheizt. Einzelheiten stehen in der [Anleitung, Abschnitt 7](ANLEITUNG.md#7-wärmepumpe-optional).
+- **Alles in den Therme-Zeilen braucht eine eigene Therme über ebusd**, oder als Vorschau eine Therme über zwei Entitäten wie bei OpenTherm ([Schritt 4.3a](#43a-therme-ohne-ebusd-über-entitäten-vorschau)). Das betrifft Vorlauf, Heizsperre, gelernte Heizkurve, Warmwasser-Erkennung, Sommerbetrieb über eBUS und den Rückfall auf den Drehknopf. Bei Fernwärme oder ohne Therme wird nie etwas über eBUS gesendet.
+
+### Bei Fernwärme
+
+Bei Fernwärme bringt Thriftherm vor allem mit einer Wärmepumpe etwas. Dann entscheidet es laufend, ob Wärme aus Strom oder aus der Fernwärme gerade günstiger ist, und lässt die Wärmepumpe nur heizen, wenn sie sich rechnet. Ausgenommen sind „Schnell aufheizen“, Bad-Trocknung und Lernläufe. Ohne Wärmepumpe bleibt nur die Raumsteuerung. Die Ventile regelt dabei ohnehin Better Thermostat, Thriftherm ergänzt Zeitpläne mit Vorheizen und die Abwesenheit. Viel mehr, als Better Thermostat mit einem Zeitplan schon kann, ist das nicht.
+
+Der Kostenvergleich rechnet mit dem **Grenzpreis** der Wärme, nicht mit dem Preis, der auf der Rechnung steht. Nach der Heizkostenverordnung folgt nur der Verbrauchsanteil der Gebäudeabrechnung deinem eigenen Zähler, und vom Flächenanteil trägt deine Wohnung ihren Miteigentumsanteil. Eine gesparte kWh spart deshalb weniger, als der Preis je kWh vermuten lässt. Das *erhöht* den COP, den die Wärmepumpe erreichen muss. Beide Anteile stellst du bei den Preisen ein ([Schritt 4.2](#42-preise)); wer sie ignoriert, rechnet die Wärmepumpe schön.
 
 ## 2. ebusd einrichten
 
@@ -60,8 +110,8 @@ Den Reiter **Konfiguration** der ebusd-App öffnen:
 | Einstellung | Was du einträgst |
 |---|---|
 | Adapter / Gerät | deinen eBUS-Adapter: das USB-Gerät, oder bei einem Netzwerk-Adapter seine Adresse, zum Beispiel `ens:192.0.2.10:9999` |
-| Kommandozeilen-Optionen | `--accesslevel=*` ergänzen – nötig, damit Thriftherm der Therme ihren Sollwert schicken kann |
-| MQTT | die App findet den Mosquitto broker automatisch. Wenn nicht, Host, Benutzer und Passwort eintragen |
+| Kommandozeilen-Optionen | `--accesslevel=*` ergänzen – nötig, damit Thriftherm der Therme ihren Sollwert schicken kann. Die Testanlage hat zusätzlich `--mqttretain`: Dann bleiben alle Werte im Broker liegen und stehen nach einem Neustart von Home Assistant sofort wieder da – auch veraltete, siehe den Hinweis unten |
+| MQTT | nichts einzutragen: Die App findet den Mosquitto broker von Home Assistant selbst. Einen anderen Broker gibst du in den Kommandozeilen-Optionen an (`--mqtthost=…`, `--mqttport=…`, `--mqttuser=…`, `--mqttpass=…`) |
 | `mqtt-hassio.cfg` kopieren (`seed_mqtt_cfg`) | an – damit liegt eine bearbeitbare Kopie der MQTT-Konfiguration im Ordner der App |
 
 Speichern und die App starten.
@@ -87,9 +137,13 @@ Von sich aus schickt ebusd die Heizungspumpe (`WP`) und die Status-Nummer der Th
 
 3. Speichern und die **ebusd-App neu starten**.
 
-**Prüfen:** Nach ein paar Minuten zeigt *Einstellungen → Geräte & Dienste → MQTT* ein ebusd-Gerät für deine Therme (zum Beispiel *ebusd bai*) mit Entitäten wie **FlowTemp temp**, **ReturnTemp temp**, **WP** und **Statenumber**. `WP` und `Statenumber` erscheinen oft erst nach ein paar Abfragen.
+**Prüfen:** Nach bis zu zehn Minuten zeigt *Einstellungen → Geräte & Dienste → MQTT* ein ebusd-Gerät für deine Therme (zum Beispiel *ebusd bai*) mit Entitäten wie **FlowTemp temp**, **ReturnTemp temp**, **WP** und **Statenumber**. `WP` und `Statenumber` erscheinen oft erst nach ein paar Abfragen.
 
 Ist Thriftherm schon eingerichtet? Dann *Thriftherm → Konfigurieren → Gastherme und Gaszähler* öffnen: Die leeren Felder *Heizungspumpe läuft (ebusd WP, on/off)* und *Status-Nummer der Therme (ebusd Statenumber, S.xx)* sind mit den gefundenen Entitäten ausgefüllt. Prüfen und absenden.
+
+### 2.5 Weniger Werte abfragen, damit Vorlauf und Rücklauf frischer sind
+
+Optional, für Fortgeschrittene. ebusd fragt die Werte der Therme reihum ab; je kürzer seine Liste, desto öfter kommen Vorlauf und Rücklauf (auf der Testanlage pausieren sie nach dem Kürzen nur noch 1 Minute 48 Sekunden statt 4 Minuten). Für die Regelung brauchst du das nicht, Thriftherm holt sich seine Werte selbst; es hilft, wenn du sie zeitnah im Dashboard sehen willst. Was weg kann, was bleiben muss und wie du kürzt: [Weniger ebusd-Werte abfragen](EBUSD.md).
 
 ## 3. Thriftherm installieren
 
@@ -144,24 +198,28 @@ Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme un
 |---|---|
 | Vorlauftemperatur | ebusd **FlowTemp temp** |
 | Rücklauftemperatur | ebusd **ReturnTemp temp** |
-| Therme-Status aus Status01 (off/on/overrun/hwc) | ebusd **Status01** |
+| Therme-Status aus Status01 (off/on/overrun/hwc) | ebusd **Status01 pumpstate** (Status01 liefert mehrere Entitäten; die anderen sind Temperaturen) |
 | Heizungspumpe läuft (ebusd WP, on/off) | ebusd **WP** |
 | Status-Nummer der Therme (ebusd Statenumber, S.xx) | ebusd **Statenumber** |
-| Warmwasser-Modus | ebusd **Status02 hwcmode** |
+| Warmwasser aktiv (ebusd hwcmode oder ein Binärsensor) | ebusd **Status02 hwcmode** |
 | eBUS-Signal (Binärsensor) | **das Signal von ebusd selbst** (`binary_sensor.…_global_signal`), nicht den Verbindungssensor des Adapters: Fällt der Adapter aus dem WLAN, bleibt sein eigener Sensor auf seinem letzten Wert „an“ stehen (gemessen) |
 | Nenn-Umlaufwassermenge der Pumpe | den Standardwert lassen, außer die Anleitung deiner Therme sagt etwas anderes |
 | Gaszähler Volumen (m³, Gesamt), Gaszähler Momentanfluss (m³/h) | deine Gaszähler-Entitäten, falls vorhanden; sonst leer lassen. Die Steuerung braucht keinen Gaszähler: Brennerlauf und Warmwasser erkennt sie an Pumpe und Statuscode. Ohne Zähler gibt es die Sensoren *Gasleistung* und *Gasenergie* nicht |
+| Ohne Gaszähler: Nennwärmebelastung der Therme (Typenschild, kW) | nur ohne Gaszähler und nur bei einer Vaillant-Therme: der Wert **Q** oder **Qn** vom Typenschild, bei einem Bereich der größere (atmoTEC plus VCW 194/4-5: 22,2). Damit schätzt Thriftherm *Gas für Heizung* und *Gas für Warmwasser* aus den Zählern der Therme. Dafür müssen die sechs ebusd-Nachrichten PrEnergySumHc1 bis 3 und PrEnergySumHwc1 bis 3 in Home Assistant ankommen, schließ sie also nicht aus ([Weniger ebusd-Werte abfragen](EBUSD.md#was-thriftherm-braucht)); Thriftherm findet sie selbst. Auf der Testanlage lag die Schätzung in 32 Tagen (95,8 kWh am Gaszähler) insgesamt 1 % über dem Zähler und an keinem Tag mehr als 0,3 kWh daneben. Mit Gaszähler leer lassen |
 | Warmwasser bereithalten (Warmhalten der Kombitherme, Speicherladung) | eingeschaltet lassen. Ausschalten nur bei einer Kombitherme ohne Speicher, die dich nachts mit ihrem Warmhalten stört (etwa ein Brennerstart pro Stunde ohne Heizbedarf); wirkt nur bei aktiver Thermensteuerung |
 | ebusd-Kreis der Therme (meist bai) | `bai` lassen, außer dein ebusd-Gerät nutzt einen anderen Kreisnamen |
 | Heizkurve: Vorlauf bei -10 °C außen | mit dem Standardwert 55 °C beginnen |
 | Heizkurve: Vorlauf bei +15 °C außen | mit dem Standardwert 30 °C beginnen |
 | Minimale Vorlauftemperatur | **etwa 45 °C bei einer Heizwerttherme, etwa 30 °C bei einem Brennwertgerät** |
 | Maximale Vorlauftemperatur | deine Drehknopf-Stellung aus Schritt 6 (zum Beispiel 55 °C) oder etwas darunter; höhere Werte wirken nicht, denn der Knopf ist die Obergrenze |
+| Aufheiztempo (Grad pro Stunde, 0 = aus) | mit 0 beginnen. Wird dir ein Raum nach dem Hochstellen zu langsam warm, 0,5 bis 2 einstellen; mehr Tempo kostet mehr Gas ([Anleitung, Aufheiztempo](ANLEITUNG.md#aufheiztempo)) |
+| Anteil der Räume, die anfordern müssen, bevor die Spreizung die Kurve bewertet | den Standardwert 0,5 lassen |
+| Eigene Heizkurve je Raum, für einen Raum, wenige Räume und die Mehrheit | eingeschaltet lassen |
 | Aktive Thermensteuerung freigeben (sonst nur planen) | **vorerst aus lassen** – das schaltest du in Schritt 7 ein |
 
 **Warum das Minimum vom Gerätetyp abhängt:** Ein Brennwertgerät profitiert von niedrigem Vorlauf, ein Heizwertgerät spart dort kaum etwas, und bei kurzen Brennerläufen kommt die Wärme womöglich nicht bis zu den fernen Heizkörpern – siehe [Anleitung, Abschnitt 5](ANLEITUNG.md#5-thermensteuerung-eigene-therme-über-ebusd).
 
-Die Heizkurve muss nicht perfekt sein: Thriftherm lernt eine Korrektur von bis zu ±10 K. Das Formular lehnt nur eine Kurve ab, die bei -10 °C niedriger liegt als bei +15 °C, und ein Minimum über dem Maximum.
+Die Heizkurve muss nicht perfekt sein: Thriftherm lernt eine Korrektur dazu, für Höhe und Steigung je bis zu ±10 Grad. Das Formular lehnt nur eine Kurve ab, die bei -10 °C niedriger liegt als bei +15 °C, und ein Minimum über dem Maximum.
 
 ### 4.3a Therme ohne ebusd: über Entitäten (Vorschau)
 
@@ -184,7 +242,9 @@ Ein Unterschied zu ebusd: Ein ebusd-Befehl läuft nach einigen Minuten ab, und d
 
 ### 4.4 Wärmepumpe (optionales Zusatzmodul)
 
-Diese Erweiterung ist eine Vorschau und noch nicht mit einer echten Wärmepumpe getestet. **Alle Felder leer lassen und auf *Absenden* klicken.** Eine Wärmepumpe lässt sich später in den Optionen ergänzen.
+Diese Erweiterung steuert seit dem 11.10.2026 täglich eine Midea PortaSplit, auch bei 2 °C draußen mit Vereisung und Abtauen. Ohne Wärmepumpe: **Alle Felder leer lassen und auf *Absenden* klicken.** Eine Wärmepumpe lässt sich später in den Optionen ergänzen.
+
+Ist eine Wärmepumpe eingerichtet, gibt es unter *Konfigurieren* den zusätzlichen Punkt **Wärmepumpe: Feineinstellung**. Dort stehen die Freigabe der aktiven Steuerung, der Sollwert-Abstand, Mindestlaufzeit und Mindestpause und, in eingeklappten Abschnitten, Bad-Trocknung, COP-Messung und Abtauen. Ohne Wärmepumpe erscheint der Punkt nicht.
 
 ### 4.5 Außenbedingungen
 
@@ -216,7 +276,7 @@ Du legst einen Raum pro Seite an. Mit dem Haken **Weiteren Raum hinzufügen** ko
 
 Der Raum ist warm, *wenn* eine Komfortzeit beginnt: Thriftherm fängt rechtzeitig vorher an zu heizen.
 
-Nur wenn eine Wärmepumpe eingerichtet ist (Vorschau), zeigt das Formular zusätzlich *Wird von der Wärmepumpe beheizt* und *Bad-Trocknung mit der Wärmepumpe (nach dem Duschen trotz Lüften weiterheizen)*. Die Bad-Trocknung läuft über die Wärmepumpe, ohne sie erscheint keins der beiden Felder. Sie braucht außerdem *Wird von der Wärmepumpe beheizt* und den Raumfeuchtesensor, sonst lehnt das Formular sie ab.
+Nur wenn eine Wärmepumpe eingerichtet ist, zeigt das Formular zusätzlich *Wird von der Wärmepumpe beheizt*, *Bad-Trocknung mit der Wärmepumpe* und *Trocknung nach dem Duschen von selbst starten*. Die Bad-Trocknung läuft über die Wärmepumpe, ohne sie erscheint keins der Felder. Mit ihr bekommt der Raum den Knopf *Jetzt trocknen*; ist der dritte Schalter aus, trocknet nur der Knopf. Sie braucht außerdem *Wird von der Wärmepumpe beheizt* und den Raumfeuchtesensor, sonst lehnt das Formular sie ab.
 
 **Prüfen:** Nach dem letzten Raum zeigt *Einstellungen → Geräte & Dienste* **Thriftherm**. Sein Gerät zeigt *Thermensteuerung* und *Raumsteuerung* auf **Nur planen (Beta)**.
 
@@ -273,7 +333,7 @@ Sieht etwas falsch aus, in den Optionen anpassen, bevor du aktiv schaltest.
 
 1. Die Better-Thermostat-Entitäten auf **Heizen** schalten.
 2. Thriftherm → *Konfigurieren* → **Gastherme und Gaszähler**: *Aktive Thermensteuerung freigeben (sonst nur planen)* einschalten. Absenden.
-3. Thriftherm → *Konfigurieren* → **Regelparameter**: *Aktive Raumsteuerung freigeben (Sollwerte an die Thermostate schreiben)* einschalten. Absenden.
+3. Thriftherm → *Konfigurieren* → **Regelparameter**, Abschnitt *Freigaben*: *Aktive Raumsteuerung freigeben (Sollwerte an die Thermostate schreiben)* einschalten. Absenden.
 4. Am Thriftherm-Gerät **Thermensteuerung** und **Raumsteuerung** auf **Aktiv** stellen.
 
 **Nach ein paar Minuten prüfen:**
@@ -288,17 +348,4 @@ Alles zum Alltag – Modi, Zeitpläne, Abwesenheit, Lernen – steht in der [Anl
 
 ## 8. Wenn etwas nicht klappt
 
-| Problem | Ursache | Abhilfe |
-|---|---|---|
-| Gar keine ebusd-Entitäten | ebusd nicht mit Adapter oder MQTT verbunden, oder der Namensfilter lässt nichts durch | Adapter-Einstellung und Log der ebusd-App prüfen; prüfen, ob Mosquitto läuft und die MQTT-Integration eingerichtet ist; die Zeile `filter-name` in der `mqtt-hassio.cfg` prüfen |
-| *WP* und *Statenumber* fehlen | der ebusd-Namensfilter lässt sie nicht durch | `filter-name` in der `mqtt-hassio.cfg` um `\|^wp$\|statenumber` ergänzen und ebusd neu starten ([Schritt 2.4](#24-heizungspumpe-und-status-nummer-sichtbar-machen)) |
-| Therme ignoriert den Sollwert | ebusd darf nicht schreiben | `--accesslevel=*` in den Kommandozeilen-Optionen von ebusd ergänzen und die App neu starten |
-| Therme ignoriert den Sollwert | Drehknopf steht niedriger als der Sollwert | der Knopf ist die Obergrenze – auf dein Maximum aufdrehen (zum Beispiel 55 °C) |
-| Therme heizt gar nicht | Drehknopf am linken Anschlag = Sommerbetrieb | Knopf aufdrehen |
-| Therme taktet, aber der letzte Heizkörper bleibt kalt | Pumpe steht mit dem Brenner; Mindest-Vorlauf zu niedrig | Pumpenmodus prüfen ([Schritt 6](#6-an-der-therme)); bei einer Heizwerttherme den Mindest-Vorlauf auf etwa 45 °C stellen ([Schritt 4.3](#43-gastherme-ebusd-und-gaszähler)) |
-| Therme springt etwa einmal pro Stunde kurz an, auch nachts und ohne Heizbedarf | die Warmstart-Funktion der Kombitherme hält den Warmwasser-Wärmetauscher warm (im Display steht ein **C**); ein Raumregler am Bus hat sie früher unterdrückt | an der Therme ausschalten: Warmwasser-Drehknopf ganz nach links, dann wieder auf den gewohnten Wert – das C verschwindet (von einem Nutzer an einer Vaillant bestätigt). Oder in den Thermen-Optionen *Warmwasser bereithalten* ausschalten ([Schritt 4.3](#43-gastherme-ebusd-und-gaszähler)) |
-| Therme heizt, obwohl Thriftherm sperrt; Reparaturmeldung *Keine Daten von der Therme* | ebusd erreicht den eBUS-Adapter nicht, oft nach einer neuen IP-Adresse | ebusd-Log prüfen („unable to open …“); Adresse in der ebusd-App korrigieren; im Router eine feste Adresse vergeben ([Schritt 2.3](#23-ebusd-app-konfigurieren)) |
-| Ein WLAN-Gerät (z. B. der Gaszähler) verliert ständig die Verbindung | es hat die alte Adresse des eBUS-Adapters bekommen, und ebusd klopft dort an | wie oben: Adresse in der ebusd-App korrigieren, feste Adressen vergeben, das Gerät neu starten |
-| Ein Thermostat nimmt keine Sollwerte an | das Thermostat hängt | Batterie raus und wieder rein; Firmware aktualisieren |
-| Direkt nach einem Neustart zeigt *Therme-Steuerbefehl* *Warte auf Raumdaten* | Thriftherm wartet auf die Raumfühler | bis zu fünf Minuten normal |
-| Ein Raum ist kalt, aber die Therme ist gesperrt | Fenster offen oder das Thermostat des Raums ausgeschaltet | Fenster schließen; das Thermostat wieder auf Heizen stellen |
+Keine ebusd-Werte, eine Therme, die den Sollwert nicht annimmt, ein Thermostat, das hängt: Was dann zu tun ist, steht in der [Fehlersuche](FEHLERSUCHE.md). Sie ist nach dem geordnet, was du siehst, und beantwortet auch häufige Fragen aus dem Alltag.

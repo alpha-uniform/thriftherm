@@ -29,6 +29,7 @@ class PlanLog:
         self._last_source: str | None = None
         self._last_safety: str | None = None
         self._last_defrost_kind = "none"
+        self._recorded = False  # the last heat pump command was put on record
         self._started_ts = time.time()
 
     def boiler(self, command: BoilerCommand, now_ts: float, active: bool) -> None:
@@ -40,14 +41,21 @@ class PlanLog:
         self._last_boiler_plan = plan
 
     def heat_pump(self, command: HeatPumpCommand, now_ts: float, active: bool) -> bool:
-        """Record a heat pump command. True when the history changed and should be saved."""
+        """Record a heat pump command. True when one was recorded.
+
+        The history itself is not stored: it starts empty after a restart.
+        """
         plan = (command.plan, command.reason)
         recorded = False
-        if command.action != "none":
-            self.command_log.append(
-                {"ts": round(now_ts), "action": command.action, "target": command.target_temp, "fan": command.fan_mode,
-                 "load": command.load, "reason": command.reason, "sent": active}
-            )
+        entry = {"action": command.action, "target": command.target_temp, "fan": command.fan_mode,
+                 "load": command.load, "reason": command.reason}
+        last = self.command_log[-1] if self.command_log else None
+        # the same command, due again because it did not go out: on record once, not once a cycle
+        repeat = last is not None and last["sent"] is False and all(last[key] == value for key, value in entry.items())
+        if command.action != "none" and repeat:
+            pass
+        elif command.action != "none":
+            self.command_log.append({"ts": round(now_ts), **entry, "sent": active})
             recorded = True
             _LOGGER.info(
                 "thriftherm heat pump %s: %s target=%s fan=%s load=%s (%s)",
@@ -56,7 +64,24 @@ class PlanLog:
         elif plan != self._last_plan:
             _LOGGER.debug("thriftherm heat pump plan: %s (%s) blockers=%s", command.plan, command.reason, command.blockers)
         self._last_plan = plan
+        self._recorded = recorded
         return recorded
+
+    def not_sent(self) -> None:
+        """The heat pump command recorded last did not go out after all (the call failed, or somebody asked meanwhile)."""
+        if self.command_log:
+            self.command_log[-1]["sent"] = False
+
+    def nothing_sent(self) -> None:
+        """The heat pump command just recorded needed no call: the unit had all of it already.
+
+        It comes off the record, which lists what went out. Seen 2026-10-13: after each of three
+        restarts an "adjust" stood there as sent, with exactly the values the unit had, and no call.
+        """
+        if self._recorded and self.command_log:
+            self.command_log.pop()
+            self._recorded = False
+        _LOGGER.info("thriftherm heat pump: nothing sent, the unit has all of it already")
 
     def changes(self, advice: Advice, safety_res: SafetyResult, defrost_res: DefrostResult) -> None:
         if advice.source != self._last_source:
