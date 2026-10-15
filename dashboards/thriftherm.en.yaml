@@ -1,0 +1,512 @@
+# Thriftherm: example dashboard (English labels)
+#
+# Paste: Settings > Dashboards > Add dashboard
+#   > New dashboard from scratch > Open the dashboard > pencil top right
+#   > ⋮ > Raw configuration editor > replace everything with this file > Save.
+#
+# Standard Home Assistant cards only, no custom cards from HACS.
+#
+# ADAPT THE ROOMS (important):
+#   The "Rooms" view and the "History" view contain two example rooms:
+#   "badezimmer" and "wohnzimmer". That is the room key: the room name in
+#   lower case as it appears in the entity IDs, without accents or umlauts.
+#   Example: room "Küche" gives sensor.thriftherm_kuche_target_temperature,
+#   room "Living room" gives sensor.thriftherm_living_room_target_temperature.
+#   For each of your rooms copy one room block and replace the room key
+#   (search and replace in the editor). Delete rooms you do not have.
+#   Find your room keys under Settings > Devices & services > Entities,
+#   search for "thriftherm_" and "target_temperature".
+#
+# Not every room has every entity:
+#   - "Window open" exists only with a window contact.
+#   - "Thermostat plan" exists only with a thermostat (e.g. Better Thermostat).
+#   - "Quick heat-up" exists only with a thermostat or a heat pump in the room.
+#   If one is missing, the card shows "Entity not available". Delete that line.
+#
+# No heat pump: delete the whole "Heat pump" view.
+# No gas boiler (e.g. district heating): delete the whole "Boiler" view.
+
+title: Heating
+views:
+  # ---------------------------------------------------------------------------
+  # View 1: Overview. What heats now and why. The reason comes first.
+  # ---------------------------------------------------------------------------
+  - title: Overview
+    path: overview
+    icon: mdi:home-thermometer
+    type: sections
+    max_columns: 3
+    sections:
+      # Block: why does it heat like this? Plain words from Thriftherm.
+      - type: grid
+        cards:
+          - type: heading
+            heading: What happens now
+            icon: mdi:comment-question
+          # The decision reason as a list. One line per reason.
+          - type: markdown
+            content: |
+              {% set reasons = state_attr('sensor.thriftherm_decision_reason', 'reasons') %}
+              {% if reasons %}{% for r in reasons %}
+              - {{ r }}
+              {%- endfor %}
+              {% else %}{{ states('sensor.thriftherm_decision_reason') }}{% endif %}
+          # Which heat source Thriftherm uses now.
+          - type: tile
+            entity: sensor.thriftherm_recommended_heat_source
+            name: Recommended
+          # Cheaper source by cost per kWh of heat (heat pump only).
+          - type: tile
+            entity: sensor.thriftherm_cheaper_heat_source
+            name: Cheaper
+          # Safety state. With "Degraded" or "Fallback" the reasons
+          # appear in the card below.
+          - type: tile
+            entity: sensor.thriftherm_safety_state
+            name: Safety
+          # Is anything overridden by hand?
+          - type: tile
+            entity: binary_sensor.thriftherm_override_active
+            name: Overridden
+          # Only visible when safety is not OK: the reasons.
+          - type: entities
+            title: Why degraded
+            visibility:
+              - condition: state
+                entity: sensor.thriftherm_safety_state
+                state_not: ok
+            entities:
+              - type: attribute
+                entity: sensor.thriftherm_safety_state
+                attribute: issues
+                name: Issues
+              - type: attribute
+                entity: sensor.thriftherm_safety_state
+                attribute: frost_rooms
+                name: Frost risk in
+
+      # Block: operating mode and the three controls (Off, Plan only, Active).
+      - type: grid
+        cards:
+          - type: heading
+            heading: Control
+            icon: mdi:tune-variant
+          # Operating mode: Automatic, Boiler only, Heat pump only, Summer mode, Away.
+          - type: tile
+            entity: select.thriftherm_operating_mode
+            name: Operating mode
+            grid_options:
+              columns: full
+            features:
+              - type: select-options
+          # The three controls. "Plan only" calculates but sends nothing.
+          # Without a heat pump or a boiler that line is missing: delete it.
+          - type: entities
+            entities:
+              - entity: select.thriftherm_heat_pump_control
+                name: Heat pump
+              - entity: select.thriftherm_boiler_control
+                name: Boiler
+              - entity: select.thriftherm_room_control
+                name: Rooms
+              - entity: sensor.thriftherm_automation_state
+                name: Automation
+          # Away: planned return (used by the "Away" mode).
+          - type: entities
+            entities:
+              - entity: datetime.thriftherm_planned_return
+                name: Return
+          # Undoes every change by hand (thermostat, heat pump, override).
+          - type: button
+            name: Back to automatic
+            icon: mdi:restore
+            entity: button.thriftherm_back_to_automatic
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.thriftherm_back_to_automatic
+
+      # Block: outdoor temperature, the basis of many decisions.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Outside
+            icon: mdi:thermometer
+          - type: tile
+            entity: sensor.thriftherm_outdoor_temperature_selected_source
+            name: Outdoor temperature
+
+  # ---------------------------------------------------------------------------
+  # View 2: Rooms. One section per room. To adapt see the top of the file.
+  # ---------------------------------------------------------------------------
+  - title: Rooms
+    path: rooms
+    icon: mdi:sofa
+    type: sections
+    max_columns: 3
+    sections:
+      # === Room block: badezimmer (example; copy and replace the room key) ===
+      - type: grid
+        cards:
+          - type: heading
+            heading: Bathroom
+            icon: mdi:shower
+          # Target temperature now, with the reason and who overrode it.
+          - type: entities
+            entities:
+              - entity: sensor.thriftherm_badezimmer_target_temperature
+                name: Target now
+              - type: attribute
+                entity: sensor.thriftherm_badezimmer_target_temperature
+                attribute: reason
+                name: Reason
+              - type: attribute
+                entity: sensor.thriftherm_badezimmer_target_temperature
+                attribute: override_by
+                name: Overridden by
+          # Heat demand in percent.
+          - type: tile
+            entity: sensor.thriftherm_badezimmer_heat_demand
+            name: Heat demand
+          # An open window pauses heating (only with a window contact).
+          - type: tile
+            entity: binary_sensor.thriftherm_badezimmer_window_open
+            name: Window
+          # What Thriftherm gives the thermostat (only with a thermostat).
+          - type: tile
+            entity: sensor.thriftherm_badezimmer_thermostat_plan
+            name: Thermostat
+          # May the room heat? If not, the reason is above under "Reason".
+          - type: tile
+            entity: binary_sensor.thriftherm_badezimmer_heating_allowed
+            name: Heating allowed
+          # Comfort and setback temperature to adjust.
+          - type: entities
+            entities:
+              - entity: number.thriftherm_badezimmer_comfort_temperature
+                name: Comfort
+              - entity: number.thriftherm_badezimmer_setback_temperature
+                name: Setback
+          # Quick heat-up: the room heats to comfort right away.
+          - type: button
+            name: Quick heat-up
+            icon: mdi:fire
+            entity: button.thriftherm_badezimmer_quick_heat_up
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.thriftherm_badezimmer_quick_heat_up
+
+      # === Room block: wohnzimmer (second example) ===
+      - type: grid
+        cards:
+          - type: heading
+            heading: Living room
+            icon: mdi:sofa
+          - type: entities
+            entities:
+              - entity: sensor.thriftherm_wohnzimmer_target_temperature
+                name: Target now
+              - type: attribute
+                entity: sensor.thriftherm_wohnzimmer_target_temperature
+                attribute: reason
+                name: Reason
+              - type: attribute
+                entity: sensor.thriftherm_wohnzimmer_target_temperature
+                attribute: override_by
+                name: Overridden by
+          - type: tile
+            entity: sensor.thriftherm_wohnzimmer_heat_demand
+            name: Heat demand
+          - type: tile
+            entity: binary_sensor.thriftherm_wohnzimmer_window_open
+            name: Window
+          - type: tile
+            entity: sensor.thriftherm_wohnzimmer_thermostat_plan
+            name: Thermostat
+          - type: tile
+            entity: binary_sensor.thriftherm_wohnzimmer_heating_allowed
+            name: Heating allowed
+          - type: entities
+            entities:
+              - entity: number.thriftherm_wohnzimmer_comfort_temperature
+                name: Comfort
+              - entity: number.thriftherm_wohnzimmer_setback_temperature
+                name: Setback
+          - type: button
+            name: Quick heat-up
+            icon: mdi:fire
+            entity: button.thriftherm_wohnzimmer_quick_heat_up
+            show_state: false
+            tap_action:
+              action: perform-action
+              perform_action: button.press
+              target:
+                entity_id: button.thriftherm_wohnzimmer_quick_heat_up
+
+  # ---------------------------------------------------------------------------
+  # View 3: Boiler. Only with a gas boiler via ebusd. Otherwise delete the view.
+  # ---------------------------------------------------------------------------
+  - title: Boiler
+    path: boiler
+    icon: mdi:water-boiler
+    type: sections
+    max_columns: 3
+    sections:
+      # Block: what the boiler should do and why.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Boiler command
+            icon: mdi:water-boiler
+          - type: tile
+            entity: sensor.thriftherm_boiler_command
+            name: Command
+          - type: tile
+            entity: sensor.thriftherm_boiler_flow_setpoint_planned
+            name: Flow setpoint
+          # Reason, blockers and control mode of the command.
+          - type: entities
+            entities:
+              - type: attribute
+                entity: sensor.thriftherm_boiler_command
+                attribute: reason
+                name: Reason
+              - type: attribute
+                entity: sensor.thriftherm_boiler_command
+                attribute: blockers
+                name: Blocked because
+              - type: attribute
+                entity: sensor.thriftherm_boiler_command
+                attribute: control_mode
+                name: Control
+              - type: attribute
+                entity: sensor.thriftherm_boiler_command
+                attribute: heating_curve_flow
+                name: Flow by heating curve
+                suffix: °C
+          - type: tile
+            entity: binary_sensor.thriftherm_boiler_space_heating_active
+            name: Space heating
+          - type: tile
+            entity: binary_sensor.thriftherm_boiler_hot_water_active
+            name: Hot water
+          - type: tile
+            entity: binary_sensor.thriftherm_boiler_data_available
+            name: Data available
+
+      # Block: boiler readings.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Readings
+            icon: mdi:gauge
+          # The spread is disabled by default (diagnostic). Enable it under
+          # Entities if you want it, otherwise the tile shows "unavailable".
+          - type: tile
+            entity: sensor.thriftherm_boiler_flow_return_spread
+            name: Flow/return spread
+          - type: tile
+            entity: sensor.thriftherm_boiler_burner_share
+            name: Burner share
+          # Gas power needs a gas flow sensor.
+          - type: tile
+            entity: sensor.thriftherm_gas_power
+            name: Gas power
+          # Gas for heating and hot water (meter readings in kWh).
+          - type: tile
+            entity: sensor.thriftherm_gas_for_heating
+            name: Gas heating
+          - type: tile
+            entity: sensor.thriftherm_gas_for_hot_water
+            name: Gas hot water
+
+      # Block: learning. Thriftherm tunes the heating curve by itself.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Learning
+            icon: mdi:school
+          - type: entities
+            entities:
+              - entity: sensor.thriftherm_learning_state
+                name: Learning state
+              - type: attribute
+                entity: sensor.thriftherm_learning_state
+                attribute: flow_set_by
+                name: Flow set by
+              - type: attribute
+                entity: sensor.thriftherm_learning_state
+                attribute: paused_because
+                name: Paused because
+              - type: attribute
+                entity: sensor.thriftherm_learning_state
+                attribute: heat_up_extra_k
+                name: Heat-up extra (K)
+              - type: attribute
+                entity: sensor.thriftherm_learning_state
+                attribute: heating_curve_offset_k
+                name: Heating curve shifted by
+                suffix: K
+
+  # ---------------------------------------------------------------------------
+  # View 4: Heat pump. Only with a heat pump set up. Otherwise delete it.
+  # ---------------------------------------------------------------------------
+  - title: Heat pump
+    path: heat-pump
+    icon: mdi:heat-pump
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: markdown
+            content: >-
+              This page only applies if a heat pump is set up in
+              Thriftherm. Without one every card shows "unavailable".
+              Then simply delete this view.
+
+      # Block: command and whether the heat pump may heat.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Heat pump command
+            icon: mdi:heat-pump
+          - type: tile
+            entity: sensor.thriftherm_heat_pump_command
+            name: Command
+          - type: tile
+            entity: sensor.thriftherm_heat_pump_run_state
+            name: Run state
+          - type: tile
+            entity: binary_sensor.thriftherm_heat_pump_available_for_heating
+            name: Available
+          - type: tile
+            entity: binary_sensor.thriftherm_heat_pump_blocked_for_heating
+            name: Blocked
+          - type: tile
+            entity: binary_sensor.thriftherm_defrost_or_icing_suspected
+            name: Defrost
+          # Why blocked, or why this command.
+          - type: entities
+            entities:
+              - type: attribute
+                entity: binary_sensor.thriftherm_heat_pump_blocked_for_heating
+                attribute: reason
+                name: Blocked because
+              - type: attribute
+                entity: sensor.thriftherm_heat_pump_command
+                attribute: reason
+                name: Reason for the command
+              - type: attribute
+                entity: sensor.thriftherm_heat_pump_command
+                attribute: blockers
+                name: Blockers
+
+      # Block: power and efficiency.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Power
+            icon: mdi:flash
+          - type: tile
+            entity: sensor.thriftherm_heat_pump_cop
+            name: COP
+          - type: tile
+            entity: sensor.thriftherm_break_even_cop
+            name: Break-even COP
+          - type: tile
+            entity: sensor.thriftherm_heat_pump_thermal_power
+            name: Thermal power
+          - type: tile
+            entity: sensor.thriftherm_heat_pump_electrical_power
+            name: Electrical power
+
+      # Block: what does one kWh of heat cost? That decides the cheaper source.
+      - type: grid
+        cards:
+          - type: heading
+            heading: Cost per kWh of heat
+            icon: mdi:cash
+          - type: tile
+            entity: sensor.thriftherm_heat_cost_per_kwh_heat_pump
+            name: Heat pump
+          - type: tile
+            entity: sensor.thriftherm_heat_cost_per_kwh_boiler
+            name: Boiler
+          - type: tile
+            entity: sensor.thriftherm_cheaper_heat_source
+            name: Cheaper
+            grid_options:
+              columns: full
+
+  # ---------------------------------------------------------------------------
+  # View 5: History.
+  # ---------------------------------------------------------------------------
+  - title: History
+    path: history
+    icon: mdi:chart-line
+    type: sections
+    max_columns: 2
+    sections:
+      # Room targets over 24 hours. The measured room temperature comes from
+      # your own sensor: add its entity below (remove the comment sign and
+      # adjust the name).
+      - type: grid
+        cards:
+          - type: history-graph
+            title: Rooms, target and actual (24 h)
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.thriftherm_badezimmer_target_temperature
+                name: Bathroom target
+              # - entity: sensor.YOUR_BATHROOM_TEMPERATURE_SENSOR
+              #   name: Bathroom actual
+              - entity: sensor.thriftherm_wohnzimmer_target_temperature
+                name: Living room target
+              # - entity: sensor.YOUR_LIVING_ROOM_TEMPERATURE_SENSOR
+              #   name: Living room actual
+          # Heat demand of the rooms in percent.
+          - type: history-graph
+            title: Heat demand (24 h)
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.thriftherm_badezimmer_heat_demand
+                name: Bathroom
+              - entity: sensor.thriftherm_wohnzimmer_heat_demand
+                name: Living room
+
+      # Boiler: planned flow and gas per day (gas boiler only).
+      - type: grid
+        cards:
+          - type: history-graph
+            title: Boiler flow setpoint (24 h)
+            hours_to_show: 24
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.thriftherm_boiler_flow_setpoint_planned
+                name: Flow setpoint
+          # Gas per day, split into heating and hot water (kWh).
+          - type: statistics-graph
+            title: Gas per day
+            chart_type: bar
+            period: day
+            days_to_show: 14
+            stat_types:
+              - change
+            grid_options:
+              columns: full
+            entities:
+              - entity: sensor.thriftherm_gas_for_heating
+                name: Heating
+              - entity: sensor.thriftherm_gas_for_hot_water
+                name: Hot water

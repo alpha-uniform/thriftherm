@@ -59,6 +59,7 @@ from .const import (
     CONF_ICING_BLOCK_MIN,
     CONF_ICING_COIL_DEPRESSION_K,
     CONF_HEAT_PUMP_AIRFLOW_CURVE,
+    CONF_HEAT_PUMP_COP_PROFILE,
     CONF_HEAT_PUMP_DUCT_FACTOR,
     CONF_HEAT_PUMP_FOLLOW_ROOMS,
     CONF_HEAT_PUMP_CLIMATE,
@@ -147,6 +148,7 @@ from .const import (
     SYSTEM_TYPES,
     DEFAULT_ICING_BLOCK_MIN,
     DEFAULT_ICING_COIL_DEPRESSION_K,
+    DEFAULT_HEAT_PUMP_COP_PROFILE,
     DEFAULT_HEAT_PUMP_DUCT_FACTOR,
     DEFAULT_HEAT_PUMP_MIN_OUTDOOR_TEMP,
     DEFAULT_HEAT_PUMP_SETPOINT_OFFSET,
@@ -180,6 +182,7 @@ from .const import (
     DEFAULT_WINDOW_GRACE_S,
 )
 from .adapters.config import system_type_from_config
+from .engines import cop_profiles
 from .engines.cop import parse_airflow_curve
 from .engines.room import parse_schedule
 
@@ -361,6 +364,13 @@ def schema_heat_pump(cur: Mapping[str, Any]) -> vol.Schema:
             _opt(CONF_HEAT_PUMP_OUTLET_TEMP, cur): _entity("sensor"),
             _opt(CONF_HEAT_PUMP_AIRFLOW_CURVE, cur): _text(),
             _req(CONF_HEAT_PUMP_DUCT_FACTOR, cur, DEFAULT_HEAT_PUMP_DUCT_FACTOR): _number(0.3, 1.2, 0.01),
+            _req(CONF_HEAT_PUMP_COP_PROFILE, cur, DEFAULT_HEAT_PUMP_COP_PROFILE): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=list(cop_profiles.PROFILE_KEYS),
+                    translation_key="cop_profile",
+                    mode=selector.SelectSelectorMode.DROPDOWN,
+                )
+            ),
             _req(CONF_HEAT_PUMP_FOLLOW_ROOMS, cur, False): selector.BooleanSelector(),
             **(
                 {_opt(CONF_HEAT_PUMP_ROOM, cur): selector.SelectSelector(
@@ -382,6 +392,7 @@ HEAT_PUMP_KEYS = (
     CONF_HEAT_PUMP_OUTLET_TEMP,
     CONF_HEAT_PUMP_AIRFLOW_CURVE,
     CONF_HEAT_PUMP_DUCT_FACTOR,
+    CONF_HEAT_PUMP_COP_PROFILE,
     CONF_HEAT_PUMP_FOLLOW_ROOMS,
     CONF_HEAT_PUMP_ROOM,
 )

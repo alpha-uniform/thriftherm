@@ -19,7 +19,7 @@
 
 **Eigene Gastherme über ebusd: der Kern.** Thriftherm wird zum Regler deiner Therme und spricht über [ebusd](https://ebusd.eu) mit ihr. Es hält den Vorlauf so niedrig wie möglich, sperrt den Heizbetrieb, wenn kein Raum Wärme braucht, und lernt für jeden Raum, wie viel Vorlauf er braucht.
 
-**Dazu eine Wärmepumpe.** Thriftherm misst ihren COP und lässt sie heizen, wenn ihre Wärme gerade günstiger ist als die der Therme. Ein Bad, das sie beheizt, trocknet sie nach dem Duschen.
+**Dazu eine Wärmepumpe.** Thriftherm misst ihren COP und lässt sie heizen, wenn ihre Wärme gerade günstiger ist als die der Therme. Ohne eigene Fühler am Gerät rechnet es bei der Midea PortaSplit mit Werten, die an einer PortaSplit gemessen wurden. Ein Bad, das sie beheizt, trocknet sie nach dem Duschen.
 
 **Fernwärme, Zentralheizung oder keine eigene Therme.** Thriftherm heizt die Räume über [Better Thermostat](https://github.com/KartoffelToby/better_thermostat) nach Zeitplan, mit Vorheizen und Abwesenheit; an die Wärmeversorgung geht nie etwas. Richtig lohnt sich das mit einer Wärmepumpe: Dann vergleicht Thriftherm den Strom mit dem Grenzpreis der Fernwärme. Ohne Therme kann die Wärmepumpe auch allein heizen.
 

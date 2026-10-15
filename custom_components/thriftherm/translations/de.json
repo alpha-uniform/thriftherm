@@ -70,8 +70,12 @@
           "midea_outlet_temp": "Ausblaslufttemperatur",
           "midea_airflow_curve": "Luftmengenkennlinie (rpm:m³/h, ...)",
           "midea_duct_factor": "Schlauchfaktor (reale Luftmenge / frei ausblasend, 1,0 ohne Schläuche)",
+          "heat_pump_cop_profile": "COP-Werte dieses Modells (ohne Sensoren am Gerät)",
           "midea_follow_rooms": "Sollwert folgt der Solltemperatur der versorgten Räume (plus Sollwert-Abstand aus „Wärmepumpe: Feineinstellung“); das Gerät regelt selbst",
           "midea_room": "Raum, in dem die Wärmepumpe steht"
+        },
+        "data_description": {
+          "heat_pump_cop_profile": "Ohne Zwischenstecker und Fühler an Ansaugung und Ausblas kann Thriftherm den COP nicht messen und entscheidet nach einer allgemeinen Startkurve. Wählst du dein Modell, rechnet es stattdessen mit Werten, die am gleichen Modell gemessen wurden. Was dein eigenes Gerät misst, geht immer vor."
         }
       },
       "outdoor": {
@@ -205,8 +209,12 @@
           "midea_outlet_temp": "Ausblaslufttemperatur",
           "midea_airflow_curve": "Luftmengenkennlinie (rpm:m³/h, ...)",
           "midea_duct_factor": "Schlauchfaktor (reale Luftmenge / frei ausblasend, 1,0 ohne Schläuche)",
+          "heat_pump_cop_profile": "COP-Werte dieses Modells (ohne Sensoren am Gerät)",
           "midea_follow_rooms": "Sollwert folgt der Solltemperatur der versorgten Räume (plus Sollwert-Abstand aus „Wärmepumpe: Feineinstellung“); das Gerät regelt selbst",
           "midea_room": "Raum, in dem die Wärmepumpe steht"
+        },
+        "data_description": {
+          "heat_pump_cop_profile": "Ohne Zwischenstecker und Fühler an Ansaugung und Ausblas kann Thriftherm den COP nicht messen und entscheidet nach einer allgemeinen Startkurve. Wählst du dein Modell, rechnet es stattdessen mit Werten, die am gleichen Modell gemessen wurden. Was dein eigenes Gerät misst, geht immer vor."
         }
       },
       "midea_tuning": {
@@ -390,6 +398,12 @@
       "options": {
         "add-room": "Raum hinzufügen"
       }
+    },
+    "cop_profile": {
+      "options": {
+        "none": "Keine (allgemeine Startkurve)",
+        "midea_portasplit": "Midea PortaSplit (an einem Gerät gemessen, 2 bis 16 °C draußen)"
+      }
     }
   },
   "entity": {
@@ -424,7 +438,8 @@
               "measured": "Gemessen",
               "learned": "Gelernt",
               "prior": "Startkurve",
-              "prior_calibrated": "Startkurve (kalibriert)"
+              "prior_calibrated": "Startkurve (kalibriert)",
+              "profile": "Gemessen am gleichen Modell"
             }
           },
           "prior_calibration_factor": {
@@ -1044,7 +1059,8 @@
               "measured": "Gemessen",
               "learned": "Gelernt",
               "prior": "Startkurve",
-              "prior_calibrated": "Startkurve (kalibriert)"
+              "prior_calibrated": "Startkurve (kalibriert)",
+              "profile": "Gemessen am gleichen Modell"
             }
           },
           "break_even_cop": {
@@ -1761,7 +1777,8 @@
               "measured": "Gemessen",
               "learned": "Gelernt",
               "prior": "Startkurve",
-              "prior_calibrated": "Startkurve (kalibriert)"
+              "prior_calibrated": "Startkurve (kalibriert)",
+              "profile": "Gemessen am gleichen Modell"
             }
           },
           "midea_eco_offset_k": {

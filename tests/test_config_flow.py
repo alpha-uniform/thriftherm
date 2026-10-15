@@ -104,7 +104,7 @@ def test_step_keys_are_exactly_the_fields_they_clear():
     assert config_schema.BOILER_KEYS == tuple(BOILER_FIELDS)
     assert config_schema.HEAT_PUMP_KEYS == (
         "midea_climate", "midea_power", "midea_intake_temp", "midea_intake_rh", "midea_outlet_temp",
-        "midea_airflow_curve", "midea_duct_factor", "midea_follow_rooms", "midea_room",
+        "midea_airflow_curve", "midea_duct_factor", "heat_pump_cop_profile", "midea_follow_rooms", "midea_room",
     )
     assert config_schema.OUTDOOR_KEYS == tuple(OUTDOOR_FIELDS)
     assert config_schema.PARAMETER_KEYS == tuple(PARAMETER_DEFAULTS)

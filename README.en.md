@@ -19,7 +19,7 @@
 
 **Own gas boiler on ebusd: the core.** Thriftherm becomes your boiler's controller and talks to it through [ebusd](https://ebusd.eu). It keeps the flow temperature as low as possible, blocks heating when no room needs heat, and learns for every room how much flow it needs.
 
-**Plus a heat pump.** Thriftherm measures its COP and lets it heat when its heat is cheaper than the boiler's right now. It dries a bathroom it heats after a shower.
+**Plus a heat pump.** Thriftherm measures its COP and lets it heat when its heat is cheaper than the boiler's right now. Without sensors at the unit, a Midea PortaSplit can use values measured on a PortaSplit. It dries a bathroom it heats after a shower.
 
 **District heating, central heating or no own boiler.** Thriftherm heats the rooms to their schedules through [Better Thermostat](https://github.com/KartoffelToby/better_thermostat), with pre-heating and away mode; nothing is ever sent to the heat supply. It really pays off with a heat pump: Thriftherm then compares electricity with the marginal price of district heat. Without a boiler, the heat pump can also heat on its own.
 

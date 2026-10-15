@@ -10,7 +10,7 @@ Everything serialises to plain dicts for Home Assistant storage.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from statistics import median
 
@@ -43,6 +43,21 @@ def prior_cop(outdoor_c: float) -> float:
         if outdoor_c <= x1:
             return y0 + (y1 - y0) * (outdoor_c - x0) / (x1 - x0)
     return pts[-1][1]
+
+
+def _calibration(bins: Iterable[tuple[int, float, int]], min_count: int) -> float | None:
+    """Measured / prior, weighted by samples over the bins with at least `min_count` of them."""
+    num = den = 0.0
+    for idx, mean, count in bins:
+        if count < min_count:
+            continue
+        centre = idx * BIN_WIDTH_K + BIN_WIDTH_K / 2.0
+        num += count * mean / prior_cop(centre)
+        den += count
+    if den == 0:
+        return None
+    lo, hi = PRIOR_CALIBRATION_RANGE
+    return round(min(max(num / den, lo), hi), 3)
 
 
 @dataclass
@@ -101,26 +116,31 @@ class CopMap:
 
     def calibration_factor(self, min_count: int = MIN_BIN_COUNT) -> float | None:
         """Measured / prior, weighted by samples over all bins with enough data."""
-        num = den = 0.0
-        for idx, b in self.bins.items():
-            if b.count < min_count:
-                continue
-            centre = idx * BIN_WIDTH_K + BIN_WIDTH_K / 2.0
-            num += b.count * b.mean / prior_cop(centre)
-            den += b.count
-        if den == 0:
-            return None
-        lo, hi = PRIOR_CALIBRATION_RANGE
-        return round(min(max(num / den, lo), hi), 3)
+        return _calibration(((idx, b.mean, b.count) for idx, b in self.bins.items()), min_count)
 
-    def estimate(self, outdoor_c: float) -> tuple[float, str]:
-        """Expected COP and its basis: learned bin, calibrated prior, or default prior."""
+    def estimate(
+        self, outdoor_c: float, shipped: Mapping[int, tuple[float, int]] | None = None
+    ) -> tuple[float, str]:
+        """Expected COP and its basis: learned bin, calibrated prior, shipped map of the model, or default prior.
+
+        What this unit measured comes first. `shipped` is a map measured on the same model
+        (`cop_profiles`): its bins, or the prior calibrated by them, stand in where the unit
+        has measured nothing.
+        """
         learned = self.expected(outdoor_c)
         if learned is not None:
             return learned, "learned"
         factor = self.calibration_factor()
         if factor is not None:
             return round(prior_cop(outdoor_c) * factor, 3), "prior_calibrated"
+        if shipped:
+            idx = self.bin_of(outdoor_c)
+            for candidate in (idx, idx - 1, idx + 1):
+                if candidate in shipped and shipped[candidate][1] >= MIN_BIN_COUNT:
+                    return round(shipped[candidate][0], 3), "profile"
+            factor = _calibration(((i, mean, n) for i, (mean, n) in shipped.items()), MIN_BIN_COUNT)
+            if factor is not None:
+                return round(prior_cop(outdoor_c) * factor, 3), "profile"
         return round(prior_cop(outdoor_c) * PRIOR_CALIBRATION_DEFAULT, 3), "prior"
 
     def to_dict(self) -> dict[str, dict]:

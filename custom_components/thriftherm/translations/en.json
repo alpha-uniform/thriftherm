@@ -70,8 +70,12 @@
           "midea_outlet_temp": "Outlet air temperature",
           "midea_airflow_curve": "Airflow curve (rpm:m³/h, ...)",
           "midea_duct_factor": "Duct factor (real airflow / free-blowing, 1.0 without hoses)",
+          "heat_pump_cop_profile": "COP values of this model (without sensors at the unit)",
           "midea_follow_rooms": "Setpoint follows the served rooms' target (plus the setpoint offset from “Heat pump: fine tuning”); the unit regulates by itself",
           "midea_room": "Room the heat pump stands in"
+        },
+        "data_description": {
+          "heat_pump_cop_profile": "Without a smart plug and sensors at the intake and outlet, Thriftherm cannot measure the COP and decides on a general starting curve. Pick your model to decide on values measured on the same model instead. What your own unit measures always comes first."
         }
       },
       "outdoor": {
@@ -205,8 +209,12 @@
           "midea_outlet_temp": "Outlet air temperature",
           "midea_airflow_curve": "Airflow curve (rpm:m³/h, ...)",
           "midea_duct_factor": "Duct factor (real airflow / free-blowing, 1.0 without hoses)",
+          "heat_pump_cop_profile": "COP values of this model (without sensors at the unit)",
           "midea_follow_rooms": "Setpoint follows the served rooms' target (plus the setpoint offset from “Heat pump: fine tuning”); the unit regulates by itself",
           "midea_room": "Room the heat pump stands in"
+        },
+        "data_description": {
+          "heat_pump_cop_profile": "Without a smart plug and sensors at the intake and outlet, Thriftherm cannot measure the COP and decides on a general starting curve. Pick your model to decide on values measured on the same model instead. What your own unit measures always comes first."
         }
       },
       "midea_tuning": {
@@ -390,6 +398,12 @@
       "options": {
         "add-room": "Add a room"
       }
+    },
+    "cop_profile": {
+      "options": {
+        "none": "None (general starting curve)",
+        "midea_portasplit": "Midea PortaSplit (measured on one unit, 2 to 16 °C outside)"
+      }
     }
   },
   "entity": {
@@ -424,7 +438,8 @@
               "measured": "Measured",
               "learned": "Learned",
               "prior": "Starting curve",
-              "prior_calibrated": "Starting curve (calibrated)"
+              "prior_calibrated": "Starting curve (calibrated)",
+              "profile": "Measured on the same model"
             }
           },
           "prior_calibration_factor": {
@@ -1044,7 +1059,8 @@
               "measured": "Measured",
               "learned": "Learned",
               "prior": "Starting curve",
-              "prior_calibrated": "Starting curve (calibrated)"
+              "prior_calibrated": "Starting curve (calibrated)",
+              "profile": "Measured on the same model"
             }
           },
           "break_even_cop": {
@@ -1761,7 +1777,8 @@
               "measured": "Measured",
               "learned": "Learned",
               "prior": "Starting curve",
-              "prior_calibrated": "Starting curve (calibrated)"
+              "prior_calibrated": "Starting curve (calibrated)",
+              "profile": "Measured on the same model"
             }
           },
           "midea_eco_offset_k": {

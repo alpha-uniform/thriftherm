@@ -2,6 +2,13 @@
 
 **English** | [Deutsch](CHANGELOG.de.md)
 
+## 0.6.1 — 2026-10-16
+
+### New
+
+- **COP values of a model for units without sensors.** Without a smart plug and sensors at the intake and outlet, Thriftherm could only decide on a general curve. In the heat pump form, *COP values of this model* now offers values measured on the same model; so far the Midea PortaSplit (one unit, 2 to 16 °C outside). What your own unit measures always comes first.
+- **An example dashboard** to paste into Home Assistant, in German and English: what heats now and why, the rooms, the boiler, the heat pump and the history. See setup step 9.
+
 ## 0.6.0 — 2026-10-15
 
 The boiler's flow is learned per room, a heat-up speed of your choice speeds up slow rooms, and gas is counted apart for heating and for hot water. The heat pump add-on is no longer a preview. Coming from 0.5.7: the configuration stays at version 3, and everything learned so far is kept.
