@@ -1,6 +1,6 @@
 """Phase 7: drying only via Midea, schedule preheat, quick heat-up, COP prior."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import pytest
 
@@ -34,11 +34,25 @@ def test_drying_does_not_start_without_heat_pump():
     assert res.demand == 0.0
 
 
-def test_active_drying_ends_when_heat_pump_becomes_unavailable():
+def test_a_drying_under_way_waits_for_the_heat_pump_and_goes_on_with_the_time_it_has_left():
+    """Seen 2026-10-13: the unit was not there yet in the first cycle after a restart, and the drying was gone."""
     now_ts = MON_EVENING.timestamp()
-    st = _with(room_state(_bath(), temp=22.0, rh=85.0), abs_humidity_history=_baseline(now_ts), drying=DryingState(True, now_ts - 600, 9.0))
+    history = _baseline(now_ts)
+    by_hand = DryingState(True, now_ts - 600, 9.0, manual=True)
+    st = _with(room_state(_bath(), temp=22.0, rh=85.0), abs_humidity_history=history, drying=by_hand)
     res = room_engine.evaluate_room(st, MON_EVENING, "auto", PARAMS, heat_pump_heat_possible=False)
-    assert res.drying.active is False and res.drying_reason == "drying_ended_midea_unavailable"
+    # without effect meanwhile: no raised target the radiator would heat for
+    assert res.drying.active is False and res.drying_reason == "drying_waiting_for_the_heat_pump"
+    assert res.target_reason != "bathroom_drying"
+    assert res.drying.started_ts == now_ts - 600 and res.drying.manual
+
+    back = room_engine.evaluate_room(_with(st, drying=res.drying), MON_EVENING, "auto", PARAMS)
+    assert back.drying == by_hand and back.drying_reason == "drying_active" and back.target_reason == "bathroom_drying"
+
+    # its time limit counts from its start, also while it waits
+    late = MON_EVENING + timedelta(seconds=PARAMS.drying_max_s + 1)
+    ended = room_engine.evaluate_room(_with(st, drying=res.drying), late, "auto", PARAMS, heat_pump_heat_possible=False)
+    assert ended.drying == DryingState() and ended.drying_reason == "drying_ended_timeout"
 
 
 def test_schedule_preheat_reaches_comfort_at_window_start():

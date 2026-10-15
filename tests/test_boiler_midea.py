@@ -64,6 +64,13 @@ def test_heat_pump_cooling_is_never_available_for_heating():
     assert "error_code:7" in res3.issues
 
 
+@pytest.mark.parametrize("mode", ["cool", "dry", "fan_only", "auto"])
+def test_a_unit_run_by_hand_in_another_mode_is_not_available_for_heating(mode):
+    # "auto" was: the control keeps its hands off there too, and the rooms waited for a heat pump that did not come
+    res = heat_pump_engine.evaluate(heat_pump_state(hvac_mode=mode), PARAMS)
+    assert res.heating_available is False and "user_mode_active_not_available_for_heating" in res.issues
+
+
 def test_heat_pump_power_source_preference_and_plausibility():
     res = heat_pump_engine.evaluate(heat_pump_state(plug_power=800.0, realtime_power=790.0), PARAMS)
     assert res.electrical_power_w == 800.0 and res.electrical_power_source == "plug"

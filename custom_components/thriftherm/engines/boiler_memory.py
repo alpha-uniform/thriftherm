@@ -12,7 +12,8 @@ from math import isfinite
 
 from ..const import BOILER_PLAN_BLOCK, BOILER_PLAN_HEAT
 from ..models import Parameters, RoomResult
-from .boiler_load import LoadLine, line_of, lines_from_cells, lines_from_storage, lines_to_storage
+from . import heat_up
+from .boiler_load import LoadLine, line_of, lines_from_storage, lines_to_storage
 from .common import as_dict, as_float, as_floats
 
 CORRECTION_LIMIT_K = 10.0  # the level and the slope correction each stay within this
@@ -21,9 +22,7 @@ CURVE_COLD_C = -10.0
 ADJUSTMENTS_STORED = 48  # the steps of a day: the daily allowances of the learning are counted from them
 
 # restored as they are, anything that is not a number becomes None
-_STORED_FLOATS = (
-    "state_since_ts", "last_flow", "last_flow_ts", "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "burn_since_ts",
-)
+_STORED_FLOATS = ("state_since_ts", "last_flow", "ramp_from", "ramp_since_ts", "hot_water_seen_ts")
 
 
 @dataclass(frozen=True)
@@ -32,7 +31,6 @@ class BoilerMemory:
     last_send_ts: float | None = None
     last_payload: str | None = None
     last_flow: float | None = None
-    last_flow_ts: float | None = None
     state: str | None = None  # BOILER_PLAN_HEAT | BOILER_PLAN_BLOCK: the plan in force
     state_since_ts: float | None = None
     ramp_from: float | None = None  # flow at which the current rise began
@@ -54,7 +52,7 @@ class BoilerMemory:
     spread_ema: float | None = None
     samples: int = 0
     last_review_ts: float | None = None
-    burn_since_ts: float | None = None  # the burner is on for the heating since then
+    burn_since_ts: float | None = None  # the burner is on for the heating since then; not stored
     burns: tuple[tuple[float, float], ...] = ()  # (start, end) of the heating burns of the last hour
     # --- by how many rooms call (boiler_load): a line per load class, and the cycle the operation was last booked at
     lines: Mapping[str, LoadLine] = field(default_factory=dict)
@@ -62,12 +60,21 @@ class BoilerMemory:
     class_in_use: str | None = None  # the class that counts right now; a new one has to hold first (not stored)
     class_candidate: str | None = None
     class_candidate_since_ts: float | None = None
+    # the rooms of the call in progress or the last one: their lines set the flow, also between calls (not stored)
+    cell_rooms: tuple[str, ...] = ()
     spread_judging_since_ts: float | None = None  # since when enough rooms have called for the spread to judge (not stored)
+    learning_since_ts: float | None = None  # the learning may act again since then, after a pause (not stored)
+    heat_up: Mapping[str, heat_up.HeatUp] = field(default_factory=dict)  # each room's extra while it heats up
+    flow_held: bool = False  # the flow sent stood at its maximum or was held by the ramp (not stored)
 
     def to_storage(self) -> dict:
         # The timers go with it: after a restart the controller must still know that it
         # switched to "heat" two minutes ago, or it may toggle the boiler right away.
         # `last_send_ts` is deliberately left out so a SetMode goes out immediately.
+        # A burn in progress is left out as well: nobody saw the burner while Home Assistant was away.
+        # Restored, a burn was closed at the first cycle after the stop: six hours away gave a burn of
+        # six hours and a burner share of 1.0, and a short restart stretched a burn of one minute
+        # (review 2026-10-13). A store that still holds `burn_since_ts` or `last_flow_ts` is read without them.
         return {
             "offset_k": self.offset_k,
             "slope_k": self.slope_k,
@@ -78,6 +85,7 @@ class BoilerMemory:
             **{key: getattr(self, key) for key in _STORED_FLOATS},
             "burns": [list(burn) for burn in self.burns],
             "lines": lines_to_storage(self.lines),
+            "heat_up": heat_up.to_storage(self.heat_up),
         }
 
     @classmethod
@@ -94,8 +102,6 @@ class BoilerMemory:
                 burns.append((pair[0], pair[1]))
         level = offset if offset is not None and isfinite(offset) else 0.0
         slope = slope if slope is not None and isfinite(slope) else 0.0
-        # stored by the version that booked its steps to cells: each class starts with what it learned itself
-        lines = lines_from_storage(data["lines"]) if "lines" in data else lines_from_cells(data.get("cells"), level, slope)
         return cls(
             offset_k=level,
             slope_k=slope,
@@ -104,7 +110,8 @@ class BoilerMemory:
             last_adjust_reason=reason if isinstance(reason, str) else None,
             state=state if state in (BOILER_PLAN_HEAT, BOILER_PLAN_BLOCK) else None,
             burns=tuple(burns),
-            lines=lines,
+            lines=lines_from_storage(data.get("lines")),
+            heat_up=heat_up.from_storage(data.get("heat_up")),
             **{key: as_float(data.get(key)) for key in _STORED_FLOATS},
         )
 
@@ -123,7 +130,9 @@ class BoilerInputs:
     params: Parameters
     flow_c: float | None = None
     return_c: float | None = None
-    burner_heating: bool = False  # the boiler's pump state says "heating" (not hot water): the coarsest burner sign
+    # the coarsest burner sign: the boiler's own flame sign where it has one, else its pump state says
+    # "heating" (never while it makes hot water)
+    burner_heating: bool = False
     hot_water_active: bool = False  # the boiler's pump state or hot water mode says: hot water
     gas_power_w: float | None = None  # from a gas meter, None without one
     reported_mode: str | None = None  # BOILER_REPORTS_* from the boiler's status code, None if unknown
@@ -144,18 +153,22 @@ def cold_weight(outdoor_c: float | None) -> float:
     return min(max((CURVE_WARM_C - outdoor_c) / (CURVE_WARM_C - CURVE_COLD_C), 0.0), 1.0)
 
 
-def curve_flow(outdoor_c: float | None, p: Parameters) -> float:
+def curve_flow(outdoor_c: float | None, p: Parameters, limited: bool = True) -> float:
     """Linear heating curve through (-10 °C, cold) and (+15 °C, warm).
 
     Without an outdoor temperature the curve uses its middle: the cold point would
     heat the flow to the winter maximum on a mild day just because a sensor died.
+
+    `limited=False`: the curve as it is, for a sum that is limited as a whole. Limited first, the
+    minimum became the base the correction and the demand were added to: measured 2026-10-13 at
+    15 °C outside, a curve of 30 °C taken as 40, and one room was heated with 53 instead of 43.5 °C.
     """
     if outdoor_c is None:
         value = (p.boiler_curve_flow_cold + p.boiler_curve_flow_warm) / 2.0
     else:
         slope = (p.boiler_curve_flow_cold - p.boiler_curve_flow_warm) / (CURVE_WARM_C - CURVE_COLD_C)
         value = p.boiler_curve_flow_warm + slope * (CURVE_WARM_C - outdoor_c)
-    return min(max(value, p.boiler_flow_min), p.boiler_flow_max)
+    return min(max(value, p.boiler_flow_min), p.boiler_flow_max) if limited else value
 
 
 def correction(mem: BoilerMemory, outdoor_c: float | None, load: str | None = None) -> float:

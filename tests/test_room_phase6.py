@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -7,7 +7,7 @@ from custom_components.thriftherm.engines import room as room_engine
 from custom_components.thriftherm.engines.learning import HeatRateStats
 from custom_components.thriftherm.models import DryingState, Override, RoomConfig
 
-from .conftest import PARAMS, room_config, room_state
+from .conftest import MISSING, PARAMS, room_config, room_state
 
 MON_EVENING = datetime(2026, 1, 12, 18, 0)  # inside comfort window
 MON_NOON = datetime(2026, 1, 12, 12, 0)
@@ -83,13 +83,22 @@ def test_away_humidity_guard():
     assert res.target == pytest.approx(17.0)
 
 
+def _after_the_shower(state, at: datetime, minutes: int = 4, **kwargs):
+    """Minute by minute with the humidity standing where it is: the drying starts once it climbs no more."""
+    res = None
+    for minute in range(minutes + 1):
+        res = room_engine.evaluate_room(state, at + timedelta(minutes=minute), "auto", PARAMS, **kwargs)
+        state = _with(state, drying=res.drying)
+    return res
+
+
 def test_drying_mode_starts_on_humidity_load_and_keeps_heating_with_window_open():
     cfg = RoomConfig(**{**room_config("badezimmer", heat_pump=True).__dict__, "bathroom_drying": True})
     now_ts = MON_EVENING.timestamp()
     # 3 h of baseline at 9 g/m³ (22 °C / 46 %), then a shower: 22 °C / 85 % ≈ 16.5 g/m³
     baseline = tuple((now_ts - 3 * 3600 + i * 300, 9.0) for i in range(30))
     st = _with(room_state(cfg, temp=20.5, rh=85.0, window="on", window_open_since=300.0), abs_humidity_history=baseline)
-    res = room_engine.evaluate_room(st, MON_EVENING, "auto", PARAMS)
+    res = _after_the_shower(st, MON_EVENING, minutes=3)  # three minutes without a new highest value
     assert res.drying.active is True
     assert res.drying_reason == "drying_started_humidity_load"
     assert res.heat_pump_allowed is True  # Midea keeps heating despite the open window
@@ -140,7 +149,7 @@ def test_drying_does_not_start_again_right_after_its_time_limit():
     after_window = datetime.fromtimestamp(now_ts + 3 * 3600 + 60)
     fresh = tuple((now_ts + 3600 + i * 300, 9.0) for i in range(30))
     st3 = _with(st, drying=again.drying, abs_humidity_history=fresh)
-    assert room_engine.evaluate_room(st3, after_window, "auto", PARAMS).drying.active  # a new shower dries again
+    assert _after_the_shower(st3, after_window).drying.active  # a new shower dries again
 
 
 def test_drying_mode_not_for_rooms_without_flag():
@@ -179,3 +188,141 @@ def test_heat_rate_rejects_short_or_falling_episodes():
 def test_preheat_start_without_temperature_falls_back_to_margin():
     ts = room_engine.preheat_start(1000.0, 21.0, None, 1.0, 600.0)
     assert ts == 400.0
+
+
+def _humid_bathroom(drying: DryingState, **room):
+    """A bathroom with drying mode after a shower (85 %), over three hours of dry air before it."""
+    cfg = RoomConfig(**{**room_config("badezimmer", heat_pump=True).__dict__, "bathroom_drying": True})
+    now_ts = MON_EVENING.timestamp()
+    baseline = tuple((now_ts - 3 * 3600 + i * 300, 9.0) for i in range(30))
+    return _with(room_state(cfg, temp=22.0, rh=85.0, **room), abs_humidity_history=baseline, drying=drying)
+
+
+def test_a_drying_the_open_window_ended_does_not_start_again_every_cycle():
+    # found in the code 2026-10-13: 39 starts and stops in 40 minutes with the window open and the air above the baseline
+    now_ts = MON_EVENING.timestamp()
+    drying, changes = DryingState(True, now_ts - 1500, 9.0), 0
+    for minute in range(40):
+        st = _humid_bathroom(drying, window="on", window_open_since=1500.0 + minute * 60)
+        res = room_engine.evaluate_room(st, MON_EVENING + timedelta(minutes=minute), "auto", PARAMS)
+        changes += res.drying.active != drying.active
+        drying = res.drying
+    assert changes == 1 and not drying.active and drying.ended_ts == now_ts
+
+    # the window shut and the guard time over: a new shower dries again
+    fresh = tuple((now_ts + 3600 + i * 300, 9.0) for i in range(30))
+    st = _with(_humid_bathroom(drying), abs_humidity_history=fresh)
+    assert _after_the_shower(st, MON_EVENING + timedelta(hours=3, minutes=1)).drying.active
+
+
+def test_no_drying_starts_while_the_window_has_been_open_for_long():
+    # it would end as "window ineffective" a cycle later and leave its guard time behind
+    st = _humid_bathroom(DryingState(), window="on", window_open_since=1500.0)
+    assert room_engine.evaluate_room(st, MON_EVENING, "auto", PARAMS).drying == DryingState()
+    shut = _humid_bathroom(DryingState())
+    assert _after_the_shower(shut, MON_EVENING).drying.active
+
+
+def test_the_guard_time_after_a_drying_survives_a_cycle_without_heat_pump_or_humidity():
+    # found in the code 2026-10-13: one such cycle forgot the guard, and the same air started another hour
+    ended = DryingState(ended_ts=MON_EVENING.timestamp() - 60)
+    st = _humid_bathroom(ended)
+    no_heat_pump = room_engine.evaluate_room(st, MON_EVENING, "auto", PARAMS, heat_pump_heat_possible=False)
+    no_humidity = room_engine.evaluate_room(_with(st, humidity=MISSING), MON_EVENING, "auto", PARAMS)
+    for res in (no_heat_pump, no_humidity):
+        assert res.drying == ended
+        again = room_engine.evaluate_room(_with(st, drying=res.drying), MON_EVENING + timedelta(minutes=1), "auto", PARAMS)
+        assert not again.drying.active
+
+
+def test_a_missing_reading_does_not_restart_the_time_limit_of_a_drying():
+    # found in the code 2026-10-13: a cycle without humidity ended the drying, the next started it with a new hour
+    running = DryingState(True, MON_EVENING.timestamp() - 3000, 9.0)
+    blind = _with(_humid_bathroom(running), humidity=MISSING)
+    res = room_engine.evaluate_room(blind, MON_EVENING, "auto", PARAMS)
+    assert res.drying == running and res.target_reason == "bathroom_drying"
+    late = room_engine.evaluate_room(blind, MON_EVENING + timedelta(minutes=11), "auto", PARAMS)
+    assert late.drying_reason == "drying_ended_timeout" and late.drying.ended_ts is not None
+
+
+def test_the_away_humidity_guard_stops_at_the_comfort_temperature():
+    # found in the code 2026-10-13: a humidity sensor stuck near 100 % pulled the target up with the room, to 30 °C
+    cfg = room_config("badezimmer", heat_pump=True, comfort=21.0)
+    temp = PARAMS.away_temp
+    for _ in range(20):  # the room follows its target
+        res = room_engine.evaluate_room(room_state(cfg, temp=temp, rh=99.0), MON_NOON, "away", PARAMS)
+        temp = res.target
+    assert res.target_reason == "away_humidity_guard" and res.target == 21.0
+
+
+# ---- drying comes after the shower, not during it
+def _shower(rh: float, drying: DryingState, minute: int):
+    """The bathroom `minute` minutes after the humidity began to climb, at `rh` percent."""
+    cfg = RoomConfig(**{**room_config("badezimmer", heat_pump=True).__dict__, "bathroom_drying": True})
+    now_ts = MON_EVENING.timestamp()
+    baseline = tuple((now_ts - 3 * 3600 + i * 300, 9.0) for i in range(30))
+    st = _with(room_state(cfg, temp=22.0, rh=rh), abs_humidity_history=baseline, drying=drying)
+    return room_engine.evaluate_room(st, MON_EVENING + timedelta(minutes=minute), "auto", PARAMS)
+
+
+def test_the_drying_waits_while_the_humidity_still_climbs():
+    """The strongest fan and a raised target on wet skin are no comfort: the load only gives notice."""
+    drying = DryingState()
+    for minute, rh in enumerate((70.0, 78.0, 84.0, 88.0, 91.0, 93.0)):  # the shower runs
+        res = _shower(rh, drying, minute)
+        drying = res.drying
+        assert not drying.active and res.drying_reason == "drying_waiting_for_the_shower_to_end"
+        assert res.target_reason != "bathroom_drying" and res.target == 21.0  # nothing is raised yet
+    for minute in (6, 7):  # water off: the humidity stands, then falls a little
+        res = _shower(92.0, drying, minute)
+        drying = res.drying
+        assert not drying.active
+    res = _shower(90.0, drying, 8)  # three minutes without a new highest value
+    assert res.drying.active and res.drying_reason == "drying_started_humidity_load"
+    assert res.drying.baseline_abs_humidity == 9.0  # the air from before the shower
+    assert res.target == PARAMS.drying_target_temp
+
+
+def test_a_shower_that_goes_on_and_on_is_dried_after_twenty_minutes_at_the_latest():
+    drying, started = DryingState(), None
+    for minute in range(25):
+        res = _shower(70.0 + minute, drying, minute)  # climbing all the time
+        drying = res.drying
+        if drying.active and started is None:
+            started = minute
+    assert started == 20
+
+
+def test_air_that_clears_by_itself_needs_no_drying():
+    waiting = _shower(85.0, DryingState(), 0).drying
+    assert waiting.wet_since_ts is not None and not waiting.active
+    res = _shower(48.0, waiting, 1)  # a door opened, the damp is gone
+    assert res.drying == DryingState() and res.drying_reason is None
+
+
+def test_a_drying_asked_for_by_hand_runs_its_time_whatever_the_humidity():
+    now_ts = MON_EVENING.timestamp()
+    asked = DryingState(True, now_ts, manual=True)
+    res = _shower(46.0, asked, 0)  # dry air: an automatic drying would end at once
+    assert res.drying == asked and res.target == PARAMS.drying_target_temp and res.heat_pump_allowed
+    late = _shower(46.0, asked, 61)
+    assert late.drying_reason == "drying_ended_timeout"
+    assert late.drying == DryingState()  # and it leaves no guard time: a shower afterwards is dried
+
+
+def test_with_the_automatic_switched_off_only_the_button_dries():
+    cfg = RoomConfig(**{**room_config("badezimmer", heat_pump=True).__dict__, "bathroom_drying": True, "drying_automatic": False})
+    now_ts = MON_EVENING.timestamp()
+    baseline = tuple((now_ts - 3 * 3600 + i * 300, 9.0) for i in range(30))
+    shower = _with(room_state(cfg, temp=22.0, rh=85.0), abs_humidity_history=baseline)
+    res = _after_the_shower(shower, MON_EVENING, minutes=25)
+    assert res.drying == DryingState() and res.target_reason != "bathroom_drying"  # no shower starts it
+
+    asked = DryingState(True, now_ts, manual=True)
+    res = room_engine.evaluate_room(_with(shower, drying=asked), MON_EVENING, "auto", PARAMS)
+    assert res.drying == asked and res.target == PARAMS.drying_target_temp  # the button does
+
+    by_a_shower = DryingState(True, now_ts - 600, 9.0)  # under way when the automatic was switched off
+    res = room_engine.evaluate_room(_with(shower, drying=by_a_shower), MON_EVENING, "auto", PARAMS)
+    assert not res.drying.active
+

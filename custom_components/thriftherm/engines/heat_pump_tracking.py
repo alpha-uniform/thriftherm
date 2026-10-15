@@ -7,15 +7,20 @@ holds that memory so the coordinator only has to call it.
 
 from __future__ import annotations
 
-from ..const import HEAT_PUMP_HEATING_IDLE, HEAT_PUMP_HEATING_STABLE, HEAT_PUMP_HEATING_WARMING_UP
+from dataclasses import replace
+
+from ..const import HEAT_PUMP_HEATING_STABLE, HEAT_PUMP_HEATING_WARMING_UP, MODE_HEAT_PUMP_ONLY
 from ..models import CopResult, DefrostResult, HeatingSnapshot, HeatPumpResult, Parameters
 from . import cop as cop_engine
 from . import defrost as defrost_engine
+from .heat_pump import HEATING_STATES as _HEATING
 
 COP_SAMPLE_RETENTION_S = 1800.0
 COP_MAP_MIN_SAMPLES_FOR_ENTRY = 12  # only feed the map with a settled, filtered COP
 COP_MAP_ENTRY_INTERVAL_S = 300.0
-DEFROST_CYCLE_MIN_GAP_S = 300.0  # one defrost shows up over several cycles; count it once
+# While its cause lasts, a lockout is renewed every cycle, and the store is written whenever its end
+# moves: the whole store once a minute. The end follows in steps of this instead.
+LOCKOUT_RENEW_STEP_S = 600.0
 # A unit that reaches its setpoint switches its compressor on and off by itself (measured
 # 2026-10-11, 8 °C outside, setpoint 22 °C: ten minutes on, ten off). No run is long enough for a
 # settled sample then, so heat and electricity are added up from one compressor start to the next.
@@ -24,15 +29,17 @@ CYCLE_MAX_S = 4 * 3600.0
 CYCLE_MAX_GAP_S = 180.0  # a longer hole between two samples spoils the sum
 CYCLE_MIN_ENERGY_WH = 20.0
 CYCLE_COP_FRESH_S = 3600.0  # how long the last cycle's COP stands for the unit
-_HEATING = (HEAT_PUMP_HEATING_IDLE, HEAT_PUMP_HEATING_WARMING_UP, HEAT_PUMP_HEATING_STABLE)
 
 
 class HeatPumpTracker:
     def __init__(self) -> None:
         self.defrost_cycle_starts: list[float] = []
+        self.defrost_running = False  # the cycle under way is counted already (not stored)
         self.inefficient_since: float | None = None
         self.block_until: float | None = None
+        self.block_reason: str | None = None  # what started or renewed the lockout under way; None: none, or not known
         self.cop_samples: list[tuple[float, float]] = []
+        self.cop_settled = False  # the COP last reported came from settled samples, not from a whole cycle
         self.last_map_entry_ts = 0.0
         # the on/off cycle being added up, and the COP of the last whole one
         self.cycle_start_ts: float | None = None
@@ -46,6 +53,7 @@ class HeatPumpTracker:
     def reset(self) -> None:
         """Forget what was learned; an icing lockout and the defrost count protect the unit and stay."""
         self.cop_samples = []
+        self.cop_settled = False
         self.last_map_entry_ts = 0.0
         self.inefficient_since = None
         self._drop_cycle()
@@ -53,15 +61,35 @@ class HeatPumpTracker:
 
     def defrost(self, snapshot: HeatingSnapshot, run_state: str, params: Parameters, now_ts: float) -> tuple[DefrostResult, bool]:
         """Classify defrost/icing. The flag tells whether the lockout changed (worth saving)."""
+        # with the heat pump as the only source allowed, a dear heat still beats none
+        economic = snapshot.mode != MODE_HEAT_PUMP_ONLY
+        # and a lockout for dear heat that runs already ends with the switch (it used to run on to its end)
+        block_until = self.block_until if economic or self.block_reason != defrost_engine.ECONOMIC_LOCKOUT else None
         res = defrost_engine.evaluate(
             snapshot.heat_pump, run_state, snapshot.outdoor_temp.value_or_none, snapshot.outdoor_rh.value_or_none,
-            now_ts, params, tuple(self.defrost_cycle_starts), self.inefficient_since, self.block_until,
+            now_ts, params, tuple(self.defrost_cycle_starts), self.inefficient_since, block_until,
+            economic_lockout=economic,
+            counted=self.defrost_running,
+            lockout_cause=self.block_reason,
         )
-        if res.kind == "cycle" and (not self.defrost_cycle_starts or now_ts - self.defrost_cycle_starts[-1] > DEFROST_CYCLE_MIN_GAP_S):
-            self.defrost_cycle_starts.append(now_ts)
-        self.defrost_cycle_starts = [t for t in self.defrost_cycle_starts if now_ts - t <= defrost_engine.CYCLE_WINDOW_S]
-        changed = res.block_until_ts != self.block_until
-        self.block_until = res.block_until_ts
+        starts = self.defrost_cycle_starts
+        new = res.kind == "cycle" and not self.defrost_running
+        if new and (not starts or now_ts - starts[-1] > defrost_engine.CYCLE_MIN_GAP_S):
+            starts.append(now_ts)
+        self.defrost_running = res.kind == "cycle"
+        self.defrost_cycle_starts = [t for t in starts if now_ts - t <= defrost_engine.CYCLE_WINDOW_S]
+        end, running = res.block_until_ts, self.block_until
+        under_way = running is not None and running > now_ts
+        if end is not None and under_way and 0.0 <= end - running < LOCKOUT_RENEW_STEP_S:
+            end = running  # renewed by less than a step: the end on record stands
+            res = replace(res, block_until_ts=end)
+        dear = res.block_reason == defrost_engine.ECONOMIC_LOCKOUT
+        if res.kind == "persistent" and not (dear and under_way and self.block_reason != defrost_engine.ECONOMIC_LOCKOUT):
+            self.block_reason = res.block_reason  # dear heat does not take over a lockout that protects the unit
+        elif end is None:
+            self.block_reason = None
+        changed = end != self.block_until
+        self.block_until = end
         return res, changed
 
     def _drop_cycle(self) -> None:
@@ -123,6 +151,7 @@ class HeatPumpTracker:
             self.cop_samples = []
         self.cop_samples = [(ts, v) for ts, v in self.cop_samples if now_ts - ts <= COP_SAMPLE_RETENTION_S]
         value, n = cop_engine.aggregate(self.cop_samples, now_ts, params)
+        self.cop_settled = value is not None
         if value is None and not gates:
             gates.append(f"insufficient_samples:{n}/{params.cop_min_samples}")
         self._cycle(snapshot, heat_pump_res, defrost_res.suspected, params, now_ts)
@@ -145,8 +174,14 @@ class HeatPumpTracker:
             self.inefficient_since = None
 
     def map_entry_due(self, cop_res: CopResult, now_ts: float) -> bool:
-        """A settled COP may enter the map at most every few minutes."""
-        if cop_res.value is None or cop_res.samples < COP_MAP_MIN_SAMPLES_FOR_ENTRY or now_ts - self.last_map_entry_ts < COP_MAP_ENTRY_INTERVAL_S:
+        """A settled COP may enter the map at most every few minutes.
+
+        The COP of a whole cycle is no such value: it enters the map once, when its cycle closes
+        (take_cycle_cop), however many older samples the result still counts.
+        """
+        if not self.cop_settled or cop_res.value is None or cop_res.samples < COP_MAP_MIN_SAMPLES_FOR_ENTRY:
+            return False
+        if now_ts - self.last_map_entry_ts < COP_MAP_ENTRY_INTERVAL_S:
             return False
         self.last_map_entry_ts = now_ts
         return True

@@ -4,7 +4,7 @@
 
 > **Setting up for the first time?** Start with the [setup guide](SETUP.md).
 
-This guide explains how to live with Thriftherm day to day: what the modes do, which temperatures apply when, how learning works and what to do when Home Assistant reports a problem. The [README](README.en.md) explains the idea and the hardware.
+This guide explains how to live with Thriftherm day to day: what the modes do, which temperatures apply when, what Thriftherm learns and what to do when Home Assistant reports a problem. The [README](README.en.md) explains the idea and the hardware. How Thriftherm works inside, with every threshold and time, is in [How Thriftherm works](HOW_IT_WORKS.md). When something goes wrong, see [Troubleshooting](TROUBLESHOOTING.md).
 
 **Language.** Thriftherm speaks German when Home Assistant is set to German and English for every other language – entity names, states, attributes, the decision reason, dialogs, repairs and error messages. Entity IDs are always English (`sensor.thriftherm_boiler_command`), so automations and dashboards keep working whatever the language.
 
@@ -15,7 +15,7 @@ This guide explains how to live with Thriftherm day to day: what the modes do, w
 | Rooms | Work out a target temperature per room from schedule, mode, overrides and protection rules | a temperature sensor per room |
 | Room control | Hand those targets to the room thermostats | Better Thermostat per room |
 | Boiler control | Give the boiler a flow temperature, or block space heating when no room needs heat | own boiler on ebusd |
-| Heat pump (optional, preview) | Measure its COP, compare costs, run it slowly and efficiently | a climate entity and a few sensors |
+| Heat pump (optional) | Measure its COP, compare costs, run it slowly and efficiently | a climate entity and a few sensors |
 
 Every controller has three settings, chosen with its select entity:
 
@@ -34,26 +34,20 @@ Select **Operating mode**:
 | Mode | What happens |
 |---|---|
 | **Auto** | rooms follow their schedules; the cheaper heat source is used |
-| **Boiler only** | the heat pump is not used |
-| **Heat pump only** | only heat pump rooms are heated; the boiler only for frost protection. Preview, see section 7 |
+| **Central heating only** | the heat pump is not used; the boiler or the district heating heats |
+| **Heat pump only** | only heat pump rooms are heated; the boiler only for frost protection. See section 7 |
 | **Summer (heating off)** | no space heating; hot water keeps working; frost protection stays |
 | **Away** | all rooms are held at the away temperature; with a return time they are pre-heated in time, see below |
 
 ### Away with and without a return
 
-- **Just away, no end:** choose *Away* as the operating mode while another mode is on. *Planned return* stays empty, and the rooms stay at the away temperature until you choose *Clear away* or another mode. If *Away* with a return is already on, choosing *Away* again changes nothing: choose another mode first and then *Away* again, or call `thriftherm.set_away` with `clear_return_time: true`.
-- **Away until a point in time**, e.g. today 22:00 or 3 October 12:00: set *Planned return*, which switches to away until then. In Home Assistant's fields (the entity's dialog, the entities card) pick the **date** first, then the **time** – while nothing is planned, the time field takes nothing.
-- **A date alone is a placeholder:** until a time is picked, the return stands at 23:59 of the chosen day for the moment, today as on any later day; another date takes the provisional 23:59 along. A provisional return does not pre-heat; only the time you pick next counts, and the rooms are pre-heated for that. If you pick none, away still ends at 23:59. The attribute *Provisional (23:59 placeholder)* (`provisional`) of *Planned return* shows which it is: `true` while only the date is picked.
-- **Changing the date when a time is already planned:** the new date keeps the planned time and counts at once. If you pick today and that time has already passed, it shows the provisional 23:59 again.
-- **What is refused:** a time of today that has already passed (except 00:00 in the minute after a return is reached, which becomes the 23:59 placeholder while 23:59 is still ahead), a past day and, once it is past 23:59, today's date alone – each with a message.
-- **Really back at 23:59:** while the provisional 23:59 is shown, the time field sends nothing for 23:59 because nothing changes, and a 23:59 that arrives anyway (say through `datetime.set_value`) stays provisional. Pick another minute first, e.g. 23:58, and 23:59 only once that minute shows and the attribute *Provisional* is `false` – or use `thriftherm.set_away` with `return_time`, which sets date and time in one step.
-- **Browser in another time zone:** both fields show and work in the browser's time zone, so date and time count in browser time. Examples with Home Assistant in Berlin:
-  - While nothing is planned, the date step sends the browser's midnight, which is another time of day in Home Assistant (London: 01:00; east of Home Assistant on the day before, Helsinki 23:00, Tokyo 17:00, 16:00 in winter). That is no placeholder then but a real time: if it has passed, as it mostly has for today, it is refused; otherwise it counts as a return at that hour, with pre-heating.
-  - With a return planned, a time picked in the time field counts in browser time (12:00 picked in London is 13:00 in Berlin), and the day can shift too: east of Home Assistant the provisional 23:59 already shows as the next day (Helsinki: 00:59), so a time picked then lands a day later. West of it this can hit returns shortly after midnight (3 October 00:30, moved to 5 October in London: 6 October 00:30).
-  - If the browser and Home Assistant do not change to or from summer time on the same day – say a browser in the US, or in a zone without summer time such as Dubai – a date step alone across a change can move the time by an hour. A provisional return then becomes real, and the rooms pre-heat for it (provisional 26 October 23:59, moved to 3 November in New York: 4 November 00:59).
-  - So after each entry check *Planned return* and its attribute *Provisional*, set the browser to Home Assistant's time zone, or use `thriftherm.set_away`.
-- **From automations:** `thriftherm.set_away` with `return_time`, or with `clear_return_time: true` for no end. There every time in the past is an error, including one of today, and every time counts as it comes, midnight too. `datetime.set_value` on *Planned return* reads values the way the fields send them instead: midnight while nothing is planned becomes the 23:59 placeholder, on a later day too. And while *Planned return* is unavailable (Thriftherm not loaded), Home Assistant drops `datetime.set_value` without an error, where `set_away` reports one. So automations should use `set_away`.
+- **Away with no end:** choose *Away* as the operating mode. *Planned return* stays empty. The rooms stay at the away temperature until you choose *Clear away* or another mode. If *Away* with a return is already on, choosing *Away* again changes nothing; call `thriftherm.set_away` with `clear_return_time: true` then.
+- **Away until a point in time**, e.g. today 22:00 or 3 October 12:00: set *Planned return*. That switches to away until then, and the rooms are pre-heated in time for the return. In Home Assistant's fields (the entity's dialog, the entities card) pick the **date** first, then the **time**.
+- **A date alone is a placeholder:** without a time the return stands at 23:59 of that day for the moment. Away then ends at 23:59, but nothing is pre-heated yet. The attribute *Provisional (23:59 placeholder)* (`provisional`) of *Planned return* is `true` for as long.
 - **Back home:** the action *Clear away* (`thriftherm.clear_away`) ends the absence and the return. Once the return time is reached, Thriftherm goes back to Auto by itself.
+- **From automations:** use `thriftherm.set_away`, with `return_time` or with `clear_return_time: true` for no end. Unlike `datetime.set_value` it reports an error when something fails.
+
+After each entry check *Planned return* and *Provisional*, above all when your browser runs in another time zone than Home Assistant: the fields work in browser time. What is refused, how to be really back at 23:59 and what happens with other time zones: [How Thriftherm works: away and planned return](HOW_IT_WORKS.md#away-and-planned-return).
 
 ## 3. Which temperature applies
 
@@ -61,33 +55,18 @@ For every room Thriftherm picks the first rule that applies:
 
 1. **Manual override** (service `set_override`, or a change on the thermostat) – until it expires.
 2. **Summer mode** – frost protection temperature only.
-3. **Away** – away temperature (default 15 °C). Before a return with a chosen time the room is pre-heated to its comfort temperature (not for the provisional 23:59, see section 2). If the air gets too close to its dew point (default margin 3 K) the target is raised against damp.
+3. **Away** – away temperature (default 15 °C). Before a return with a chosen time the room is pre-heated in time (not for the provisional 23:59, see section 2). If the air gets too close to its dew point (default margin 3 degrees) the target is raised against damp ([damp guard](HOW_IT_WORKS.md#damp-guard)).
 4. **Schedule** – comfort temperature inside a schedule block, setback temperature outside. Before a block starts the room is pre-heated so it is warm *when* the block begins.
 
 ### Changes by hand
 
-Thriftherm writes setpoints, so it has to know who changed one. Home Assistant says so itself: every change carries where it comes from.
-
-| From | Example | A change by hand? |
-|---|---|---|
-| Thriftherm itself | its own command and the device's answer to it | never |
-| Somebody in Home Assistant | dashboard, app, voice assistant | always, at once |
-| An automation or a script | "23 °C before the shower", also one run by the clock | always, at once |
-| At the device | the knob on a valve, the heat pump's remote, the maker's app; also what changed while the device could not be reached | yes – unless the device explains the change itself (a rule of Versatile Thermostat's own, a late radio echo with Better Thermostat). On the heat pump only once it has had two minutes to follow a command |
-
-What follows is the same for every device:
+If anyone but Thriftherm changes a setpoint, that is a change by hand: in Home Assistant (dashboard, app, voice assistant), by an automation or a script, or at the device (the knob on a valve, the heat pump's remote, the maker's app). Home Assistant itself says who it was. How Thriftherm reads that: [How Thriftherm works: changes by hand](HOW_IT_WORKS.md#changes-by-hand).
 
 - **It holds for a fixed time** (parameter *How long a change by hand is respected*, 120 minutes by default). On a room thermostat it becomes the room's override; on the heat pump Thriftherm leaves the unit alone for that long. A further change during that time renews it.
-- **It is shown:** on the room's target sensor (*Override until*, *Override by*) and on the heat pump's command (*Changed by hand, respected until*, *Changed by hand by*).
-- **It ends by itself** or with the button *Back to automatic* (action `thriftherm.clear_override` without a room): that ends every override, every quick heat-up and the heat pump's time in hand at once.
-
-What is no change by hand:
-
-- **The command did not arrive.** If the heat pump shows something else after a command and nobody changed it, the command is sent again: after 2, 4, 8 … minutes, hourly at most, for as long as the unit does not carry it out. The command shows how many in a row (*Commands in a row the unit did not carry out*). Only when Home Assistant was restarted between the command and the difference can the two no longer be told apart; the difference then counts as a change at the unit, as before.
-- **The thermostat rounds.** A thermostat in whole degrees that answers 21.5 °C with 22 °C shows our setpoint as it can hold it – no override, and nothing is written against it.
-- **Switching a thermostat off** asks for no temperature: that makes no override.
-
-This has one limit: when a device writes its state within a few seconds of a command, Home Assistant passes that change on as the command's, whatever changed. A press on the remote in exactly those seconds therefore counts as whoever commanded last.
+- **It is shown at once:** on the room's target sensor (*Override until*, *Override by*) and on the heat pump's command (*Changed by hand, respected until*, *Changed by hand by*).
+- **It ends by itself** or with the button *Back to automatic* (action `thriftherm.clear_override` without a room). That ends every override, every quick heat-up and the heat pump's time in hand at once.
+- **The knob on a valve behind Better Thermostat:** whether a turn counts is up to its *Child lock* switch there. With it on, the turn does not count. With it off, the number the valve shows after the turn becomes the room's target. Because of Better Thermostat's correction that may be another value than you think ([example](HOW_IT_WORKS.md#turning-the-knob-of-a-valve-behind-a-room-thermostat)).
+- **No change by hand** are a command the heat pump did not carry out (it is sent again), a thermostat that rounds to whole degrees, and a thermostat that somebody merely switches off.
 
 While somebody cools, dries or ventilates with the heat pump, Thriftherm stays out for as long as that mode is on. A boiler through entities (section 5) has no change by hand: while the control is active the number and the switch are its own; switch to *Plan only* to set them yourself.
 
@@ -95,10 +74,10 @@ Two protections apply on top, always:
 
 | Protection | Default | Behaviour |
 |---|---|---|
-| Frost protection | 7 °C | If a room falls below it, the boiler heats immediately – also in summer mode – until the room is 1 K above. |
-| Window open | 90 s grace | Heating in that room pauses while a window contact is open. |
+| Frost protection | 7 °C | If a room falls below it, the boiler heats immediately – also in summer mode – until the room is 1 degree above. |
+| Window open | 90 s grace | Heating in that room pauses while a window contact is open. A contact already open when Thriftherm starts counts at once. |
 
-Comfort and setback temperatures are number entities per room (*Comfort temperature*, *Setback temperature*); you can change them on the dashboard. The setback temperature can never be higher than comfort: turn comfort below it, and the setback follows. If you later change either of them in the room options, both values from the options apply again.
+Comfort and setback temperatures are number entities per room (*Comfort temperature*, *Setback temperature*); you can change them on the dashboard. The setback temperature can never be higher than comfort: turn comfort below it, and the setback follows. The room options show the values in force; if you change either of them there, both values from the form apply.
 
 ### Schedules
 
@@ -108,15 +87,15 @@ Each room can use a Home Assistant **schedule helper** (Settings → Devices & s
 
 If you would rather adjust by hand than by the clock:
 
-- **Comfort around the clock:** time range `00:00-23:59` on weekdays and weekends, or a schedule helper with blocks from 00:00 to 24:00. Both count as continuous, across midnight as well.
+- **Comfort around the clock:** time range `00:00-23:59` on weekdays and weekends, or a schedule helper with blocks from 00:00 to 24:00 (or to 23:59). Both count as continuous, across midnight as well.
 - **Changing the temperature:** change the room's *Comfort temperature* number, for example from a thermostat card or a template thermostat. The setback follows when you go below it.
 - **Away/home:** `thriftherm.set_away` (with `clear_return_time: true` open-ended, with `return_time` including pre-heating) and `thriftherm.clear_away`. The comfort temperatures stay as they are.
 
-This even suits the heating curve learning: it learns from long, even heating runs. Each change pauses the learning for 20 minutes (see [section 6](#6-learning)); nothing learned is lost.
+This even suits the heating curve learning, which learns from long, even heating runs. Each change pauses the learning for only 20 minutes ([section 6](#6-learning)). A target set by hand on the thermostat teaches the curve too, once the room is within 1 degree of it and holds there.
 
 ### Pre-heating
 
-Pre-heating starts at `start = block start − (target − current) / heat-up rate − margin`. The heat-up rate is learned per room; until then 0.8 K/h is assumed for radiator rooms and 1.2 K/h for heat pump rooms, with a 20-minute margin. The room target sensor shows the planned start in *Pre-heating starts*.
+Thriftherm starts early enough for the room to be warm when a comfort block begins. For that it takes the gap to the target, the room's learned heat-up rate and a margin (20 minutes by default). The room target sensor shows the planned start in *Pre-heating starts*. Formula and starting values: [How Thriftherm works: pre-heating](HOW_IT_WORKS.md#pre-heating).
 
 ## 4. Services
 
@@ -143,35 +122,50 @@ data:
 
 A boiler without eBUS can be controlled, as a preview, through a number entity (flow setpoint) and a switch (central heating on/off), see [SETUP.md](SETUP.md) section 4.3a. Everything below holds for both ways; where SetMode is mentioned, Thriftherm writes the number and the switch there.
 
-- **Flow temperature** comes from a two-point heating curve (default 55 °C at −10 °C, 30 °C at +15 °C), raised by up to 8 K when rooms are far below target, and corrected by a learned offset. It never leaves the configured minimum and maximum flow temperature.
-  **Why the minimum depends on the boiler type.** A condensing boiler gains from a low flow: below a return of about 56 °C its flue gas condenses and yields up to 11 % more, so about 30 °C is a good minimum. A non-condensing boiler never condenses, so a very low flow saves little there – and with short burner runs the heat may not even reach distant radiators. Measured on the tested non-condensing boiler: 30 °C left the last radiator cold, 45 °C works, so start there with about 45 °C. The setting is *Minimum flow temperature* ([setup guide, step 4.3](SETUP.md#43-gas-boiler-ebusd-and-gas-meter)).
-- **When a room calls the boiler:** from 0.3 K below target until it is less than 0.1 K below. A room that hangs just below target after an hour of heating (at most 0.3 K) and barely rises any more (below 0.15 K/h) counts as reached, until it falls 0.5 K below target or its target changes. When the target goes down (an override ends, say), a running call is judged again by the start threshold. No room calls in the last half hour of a comfort period, the heat would arrive too late. *Quick heat-up* is exempt from both rules. The attribute *Boiler call* on the room's *Heat demand* sensor shows the state.
-- **Heating along:** while the boiler runs anyway, other rooms in their comfort period that are below target get 0.5 K more, and a room whose preheat would start within the hour starts now (reason *Heating along* / *Pre-heating early*). One radiator takes about 1 kW while the boiler burns at 8 kW or more; more open radiators mean longer burner runs and fewer starts. Rooms that heat along never call by themselves and cannot keep the boiler running.
-- **Heating is blocked** (`disablehc`) when no room needs heat. Hot water is not touched: the hot water setpoint is always sent as “no value”, so the boiler keeps following its own knob. The one exception is yours to choose: with *Keep hot water ready* switched off in the boiler options, the boiler no longer heats for hot water without a tap open (the hourly keep-warm of a combi boiler); leave it on with a hot water cylinder.
-- **A thermostat switched off by hand does not call the boiler**: its valve is shut, so the room is left out of the demand. A thermostat that is merely unavailable still counts, because its valve keeps regulating on its own.
-- **A radiator thermostat silent for over two and a half hours does not call the boiler either.** It keeps its last setpoint and takes no new ones. With Better Thermostat the real thermostat behind it is watched, not BT itself. A repair entry appears in HA. The limit leaves room for thermostats that report only about hourly (the Zigbee default); on the test installation they report at least every 15 minutes. Any change of one of the thermostat's entities counts as a sign of life; a report with unchanged values leaves no trace in Home Assistant. If Thriftherm calls a healthy thermostat silent, enable its *Last seen* entity in Zigbee2MQTT: it changes with every report.
-- **After a restart** Thriftherm waits up to five minutes for the room sensors before it blocks heating. Until then it sends nothing and the boiler keeps its last command.
-- **Rises are limited** to 5 K per 10 minutes, so the boiler does not jump from 30 to 60 °C. Frost protection ignores the limit.
-- **Short dropouts are tolerated**: adapters lose the eBUS signal for a second now and then. Only a signal that stays gone for two minutes counts as a data outage and hands the boiler back to its knob.
-- **Resend** every 2 minutes. If Home Assistant stops, the boiler returns to its knob after 9–16 minutes, and the knob always stays the upper limit – which is why it is set to the highest flow temperature you want to allow ([setup guide, step 6](SETUP.md#6-at-the-boiler)).
-- **Hot water detection**: ebusd does not report hot water reliably on every boiler, so Thriftherm recognises it itself: gas burning although heating is blocked, a flow far above the heating flow that was sent, a return above the flow, or a flow above the heating maximum. The first two react within a minute; the temperatures only arrive every few minutes. *Boiler hot water active* shows the result, and learning pauses for an hour so shower water does not teach the heating curve.
-- **Fresh readings**: ebusd reads the boiler's values one after another, so flow and return would otherwise be minutes old. Thriftherm raises the poll priority of flow, return, the boiler state, the heating pump and the status code in ebusd (renewed every 10 minutes, so an ebusd restart hardly shows) and requests them directly once a minute while gas is burning. These are read requests only; nothing is written to the boiler.
+- **Flow temperature:** from a two-point heating curve (default 55 °C at −10 °C, 30 °C at +15 °C). On top comes what the room that needs the most asks for: its learned correction ([section 6](#6-learning)), up to 8 degrees more while it is far below target, and its extra for the [heat-up speed](#heat-up-speed). The flow never leaves the configured minimum and maximum, and it does not jump ([flow in detail](HOW_IT_WORKS.md#flow)).
+- **Calling the boiler:** a room calls the boiler when it is noticeably below target, until it is almost there; not in the last half hour of its comfort period. The attribute *Boiler call* on the room's *Heat demand* sensor shows the state ([thresholds](HOW_IT_WORKS.md#when-a-room-calls-the-boiler)).
+- **Heating along:** while the boiler runs anyway, other rooms heat along (reason *Heating along* / *Pre-heating early*). That means longer burner runs and fewer starts ([details](HOW_IT_WORKS.md#heating-along)).
+- **Heating is blocked** (`disablehc`) when no room needs heat. Hot water is not touched: the hot water setpoint always goes out as "no value", so the boiler keeps following its own knob. The one exception is yours to choose: with *Keep hot water ready* switched off in the boiler options, the boiler no longer heats for hot water without a tap open (the hourly keep-warm of a combi boiler). Leave it on with a hot water cylinder.
+- **Thermostat off or silent:** a thermostat switched off by hand does not call the boiler; its valve is shut. One that is merely unavailable still counts, because its valve keeps regulating on its own. A radiator thermostat silent for over two and a half hours does not call the boiler and takes no new setpoints; a repair entry appears. With Better Thermostat the real thermostat behind it is watched. If Thriftherm takes a healthy thermostat for silent, enable its *Last seen* entity in Zigbee2MQTT ([why](HOW_IT_WORKS.md#outages-and-resending)).
+- **Outages:** after a restart Thriftherm waits up to five minutes for the room sensors. If the eBUS signal stays gone for two minutes, Thriftherm stops sending. If Home Assistant stops, the boiler is back on its knob after 9–16 minutes. The knob always stays the upper limit, so set it to the highest flow temperature you want to allow ([setup guide, step 6](SETUP.md#6-at-the-boiler)).
+- **Hot water:** Thriftherm recognises by itself when the boiler makes hot water (*Boiler hot water active*), and learning pauses for an hour then ([how](HOW_IT_WORKS.md#hot-water-detection)).
+- **Read requests only:** to keep flow and return fresh, Thriftherm has ebusd read them more often. Nothing is written to the boiler for that ([details](HOW_IT_WORKS.md#fresh-readings)).
 
 Sensor *Boiler command* shows the plan (`Heat`, `Heating blocked`, …), the exact `SetMode` payload, the reason, what it is waiting for, whether the heating pump runs and the boiler's status code (`S.xx`, as on its display).
 
+**Why the minimum depends on the boiler type.** A condensing boiler gains from a low flow: below a return of about 56 °C its flue gas condenses and yields up to 11 % more, so about 30 °C is a good minimum. A non-condensing boiler never condenses and saves little there; with short burner runs the heat may not even reach distant radiators. On the tested non-condensing boiler 30 °C left the last radiator cold, 45 °C works: start there with about 45 °C. The setting is *Minimum flow temperature* ([setup guide, step 4.3](SETUP.md#43-gas-boiler-ebusd-and-gas-meter)).
+
+### Heat-up speed
+
+The heating curve is there to hold a temperature. When a room is turned up, heating up on the curve alone can take long. How fast a room is to warm up is set in the boiler options: *Heat-up speed (°C per hour, 0 = off)*, 0 by default.
+
+- A room that calls 1 degree or more below its target gets an extra of its own on the flow while it heats up.
+- Every 20 minutes Thriftherm measures how fast the room rises. Too slow: the extra grows. Much too fast: it shrinks. Close to the target it gets smaller.
+- What a room needed is where that room's next heat-up starts.
+- While a room heats up on an extra, the heating curve learning pauses (reason *a room heats up on an extra*).
+
+Steps, limits and when it measures: [How Thriftherm works: heat-up speed](HOW_IT_WORKS.md#heat-up-speed).
+
+More speed burns more gas. Which value suits:
+
+| Value | Effect |
+|---|---|
+| **0** (default) | off, the flow as before: heating curve, learned correction and up to 8 degrees more while a room is far below target. Enough when the rooms pre-heat by schedule or nothing is in a hurry |
+| **0.5** | gentle: only steps in when a room almost stalls while heating up (less than 0.4 degrees an hour). Costs least |
+| **1** | brisk: about a degree an hour. A good start when rooms take too long after being turned up |
+| **2** | fast: two degrees an hour. Needs a high flow and the most gas; with small radiators or a low maximum it is not always reached |
+
+The learning state shows *Heat-up extra per room* (the extra while a room heats up, else where its next heat-up starts) and *Rooms heating up on an extra*.
+
 ### Why the pump mode matters
 
-With the factory pump mode the pump runs only while the burner fires, plus a short overrun (Vaillant: d.18 = 0, "post-run"). When the rooms take little heat, the boiler reaches its setpoint within seconds, stops, and the water has only circled through the boiler's bypass: **the radiators far down the circuit stay cold**, although the boiler cycles all day.
+With the factory pump mode the pump runs only while the burner fires, plus a short overrun (Vaillant: d.18 = 0, "post-run"). When the rooms take little heat, the boiler stops again within seconds. The water has then only circled through the boiler's bypass: **the radiators far down the circuit stay cold**, although the boiler cycles all day.
 
-On the tested boiler this was the cause of a cold bathroom. With pump mode **permanent** (d.18 = 1) the pump runs whenever heating is released and **stops when Thriftherm blocks heating** — about 33 W, only while heating. The bathroom warmed from 20.8 to 21.5 °C within an hour, where it had not moved all afternoon before.
-
-How to check and change it is a one-time step in the [setup guide, step 6](SETUP.md#6-at-the-boiler).
+With pump mode **permanent** (d.18 = 1) the pump runs whenever heating is released and **stops when Thriftherm blocks heating**. That costs about 33 W, only while heating. On the tested boiler this was the cause of a cold bathroom ([measured](HOW_IT_WORKS.md#ebusd-pump-and-status-values)). To check and change it: [setup guide, step 6](SETUP.md#6-at-the-boiler).
 
 ### ebusd: pump and status values
 
-The last field of the ebusd message `Status01` is called the pump state, but it follows the heating demand: it read "off" while the pump was audibly running. The pump itself is **`WP`** (d.10), the display code is **`Statenumber`** (8 = S.8 burner anti-cycling, 7 = S.7 pump overrun, 31 = S.31 no heat demand). `Status01` still tells hot water apart and stays in use for that.
-
-Both only reach Home Assistant if they pass the name filter of the ebusd MQTT integration; how to let them through: [setup guide, step 2.4](SETUP.md#24-show-the-heating-pump-and-status-number). Without them Thriftherm falls back to `Status01`.
+Whether the heating pump runs and which status code (S.xx) the boiler shows, Thriftherm reads from the ebusd values `WP` and `Statenumber`. They only reach Home Assistant if they pass the name filter of the ebusd MQTT integration: [setup guide, step 2.4](SETUP.md#24-show-the-heating-pump-and-status-number). Without them Thriftherm falls back to `Status01` ([why that is not enough](HOW_IT_WORKS.md#ebusd-pump-and-status-values)).
 
 ### Without smart thermostats
 
@@ -179,40 +173,37 @@ A room needs a temperature sensor, not a smart thermostat. Everything above stil
 
 ## 6. Learning
 
-**Beta.** The control itself – blocking, flow, safety – is verified on the maintainer's boiler. The learned corrections have so far only seen mild weather; watch them in your first cold weeks.
+**Beta.** The control itself – blocking, flow, safety – is verified on the maintainer's boiler. The learned corrections have so far seen outdoor temperatures down to 2 °C, no frost yet; watch them in your first frosty weeks.
 
 | Area | What is learned | From |
 |---|---|---|
-| Boiler | heating curve correction in two parts, ±10 K each: **level** (at every outdoor temperature) and **slope** (in full at −10 °C, not at all at +15 °C) | flow/return spread, how fast rooms warm up, and short cycling |
-| Rooms | heat-up rate per room (K/h) | real heating periods with the window closed |
-| Rooms | cool-down coefficient per room (1/h) | stretches without heating, window closed, at least 5 K warmer inside than out |
-| Rooms | heating power per room (K/h without losses) | heat-up rate plus the losses during that episode; unlike the raw rate it holds in winter too |
-| Heat pump (preview) | COP map over outdoor temperature, setpoint correction | measured COP runs |
+| Boiler | heating curve correction, per room and per load class (one room, a few or the majority call) | flow/return spread, how fast rooms warm up, and short cycling |
+| Rooms | heat-up rate per room (degrees an hour) | real heating periods with the window closed |
+| Rooms | cool-down coefficient per room (1/h) | stretches without heating with the window closed |
+| Rooms | heating power per room (degrees an hour without losses) | heat-up rate plus the losses during that period; unlike the raw rate it holds in winter too |
+| Heat pump | COP over outdoor temperature, setpoint correction | measured COP runs |
 
-**Level and slope:** a learning step on a mild day mostly moves the level of the curve, one in the cold mostly its slope, as a heating curve is set by hand (too cold only in winter: steeper; too cold in between: higher). What is learned in autumn therefore hardly touches the winter. The learning state shows both parts and their sum at the current outdoor temperature.
+Details on every area: [How Thriftherm works: learning](HOW_IT_WORKS.md#learning).
 
-**How many rooms call:** one open radiator returns the water almost as warm as it went out. The spread therefore judges the curve only while at least half of the rooms that can take heat right now call (a setting, *Share of rooms …* in the boiler options); below that, only the progress of the calling rooms counts. Rooms that merely heat along are not counted as calling. The learning state shows *Rooms calling for heat* and whether the spread judges right now.
+- **Level and slope:** the heating curve correction has two parts. The **level** holds at every outdoor temperature, the **slope** mostly in the cold, as a heating curve is set by hand. What is learned in autumn therefore hardly touches the winter.
+- **Per room and load class:** a small radiator in a cold room needs a hotter flow than a large one, and a few open radiators need another flow than many. So every room has a correction of its own, kept apart for three load classes: one room calls, a few, the majority. The room that needs the most sets the flow ([load classes and values per room](HOW_IT_WORKS.md#load-classes-and-values-per-room)).
+- **Careful:** the boiler learns only in *Active* mode, in small steps with waiting times and daily allowances. A value that has served for some hours stays put. Learning pauses for hot water, after a setpoint change (20 minutes), for a quick heat-up, a drying, a heat-up on an extra and while the safety state is not OK ([guards against learning nonsense](HOW_IT_WORKS.md#guards-against-learning-nonsense)).
+- **While the boiler cycles,** only the rooms' progress counts ([cycling](HOW_IT_WORKS.md#cycling)).
+- **A gas meter is not needed.** Thriftherm also tells the burner by the boiler's state ([telling the burner](HOW_IT_WORKS.md#telling-the-burner)).
 
-**A heating curve per load class:** the flow a flat needs depends on the outdoor temperature and on how many radiators take heat. Thriftherm therefore keeps a correction of the heating curve, with level and slope, for each of three load classes: one room calls, a few, the majority. Six numbers say which flow suits which outdoor temperature and number of rooms.
+**Where you see it:** sensor *Learning state* shows
 
-- **A learning step only moves the class it was taken in.** Measured 2026-10-11: the bathroom alone drove the common correction to +4 K, and three rooms together then started from there.
-- **A class without a value of its own** starts from the nearest class that has one, else from the common correction of before.
-- **A value may be found:** once a class has run for three hours without a lagging room and without a learning step, its value stays put. It is raised again only after a room has missed its target for 45 minutes, and lowered only after the rooms have allowed it for two hours; either may pause for up to 45 minutes without starting over. Only time in which a room called and had been given half an hour counts towards the three hours. The waiting time and the daily allowances of the learning steps are shared by all classes. Without this the learning answers every small deviation and the flow keeps going up and down.
-- **A new class only counts after ten minutes.** With a third room calling on and off, the flow would otherwise change by the minute. When the class changes, the flow moves by the difference between the two curves; the flow limits always hold.
-- The learning state shows the *Load class now* and, under *Heating curve correction per load class*, for each class its correction, level, slope, whether it is found, its hours of operation and how often a room lagged in them.
-- The switch *A heating curve of its own for one room, a few rooms and the majority calling* in the boiler options goes back to one common correction for all; the classes' curves are kept.
-
-**How the burner is told:** by the best sign the installation has: a gas meter, else the boiler's status code, else its pump state. A gas meter is not needed. Burner runs for hot water never count.
-
-**While the boiler cycles, the rooms decide:** a cycling boiler never gives a settled spread. If a room it is heating hangs at least 0.2 K below target and rises more slowly than 0.2 K/h, the curve goes up by one step (reason *Boiler cycles and a room does not reach its target*). While cycling, the curve only comes down when every called room warms up briskly (0.5 K/h or more). Measured 2026-10-10: at a 35 °C flow minimum the burner ran for only 41 s every 15 minutes, and the bathroom stayed just below target for 14 hours.
+- the phase (*Learning*, *Refining* or paused), the current correction with level and slope, why it is paused and the last reset. When a setpoint change paused it, it also shows until when and in which room;
+- *Rooms calling for heat* and whether the spread judges right now;
+- the *Load class now* and the *Room that sets the flow*;
+- under *Heating curve correction per load class and room*, for each class and room (entries such as `few:bathroom`), the correction, level, slope, whether the value is found, the hours of operation and how often a room lagged in them.
 
 The sensor *Boiler burner share* shows the share of the last hour the burner ran for the heating, and the number of starts. For now it only records.
 
-**Short cycling counts too:** a burner that runs for a minute and then waits a quarter of an hour delivers far more than the rooms take, so the flow is too hot. Three such runs within an hour lower the curve by one step — the spread would never settle in such a run, so this is the only signal available in mild weather. It never goes below the minimum flow temperature.
+**What you can set** (boiler options):
 
-Guards against learning nonsense: the boiler learns only in *Active* mode, 10 minutes after the burner starts, from at least 10 samples, at least 45 minutes before a step up and an hour before a step down since the last step, per day at most 10 K up and 4 K down, never while hot water is made, a setpoint changed in the last 20 minutes, a boost or drying runs, or the safety state is not OK. **Steps grow with certainty:** a step up after a step up doubles (1, 2, 4 K, no more); a step against the one before halves, down to 0.5 K – coarse first, then fine. Steps down never grow: comfort comes before saving. No step goes further than the flow can follow within its limits. After three hours without a step a run starts at the first step again: 1 K while **Learning**, 0.5 K while **Refining** (after six changes or a quiet day). Measured 2026-10-11: with fixed 1 K steps, four a day, the correction stood at +4 K after eight hours and the bathroom was still 0.6 K below target.
-
-Sensor *Learning state* shows the phase, the current correction, why it is paused and the last reset. When a setpoint change paused it, it also shows until when and in which room.
+- *Share of rooms …*: the spread judges the curve only while at least this share of the rooms that can take heat right now calls (half by default). Otherwise only the progress of the calling rooms counts.
+- *A heating curve of its own per room, for one room, a few rooms and the majority calling*: switched off, one common correction holds for all rooms and classes; the values per class and room are kept.
 
 ### Forgetting what was learned
 
@@ -231,30 +222,44 @@ Run state, lockout times and manual holds are never reset, so a reset cannot mak
 
 ## 7. Heat pump (optional)
 
-> **Preview.** Since 2026-10-11 it actively controls one Midea PortaSplit, so far for a few hours in mild weather only – do not rely on it yet. The points below describe what it is built to do.
+Since 2026-10-11 it has controlled one Midea PortaSplit every day, also at 2 °C outside with icing and defrosting. Other units have not been tried yet.
 
-- The COP is measured from the airflow (fan speed → m³/h curve) and the temperature and humidity of intake and outlet air, only once the unit has settled.
-- A heat pump that cycles because its setpoint is reached never gives a settled value. The whole cycle counts then: heat and electricity are added up from one compressor start to the next, the off time with its standby power included. This COP (attribute *COP over the last on/off cycle*) is lower than in a continuous run, but it is the one that decides the cost.
-- The **duct factor** corrects the airflow, not the heat: against the resistance of the ducts the fan moves less air at the same speed. Heat the ducts give off on the way stays in the home and is no loss.
-- It is compared with the price of central heat. For district heating the **allocation key** matters: only the consumption share follows your meter, so a saved kWh saves less than its price and the heat pump must reach a higher COP to pay off.
-- The heat pump runs slowly at a high COP. It is blocked below its minimum outdoor temperature (default −10 °C), when icing is detected, or when the user cools with it. Cooling and heating never overlap: while it cools, the rooms it serves keep their radiators at the setback temperature and call no boiler heat. Frost protection still applies.
-- **Where it stands matters.** Without ducts the warm air stays in the room the unit is in. Configure the installation room and the duct factor (1.0 = no ducts); rooms it cannot reach get a repair notice.
-- **Bathroom drying** needs the heat pump: only in a room the heat pump heats and that has a humidity sensor; the room form offers it only once a heat pump is set up. After a shower the heat pump dries the room – only while it can heat and run efficiently, at most 60 minutes, and never above target + 1.5 K. Otherwise the radiator follows the normal window logic.
+- **COP:** Thriftherm measures it from the air the heat pump takes in and blows out, and from its electricity. When it cycles, the whole cycle counts, off time included (attribute *COP over the last on/off cycle*); that value decides the cost ([measuring the COP](HOW_IT_WORKS.md#measuring-the-cop)).
+- **Cost:** the heat pump runs slowly at a high COP. It is compared with the price of central heat. For district heating the **allocation key** matters: only the consumption share follows your meter. A saved kWh therefore saves less than its price, and the heat pump must reach a higher COP to pay off.
+- **Location and ducts:** without ducts the warm air stays in the room the unit is in. Configure the installation room and the duct factor (1.0 = no ducts); rooms it cannot reach get a repair notice. The duct factor corrects the airflow, not the heat: what the ducts give off on the way stays in the home.
+- **Locked out** is the heat pump below its minimum outdoor temperature (default −10 °C), for icing or frequent defrosts, when somebody cools with it, and when its measured COP stays below the *Break-even COP* for a while, so that it heats dearer than the central heating. How long the lockouts for icing and inefficiency last is set with *Lockout after icing / inefficiency* (two hours by default). In the mode *Heat pump only* there is no lockout for inefficiency ([lockouts](HOW_IT_WORKS.md#lockouts)).
+- **Cooling and heating never overlap:** while it cools, the rooms it serves keep their radiators at the setback temperature and call no boiler heat. Frost protection still applies.
 - **Quick heat-up** (button per room or `thriftherm.boost`) runs it at full power for a limited time.
-- **Fan run-on:** Thriftherm never switches the heat pump from heating straight to off. It first runs the fan alone for 15 minutes (parameter, 0 = off at once) and is switched off after that. A mode set by hand during that time ends the run-on.
-- **Setpoint follows the rooms** (switch in the heat pump form): the heat pump gets the highest target of the rooms it serves plus the setpoint offset (1 K by default) and regulates by itself. Comfort 21 °C gives 22 °C on the unit, the night setback of 17 °C gives 18 °C. It stays on, day and night, for as long as it is the cheaper source, and is switched off only while nobody wants the rooms it serves warm (away, off, a window open in each of them). *Quick heat-up* then only raises the fan. Once the intake air has reached the setpoint the unit stops heating by itself; if a served room still lacks heat then, the boiler brings it. Without the switch Thriftherm uses the setpoint as a power lever (intake air plus a learned offset) and switches by the rooms' demand.
+- **Fan:** Thriftherm sets it only on a start (to *auto*), for a drying or a quick heat-up, and back afterwards. A stage you choose by hand otherwise stays. From heating it never goes straight to off: the fan runs alone for 15 minutes first (parameter, 0 = off at once). A mode set by hand during that time ends the run-on.
+
+**Bathroom drying** needs the heat pump: only in a room it heats and that has a humidity sensor. The room form offers it only once a heat pump is set up.
+
+- Drying comes **after** the shower: when the humidity rises, Thriftherm waits until it stops rising. Then the heat pump blows with its strongest fan stage and the drying target temperature, at most 60 minutes (default) and only while it is actively controlled and can heat and run efficiently. Afterwards the fan gets back the stage it had before.
+- The button *Dry now* starts at once and for the full time, for laundry or a wet floor; *Back to automatic* ends the drying. If you want the button only, switch off *Start the drying by itself after a shower* in the room form.
+- The moisture does not leave the home that way: the warm air dries walls and mirror and spreads the moisture; it only leaves when you air. The quickest way is a window opened briefly after the shower. If it stays open long without the humidity falling, the drying ends. The radiator always follows the normal window logic.
+
+When it starts and ends: [bathroom drying](HOW_IT_WORKS.md#bathroom-drying).
+
+**Setpoint follows the rooms** (switch in the heat pump form): the heat pump gets the highest target of the rooms it serves plus the setpoint offset (1 degree by default) and regulates by itself. Comfort 21 °C gives 22 °C on the unit, the night setback of 17 °C gives 18 °C.
+
+- It stays on, day and night, for as long as it is the cheaper source, and goes off only while nobody wants the rooms it serves warm (away, off, a window open in each of them). So while no room needs heat, the *Decision reason* reads "heat pump runs through, setpoint 22.0 °C" and not "no room needs heat".
+- *Quick heat-up* then only raises the fan.
+- When a served room falls behind, Thriftherm sets the unit higher in small steps (attribute `eco_offset_k`) and back again later. The boiler helps only once that is not enough (attribute `boiler_helps`), and only until the room is warm ([details](HOW_IT_WORKS.md#setpoint-follows-the-rooms)).
+
+Without the switch Thriftherm uses the setpoint as a power lever (intake air plus a learned offset) and switches by the rooms' demand ([details](HOW_IT_WORKS.md#without-setpoint-follows-the-rooms)).
 
 ## 8. Dashboard sensors worth knowing
 
 | Entity | Tells you |
 |---|---|
 | *Decision reason* | in plain words why the system does what it does |
-| *Recommended heat source* | boiler, heat pump, both or none |
+| *Recommended heat source* | central heating (boiler or district heating), heat pump, both or none |
 | *Safety state* | OK, degraded (a sensor is missing), fallback (no room or no trustworthy room temperature, nothing is sent). Heat pump faults are listed in the attributes, but degrade the state only where the heat pump is the only heat source. |
 | *Target temperature* per room | the target, and in *Reason* where it comes from |
 | *Thermostat plan* per room | what is handed to the thermostat |
 | *Boiler command* | what the boiler gets; *Knob in charge* means nothing is sent and the boiler runs on its own knob. Also shows the heating pump and the status code S.xx |
 | *Learning state* | what has been learned and why learning pauses |
+| *Gas for heating*, *Gas for hot water* | how much gas (kWh) went into the heating and how much into hot water since setup. Measured with a gas meter: each step of the meter counts for what the boiler is doing at that moment; what was burnt while Home Assistant was not running is under *Not assigned*. Without a gas meter, estimated for Vaillant boilers from their own counters ([setup, step 4.3](SETUP.md#43-gas-boiler-ebusd-and-gas-meter)). Both fit the energy dashboard |
 | *Planned return* | when you expect to be back; editable (date first, then time), empty when nothing is planned. *Provisional (23:59 placeholder)* (`provisional`) is `true` while only a date is picked: away then ends at 23:59, nothing is pre-heated yet |
 
 **Detail sensors start disabled.** Temperature deviation, temperature trend, dew point and absolute humidity per room, the flow/return spread, the boiler's thermal power estimate and the heat pump's airflow estimate change with almost every cycle and serve the analysis, not the control. Each change is a row in Home Assistant's database, so on a new installation they are disabled; enable the ones you want under *Settings → Devices & services → Entities*. Thriftherm computes them either way.
@@ -265,6 +270,7 @@ Run state, lockout times and manual holds are never reset, so a reset cannot mak
 |---|---|
 | *Room*: no heating window configured | neither schedule helper nor time range – the room stays at setback. Select a schedule in the room options. |
 | *Room*: schedule helper missing | the selected schedule was deleted. Recreate it or pick another. |
+| *Room*: radiator thermostat not responding | a valve has not reported for two and a half hours although it was sent commands. Usually the radio link or the battery; the room does not call the boiler meanwhile. Check the battery, pair the valve again or switch it off and on. |
 | No data from the boiler | ebusd delivers nothing usable; nothing is sent, the boiler runs on its knob. Check the ebusd app and adapter. |
 | Heat pump airflow not calibrated | no airflow curve, so no COP; the data sheet is used meanwhile. |
 | Heat pump assigned to rooms it cannot reach | no ducts configured, so the warm air stays in its own room. Fit ducts and set the duct factor, or untick those rooms. |
@@ -275,16 +281,4 @@ Settings → Devices & services → Thriftherm → ⋮ → *Download diagnostics
 
 ## 10. Questions
 
-**Why is a room at 15 °C?** It is in away mode. Frost protection (7 °C) is a separate lower limit.
-
-**I turned the thermostat by hand – why does it not change back?** A manual change becomes a temporary override (default 120 minutes). End it with the button *Back to automatic* or `clear_override`; more under *Changes by hand* in section 3.
-
-**Overrides although nobody touched the thermostat?** Better Thermostat rewrites the valve setpoint every few seconds. When a Zigbee reply arrives late, BT takes the old value for a turn of the knob. The **echo filter** (Options → Control parameters, on by default) recognises this: when BT jumps to a value the valve already showed within the last minute and left again (e.g. 16 → 16.5 → 16), the jump is ignored and the planned setpoint is sent again. A real turn of the knob brings a new value and is taken over. The room's *Thermostat plan* sensor shows when an echo was last ignored.
-
-**Does Thriftherm change my hot water temperature?** No. It sends “no value” for the hot water setpoint; the boiler's knob decides.
-
-**What if Home Assistant crashes?** The boiler falls back to its knob within 9–16 minutes; thermostats keep their last target.
-
-**What if ebusd cannot reach the boiler?** After two minutes without *ebusd signal* Thriftherm stops sending (*Boiler command*: *No setpoint sent*), and the boiler heats by its knob. After ten minutes the repair entry *No data from the boiler* appears. The most common cause is a new IP address of the eBUS adapter, so give it a fixed address in the router ([setup, step 2.3](SETUP.md#23-configure-the-ebusd-app)). Note: during an outage the eBUS values in Home Assistant stay at their last reading; only *ebusd signal* counts.
-
-**Why is *Temperature trend* empty after a restart?** The trend needs about 30 minutes of readings. On a new installation the sensor is disabled until you enable it (section 8).
+Answers to common questions and what to do when something goes wrong are on a page of their own: [Troubleshooting and FAQ](TROUBLESHOOTING.md).

@@ -1,9 +1,16 @@
-import pytest
+from dataclasses import replace
+from datetime import datetime, timedelta
 
+import pytest
+from homeassistant.util import dt as dt_util
+
+from custom_components.thriftherm.adapters.inputs import SnapshotBuilder
+from custom_components.thriftherm.const import CONF_HEAT_PUMP_INTAKE_RH, CONF_HEAT_PUMP_INTAKE_TEMP
 from custom_components.thriftherm.engines import cop as cop_engine
 from custom_components.thriftherm.models import Parameters
 
-from .conftest import PARAMS, heat_pump_state
+from .conftest import PARAMS, heat_pump_state, reading
+from .test_integration import _entry_data, _set_states
 
 
 def test_parse_and_interpolate_airflow_curve():
@@ -91,10 +98,8 @@ def test_outlet_humidity_does_not_enter_the_heating_balance():
 
     res = cop_engine.instant(heat_pump_state(intake=(20.0, 40.0), outlet=(35.0, 40.0)), "heating_stable", 600.0, PARAMS)
     assert res.gate_reasons == ()
-    constant_ratio = psy.air_heating_power_w(20.0, 40.0, 35.0, None, res.airflow_m3h)
+    constant_ratio = psy.air_heating_power_w(20.0, 40.0, 35.0, res.airflow_m3h)
     assert res.thermal_power_w == pytest.approx(constant_ratio, abs=0.5)
-    # what the old outlet reading of 40 % RH at 35 °C would have claimed: far more heat
-    assert psy.air_heating_power_w(20.0, 40.0, 35.0, 40.0, res.airflow_m3h) > 2 * constant_ratio
     # the intake humidity does enter the balance
     humid = cop_engine.instant(heat_pump_state(intake=(20.0, 80.0), outlet=(35.0, None)), "heating_stable", 600.0, PARAMS)
     assert humid.thermal_power_w != res.thermal_power_w
@@ -107,14 +112,73 @@ def test_a_cop_from_an_ended_run_is_not_reported_as_measured():
     assert cop_engine.aggregate(samples, last + cop_engine.COP_STALE_S + 1, PARAMS)[0] is None
 
 
-def test_intake_humidity_may_be_hours_old_but_the_intake_temperature_not():
+def test_an_intake_reading_counts_for_as_long_as_the_adapter_hands_it_over_as_valid():
     """Seen 2026-10-11: in a steady run the humidity did not move for 35 minutes and the COP went unknown."""
-    from dataclasses import replace
-
     unit = heat_pump_state()
     old_rh = replace(unit, intake_rh=replace(unit.intake_rh, age_s=2 * 3600.0))
     assert cop_engine.instant(old_rh, "heating_stable", 800.0, PARAMS).gate_reasons == ()
-    very_old_rh = replace(unit, intake_rh=replace(unit.intake_rh, age_s=7 * 3600.0))
-    assert "intake_rh_stale" in cop_engine.instant(very_old_rh, "heating_stable", 800.0, PARAMS).gate_reasons
-    old_temp = replace(unit, intake_temp=replace(unit.intake_temp, age_s=2 * 3600.0))
-    assert "intake_temp_stale" in cop_engine.instant(old_temp, "heating_stable", 800.0, PARAMS).gate_reasons
+    too_old = replace(unit, intake_rh=reading(45.0, valid=False))  # what the adapter makes of it after six hours
+    assert "intake_rh_invalid:stale" in cop_engine.instant(too_old, "heating_stable", 800.0, PARAMS).gate_reasons
+    old_outlet = replace(unit, outlet_temp=replace(unit.outlet_temp, age_s=PARAMS.cop_max_sensor_age_s + 1))
+    assert "outlet_temp_stale" in cop_engine.instant(old_outlet, "heating_stable", 800.0, PARAMS).gate_reasons
+
+
+def _unit(builder: SnapshotBuilder):
+    """The heat pump as the adapter reads it from Home Assistant."""
+    snap = builder.build("auto", overrides={}, drying_states={}, heat_rates={}, away_return_ts=None, boosts={}, room_temps={})
+    return snap.heat_pump
+
+
+async def test_the_adapter_lets_the_intake_humidity_be_six_hours_old_and_the_temperature_one(hass, freezer):
+    # the humidity was read with the hour of the temperature: the six hours above never applied
+    start = datetime(2026, 1, 15, 12, 0, tzinfo=dt_util.UTC)
+    freezer.move_to(start)
+    _set_states(hass)
+    hass.states.async_set("sensor.intake_temp", "20.0")
+    hass.states.async_set("sensor.intake_rh", "45")
+    config = {**_entry_data(), CONF_HEAT_PUMP_INTAKE_TEMP: "sensor.intake_temp", CONF_HEAT_PUMP_INTAKE_RH: "sensor.intake_rh"}
+    builder = SnapshotBuilder(hass, config)
+
+    def unit_after(hours: float):
+        freezer.move_to(start + timedelta(hours=hours))
+        return _unit(builder)
+
+    two_hours = unit_after(2)
+    assert two_hours.intake_rh.valid and not two_hours.intake_temp.valid
+    assert cop_engine.RH_MAX_AGE_S == 6 * 3600.0 and not unit_after(6.1).intake_rh.valid
+
+
+async def test_the_adapter_reads_the_setpoint_step_and_the_modes_of_the_unit(hass):
+    _set_states(hass)
+    builder = SnapshotBuilder(hass, _entry_data())
+    unit = _unit(builder)
+    assert unit.hvac_modes == ("off", "cool", "heat", "fan_only") and unit.target_temp_step is None
+    hass.states.async_set("climate.midea", "heat", {"temperature": 22, "target_temp_step": 1, "hvac_modes": "nonsense"})
+    unit = _unit(builder)
+    assert unit.target_temp_step == 1.0 and unit.hvac_modes == ()
+
+
+def test_no_power_and_a_fan_that_stands_divide_nothing_by_zero():
+    no_minimum = replace(PARAMS, cop_min_power_w=0.0)
+    res = cop_engine.instant(heat_pump_state(plug_power=0.0), "heating_stable", 0.0, no_minimum)
+    assert res.raw is None and "electrical_power_below_minimum" in res.gate_reasons
+    from_zero = replace(PARAMS, airflow_curve=cop_engine.parse_airflow_curve("0:0,600:450,900:700"))
+    assert cop_engine.airflow_from_rpm(from_zero.airflow_curve, 0.0) is None
+    assert cop_engine.airflow_from_rpm(PARAMS.airflow_curve, 0.0) is None
+    for params in (PARAMS, from_zero):
+        assert cop_engine.instant(heat_pump_state(fan_rpm=0.0), "heating_stable", 800.0, params).raw is None
+        assert cop_engine.thermal_power_now(heat_pump_state(fan_rpm=0.0), params) == 0.0
+
+
+def test_the_heat_of_the_moment_is_unknown_without_a_fan_speed_or_with_an_old_outlet_reading():
+    assert cop_engine.thermal_power_now(heat_pump_state(), PARAMS) > 1000.0
+    assert cop_engine.thermal_power_now(heat_pump_state(fan_rpm=None), PARAMS) is None  # not "the fan stands"
+    assert cop_engine.thermal_power_now(heat_pump_state(fan_rpm=0.0), PARAMS) == 0.0
+    old = heat_pump_state()
+    old = replace(old, outlet_temp=replace(old.outlet_temp, age_s=PARAMS.cop_max_sensor_age_s + 1))
+    assert cop_engine.thermal_power_now(old, PARAMS) is None
+    # at rest the sensor has nothing to report: an old reading that shows no heat is still no heat
+    at_rest = heat_pump_state(compressor_hz=0.0, outlet=(20.0, None))
+    at_rest = replace(at_rest, outlet_temp=replace(at_rest.outlet_temp, age_s=PARAMS.cop_max_sensor_age_s + 1))
+    assert cop_engine.thermal_power_now(at_rest, PARAMS) == 0.0
+    assert cop_engine.thermal_power_now(replace(at_rest, compressor_hz=30.0), PARAMS) is None

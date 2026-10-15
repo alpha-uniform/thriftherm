@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import replace
 from unittest.mock import AsyncMock
@@ -177,7 +178,8 @@ async def test_a_failed_heat_pump_command_does_not_count_as_carried_out(hass: Ho
 
     from homeassistant.exceptions import HomeAssistantError
 
-    unit = {"temperature": 22, "indoor_temperature": 21, "outdoor_temperature": 4.0, "compressor_frequency": 0, "error_code": 0}
+    # the unit shows another setpoint than the one asked for: one it has already is not sent again
+    unit = {"temperature": 20, "indoor_temperature": 21, "outdoor_temperature": 4.0, "compressor_frequency": 0, "error_code": 0}
     answering = {"ok": False}
     sent: list[tuple[str, dict]] = []
 
@@ -236,3 +238,317 @@ async def test_the_heat_pump_setpoint_goes_last_and_an_unchanged_fan_mode_is_not
     hass.states.async_set("climate.unit", "heat", {"temperature": 23, "fan_mode": "high"})
     assert await executors.async_execute_heat_pump(hass, "climate.unit", command)
     assert sent == [("set_fan_mode", {"fan_mode": "auto"}), ("set_temperature", {"temperature": 18.0})]
+
+
+async def test_the_setpoint_waits_until_the_unit_shows_the_fan_stage(hass: HomeAssistant, monkeypatch) -> None:
+    """Seen 2026-10-13: a drying asked for "full" and 22 °C in one go, and the unit stayed on "auto".
+
+    The Midea sends its whole state with every call, as it knew it before the call: the setpoint
+    right after the fan stage took the old fan stage along. A setpoint the unit has is not sent.
+    """
+    from custom_components.thriftherm import executors
+    from custom_components.thriftherm.models import HeatPumpCommand
+
+    monkeypatch.setattr(executors, "SHOWN_WAIT_S", 5.0)
+    unit = "climate.unit"
+    shown_at_setpoint: list[str] = []
+
+    async def set_fan_mode(call) -> None:
+        async def answer() -> None:  # the unit shows it a moment later
+            await asyncio.sleep(0.3)
+            hass.states.async_set(unit, "heat", {**hass.states.get(unit).attributes, "fan_mode": call.data["fan_mode"]})
+
+        hass.async_create_task(answer())
+
+    async def set_temperature(call) -> None:
+        shown_at_setpoint.append(hass.states.get(unit).attributes["fan_mode"])
+
+    hass.services.async_register("climate", "set_fan_mode", set_fan_mode)
+    hass.services.async_register("climate", "set_temperature", set_temperature)
+    heat = {"plan": "heat", "hvac_mode": "heat", "load": "eco", "reason": "x"}
+    command = HeatPumpCommand(action="adjust", target_temp=22.0, fan_mode="full", **heat)
+
+    hass.states.async_set(unit, "heat", {"temperature": 18.5, "fan_mode": "auto", "fan_modes": ["auto", "full"]})
+    assert await executors.async_execute_heat_pump(hass, unit, command)
+    assert shown_at_setpoint == ["full"]
+
+    shown_at_setpoint.clear()
+    hass.states.async_set(unit, "heat", {"temperature": 22.0, "fan_mode": "auto", "fan_modes": ["auto", "full"]})
+    assert await executors.async_execute_heat_pump(hass, unit, command)
+    assert shown_at_setpoint == []  # the fan stage alone
+    await hass.async_block_till_done()
+    assert hass.states.get(unit).attributes["fan_mode"] == "full"
+
+
+async def test_a_unit_gets_only_modes_and_fan_stages_it_offers(hass: HomeAssistant) -> None:
+    """Home Assistant refuses the others, and a refused call ended the whole command."""
+    from custom_components.thriftherm import executors
+    from custom_components.thriftherm.models import HeatPumpCommand
+
+    sent = {name: async_mock_service(hass, "climate", name) for name in ("set_hvac_mode", "set_fan_mode", "set_temperature")}
+    unit = "climate.other_unit"
+    hass.states.async_set(unit, "off", {"hvac_modes": ["off", "heat", "cool"], "fan_modes": ["1", "2", "3"], "fan_mode": "2"})
+    heat = {"plan": "heat", "hvac_mode": "heat", "load": "eco", "reason": "x"}
+    start = HeatPumpCommand(action="start", target_temp=21.0, fan_mode="auto", **heat)
+    assert await executors.async_execute_heat_pump(hass, unit, start)
+    assert sent["set_fan_mode"] == [] and sent["set_temperature"][-1].data["temperature"] == 21.0  # no "auto" there
+    off = {"plan": "off", "target_temp": None, "fan_mode": None, "load": None, "reason": "x"}
+    stop = HeatPumpCommand(action="stop", hvac_mode="fan_only", **off)
+    assert await executors.async_execute_heat_pump(hass, unit, stop)
+    assert sent["set_hvac_mode"][-1].data["hvac_mode"] == "off"  # no fan-only there: switched off at once
+
+    midea = "climate.midea_like"
+    offers = {"hvac_modes": ["off", "heat", "fan_only"], "fan_modes": ["auto", "high", "full"], "fan_mode": "auto"}
+    hass.states.async_set(midea, "heat", offers)
+    assert await executors.async_execute_heat_pump(hass, midea, stop)
+    assert sent["set_hvac_mode"][-1].data == {"entity_id": midea, "hvac_mode": "fan_only"}
+    adjust = HeatPumpCommand(action="adjust", target_temp=22.0, fan_mode="full", **heat)
+    assert await executors.async_execute_heat_pump(hass, midea, adjust)
+    assert sent["set_fan_mode"][-1].data == {"entity_id": midea, "fan_mode": "full"}
+
+
+UNIT = {"temperature": 22, "indoor_temperature": 21, "outdoor_temperature": 4.0, "compressor_frequency": 0, "error_code": 0,
+        "hvac_modes": ["off", "heat", "fan_only"], "fan_modes": ["auto", "high", "full"], "fan_mode": "auto"}
+
+
+async def test_a_start_that_keeps_failing_is_not_tried_again_every_cycle(hass: HomeAssistant, freezer) -> None:
+    """Sent again each cycle, every try held the cycle up for its timeout; and each was on record as sent."""
+    import time
+    from datetime import timedelta
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    tries: list[str] = []
+
+    async def no_answer(call) -> None:
+        tries.append(call.service)
+        raise HomeAssistantError("the unit did not answer")
+
+    for service in ("set_hvac_mode", "set_temperature", "set_fan_mode"):
+        hass.services.async_register("climate", service, no_answer)
+    coordinator = (await _setup(hass, options=RELEASED)).runtime_data
+    hass.states.async_set("climate.midea", "off", UNIT)
+    coordinator.set_control_mode("active")
+    now = time.time()
+    coordinator.control_memory = ControlMemory(last_hvac_mode="off", last_command_ts=now - 7200, stopped_since_ts=now - 7200)
+    tries.clear()
+    for _ in range(4):  # four cycles, a minute apart
+        await coordinator.async_refresh()
+        freezer.tick(timedelta(seconds=60))
+    assert len(tries) == 2  # at once, and again after two minutes: not four times
+    assert coordinator.control_memory.running_since_ts is None  # and the unit does not count as running
+    log = [entry for entry in coordinator.plan_log.command_log if entry["action"] == "start"]
+    assert len(log) == 1 and log[0]["sent"] is False  # on record once, and not as sent
+    for _ in range(4):  # the next try comes after four more minutes
+        await coordinator.async_refresh()
+        freezer.tick(timedelta(seconds=60))
+    assert len(tries) == 3
+
+
+async def test_a_stop_that_went_through_although_it_reported_a_failure_ends_switched_off(hass: HomeAssistant, freezer) -> None:
+    """Rolled back, the unit stayed in fan only for good: its own run-on was taken for somebody's mode."""
+    import time
+    from datetime import timedelta
+
+    from homeassistant.exceptions import HomeAssistantError
+
+    lost = {"answers": 1}
+
+    async def set_mode(call) -> None:
+        hass.states.async_set("climate.midea", call.data["hvac_mode"], UNIT, context=call.context)  # the unit does switch
+        if lost["answers"]:
+            lost["answers"] -= 1
+            raise HomeAssistantError("no answer from the unit")
+
+    hass.services.async_register("climate", "set_hvac_mode", set_mode)
+    coordinator = (await _setup(hass, options={**RELEASED, "midea_fan_run_on_min": 15})).runtime_data
+    hass.states.async_set("climate.midea", "heat", UNIT)
+    coordinator.set_control_mode("active")
+    now = time.time()
+    long_ago = now - 7200
+    heating = {"last_hvac_mode": "heat", "last_target": 22.0}
+    coordinator.control_memory = ControlMemory(running_since_ts=long_ago, last_command_ts=long_ago, **heating)
+    hass.states.async_set("sensor.bath_temp", "24.0")  # warm enough: the unit is to stop
+    await coordinator.async_refresh()
+    assert coordinator.data["midea_command"].action == "stop"
+    assert hass.states.get("climate.midea").state == "fan_only" and coordinator.control_memory.fan_until_ts is not None
+
+    freezer.tick(timedelta(minutes=16))
+    await coordinator.async_refresh()
+    assert hass.states.get("climate.midea").state == "off"  # the run-on was ours, and it is finished
+    assert coordinator.data["midea_command"].reason != "manual_mode_fan_only"
+
+
+async def test_a_unit_switched_off_by_hand_dries_no_room_while_it_is_left_alone(hass: HomeAssistant) -> None:
+    """During the time in hand nothing is sent to the unit: a drying would raise the target for the radiator."""
+    import time
+
+    coordinator = (await _setup(hass, options=RELEASED)).runtime_data
+    hass.states.async_set("climate.midea", "off", UNIT)
+    coordinator.set_control_mode("active")
+    await coordinator.async_refresh()
+    assert coordinator.data["midea"].heating_available is True
+    coordinator.control_memory = replace(coordinator.control_memory, manual_until_ts=time.time() + 3600, manual_by="person")
+    await coordinator.async_refresh()
+    assert coordinator.data["midea"].heating_available is False
+    hass.states.async_set("climate.midea", "heat", UNIT)  # left heating by hand: it can dry
+    await coordinator.async_refresh()
+    assert coordinator.data["midea"].heating_available is True
+
+
+async def test_our_own_fan_only_is_still_ours_after_a_restart(hass: HomeAssistant) -> None:
+    """The "off" after the fan run-on, not taken by the unit, and a restart more than two minutes later:
+    nothing told any more that nobody had touched it, and the unit stayed in fan only as somebody's mode."""
+    import time
+
+    from custom_components.thriftherm import persistence
+
+    coordinator = (await _setup(hass, options=RELEASED)).runtime_data
+    hass.states.async_set("climate.midea", "fan_only", UNIT)
+    coordinator.set_control_mode("active")
+    now = time.time()
+    off_sent = ControlMemory(stopped_since_ts=now - 1500, last_command_ts=now - 600, last_hvac_mode="off")
+    stored = {"entity": "climate.midea", "since": now - 3600, "last": ["fan_only", 22], "change": None}
+
+    coordinator.control_memory = off_sent  # as today after the restart: watched since the start only
+    await coordinator.async_refresh()
+    assert coordinator.data["midea_command"].reason == "manual_mode_fan_only"
+
+    coordinator.control_memory = off_sent  # with what the store kept: the unit stands as last seen, nobody touched it
+    coordinator._stored_heat_pump_watch = dict(stored)
+    coordinator._resume_heat_pump_watch()
+    await coordinator.async_refresh()
+    command = coordinator.data["midea_command"]
+    assert (command.action, command.hvac_mode, command.reason) == ("stop", "off", "not_carried_out")
+    assert persistence.to_store(coordinator)["heat_pump_watch"]["since"] == now - 3600  # and the watch goes on
+
+    coordinator.control_memory = off_sent  # the unit was off when last seen: somebody chose fan only meanwhile
+    coordinator._stored_heat_pump_watch = {**stored, "last": ["off", 22]}
+    coordinator._resume_heat_pump_watch()
+    await coordinator.async_refresh()
+    assert coordinator.data["midea_command"].reason == "manual_mode_fan_only"
+
+
+# ---- what the test day of 2026-10-13 showed --------------------------------------------------------
+FOLLOWING = {**RELEASED, "midea_follow_rooms": True}  # the bathroom's 21 °C plus one degree: the unit gets 22 °C
+
+
+def _climate_calls(hass: HomeAssistant) -> dict[str, list]:
+    return {name: async_mock_service(hass, "climate", name) for name in ("set_hvac_mode", "set_fan_mode", "set_temperature")}
+
+
+async def test_a_fan_stage_chosen_by_hand_stays_when_a_setpoint_goes_out(hass: HomeAssistant) -> None:
+    """Seen 2026-10-13: "full" chosen by hand stayed for 45 minutes, until the next setpoint of ours put "auto" back."""
+    import time
+
+    sent = _climate_calls(hass)
+    coordinator = (await _setup(hass, options=FOLLOWING)).runtime_data
+    hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20, "fan_mode": "full"})
+    coordinator.set_control_mode("active")
+    long_ago = time.time() - 7200
+    coordinator.control_memory = ControlMemory(
+        running_since_ts=long_ago, last_command_ts=long_ago, last_hvac_mode="heat", last_target=20.0
+    )
+    await coordinator.async_refresh()
+    command = coordinator.data["midea_command"]
+    assert (command.action, command.target_temp, command.fan_mode) == ("adjust", 22.0, None)
+    assert [call.data["temperature"] for call in sent["set_temperature"]] == [22.0] and sent["set_fan_mode"] == []
+    assert coordinator.data["command_log"][-1]["fan"] is None and coordinator.control_memory.manual_until_ts is None
+
+
+async def test_a_unit_not_loaded_yet_after_a_restart_keeps_its_run_and_gets_nothing_sent(hass: HomeAssistant) -> None:
+    """Seen 2026-10-13 after three restarts: taken over anew, an "adjust" to what it had already, the lift clock reset."""
+    import time
+
+    sent = _climate_calls(hass)
+    coordinator = (await _setup(hass, options=FOLLOWING)).runtime_data
+    coordinator.set_control_mode("active")
+    long_ago = time.time() - 7200
+    running = ControlMemory(
+        running_since_ts=long_ago, last_command_ts=long_ago, last_offset_review_ts=long_ago,  # the lift clock: its last step
+        last_hvac_mode="heat", last_target=22.0,
+    )
+    coordinator.control_memory = running
+    hass.states.async_set("climate.midea", "unavailable")  # its entity is not loaded yet
+    await coordinator.async_refresh()
+    assert coordinator.data["midea_command"].reason == "midea_unavailable" and coordinator.control_memory == running
+    hass.states.async_set("climate.midea", "heat", UNIT)  # back as it was left: 22 °C
+    await coordinator.async_refresh()
+    assert coordinator.data["midea_command"].action == "none"
+    memory = coordinator.control_memory
+    assert (memory.running_since_ts, memory.last_offset_review_ts) == (long_ago, long_ago)  # the same run, the same clock
+    assert not any(entry["sent"] for entry in coordinator.data["command_log"]) and not any(sent.values())
+
+
+async def test_the_boiler_does_not_take_over_a_room_while_the_running_unit_is_not_loaded_yet(hass: HomeAssistant) -> None:
+    """Review 2026-10-14: the unit's run was kept, but the boiler was switched to heat for the bathroom it serves,
+    and held there for its minimum time in state after the unit was back."""
+    import time
+
+    _climate_calls(hass)
+    async_mock_service(hass, "mqtt", "publish")
+    coordinator = (await _setup(hass, options=FOLLOWING)).runtime_data
+    coordinator.set_control_mode("active")
+    coordinator.set_boiler_control_mode("active")
+    long_ago = time.time() - 7200
+    coordinator.control_memory = ControlMemory(
+        running_since_ts=long_ago, last_command_ts=long_ago, last_offset_review_ts=long_ago,
+        last_hvac_mode="heat", last_target=22.0,
+    )
+    coordinator.boiler_memory = replace(coordinator.boiler_memory, state="block", state_since_ts=0.0)
+    hass.states.async_set("sensor.bath_temp", "20.4")  # 0.6 K below its 21 °C: it calls
+    hass.states.async_set("sensor.living_temp", "19.0")
+    hass.states.async_set("climate.midea", "unavailable")  # the rooms are known, the unit's entity is not loaded yet
+    await coordinator.async_refresh()
+    boiler = coordinator.data["boiler_command"]
+    assert (boiler.plan, boiler.blockers) == ("hands_off", ("waiting_for_room_data",))
+    assert coordinator.boiler_memory.state == "block"  # what was in force before the restart stays
+
+    hass.states.async_set("climate.midea", "heat", UNIT)  # back, heating as before
+    await coordinator.async_refresh()
+    assert coordinator.data["midea_command"].plan == "heat" and coordinator.data["boiler_command"].plan == "block"
+
+
+async def test_a_command_the_unit_has_all_of_already_is_not_on_record_as_sent(hass: HomeAssistant) -> None:
+    """The record of commands lists what went out: an "adjust" without a call stood there as sent."""
+    import time
+
+    sent = _climate_calls(hass)
+    coordinator = (await _setup(hass, options=FOLLOWING)).runtime_data
+    hass.states.async_set("climate.midea", "heat", UNIT)  # 22 °C, what the bathroom asks for
+    coordinator.set_control_mode("active")
+    # running, and what was sent is not known (so a command the unit had not carried out is forgotten)
+    coordinator.control_memory = ControlMemory(running_since_ts=time.time() - 7200, last_hvac_mode="heat")
+    await coordinator.async_refresh()
+    assert (coordinator.data["midea_command"].action, coordinator.data["midea_command"].target_temp) == ("adjust", 22.0)
+    assert not any(sent.values()) and [entry for entry in coordinator.data["command_log"] if entry["action"] == "adjust"] == []
+    assert coordinator.control_memory.last_target == 22.0  # carried out all the same: the unit shows it
+
+
+async def test_a_heat_pump_that_runs_through_is_named_instead_of_no_room_needing_heat(hass: HomeAssistant) -> None:
+    """Read as a fault three times on 2026-10-13: "no room needs heat" while the unit heated, as it is to."""
+    import time
+
+    _climate_calls(hass)
+    coordinator = (await _setup(hass, options=FOLLOWING)).runtime_data
+    hass.states.async_set("climate.midea", "heat", UNIT)
+    hass.states.async_set("sensor.bath_temp", "21.5")  # every room warm: none calls
+    hass.states.async_set("sensor.living_temp", "19.0")
+    coordinator.set_control_mode("active")
+    long_ago = time.time() - 7200
+    coordinator.control_memory = ControlMemory(
+        running_since_ts=long_ago, last_command_ts=long_ago, last_hvac_mode="heat", last_target=22.0
+    )
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert coordinator.data["midea_command"].plan == "heat"
+    shown = hass.states.get("sensor.thriftherm_decision_reason").attributes
+    assert "heat_pump_runs_through" in shown["reason_codes"] and "no_demand" not in shown["reason_codes"]
+    assert "heat pump runs through, setpoint 22.0 °C" in shown["reasons"]
+
+    coordinator.set_control_mode("shadow")  # it only plans while the boiler really acts: no room needs heat, as before
+    coordinator.set_boiler_control_mode("active")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert "no_demand" in hass.states.get("sensor.thriftherm_decision_reason").attributes["reason_codes"]
+

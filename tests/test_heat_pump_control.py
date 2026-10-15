@@ -5,8 +5,8 @@ from dataclasses import replace
 import pytest
 
 from custom_components.thriftherm.engines import heat_pump as heat_pump_engine
-from custom_components.thriftherm.engines.heat_pump_control import ControlInputs, ControlMemory, decide
-from custom_components.thriftherm.models import DryingState, RoomResult
+from custom_components.thriftherm.engines.heat_pump_control import ControlInputs, ControlMemory, decide, strongest_fan
+from custom_components.thriftherm.models import DryingState, RoomResult, SettingChange
 
 from .conftest import PARAMS, heat_pump_state
 
@@ -304,10 +304,10 @@ def test_eco_setpoint_falls_back_to_the_unit_reading_without_an_intake_sensor():
 @pytest.mark.parametrize(
     ("advice", "cop", "run_s", "expected"),
     [
-        # satisfied within the minimum run: keep heating at the last setpoint
-        ("midea", 3.5, 300, ("heat", "none", "heat", "target_reached", 21.0, "auto", "eco", "min_run_time")),
+        # satisfied within the minimum run: keep heating at the last setpoint (the fan is not ours to set)
+        ("midea", 3.5, 300, ("heat", "none", "heat", "target_reached", 21.0, None, "eco", "min_run_time")),
         # economics turned within the minimum run: finish it in eco
-        ("boiler", 2.5, 300, ("heat", "none", "heat", "gas_cheaper", 21.0, "auto", "eco", "min_run_time")),
+        ("boiler", 2.5, 300, ("heat", "none", "heat", "gas_cheaper", 21.0, None, "eco", "min_run_time")),
         # and after it
         ("midea", 3.5, 1300, ("off", "stop", "fan_only", "target_reached", None, None, None, None)),
         ("boiler", 2.5, 1300, ("off", "stop", "fan_only", "gas_cheaper", None, None, None, None)),
@@ -357,7 +357,7 @@ def test_following_the_rooms_holds_the_setback_plus_one_degree_at_night():
     night = [replace(rr(temp=20.0, target=17.0), target_reason="schedule_setback")]
     cmd, mem = decide(inp(night, advice="none", heat_pump=heat_pump_state(), params=FIXED, cheaper=True), running)
     assert (cmd.plan, cmd.action, cmd.target_temp, cmd.reason) == ("heat", "adjust", 18.0, "cheaper_than_gas")
-    assert cmd.delivers is False and mem.last_target == 18.0  # the home is warmer than that: the unit idles by itself
+    assert cmd.delivers and mem.last_target == 18.0  # the home is warmer than that: the unit idles by itself, no room lacks heat
 
 
 def test_following_the_rooms_takes_the_highest_target_of_the_served_rooms():
@@ -384,19 +384,86 @@ def test_following_the_rooms_stops_when_gas_becomes_cheaper():
     assert (cmd.plan, cmd.action, cmd.reason) == ("off", "stop", "gas_cheaper")
 
 
-def test_following_the_rooms_unit_idling_at_its_setpoint_does_not_deliver():
-    running = replace(RUNNING, running_since_ts=NOW - 7200, last_command_ts=NOW - 7200, last_target=22.0)
-    cmd, _ = decide(inp([rr(temp=19.0)], heat_pump=heat_pump_state(intake=(22.0, 45.0)), params=FIXED), running)
-    assert cmd.plan == "heat" and cmd.delivers is False  # the unit stays on, the boiler brings what the room lacks
-    cmd, _ = decide(inp([rr(temp=19.0)], heat_pump=heat_pump_state(intake=(21.5, 45.0)), params=FIXED), running)
-    assert cmd.plan == "heat" and cmd.delivers is True
+# A served room the unit does not get warm: the unit is set higher in small steps, the boiler comes last.
+
+LONG_RUN = replace(RUNNING, running_since_ts=NOW - 7200, last_command_ts=NOW - 7200, last_target=22.0)
+HOLDS_BACK = heat_pump_state(intake=(22.0, 45.0))  # at its setpoint of 22 °C where it stands
 
 
-def test_following_the_rooms_never_adapts_the_offset():
-    running = replace(RUNNING, running_since_ts=NOW - 2000, last_command_ts=NOW - 2000, last_target=22.0)
-    unit = heat_pump_state(intake=(20.0, 45.0))
-    _, mem = decide(inp([rr(temp=19.0, trend=0.0)], mode="active", heat_pump=unit, params=FIXED), running)
-    assert mem.offset_k is None
+def lagging_room(now: float, mem: ControlMemory, unit=HOLDS_BACK, trend: float | None = 0.1, temp: float = 19.8, mode: str = "active"):
+    return decide(inp([rr(temp=temp, trend=trend)], mode=mode, heat_pump=unit, params=FIXED, now=now), mem)
+
+
+def test_following_the_rooms_a_room_on_its_way_needs_neither_a_higher_setpoint_nor_the_boiler():
+    """Seen 2026-10-13: the unit at its setpoint where it stands, the bathroom rising by 2 K an hour, the boiler called."""
+    cmd, mem = lagging_room(NOW, LONG_RUN, trend=2.0)
+    assert (cmd.plan, cmd.action, cmd.delivers) == ("heat", "none", True)
+    assert mem.offset_k is None and mem.lagging_since_ts is None
+    cmd, mem = lagging_room(NOW, LONG_RUN, trend=None)  # an unknown trend is no evidence
+    assert cmd.delivers and mem.offset_k is None and mem.lagging_since_ts is None
+
+
+def test_following_the_rooms_a_lagging_room_sets_the_unit_higher_half_a_degree_at_a_time():
+    cmd, mem = lagging_room(NOW, LONG_RUN)
+    assert (cmd.action, cmd.delivers, mem.offset_k, mem.lagging_since_ts) == ("none", True, None, NOW)  # it lags since now
+    cmd, mem = lagging_room(NOW + 1140, mem)
+    assert cmd.action == "none" and mem.offset_k is None  # not yet
+    cmd, mem = lagging_room(NOW + 1200, mem)
+    assert (cmd.action, cmd.target_temp, cmd.delivers, mem.offset_k) == ("adjust", 22.5, True, 1.5)
+    cmd, mem = lagging_room(NOW + 1800, mem, unit=replace(HOLDS_BACK, target_temp=22.5))
+    assert cmd.action == "none" and mem.offset_k == 1.5  # the step gets its time before the next one
+    cmd, mem = lagging_room(NOW + 2400, mem, unit=replace(HOLDS_BACK, target_temp=22.5))
+    assert (cmd.action, cmd.target_temp, cmd.delivers, mem.offset_k) == ("adjust", 23.0, True, 2.0)
+
+
+def test_following_the_rooms_the_boiler_helps_once_the_higher_setpoint_is_used_up():
+    mem, now, seen = LONG_RUN, NOW, []
+    for _ in range(8):  # the unit's room follows its setpoint: it keeps holding back
+        setpoint = 21.0 + (mem.offset_k if mem.offset_k is not None else 1.0)
+        cmd, mem = lagging_room(now, mem, unit=replace(heat_pump_state(intake=(setpoint, 45.0)), target_temp=setpoint))
+        seen.append((cmd.target_temp, cmd.delivers))
+        now += 1200
+    assert [target for target, _ in seen] == [22.0, 22.5, 23.0, 23.5, 24.0, 24.0, 24.0, 24.0]  # two degrees at most
+    assert [delivers for _, delivers in seen] == [True] * 5 + [False] * 3
+    assert mem.boiler_helps and mem.offset_k == 3.0
+
+    # the boiler makes the room rise: it goes on helping until the room is there, not only while it lags
+    at_24 = replace(heat_pump_state(intake=(24.0, 45.0)), target_temp=24.0)
+    cmd, mem = lagging_room(now, mem, unit=at_24, trend=1.2)
+    assert cmd.delivers is False
+    cmd, mem = lagging_room(now + 60, mem, unit=at_24, trend=0.5, temp=21.0)
+    assert cmd.delivers and not mem.boiler_helps and mem.offset_k == 3.0
+    # and the setpoint comes back in the same small steps, two hours after the last step at the earliest
+    cmd, mem = lagging_room(now + 600, mem, unit=at_24, trend=0.0, temp=21.2)
+    assert cmd.action == "none" and mem.offset_k == 3.0
+    cmd, mem = lagging_room(now + 3600, mem, unit=at_24, trend=0.0, temp=21.2)
+    assert (cmd.action, cmd.target_temp, mem.offset_k) == ("adjust", 23.5, 2.5)
+
+
+def test_following_the_rooms_a_unit_working_flat_out_is_not_set_higher():
+    """Its intake air far below its setpoint: a higher setpoint changes nothing, the unit does not manage."""
+    flat_out = heat_pump_state(intake=(20.0, 45.0))
+    cmd, mem = lagging_room(NOW, LONG_RUN, unit=flat_out)
+    assert cmd.delivers and not mem.boiler_helps  # a room lags for a while before anything is concluded
+    cmd, mem = lagging_room(NOW + 1200, mem, unit=flat_out)
+    assert (cmd.action, cmd.delivers, mem.offset_k, mem.boiler_helps) == ("none", False, None, True)
+
+
+def test_following_the_rooms_a_room_that_is_dried_does_not_set_the_unit_higher():
+    """Its window may be open and its target is raised: cold and not rising says nothing about the unit."""
+    mem = replace(LONG_RUN, lagging_since_ts=NOW - 3600)
+    dried = [rr(temp=19.0, target=22.0, trend=-1.0, drying=True)]
+    cmd, mem = decide(inp(dried, mode="active", heat_pump=HOLDS_BACK, params=FIXED), mem)
+    assert cmd.delivers and mem.offset_k is None and mem.lagging_since_ts is None
+
+
+def test_following_the_rooms_only_a_real_run_is_judged_and_a_new_run_starts_clean():
+    cmd, mem = lagging_room(NOW, replace(LONG_RUN, lagging_since_ts=NOW - 3600), mode="shadow")
+    assert cmd.delivers and mem.offset_k is None and not mem.boiler_helps
+    helped = replace(LONG_RUN, boiler_helps=True, lagging_since_ts=NOW - 3600, offset_k=3.0)
+    cmd, mem = decide(inp([resting(temp=20.0, target=17.0)], mode="active", heat_pump=HOLDS_BACK, params=FIXED, cheaper=True), helped)
+    assert cmd.action == "stop" and not mem.boiler_helps and mem.lagging_since_ts is None
+    assert mem.offset_k == 3.0  # what the rooms asked for is kept for the next run
 
 
 def test_without_fixed_setpoint_the_lever_stays():
@@ -405,9 +472,20 @@ def test_without_fixed_setpoint_the_lever_stays():
 
 
 def test_active_control_takes_over_a_unit_found_heating():
-    cmd, mem = decide(inp([rr(temp=19.0)], mode="active", heat_pump=heat_pump_state(), params=FIXED), ControlMemory())
-    assert (cmd.plan, cmd.action, cmd.target_temp, cmd.fan_mode) == ("heat", "adjust", 22.0, "auto")
+    at_20 = replace(heat_pump_state(), target_temp=20.0)
+    cmd, mem = decide(inp([rr(temp=19.0)], mode="active", heat_pump=at_20, params=FIXED), ControlMemory())
+    assert (cmd.plan, cmd.action, cmd.target_temp, cmd.fan_mode) == ("heat", "adjust", 22.0, None)
     assert mem.running_since_ts == NOW and mem.last_target == 22.0 and mem.last_command_ts == NOW
+
+
+def test_a_unit_taken_over_is_not_sent_the_setpoint_it_shows_and_a_change_by_hand_after_it_counts():
+    """Seen 2026-10-13: after each of three restarts an "adjust" to exactly what the unit had, and the lift clock began anew."""
+    cmd, mem = decide(inp([rr(temp=19.0)], mode="active", heat_pump=heat_pump_state(), params=FIXED), ControlMemory())
+    assert (cmd.plan, cmd.action, cmd.target_temp) == ("heat", "none", 22.0)
+    assert (mem.running_since_ts, mem.last_target, mem.last_command_ts) == (NOW, 22.0, NOW)  # as if sent now
+    turned_up = replace(heat_pump_state(), target_temp=25.0, setting_change=SettingChange(NOW + 300, "person"))
+    cmd, mem = decide(inp([rr(temp=19.0)], mode="active", heat_pump=turned_up, params=FIXED, now=NOW + 360), mem)
+    assert (cmd.plan, cmd.reason, mem.manual_by) == ("hands_off", "manual_takeover", "person")
 
 
 def test_a_unit_taken_over_with_nothing_to_do_is_stopped_after_the_minimum_run():
@@ -430,10 +508,36 @@ def test_a_running_unit_is_not_stopped_while_the_room_sensors_have_not_reported(
     # from that, and the unit was sent to its fan run-on
     long_run = replace(RUNNING, running_since_ts=NOW - 7200, last_command_ts=NOW - 7200, last_target=22.0)
     unknown = [rr(temp=None)]
+    restarted = replace(heat_pump_state(), settings_watched_since_ts=NOW - 60)
     for params in (PARAMS, FIXED):
-        cmd, mem = decide(inp(unknown, mode="active", heat_pump=heat_pump_state(), params=params), long_run)
+        cmd, mem = decide(inp(unknown, mode="active", heat_pump=restarted, params=params), long_run)
         assert (cmd.plan, cmd.action, cmd.waiting) == ("heat", "none", "room_data")
         assert mem == long_run
+
+
+def test_a_restart_counts_although_the_watch_on_the_unit_was_carried_across_it():
+    """Seen 2026-10-13: the bathroom had no temperature yet, the other room's setback became the setpoint, 21 -> 18.5 °C."""
+    long_run = replace(RUNNING, running_since_ts=NOW - 7200, last_command_ts=NOW - 7200, last_target=22.0)
+    night = replace(rr(key="schlafzimmer", temp=20.0, target=18.5), target_reason="schedule_setback")
+    rooms = [rr(key="badezimmer", temp=None), night]
+    watched_for_hours = replace(heat_pump_state(), settings_watched_since_ts=NOW - 7200)
+    restarted = replace(inp(rooms, mode="active", heat_pump=watched_for_hours, params=FIXED, cheaper=True), started_ts=NOW - 5)
+    cmd, mem = decide(restarted, long_run)
+    assert (cmd.plan, cmd.action, cmd.target_temp, cmd.waiting) == ("heat", "none", 22.0, "room_data")
+    assert mem == long_run
+    cmd, _ = decide(replace(restarted, started_ts=NOW - 660), long_run)  # a sensor that stays silent is not waited for
+    assert cmd.waiting != "room_data"
+
+
+def test_a_room_sensor_that_stays_silent_does_not_keep_the_unit_on_for_good():
+    long_run = replace(RUNNING, running_since_ts=NOW - 7200, last_command_ts=NOW - 7200, last_target=21.0)
+    rooms = [rr(temp=23.0), rr(key="flur", temp=None)]  # one room 2 K above its target, one that never reports
+    watched = replace(heat_pump_state(), target_temp=21.0, settings_watched_since_ts=NOW - 540)
+    cmd, _ = decide(inp(rooms, mode="active", advice="boiler", heat_pump=watched), long_run)
+    assert cmd.waiting == "room_data"  # nine minutes after the restart: still waiting
+    watched = replace(watched, settings_watched_since_ts=NOW - 660)
+    cmd, _ = decide(inp(rooms, mode="active", advice="boiler", heat_pump=watched), long_run)
+    assert (cmd.action, cmd.reason) == ("stop", "gas_cheaper")
 
 
 def test_a_blocker_still_stops_a_running_unit_without_room_data():
@@ -445,3 +549,420 @@ def test_a_blocker_still_stops_a_running_unit_without_room_data():
 def test_a_unit_that_is_off_is_not_started_without_room_data_in_lever_mode():
     cmd, _ = decide(inp([rr(temp=None)]), ControlMemory())
     assert cmd.plan == "off" and cmd.action == "none"
+
+
+# ---- drying a room: the strongest fan, and afterwards the stage the unit had
+MIDEA_FANS = ("silent", "low", "medium", "high", "full", "auto")
+AT_23 = replace(RUNNING, last_target=23.0)  # following the rooms: the drying target of 22 °C plus one degree
+
+
+def _unit(fan: str | None, fans=MIDEA_FANS):
+    return replace(heat_pump_state(), target_temp=23.0, fan_mode=fan, fan_modes=fans)  # as last commanded
+
+
+def _drying(fan: str | None, mem: ControlMemory, *, drying=True, now=NOW, fans=MIDEA_FANS, temp=24.0):
+    """A bathroom at 24 °C, past the ceiling for the heat of a drying at 22 °C: the fan still matters."""
+    room = rr(temp=temp, target=22.0, drying=drying)
+    return decide(inp([room], mode="active", heat_pump=_unit(fan, fans), params=FIXED, cheaper=True, now=now), mem)
+
+
+def test_the_strongest_fan_is_named_as_the_unit_names_it():
+    assert strongest_fan(MIDEA_FANS) == "full"
+    assert strongest_fan(("auto", "low", "high")) == "high"
+    assert strongest_fan(("Auto", "Turbo", "High")) == "Turbo"
+    assert strongest_fan(("1", "2", "3")) is None and strongest_fan(()) is None
+
+
+def test_a_drying_turns_the_fan_up_at_once_and_back_afterwards():
+    cmd, mem = _drying("auto", AT_23)
+    assert (cmd.action, cmd.fan_mode, cmd.target_temp) == ("adjust", "full", 23.0)  # 300 s after the last command
+    assert mem.fan_turned_up_from == "auto"
+    cmd, mem = _drying("full", mem, now=NOW + 60)
+    assert (cmd.action, cmd.fan_mode) == ("none", "full")
+
+    cmd, mem = _drying("full", mem, drying=False, now=NOW + 1800)
+    assert (cmd.action, cmd.fan_mode) == ("adjust", "auto")
+    cmd, mem = _drying("auto", mem, drying=False, now=NOW + 1860)
+    assert (cmd.action, cmd.fan_mode, mem.fan_turned_up_from) == ("none", "auto", None)
+
+
+def test_after_a_drying_the_fan_gets_the_stage_somebody_had_chosen():
+    cmd, mem = _drying("silent", AT_23)
+    assert (cmd.fan_mode, mem.fan_turned_up_from) == ("full", "silent")
+    cmd, mem = _drying("full", mem, drying=False, now=NOW + 1800)
+    assert (cmd.action, cmd.fan_mode) == ("adjust", "silent")
+
+
+def test_a_stage_chosen_during_the_drying_is_left_alone_afterwards():
+    _, mem = _drying("auto", AT_23)
+    cmd, mem = _drying("medium", mem, drying=False, now=NOW + 1800)  # turned down by remote meanwhile
+    assert (cmd.action, mem.fan_turned_up_from) == ("none", None)
+    cmd, _ = _drying("medium", mem, drying=False, now=NOW + 1860)
+    assert cmd.action == "none"
+
+
+def test_a_unit_that_does_not_turn_its_fan_is_asked_again_at_the_pace_of_an_adjustment():
+    _, mem = _drying("auto", AT_23)
+    cmd, mem = _drying("auto", mem, now=NOW + 60)
+    assert cmd.action == "none"  # just asked
+    cmd, mem = _drying("auto", mem, now=NOW + 700)
+    assert (cmd.action, cmd.fan_mode) == ("adjust", "full")
+    cmd, mem = _drying("full", mem, drying=False, now=NOW + 760)  # the drying ends right after
+    assert cmd.action == "none"  # the turn back waits its ten minutes as well
+    cmd, mem = _drying("full", mem, drying=False, now=NOW + 1400)
+    assert (cmd.action, cmd.fan_mode) == ("adjust", "auto")
+
+
+def test_a_unit_without_a_known_top_stage_keeps_its_fan():
+    cmd, mem = _drying("2", AT_23, fans=("1", "2", "3"))
+    assert (cmd.action, mem.fan_turned_up_from) == ("none", None)
+
+
+def test_a_fan_already_at_the_top_stays_there():
+    cmd, mem = _drying("full", AT_23)
+    assert (cmd.action, mem.fan_turned_up_from) == ("none", "full")
+    cmd, mem = _drying("full", mem, drying=False, now=NOW + 1800)
+    assert (cmd.action, mem.fan_turned_up_from) == ("none", None)
+
+
+def test_a_unit_started_for_a_drying_starts_with_the_strongest_fan():
+    room = rr(temp=21.0, target=22.0, drying=True)
+    unit = replace(off_heat_pump(), fan_mode="auto", fan_modes=MIDEA_FANS)
+    cmd, mem = decide(inp([room], mode="active", heat_pump=unit, params=FIXED), ControlMemory())
+    assert (cmd.action, cmd.fan_mode, mem.fan_turned_up_from) == ("start", "full", "auto")
+
+
+def test_a_quick_heat_up_during_a_drying_does_not_turn_the_fan_down():
+    room = rr(temp=20.0, target=22.0, drying=True, boost=True)
+    turned_up = replace(AT_23, fan_turned_up_from="auto", fan_turned_up_to="full")  # by the drying
+    cmd, mem = decide(inp([room], mode="active", heat_pump=_unit("full"), params=FIXED, cheaper=True), turned_up)
+    assert (cmd.action, cmd.fan_mode) == ("none", "full")  # not down to the quick heat-up's "high"
+    assert (mem.fan_turned_up_from, mem.fan_turned_up_to) == ("auto", "full")  # nothing is put back in the middle of it
+
+
+def test_a_drying_sends_the_raised_target_and_the_fan_together_however_recent_the_last_command():
+    at_22 = replace(RUNNING, last_target=22.0, last_command_ts=NOW - 300)  # a setpoint went out five minutes ago
+    unit = replace(heat_pump_state(), target_temp=22.0, fan_mode="auto", fan_modes=MIDEA_FANS)
+    room = rr(temp=21.0, target=22.0, drying=True)  # the drying raised the room's target: the unit is to get 23 °C
+    cmd, mem = decide(inp([room], mode="active", heat_pump=unit, params=FIXED, cheaper=True), at_22)
+    assert (cmd.action, cmd.target_temp, cmd.fan_mode) == ("adjust", 23.0, "full")
+    assert (mem.last_target, mem.fan_turned_up_from) == (23.0, "auto")
+
+
+def test_after_a_quick_heat_up_during_a_drying_the_fan_gets_back_what_it_had_before_both():
+    unit = replace(off_heat_pump(), fan_mode="auto", fan_modes=MIDEA_FANS)
+    both = rr(temp=20.0, target=22.0, drying=True, boost=True)
+    cmd, mem = decide(inp([both], mode="active", heat_pump=unit, params=FIXED, cheaper=True), ControlMemory())
+    assert (cmd.action, cmd.fan_mode, mem.fan_turned_up_from) == ("start", "high", "auto")
+    cmd, mem = _drying("high", mem, temp=21.0, now=NOW + 1200)  # the quick heat-up is over, the drying goes on
+    assert (cmd.action, cmd.fan_mode, mem.fan_turned_up_from) == ("adjust", "full", "auto")
+    cmd, mem = _drying("full", mem, drying=False, temp=21.0, now=NOW + 3600)
+    assert (cmd.action, cmd.fan_mode) == ("adjust", "auto")  # not the "high" of the quick heat-up
+
+
+# ---- a quick heat-up: the fan goes up at once and comes back, whether the setpoint moves or not
+AT_22_FOR_HOURS = replace(RUNNING, running_since_ts=NOW - 7200, last_command_ts=NOW - 7200, last_target=22.0)
+
+
+def test_following_the_rooms_a_quick_heat_up_raises_the_fan_of_a_unit_that_runs_already():
+    at_22 = replace(AT_22_FOR_HOURS, last_command_ts=NOW - 60)
+    unit = replace(heat_pump_state(), fan_mode="auto", fan_modes=MIDEA_FANS)
+    cmd, mem = decide(inp([rr(temp=20.0, boost=True)], mode="active", heat_pump=unit, params=FIXED, cheaper=True), at_22)
+    assert (cmd.action, cmd.target_temp, cmd.fan_mode) == ("adjust", 22.0, "high")  # the setpoint is as it was
+    assert mem.fan_turned_up_from == "auto"
+
+
+def test_following_the_rooms_the_fan_comes_back_once_the_quick_heat_up_is_over():
+    boosted = replace(AT_22_FOR_HOURS, last_command_ts=NOW - 2700, fan_turned_up_from="auto", fan_turned_up_to="high")
+    high = replace(heat_pump_state(), fan_mode="high", fan_modes=MIDEA_FANS)
+    cmd, mem = decide(inp([rr(temp=20.8)], mode="active", heat_pump=high, params=FIXED, cheaper=True), boosted)
+    assert (cmd.action, cmd.target_temp, cmd.fan_mode) == ("adjust", 22.0, "auto")
+    back = replace(high, fan_mode="auto")
+    cmd, mem = decide(inp([rr(temp=20.8)], mode="active", heat_pump=back, params=FIXED, cheaper=True, now=NOW + 60), mem)
+    assert (cmd.action, mem.fan_turned_up_from) == ("none", None)
+
+
+def test_a_fan_stage_chosen_by_hand_stays_when_the_setpoint_changes():
+    """Seen 2026-10-13: "full" chosen by hand stayed for 45 minutes, until a setpoint of ours took "auto" along."""
+    full = replace(heat_pump_state(), fan_mode="full", fan_modes=MIDEA_FANS, settings_watched_since_ts=NOW - 86400)
+    night = [replace(rr(temp=20.0, target=17.0), target_reason="schedule_setback")]
+    cmd, mem = decide(inp(night, mode="active", heat_pump=full, params=FIXED, cheaper=True), AT_22_FOR_HOURS)
+    assert (cmd.plan, cmd.action, cmd.target_temp, cmd.fan_mode) == ("heat", "adjust", 18.0, None)
+    assert mem.manual_until_ts is None and mem.fan_turned_up_from is None  # no change by hand, nothing to put back
+    # turned down by hand while a drying had it turned up: left as it is, also with a setpoint going out
+    medium, dried = replace(full, fan_mode="medium"), replace(AT_22_FOR_HOURS, fan_turned_up_from="auto")
+    cmd, mem = decide(inp(night, mode="active", heat_pump=medium, params=FIXED, cheaper=True), dried)
+    assert (cmd.action, cmd.target_temp, cmd.fan_mode, mem.fan_turned_up_from) == ("adjust", 18.0, None, None)
+
+
+def test_a_unit_that_shows_no_fan_stage_is_asked_once_for_the_turn_up_and_once_for_the_turn_back():
+    actions = []
+    mem = AT_22_FOR_HOURS
+    for minute, boost in ((0, True), (1, True), (30, True), (31, False), (32, False), (60, False)):
+        rooms = [rr(temp=20.0 if boost else 20.8, boost=boost)]
+        at = NOW + minute * 60
+        cmd, mem = decide(inp(rooms, mode="active", heat_pump=heat_pump_state(), params=FIXED, cheaper=True, now=at), mem)
+        actions.append((cmd.action, cmd.fan_mode))
+    assert actions[:3] == [("adjust", "high"), ("none", "high"), ("none", "high")]
+    assert actions[3:] == [("adjust", "auto"), ("none", None), ("none", None)]  # asked once: the fan is the unit's again
+
+
+def test_a_quick_heat_up_that_reaches_its_target_inside_the_minimum_run_goes_down_to_eco():
+    cmd, mem = decide(inp([rr(temp=20.0, boost=True)], mode="active"), ControlMemory())
+    assert (cmd.action, cmd.target_temp, cmd.fan_mode) == ("start", 30.0, "high")
+    full_power = replace(heat_pump_state(), target_temp=30.0, fan_mode="high", fan_modes=MIDEA_FANS)
+    cmd, mem = decide(inp([rr(temp=21.4, boost=True)], mode="active", heat_pump=full_power, now=NOW + 300), mem)
+    # five minutes into the minimum run and after the last command: no waiting at 30 °C
+    assert (cmd.plan, cmd.action, cmd.target_temp, cmd.fan_mode, cmd.waiting) == ("heat", "adjust", 21.0, "auto", "min_run_time")
+    assert mem.last_target == 21.0
+
+
+def test_what_the_fan_is_to_get_back_survives_a_restart_and_ends_with_a_stop():
+    turned_up = replace(AT_23, fan_turned_up_from="silent", fan_turned_up_to="full")
+    restored = ControlMemory.from_storage(turned_up.to_storage())
+    assert (restored.fan_turned_up_from, restored.fan_turned_up_to) == ("silent", "full")
+    assert ControlMemory.from_storage({"fan_turned_up_from": 3, "fan_turned_up_to": 4}) == ControlMemory()
+    room = rr(temp=24.0, target=22.0, heat_pump_allowed=False)  # window open: the unit is stopped
+    long_running = replace(AT_23, running_since_ts=NOW - 7200, fan_turned_up_from="auto", fan_turned_up_to="full")
+    cmd, mem = decide(inp([room], mode="active", heat_pump=_unit("full"), params=FIXED), long_running)
+    assert cmd.action == "stop" and (mem.fan_turned_up_from, mem.fan_turned_up_to) == (None, None)
+
+
+# ---- a stage chosen by hand is not overridden, and stages go out as the unit spells them (review 2026-10-14)
+BY_HAND = replace(heat_pump_state(), target_temp=22.0, fan_modes=MIDEA_FANS, settings_watched_since_ts=NOW - 86400)
+
+
+def _following(rooms, fan: str, mem: ControlMemory, now=NOW):
+    return decide(inp(rooms, mode="active", heat_pump=replace(BY_HAND, fan_mode=fan), params=FIXED, cheaper=True, now=now), mem)
+
+
+def test_a_quick_heat_up_does_not_turn_a_stronger_stage_chosen_by_hand_down():
+    """"full" chosen by hand went down to "high" at once."""
+    cmd, mem = _following([rr(temp=20.0, boost=True)], "full", replace(AT_22_FOR_HOURS, last_command_ts=NOW - 60))
+    assert (cmd.action, cmd.fan_mode, cmd.load) == ("none", None, "boost")
+    assert (mem.fan_turned_up_from, mem.fan_turned_up_to) == (None, None)  # nothing to put back afterwards
+    cmd, mem = _following([rr(temp=20.8)], "full", mem, now=NOW + 1800)  # the quick heat-up is over
+    assert (cmd.action, cmd.fan_mode) == ("none", None)
+
+
+def test_a_stage_chosen_during_a_quick_heat_up_is_not_put_back():
+    """"full" chosen during a quick heat-up was taken for its own stage, and "auto" was sent at its end."""
+    boost, over = [rr(temp=20.0, boost=True)], [rr(temp=20.8)]
+    cmd, turned_up = _following(boost, "auto", AT_22_FOR_HOURS)
+    assert (cmd.action, cmd.fan_mode) == ("adjust", "high")
+    assert (turned_up.fan_turned_up_from, turned_up.fan_turned_up_to) == ("auto", "high")
+    cmd, mem = _following(over, "full", turned_up, now=NOW + 1800)  # chosen by hand, and the quick heat-up ends
+    assert (cmd.action, cmd.fan_mode, mem.fan_turned_up_from, mem.fan_turned_up_to) == ("none", None, None, None)
+    cmd, mem = _following(boost, "full", turned_up, now=NOW + 900)  # chosen while it still runs: not sent back to "high"
+    assert (cmd.action, cmd.fan_mode, mem.fan_turned_up_from) == ("none", None, None)
+    cmd, mem = _following(over, "full", mem, now=NOW + 1800)
+    assert (cmd.action, cmd.fan_mode) == ("none", None)
+
+
+def test_a_quick_heat_up_stage_chosen_during_a_drying_is_not_put_back():
+    """"high" chosen during a drying was taken for the quick heat-up's stage, and "auto" was sent at its end."""
+    _, mem = _drying("auto", AT_23)
+    assert (mem.fan_turned_up_from, mem.fan_turned_up_to) == ("auto", "full")
+    cmd, mem = _drying("high", mem, drying=False, now=NOW + 1800)
+    assert (cmd.action, cmd.fan_mode, mem.fan_turned_up_from, mem.fan_turned_up_to) == ("none", None, None, None)
+
+
+def test_a_unit_that_spells_its_stages_with_capitals_gets_them_as_it_spells_them():
+    """It never got "auto" back after a drying that began with a start: a stage it does not offer is not sent."""
+    fans = ("Auto", "Low", "Medium", "High", "Turbo")
+    off = replace(off_heat_pump(), fan_mode="Auto", fan_modes=fans)
+    cmd, mem = decide(inp([rr(temp=21.0, target=22.0, drying=True)], mode="active", heat_pump=off, params=FIXED), ControlMemory())
+    assert (cmd.action, cmd.fan_mode, mem.fan_turned_up_from, mem.fan_turned_up_to) == ("start", "Turbo", "Auto", "Turbo")
+    turbo = replace(heat_pump_state(), target_temp=23.0, fan_mode="Turbo", fan_modes=fans)
+    dried = inp([rr(temp=22.5, target=22.0)], mode="active", heat_pump=turbo, params=FIXED, cheaper=True, now=NOW + 3600)
+    cmd, mem = decide(dried, mem)
+    assert (cmd.action, cmd.fan_mode) == ("adjust", "Auto")
+    cmd, _ = decide(inp([rr(temp=19.0)], mode="active", heat_pump=off, params=FIXED), ControlMemory())
+    assert cmd.fan_mode == "Auto"  # a start sets the fan in the unit's spelling
+    cmd, _ = decide(inp([rr(temp=19.0, boost=True)], mode="active", heat_pump=off, params=FIXED), ControlMemory())
+    assert cmd.fan_mode == "High"  # and so does a quick heat-up
+
+
+# ---- a run of ours stays ours across an interruption ------------------------------------------
+HALF_HOUR_RUN = ControlMemory(running_since_ts=NOW - 1800, last_command_ts=NOW - 1800, last_hvac_mode="heat", last_target=21.0)
+AS_SENT = replace(heat_pump_state(), target_temp=21.0, settings_watched_since_ts=NOW - 86400)
+
+
+def test_a_unit_that_comes_back_heating_is_taken_over_again():
+    # one cycle out of reach, then heating at our setpoint as before: nothing stopped it any more
+    gone = replace(AS_SENT, available=False, hvac_mode=None)
+    cmd, mem = decide(inp([rr(temp=20.9)], mode="active", heat_pump=gone), HALF_HOUR_RUN)
+    assert cmd.reason == "midea_unavailable" and mem.running_since_ts is None
+    cmd, mem = decide(inp([rr(temp=20.9)], mode="active", heat_pump=AS_SENT, now=NOW + 60), mem)
+    assert cmd.plan == "heat" and mem.running_since_ts == NOW + 60
+    cmd, mem = decide(inp([rr(temp=22.5)], mode="active", heat_pump=AS_SENT, now=NOW + 120, op="off"), mem)
+    assert (cmd.action, cmd.blockers) == ("stop", ("mode_off",))
+
+
+def test_a_unit_not_loaded_yet_right_after_a_start_keeps_its_run():
+    """Seen 2026-10-13: after a restart its entity was not loaded yet, and the next cycle took the running unit over anew."""
+    gone = replace(AS_SENT, available=False, hvac_mode=None)
+    starting = replace(inp([rr(temp=20.9)], mode="active", heat_pump=gone), started_ts=NOW - 10)
+    cmd, mem = decide(starting, HALF_HOUR_RUN)
+    assert (cmd.plan, cmd.action, cmd.reason) == ("hands_off", "none", "midea_unavailable") and mem == HALF_HOUR_RUN
+    _, mem = decide(replace(starting, started_ts=NOW - 660), HALF_HOUR_RUN)  # still away ten minutes on: the run is over
+    assert mem.running_since_ts is None
+
+
+def test_a_unit_back_from_a_mode_set_by_hand_is_taken_over_again():
+    drying = replace(AS_SENT, hvac_mode="dry")
+    _, mem = decide(inp([rr(temp=20.9)], mode="active", heat_pump=drying), HALF_HOUR_RUN)
+    back = replace(AS_SENT, setting_change=SettingChange(NOW + 100, "device", setpoint=False, mode=True))
+    cmd, mem = decide(inp([rr(temp=22.5)], mode="active", heat_pump=back, now=NOW + 400, blocked="outdoor_coil_iced"), mem)
+    assert (cmd.action, cmd.reason) == ("stop", "blocked")
+
+
+def test_a_unit_that_comes_back_with_another_setpoint_was_changed_by_hand():
+    gone = replace(AS_SENT, available=False, hvac_mode=None)
+    _, mem = decide(inp([rr(temp=20.9)], mode="active", heat_pump=gone), HALF_HOUR_RUN)
+    turned_up = replace(AS_SENT, target_temp=24.0, setting_change=SettingChange(NOW + 30, "device"))
+    cmd, mem = decide(inp([rr(temp=20.9)], mode="active", heat_pump=turned_up, now=NOW + 60), mem)
+    assert (cmd.plan, cmd.reason, mem.manual_by) == ("hands_off", "manual_takeover", "device")
+
+
+# ---- the fan run-on survives a switch of the control mode and a restart ---------------------------
+def test_a_fan_run_on_is_finished_after_the_control_was_switched_to_planning_and_back():
+    _, mem = decide(inp([rr(temp=21.5)], mode="active", heat_pump=heat_pump_state()), LONG_RUN)
+    fan = off_heat_pump(hvac_mode="fan_only")
+    mem = mem.fresh_run_state()  # what a switch of the control mode does
+    assert mem.fan_until_ts == NOW + 900 and mem.stopped_since_ts == NOW and mem.last_hvac_mode is None
+    cmd, mem = decide(inp([rr(temp=21.5)], mode="shadow", heat_pump=fan, now=NOW + 1800), mem)
+    assert (cmd.action, cmd.waiting, mem.fan_until_ts) == ("none", "fan_run_on", NOW + 900)  # planning sends nothing: still owed
+    cmd, mem = decide(inp([rr(temp=21.5)], mode="active", heat_pump=fan, now=NOW + 3600), mem.fresh_run_state())
+    assert (cmd.plan, cmd.action, cmd.hvac_mode) == ("off", "stop", "off")
+
+
+def test_a_fan_run_on_carried_over_leaves_a_unit_alone_that_is_not_in_it():
+    carried = ControlMemory(fan_until_ts=NOW + 600, stopped_since_ts=NOW - 300)
+    cmd, mem = decide(inp([rr(temp=21.5)], mode="active", heat_pump=off_heat_pump()), carried)
+    assert cmd.action == "none" and mem.fan_until_ts is None and mem.last_hvac_mode is None
+    resting_room = [resting(temp=20.0, target=17.0)]
+    cmd, mem = decide(inp(resting_room, mode="active", heat_pump=heat_pump_state(), params=FIXED), carried)
+    assert mem.fan_until_ts is None and mem.running_since_ts == NOW  # found heating: taken over, as without a run-on
+
+
+def test_the_off_after_the_fan_run_on_is_repeated_after_a_restart_right_behind_it():
+    after = ControlMemory(stopped_since_ts=NOW - 900, last_command_ts=NOW, last_hvac_mode="off")
+    restored = ControlMemory.from_storage(after.to_storage())
+    fan = replace(off_heat_pump(hvac_mode="fan_only"), settings_watched_since_ts=NOW + 30)  # restarted half a minute later
+    cmd, _ = decide(inp([rr(temp=21.5)], mode="active", heat_pump=fan, now=NOW + 3600), restored)
+    assert (cmd.plan, cmd.action, cmd.hvac_mode) == ("off", "stop", "off")
+    long_after = replace(fan, settings_watched_since_ts=NOW + 3000)  # nobody watched for most of an hour: left alone
+    cmd, _ = decide(inp([rr(temp=21.5)], mode="active", heat_pump=long_after, now=NOW + 3600), restored)
+    assert (cmd.plan, cmd.reason) == ("hands_off", "manual_mode_fan_only")
+
+
+# ---- a stop of a unit that does not heat, and of one without a fan-only mode ---------------------
+def test_a_unit_that_is_off_already_gets_no_fan_run_on():
+    # taken over without a command of ours, then switched off at the unit: its fan started and ran 15 minutes
+    taken_over = ControlMemory(running_since_ts=NOW - 1300, last_hvac_mode="heat")
+    cmd, mem = decide(inp([rr(temp=21.5)], mode="active", heat_pump=off_heat_pump()), taken_over)
+    assert (cmd.plan, cmd.action, cmd.reason) == ("off", "none", "target_reached")
+    assert (mem.last_hvac_mode, mem.fan_until_ts, mem.running_since_ts, mem.stopped_since_ts) == ("off", None, None, NOW)
+
+
+def test_a_unit_without_a_fan_only_mode_is_switched_off_at_once():
+    no_fan_only = replace(heat_pump_state(), hvac_modes=("off", "heat", "cool"))
+    cmd, mem = decide(inp([rr(temp=21.5)], mode="active", heat_pump=no_fan_only), LONG_RUN)
+    assert (cmd.action, cmd.hvac_mode, mem.fan_until_ts, mem.last_hvac_mode) == ("stop", "off", None, "off")
+    with_fan_only = replace(heat_pump_state(), hvac_modes=("off", "heat", "fan_only"))
+    cmd, _ = decide(inp([rr(temp=21.5)], mode="active", heat_pump=with_fan_only), LONG_RUN)
+    assert (cmd.action, cmd.hvac_mode) == ("stop", "fan_only")
+
+
+# ---- a unit that takes whole degrees ---------------------------------------------------------------
+def test_a_unit_with_whole_degree_setpoints_is_sent_whole_degrees():
+    whole = replace(off_heat_pump(intake=(20.3, 45.0)), target_temp_step=1.0)
+    cmd, _ = decide(inp([rr(temp=19.0)], heat_pump=whole), ControlMemory())
+    assert cmd.target_temp == 21.0  # intake 20.3 °C + 1 K: in half degrees it would be 21.5 °C
+    cmd, mem = decide(inp([rr(temp=20.0, target=20.5)], heat_pump=whole, params=FIXED, cheaper=True), ControlMemory())
+    assert cmd.target_temp == 22.0 and mem.last_target == 22.0  # 21.5 °C: halves go up, as the unit rounds them
+
+
+def test_a_setpoint_the_unit_rounded_to_its_step_is_not_a_command_it_ignored():
+    sent_before = replace(RUNNING, running_since_ts=NOW - 7200, last_command_ts=NOW - 7200, last_target=21.5)
+    shows_22 = replace(heat_pump_state(), target_temp=22.0, target_temp_step=1.0, settings_watched_since_ts=NOW - 86400)
+    rooms = [rr(temp=20.0, target=20.5)]
+    cmd, mem = decide(inp(rooms, mode="active", heat_pump=shows_22, params=FIXED, cheaper=True), sent_before)
+    assert mem.not_carried_out == 0 and cmd.reason != "not_carried_out"
+    half_degrees = replace(shows_22, target_temp_step=0.5)  # a unit that could show 21.5 °C did not follow
+    _, mem = decide(inp(rooms, mode="active", heat_pump=half_degrees, params=FIXED, cheaper=True), sent_before)
+    assert mem.not_carried_out == 1
+
+
+# ---- learning runs, the eco offset, blockers ---------------------------------------------------------
+def test_a_learning_run_ends_after_its_hour_although_the_weather_moved_into_the_next_bin():
+    def at(outdoor: float, mem: ControlMemory, **kw):
+        return decide(inp([rr(temp=19.0)], mode="active", advice="boiler", outdoor=outdoor, cop=2.6, bin_count=0, **kw), mem)
+
+    cmd, mem = at(4.2, ControlMemory())
+    assert cmd.load == "learning" and mem.learning_until_ts == NOW + 3600
+    unit = replace(heat_pump_state(), target_temp=cmd.target_temp)
+    cmd, mem = at(4.1, mem, heat_pump=unit, now=NOW + 1800)
+    assert (cmd.plan, cmd.load) == ("heat", "learning")
+    cmd, mem = at(3.9, mem, heat_pump=unit, now=NOW + 3660)
+    assert (cmd.action, cmd.reason) == ("stop", "gas_cheaper")  # bin +2..+4 was never run in, and still no new run
+
+
+def test_a_planned_learning_run_has_its_hour_as_well():
+    cmd, mem = decide(inp([rr()], mode="shadow", advice="boiler", cop=2.6, bin_count=0), ControlMemory())
+    assert mem.learning_until_ts == NOW + 3600 and mem.learning_bins == ()
+    cmd, _ = decide(inp([rr()], mode="shadow", advice="boiler", cop=2.6, bin_count=0, now=NOW + 1800), mem)
+    assert (cmd.plan, cmd.load) == ("heat", "learning")
+
+
+def test_a_room_held_just_below_its_target_does_not_raise_the_eco_offset():
+    mem = replace(RUNNING, running_since_ts=NOW - 2000, last_command_ts=NOW - 2000, last_target=21.0)
+    held = [rr(temp=20.9, trend=0.05)]  # inside the band that keeps a run going: held, not warmed
+    _, new = decide(inp(held, mode="active", heat_pump=replace(heat_pump_state(), target_temp=21.0)), mem)
+    assert new.offset_k is None and new.last_offset_review_ts is None
+
+
+def test_the_safety_fallback_is_named_once_among_the_blockers():
+    cmd, _ = decide(inp([rr()], safety="fallback", blocked="safety_fallback"), ControlMemory())
+    assert cmd.blockers == ("safety_fallback",)
+
+
+# ---- switched by the rooms (not following them): cheaper heat is worth running, called for or not
+def test_a_unit_switched_by_the_rooms_heats_on_once_the_room_no_longer_calls_the_boiler():
+    """The recommendation names a source only while a room calls; the run ended there as "gas cheaper"."""
+    almost = rr(temp=20.95, target=21.0)  # inside the band: no call any more, and not yet 0.2 K above
+    cmd, _ = decide(inp([almost], mode="active", heat_pump=heat_pump_state(), advice="none", cheaper=True), LONG_RUN)
+    assert (cmd.plan, cmd.reason) == ("heat", "cheaper_than_gas") and cmd.action != "stop"
+    reached = rr(temp=21.25, target=21.0)
+    cmd, _ = decide(inp([reached], mode="active", heat_pump=heat_pump_state(), advice="none", cheaper=True), LONG_RUN)
+    assert (cmd.action, cmd.reason) == ("stop", "target_reached")
+
+
+def test_a_unit_switched_by_the_rooms_starts_for_a_cold_room_that_calls_no_boiler():
+    """A radiator thermostat switched off by hand: the room never calls, and the heat pump could heat it alone."""
+    cold = rr(temp=19.0, target=21.0)
+    cmd, _ = decide(inp([cold], mode="active", advice="none", cheaper=True), ControlMemory())
+    assert (cmd.action, cmd.reason) == ("start", "cheaper_than_gas")
+    cmd, _ = decide(inp([cold], mode="active", advice="none", cheaper=False), ControlMemory())
+    assert cmd.action == "none" and cmd.plan == "off"  # neither cheaper nor recommended: it stays off
+
+
+def test_cheaper_heat_does_not_get_past_what_blocks_the_unit():
+    cold = rr(temp=19.0, target=21.0)
+    for blocked in ({"op": "off"}, {"op": "boiler_only"}, {"blocked": "icing_lockout_active"}, {"safety": "fallback"}):
+        cmd, _ = decide(inp([cold], mode="active", advice="none", cheaper=True, **blocked), ControlMemory())
+        assert cmd.action == "none" and cmd.plan == "off", blocked
+
+
+
+def test_following_the_rooms_rooms_clearly_too_warm_take_the_setpoint_back_at_the_pace_it_went_up():
+    """Seen 2026-10-13: 1.7 h at the raised setpoint with every served room 1-2 K above its target."""
+    raised = replace(LONG_RUN, offset_k=2.0, last_offset_review_ts=NOW - 1300, last_target=23.0)
+    at_23 = replace(heat_pump_state(intake=(22.0, 45.0)), target_temp=23.0)
+    cmd, mem = lagging_room(NOW, raised, unit=at_23, trend=0.0, temp=21.2)  # at its target only: two hours
+    assert cmd.action == "none" and mem.offset_k == 2.0
+    cmd, mem = lagging_room(NOW, raised, unit=at_23, trend=0.0, temp=22.0)  # 1 K above it: 20 minutes
+    assert (cmd.action, cmd.target_temp, mem.offset_k, mem.last_offset_review_ts) == ("adjust", 22.5, 1.5, NOW)
+    cmd, mem = lagging_room(NOW + 600, mem, unit=replace(at_23, target_temp=22.5), trend=0.0, temp=22.0)
+    assert mem.offset_k == 1.5  # the next one in 20 minutes, not at once

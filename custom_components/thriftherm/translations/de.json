@@ -39,20 +39,24 @@
           "boiler_circulation_l_h": "Nenn-Umlaufwassermenge der Pumpe",
           "gas_volume": "Gaszähler Volumen (m³, Gesamt)",
           "gas_flow": "Gaszähler Momentanfluss (m³/h)",
+          "boiler_nominal_input_kw": "Ohne Gaszähler: Nennwärmebelastung der Therme (Typenschild, kW)",
           "boiler_ebus_circuit": "ebusd-Kreis der Therme (meist bai)",
           "boiler_curve_flow_at_minus10": "Heizkurve: Vorlauf bei -10 °C außen",
           "boiler_curve_flow_at_plus15": "Heizkurve: Vorlauf bei +15 °C außen",
           "boiler_flow_min": "Minimale Vorlauftemperatur",
           "boiler_flow_max": "Maximale Vorlauftemperatur",
+          "boiler_heat_up_rate_k_h": "Aufheiztempo (Grad pro Stunde, 0 = aus)",
           "boiler_hot_water_standby": "Warmwasser bereithalten (Warmhalten der Kombitherme, Speicherladung)",
           "boiler_spread_min_room_share": "Anteil der Räume, die anfordern müssen, bevor die Spreizung die Kurve bewertet",
-          "boiler_load_model": "Eigene Heizkurve für einen Raum, wenige Räume und die Mehrheit",
+          "boiler_load_model": "Eigene Heizkurve je Raum, für einen Raum, wenige Räume und die Mehrheit",
           "boiler_allow_active_control": "Aktive Thermensteuerung freigeben (sonst nur planen)"
         },
         "data_description": {
+          "boiler_nominal_input_kw": "Nur für die beiden Sensoren „Gas für Heizung“ und „Gas für Warmwasser“, und nur gelesen, wenn oben kein Gaszähler eingetragen ist. Eine Vaillant-Therme summiert ihre Brennerleistung selbst auf (ebusd PrEnergySumHc1-3 und PrEnergySumHwc1-3); mit der Nennwärmebelastung vom Typenschild (Q oder Qn, bei einem Bereich der größere Wert, z. B. 22,2) werden daraus kWh wie auf der Gasrechnung. Leer lassen, wenn du einen Gaszähler oder eine andere Therme hast.",
           "boiler_hot_water_standby": "Aus: Bei aktiver Thermensteuerung heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist. Sie springt dann nicht mehr etwa einmal pro Stunde an, um ihren Wärmetauscher warm zu halten. Am Hahn kommt weiter warmes Wasser, nur etwas später. Eingeschaltet lassen, wenn ein Warmwasserspeicher angeschlossen ist: Er würde nicht mehr geladen. Von einem Nutzer gemeldet, an der Testanlage noch nicht gemessen.",
-          "boiler_spread_min_room_share": "Die Spreizung zwischen Vorlauf und Rücklauf sagt nur etwas über die Heizkurve, wenn genug Heizkörper Wärme abnehmen: Ein einzelner offener Heizkörper schickt das Wasser fast so warm zurück, wie es kam, und eine kleine Spreizung hat die Kurve dann fälschlich gesenkt. Fordern weniger Räume an als dieser Anteil der Räume, die gerade Wärme abnehmen können (aufgerundet, mindestens einer), zählt nur, ob die anfordernden Räume vorankommen. Räume, die nur mitheizen, werden nicht gezählt. 0,5 = die Hälfte der Räume.",
-          "boiler_load_model": "Welchen Vorlauf die Wohnung braucht, hängt davon ab, wie viele Heizkörper Wärme abnehmen. An: Thriftherm führt für drei Fälle (ein Raum fordert an, wenige, die Mehrheit) je eine eigene Korrektur der Heizkurve, und ein Lernschritt verändert nur den Fall, in dem er gemacht wurde. Was das Bad allein gelehrt hat, verstellt so nicht den Vorlauf für die ganze Wohnung. Ein Fall ohne eigenen Wert startet mit dem des nächstgelegenen. Ein Wert, der einige Stunden gepasst hat, gilt als gefunden und bewegt sich erst wieder, wenn die Räume länger etwas anderes zeigen. Aus: eine gemeinsame Korrektur für alle Fälle, wie bisher; sie behält, was sie gelernt hatte."
+          "boiler_spread_min_room_share": "Die Spreizung zwischen Vorlauf und Rücklauf sagt nur etwas über die Heizkurve, wenn genug Heizkörper Wärme abnehmen: Ein einzelner offener Heizkörper schickt das Wasser fast so warm zurück, wie es kam, und eine kleine Spreizung hat die Kurve dann fälschlich gesenkt. Fordern weniger Räume an als dieser Anteil der Räume, die gerade Wärme abnehmen können (aufgerundet, mindestens einer), zählt nur, ob die anfordernden Räume vorankommen. Räume, die nur mitheizen, werden nicht gezählt. 0,5 = die Hälfte der Räume. Für die Heizkurve je Lastfall sind mehr Räume als dieser Anteil die Mehrheit (0,5: drei von vier Räumen).",
+          "boiler_load_model": "Welchen Vorlauf die Wohnung braucht, hängt davon ab, wie viele Heizkörper Wärme abnehmen, und von jedem Heizkörper: Ein kleiner in einem kalten Raum braucht mehr als ein großer. An: Thriftherm führt für jeden Raum in drei Fällen (ein Raum fordert an, wenige, die Mehrheit) eine eigene Korrektur der Heizkurve. Von den Räumen, die Wärme wollen, bestimmt der den Vorlauf, der am meisten braucht; bei den anderen nehmen die Ventile weniger. Kommt ein Raum nicht hinterher, hebt er nur seinen eigenen Wert an. Was das Bad allein gelehrt hat, verstellt so nicht den Vorlauf für die ganze Wohnung. Ein Raum ohne eigenen Wert startet mit seinem Wert aus dem nächstgelegenen Fall. Ein Wert, der einige Stunden gepasst hat, gilt als gefunden und bewegt sich erst wieder, wenn die Räume länger etwas anderes zeigen. Aus: eine gemeinsame Korrektur für alle Räume und Fälle, wie bisher; sie behält, was sie gelernt hatte.",
+          "boiler_heat_up_rate_k_h": "Wie schnell ein Raum warm werden soll, wenn die Therme ihn heizt, bei jedem Aufheizen eines Raums, der 1 Grad oder mehr unter Soll liegt (nach dem Hochstellen, nach der Absenkung oder einem offenen Fenster). Geht es langsamer, hebt Thriftherm den Vorlauf für diesen Raum alle 20 Minuten an und merkt sich je Raum, wie viel nötig war, als Start fürs nächste Aufheizen; geht es deutlich schneller, senkt es ihn wieder. Mehr Tempo kostet mehr Gas. Wirkt nur bei aktiver Thermensteuerung. 0 lässt den Vorlauf wie bisher: Heizkurve, gelernte Korrektur und bis zu 8 Grad Zuschlag, solange ein Raum weit unter Soll ist."
         }
       },
       "midea": {
@@ -66,7 +70,7 @@
           "midea_outlet_temp": "Ausblaslufttemperatur",
           "midea_airflow_curve": "Luftmengenkennlinie (rpm:m³/h, ...)",
           "midea_duct_factor": "Schlauchfaktor (reale Luftmenge / frei ausblasend, 1,0 ohne Schläuche)",
-          "midea_follow_rooms": "Sollwert folgt der Solltemperatur der versorgten Räume (plus Sollwert-Abstand aus den Parametern); das Gerät regelt selbst",
+          "midea_follow_rooms": "Sollwert folgt der Solltemperatur der versorgten Räume (plus Sollwert-Abstand aus „Wärmepumpe: Feineinstellung“); das Gerät regelt selbst",
           "midea_room": "Raum, in dem die Wärmepumpe steht"
         }
       },
@@ -96,7 +100,8 @@
           "schedule_weekday": "Komfortzeiten Mo–Fr",
           "schedule_weekend": "Komfortzeiten Sa–So",
           "add_another": "Weiteren Raum hinzufügen",
-          "bathroom_drying_mode": "Bad-Trocknung mit der Wärmepumpe (nach dem Duschen trotz Lüften weiterheizen)",
+          "bathroom_drying_mode": "Bad-Trocknung mit der Wärmepumpe",
+          "bathroom_drying_automatic": "Trocknung nach dem Duschen von selbst starten (aus: nur mit dem Knopf „Jetzt trocknen“)",
           "schedule_entity": "Zeitplan-Helfer (optional; ersetzt die Komfortfenster unten)"
         }
       }
@@ -105,7 +110,7 @@
       "invalid_schedule": "Ungültiger Zeitplan, Format HH:MM-HH:MM,HH:MM-HH:MM",
       "setback_above_comfort": "Absenktemperatur darf die Komforttemperatur nicht überschreiten",
       "duplicate_room": "Ein Raum mit diesem Namen existiert bereits",
-      "invalid_airflow_curve": "Ungültige Kennlinie, Format rpm:m3h,rpm:m3h",
+      "invalid_airflow_curve": "Ungültige Kennlinie. Mindestens zwei Punkte im Format rpm:m3h,rpm:m3h, jede Drehzahl und Luftmenge über 0 und keine Drehzahl doppelt",
       "curve_inverted": "Der Vorlauf bei -10 °C darf nicht niedriger sein als bei +15 °C",
       "boiler_entities_incomplete": "Entweder beide wählen, Vorlauf-Sollwert und Heizungs-Schalter, oder keinen",
       "flow_min_above_max": "Die minimale Vorlauftemperatur darf nicht über der maximalen liegen",
@@ -113,7 +118,6 @@
       "drying_needs_humidity": "Die Bad-Trocknung braucht einen Raumfeuchtesensor"
     },
     "abort": {
-      "single_instance_allowed": "Es kann nur ein Thriftherm konfiguriert werden",
       "celsius_only": "Thriftherm rechnet nur in °C. Bitte stell Home Assistant zuerst auf das metrische Einheitensystem um."
     }
   },
@@ -126,6 +130,7 @@
           "prices": "Preise",
           "boiler": "Gastherme und Gaszähler",
           "midea": "Wärmepumpe (optionales Zusatzmodul)",
+          "midea_tuning": "Wärmepumpe: Feineinstellung",
           "outdoor": "Außenbedingungen",
           "parameters": "Regelparameter",
           "rooms": "Räume",
@@ -170,20 +175,24 @@
           "boiler_circulation_l_h": "Nenn-Umlaufwassermenge der Pumpe",
           "gas_volume": "Gaszähler Volumen (m³, Gesamt)",
           "gas_flow": "Gaszähler Momentanfluss (m³/h)",
+          "boiler_nominal_input_kw": "Ohne Gaszähler: Nennwärmebelastung der Therme (Typenschild, kW)",
           "boiler_ebus_circuit": "ebusd-Kreis der Therme (meist bai)",
           "boiler_curve_flow_at_minus10": "Heizkurve: Vorlauf bei -10 °C außen",
           "boiler_curve_flow_at_plus15": "Heizkurve: Vorlauf bei +15 °C außen",
           "boiler_flow_min": "Minimale Vorlauftemperatur",
           "boiler_flow_max": "Maximale Vorlauftemperatur",
+          "boiler_heat_up_rate_k_h": "Aufheiztempo (Grad pro Stunde, 0 = aus)",
           "boiler_hot_water_standby": "Warmwasser bereithalten (Warmhalten der Kombitherme, Speicherladung)",
           "boiler_spread_min_room_share": "Anteil der Räume, die anfordern müssen, bevor die Spreizung die Kurve bewertet",
-          "boiler_load_model": "Eigene Heizkurve für einen Raum, wenige Räume und die Mehrheit",
+          "boiler_load_model": "Eigene Heizkurve je Raum, für einen Raum, wenige Räume und die Mehrheit",
           "boiler_allow_active_control": "Aktive Thermensteuerung freigeben (sonst nur planen)"
         },
         "data_description": {
+          "boiler_nominal_input_kw": "Nur für die beiden Sensoren „Gas für Heizung“ und „Gas für Warmwasser“, und nur gelesen, wenn oben kein Gaszähler eingetragen ist. Eine Vaillant-Therme summiert ihre Brennerleistung selbst auf (ebusd PrEnergySumHc1-3 und PrEnergySumHwc1-3); mit der Nennwärmebelastung vom Typenschild (Q oder Qn, bei einem Bereich der größere Wert, z. B. 22,2) werden daraus kWh wie auf der Gasrechnung. Leer lassen, wenn du einen Gaszähler oder eine andere Therme hast.",
           "boiler_hot_water_standby": "Aus: Bei aktiver Thermensteuerung heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist. Sie springt dann nicht mehr etwa einmal pro Stunde an, um ihren Wärmetauscher warm zu halten. Am Hahn kommt weiter warmes Wasser, nur etwas später. Eingeschaltet lassen, wenn ein Warmwasserspeicher angeschlossen ist: Er würde nicht mehr geladen. Von einem Nutzer gemeldet, an der Testanlage noch nicht gemessen.",
-          "boiler_spread_min_room_share": "Die Spreizung zwischen Vorlauf und Rücklauf sagt nur etwas über die Heizkurve, wenn genug Heizkörper Wärme abnehmen: Ein einzelner offener Heizkörper schickt das Wasser fast so warm zurück, wie es kam, und eine kleine Spreizung hat die Kurve dann fälschlich gesenkt. Fordern weniger Räume an als dieser Anteil der Räume, die gerade Wärme abnehmen können (aufgerundet, mindestens einer), zählt nur, ob die anfordernden Räume vorankommen. Räume, die nur mitheizen, werden nicht gezählt. 0,5 = die Hälfte der Räume.",
-          "boiler_load_model": "Welchen Vorlauf die Wohnung braucht, hängt davon ab, wie viele Heizkörper Wärme abnehmen. An: Thriftherm führt für drei Fälle (ein Raum fordert an, wenige, die Mehrheit) je eine eigene Korrektur der Heizkurve, und ein Lernschritt verändert nur den Fall, in dem er gemacht wurde. Was das Bad allein gelehrt hat, verstellt so nicht den Vorlauf für die ganze Wohnung. Ein Fall ohne eigenen Wert startet mit dem des nächstgelegenen. Ein Wert, der einige Stunden gepasst hat, gilt als gefunden und bewegt sich erst wieder, wenn die Räume länger etwas anderes zeigen. Aus: eine gemeinsame Korrektur für alle Fälle, wie bisher; sie behält, was sie gelernt hatte."
+          "boiler_spread_min_room_share": "Die Spreizung zwischen Vorlauf und Rücklauf sagt nur etwas über die Heizkurve, wenn genug Heizkörper Wärme abnehmen: Ein einzelner offener Heizkörper schickt das Wasser fast so warm zurück, wie es kam, und eine kleine Spreizung hat die Kurve dann fälschlich gesenkt. Fordern weniger Räume an als dieser Anteil der Räume, die gerade Wärme abnehmen können (aufgerundet, mindestens einer), zählt nur, ob die anfordernden Räume vorankommen. Räume, die nur mitheizen, werden nicht gezählt. 0,5 = die Hälfte der Räume. Für die Heizkurve je Lastfall sind mehr Räume als dieser Anteil die Mehrheit (0,5: drei von vier Räumen).",
+          "boiler_load_model": "Welchen Vorlauf die Wohnung braucht, hängt davon ab, wie viele Heizkörper Wärme abnehmen, und von jedem Heizkörper: Ein kleiner in einem kalten Raum braucht mehr als ein großer. An: Thriftherm führt für jeden Raum in drei Fällen (ein Raum fordert an, wenige, die Mehrheit) eine eigene Korrektur der Heizkurve. Von den Räumen, die Wärme wollen, bestimmt der den Vorlauf, der am meisten braucht; bei den anderen nehmen die Ventile weniger. Kommt ein Raum nicht hinterher, hebt er nur seinen eigenen Wert an. Was das Bad allein gelehrt hat, verstellt so nicht den Vorlauf für die ganze Wohnung. Ein Raum ohne eigenen Wert startet mit seinem Wert aus dem nächstgelegenen Fall. Ein Wert, der einige Stunden gepasst hat, gilt als gefunden und bewegt sich erst wieder, wenn die Räume länger etwas anderes zeigen. Aus: eine gemeinsame Korrektur für alle Räume und Fälle, wie bisher; sie behält, was sie gelernt hatte.",
+          "boiler_heat_up_rate_k_h": "Wie schnell ein Raum warm werden soll, wenn die Therme ihn heizt, bei jedem Aufheizen eines Raums, der 1 Grad oder mehr unter Soll liegt (nach dem Hochstellen, nach der Absenkung oder einem offenen Fenster). Geht es langsamer, hebt Thriftherm den Vorlauf für diesen Raum alle 20 Minuten an und merkt sich je Raum, wie viel nötig war, als Start fürs nächste Aufheizen; geht es deutlich schneller, senkt es ihn wieder. Mehr Tempo kostet mehr Gas. Wirkt nur bei aktiver Thermensteuerung. 0 lässt den Vorlauf wie bisher: Heizkurve, gelernte Korrektur und bis zu 8 Grad Zuschlag, solange ein Raum weit unter Soll ist."
         }
       },
       "midea": {
@@ -196,8 +205,58 @@
           "midea_outlet_temp": "Ausblaslufttemperatur",
           "midea_airflow_curve": "Luftmengenkennlinie (rpm:m³/h, ...)",
           "midea_duct_factor": "Schlauchfaktor (reale Luftmenge / frei ausblasend, 1,0 ohne Schläuche)",
-          "midea_follow_rooms": "Sollwert folgt der Solltemperatur der versorgten Räume (plus Sollwert-Abstand aus den Parametern); das Gerät regelt selbst",
+          "midea_follow_rooms": "Sollwert folgt der Solltemperatur der versorgten Räume (plus Sollwert-Abstand aus „Wärmepumpe: Feineinstellung“); das Gerät regelt selbst",
           "midea_room": "Raum, in dem die Wärmepumpe steht"
+        }
+      },
+      "midea_tuning": {
+        "title": "Wärmepumpe: Feineinstellung",
+        "description": "Wie die Wärmepumpe betrieben wird. Entitäten und Luftmenge stehen unter *Wärmepumpe*.",
+        "data": {
+          "midea_allow_active_control": "Aktive Steuerung freigeben (sonst nur planen)",
+          "midea_setpoint_offset_k": "Sollwert über der Solltemperatur der Räume, sonst über der Ansaugluft als gelernter Startwert",
+          "midea_min_outdoor_temp": "Minimale Außentemperatur für das Heizen (Datenblatt)",
+          "default_heat_rate_midea_k_h": "Start-Aufheizrate Wärmepumpen-Räume"
+        },
+        "sections": {
+          "switching": {
+            "name": "Wann sie läuft",
+            "data": {
+              "break_even_margin_on": "Aufschlag auf Break-even für Wechsel zur Wärmepumpe",
+              "break_even_margin_off": "Abschlag unter Break-even für Rückkehr zur Therme",
+              "midea_min_run_min": "Mindestlaufzeit",
+              "midea_min_off_min": "Mindestpause",
+              "midea_fan_run_on_min": "Lüfterbetrieb vor dem Ausschalten (0 = sofort aus)",
+              "midea_learning_runs": "Lernläufe erlauben (COP bei neuen Außentemperaturen messen)"
+            }
+          },
+          "drying": {
+            "name": "Bad-Trocknung",
+            "data": {
+              "drying_target_temp": "Solltemperatur",
+              "drying_abs_humidity_rise_g_m3": "Auslöser: Anstieg der absoluten Feuchte",
+              "drying_max_min": "Längste Dauer"
+            }
+          },
+          "cop": {
+            "name": "COP-Messung",
+            "data": {
+              "cop_warmup_s": "Warmlaufzeit nach Kompressorstart",
+              "cop_min_power_w": "Minimale elektrische Leistung",
+              "cop_min_delta_t_k": "Minimale Lufterwärmung",
+              "cop_min_samples": "Minimale Anzahl gültiger Messwerte",
+              "cop_settle_max_k_per_min": "Max. Anstieg der Ausblastemperatur (eingeschwungen)"
+            }
+          },
+          "icing": {
+            "name": "Abtauen und Vereisung",
+            "data": {
+              "icing_block_min": "Sperre nach Vereisung / Ineffizienz",
+              "defrost_coil_rise_k": "Defrost: Anstieg Außen-Coil innerhalb 2 min",
+              "defrost_max_cycles_90min": "Defrost: max. Zyklen je 90 min",
+              "icing_coil_depression_k": "Vereisung: Außen-Coil unter Außenluft um"
+            }
+          }
         }
       },
       "outdoor": {
@@ -210,47 +269,43 @@
       },
       "parameters": {
         "title": "Regelparameter",
+        "description": "Oben stehen die Werte für den Alltag. Die Abschnitte darunter muss man selten ändern.",
         "data": {
-          "sensor_max_age_min": "Max. Sensoralter",
-          "window_grace_s": "Karenzzeit Fenster offen",
-          "frost_protection_temp": "Frostschutztemperatur",
-          "away_temp": "Abwesenheitstemperatur",
-          "demand_full_delta_k": "Abweichung für 100 % Heizbedarf",
-          "trend_weight_h": "Trend-Vorausschau",
-          "internal_gain_threshold_w": "Schwelle interne Wärmegewinne",
-          "internal_gain_factor_per_w": "Bedarfsreduktion je W interner Gewinne",
-          "break_even_margin_on": "Aufschlag auf Break-even für Wechsel zur Wärmepumpe",
-          "break_even_margin_off": "Abschlag unter Break-even für Rückkehr zur Therme",
-          "midea_min_outdoor_temp": "Minimale Außentemperatur für Heizen mit der Wärmepumpe (Datenblatt)",
-          "midea_setpoint_offset_k": "Sollwert der Wärmepumpe über der Solltemperatur der Räume, sonst über der Ansaugluft als gelernter Startwert",
-          "cop_warmup_s": "COP-Warmlaufzeit nach Kompressorstart",
-          "cop_min_power_w": "COP: minimale elektrische Leistung",
-          "cop_min_delta_t_k": "COP: minimale Lufterwärmung",
-          "cop_min_samples": "COP: minimale Anzahl gültiger Messwerte",
-          "cop_settle_max_k_per_min": "COP: max. Anstieg Ausblastemperatur (eingeschwungen)",
-          "icing_block_min": "Sperre der Wärmepumpe nach Vereisung / Ineffizienz",
-          "defrost_coil_rise_k": "Defrost: Anstieg Außen-Coil innerhalb 2 min",
-          "defrost_max_cycles_90min": "Defrost: max. Zyklen je 90 min",
-          "icing_coil_depression_k": "Vereisung: Außen-Coil unter Außenluft um",
-          "drying_target_temp": "Bad-Trocknung (nur mit Wärmepumpe): Solltemperatur",
-          "drying_abs_humidity_rise_g_m3": "Bad-Trocknung (nur mit Wärmepumpe): Auslöser, Anstieg der absoluten Feuchte",
-          "drying_max_min": "Bad-Trocknung (nur mit Wärmepumpe): max. Dauer",
-          "away_dewpoint_margin_k": "Abwesend: Taupunktabstand für Feuchteschutz",
-          "preheat_margin_min": "Rückkehr-Vorheizung Sicherheitsreserve",
-          "default_heat_rate_radiator_k_h": "Start-Aufheizrate Heizkörperräume",
-          "default_heat_rate_midea_k_h": "Start-Aufheizrate Wärmepumpen-Räume",
           "override_default_min": "Wie lange eine Änderung von Hand gilt (Thermostat und Wärmepumpe)",
-          "midea_min_run_min": "Mindestlaufzeit Wärmepumpe",
-          "midea_min_off_min": "Mindestpause Wärmepumpe",
-          "midea_fan_run_on_min": "Wärmepumpe: Lüfterbetrieb vor dem Ausschalten (0 = sofort aus)",
           "boost_duration_min": "Dauer „Schnell aufheizen“",
-          "midea_learning_runs": "Lernläufe erlauben (COP bei neuen Außentemperaturen messen)",
-          "midea_allow_active_control": "Aktive Wärmepumpen-Steuerung freigeben (sonst nur planen)",
-          "room_allow_active_control": "Aktive Raumsteuerung freigeben (Sollwerte an die Thermostate schreiben)",
-          "room_echo_filter": "Echo-Filter für Better Thermostat (erweitert)"
+          "away_temp": "Abwesenheitstemperatur",
+          "frost_protection_temp": "Frostschutztemperatur"
         },
-        "data_description": {
-          "room_echo_filter": "Better Thermostat schreibt den Sollwert des Heizkörperthermostats alle paar Sekunden neu. Über Zigbee kann eine Antwort erst nach dem nächsten Schreiben ankommen, und Better Thermostat hält den alten Wert dann für einen Dreh am Thermostat. Thriftherm machte daraus bisher eine zweistündige Übersteuerung. Mit dem Filter wird ein Sprung zurück auf einen Wert, den das Thermostat in der letzten Minute schon hatte und wieder verlassen hat (z. B. 16 → 16,5 → 16), ignoriert und der geplante Sollwert erneut gesendet. Ein echter Dreh am Thermostat oder eine Änderung in der App bringt einen neuen Wert und wird weiter übernommen. Gilt nur für Räume, deren Thermostat ein Better Thermostat ist. Empfehlung: an."
+        "sections": {
+          "windows_preheat": {
+            "name": "Fenster und Vorheizen",
+            "data": {
+              "window_grace_s": "Karenzzeit Fenster offen",
+              "preheat_margin_min": "Rückkehr-Vorheizung Sicherheitsreserve",
+              "default_heat_rate_radiator_k_h": "Start-Aufheizrate Heizkörperräume"
+            }
+          },
+          "release": {
+            "name": "Freigaben",
+            "data": {
+              "room_allow_active_control": "Aktive Raumsteuerung freigeben (Sollwerte an die Thermostate schreiben)",
+              "room_echo_filter": "Echo-Filter für Better Thermostat"
+            },
+            "data_description": {
+              "room_echo_filter": "Better Thermostat schreibt den Sollwert des Heizkörperthermostats alle paar Sekunden neu. Über Zigbee kann eine Antwort erst nach dem nächsten Schreiben ankommen, und Better Thermostat hält den alten Wert dann für einen Dreh am Thermostat. Thriftherm machte daraus bisher eine zweistündige Übersteuerung. Mit dem Filter wird ein Sprung zurück auf einen Wert, den das Thermostat in der letzten Minute schon hatte und wieder verlassen hat (z. B. 16 → 16,5 → 16), ignoriert und der geplante Sollwert erneut gesendet. Ein echter Dreh am Thermostat oder eine Änderung in der App bringt einen neuen Wert und wird weiter übernommen. Gilt nur für Räume, deren Thermostat ein Better Thermostat ist. Empfehlung: an."
+            }
+          },
+          "expert": {
+            "name": "Für Fortgeschrittene",
+            "data": {
+              "demand_full_delta_k": "Abweichung für 100 % Heizbedarf",
+              "trend_weight_h": "Trend-Vorausschau",
+              "internal_gain_threshold_w": "Schwelle interne Wärmegewinne",
+              "internal_gain_factor_per_w": "Bedarfsreduktion je W interner Gewinne",
+              "sensor_max_age_min": "Max. Sensoralter",
+              "away_dewpoint_margin_k": "Abwesend: Taupunktabstand für Feuchteschutz"
+            }
+          }
         }
       },
       "rooms": {
@@ -276,7 +331,8 @@
           "setback_temp": "Absenktemperatur",
           "schedule_weekday": "Komfortzeiten Mo–Fr",
           "schedule_weekend": "Komfortzeiten Sa–So",
-          "bathroom_drying_mode": "Bad-Trocknung mit der Wärmepumpe (nach dem Duschen trotz Lüften weiterheizen)",
+          "bathroom_drying_mode": "Bad-Trocknung mit der Wärmepumpe",
+          "bathroom_drying_automatic": "Trocknung nach dem Duschen von selbst starten (aus: nur mit dem Knopf „Jetzt trocknen“)",
           "schedule_entity": "Zeitplan-Helfer (optional; ersetzt die Komfortfenster unten)"
         }
       },
@@ -296,7 +352,7 @@
       "invalid_schedule": "Ungültiger Zeitplan, Format HH:MM-HH:MM,HH:MM-HH:MM",
       "setback_above_comfort": "Absenktemperatur darf die Komforttemperatur nicht überschreiten",
       "duplicate_room": "Ein Raum mit diesem Namen existiert bereits",
-      "invalid_airflow_curve": "Ungültige Kennlinie, Format rpm:m3h,rpm:m3h",
+      "invalid_airflow_curve": "Ungültige Kennlinie. Mindestens zwei Punkte im Format rpm:m3h,rpm:m3h, jede Drehzahl und Luftmenge über 0 und keine Drehzahl doppelt",
       "no_scope": "Bitte mindestens einen Bereich wählen.",
       "curve_inverted": "Der Vorlauf bei -10 °C darf nicht niedriger sein als bei +15 °C",
       "boiler_entities_incomplete": "Entweder beide wählen, Vorlauf-Sollwert und Heizungs-Schalter, oder keinen",
@@ -326,8 +382,8 @@
     "learning_scope": {
       "options": {
         "boiler": "Therme: Heizkurven-Korrektur",
-        "heat_pump": "Wärmepumpe: COP-Kennfeld, Sollwert-Korrektur, Vereisungssperre",
-        "rooms": "Räume: Aufheizraten"
+        "heat_pump": "Wärmepumpe: COP-Kennfeld, Sollwert-Korrektur (eine Vereisungssperre bleibt)",
+        "rooms": "Räume: Aufheizraten, Auskühlkoeffizienten"
       }
     },
     "room_choice": {
@@ -410,7 +466,7 @@
         "name": "Günstigere Wärmequelle",
         "state": {
           "midea": "Wärmepumpe",
-          "boiler": "Gastherme",
+          "boiler": "Heizung",
           "unknown": "Unbekannt"
         },
         "state_attributes": {
@@ -424,6 +480,42 @@
       },
       "gas_energy": {
         "name": "Gasenergie"
+      },
+      "gas_energy_heating": {
+        "name": "Gas für Heizung",
+        "state_attributes": {
+          "source": {
+            "name": "Quelle",
+            "state": {
+              "gas_meter": "Gaszähler, nach dem Betrieb der Therme",
+              "boiler_counters": "Eigene Zähler der Therme (Schätzung)"
+            }
+          },
+          "hot_water_share_pct": {
+            "name": "Anteil Warmwasser %"
+          },
+          "unassigned_kwh": {
+            "name": "Nicht zugeordnet kWh (verbrannt, während niemand zusah)"
+          }
+        }
+      },
+      "gas_energy_hot_water": {
+        "name": "Gas für Warmwasser",
+        "state_attributes": {
+          "source": {
+            "name": "Quelle",
+            "state": {
+              "gas_meter": "Gaszähler, nach dem Betrieb der Therme",
+              "boiler_counters": "Eigene Zähler der Therme (Schätzung)"
+            }
+          },
+          "hot_water_share_pct": {
+            "name": "Anteil Warmwasser %"
+          },
+          "unassigned_kwh": {
+            "name": "Nicht zugeordnet kWh (verbrannt, während niemand zusah)"
+          }
+        }
       },
       "boiler_thermal_power_estimate": {
         "name": "Therme Wärmeleistung (Schätzung)",
@@ -453,7 +545,7 @@
       "active_source_advice": {
         "name": "Empfohlene Wärmequelle",
         "state": {
-          "boiler": "Gastherme",
+          "boiler": "Heizung",
           "midea": "Wärmepumpe",
           "both": "Beide",
           "none": "Keine"
@@ -551,10 +643,11 @@
               "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
               "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
-              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
               "frost_protection": "Frostschutz",
@@ -571,6 +664,7 @@
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
               "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
               "rooms_satisfied": "Räume warm ohne Bedarf",
@@ -610,7 +704,7 @@
               "frequent_defrost_cycles": "Häufige Abtauzyklen",
               "icing_lockout_active": "Vereisungssperre aktiv",
               "outdoor_coil_iced": "Außenregister vereist",
-              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
               "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
@@ -629,7 +723,8 @@
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
               "hot_water_recent": "Warmwasser kürzlich",
-              "no_heating_run": "Therme heizt gerade nicht"
+              "no_heating_run": "Therme heizt gerade nicht",
+              "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           },
           "quick_heat_up": {
@@ -746,10 +841,11 @@
               "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
               "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
-              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
               "frost_protection": "Frostschutz",
@@ -766,6 +862,7 @@
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
               "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
               "rooms_satisfied": "Räume warm ohne Bedarf",
@@ -805,7 +902,7 @@
               "frequent_defrost_cycles": "Häufige Abtauzyklen",
               "icing_lockout_active": "Vereisungssperre aktiv",
               "outdoor_coil_iced": "Außenregister vereist",
-              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
               "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
@@ -824,7 +921,8 @@
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
               "hot_water_recent": "Warmwasser kürzlich",
-              "no_heating_run": "Therme heizt gerade nicht"
+              "no_heating_run": "Therme heizt gerade nicht",
+              "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           },
           "blockers": {
@@ -847,10 +945,11 @@
               "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
               "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
-              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
               "frost_protection": "Frostschutz",
@@ -867,6 +966,7 @@
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
               "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
               "rooms_satisfied": "Räume warm ohne Bedarf",
@@ -906,7 +1006,7 @@
               "frequent_defrost_cycles": "Häufige Abtauzyklen",
               "icing_lockout_active": "Vereisungssperre aktiv",
               "outdoor_coil_iced": "Außenregister vereist",
-              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
               "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
@@ -925,11 +1025,15 @@
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
               "hot_water_recent": "Warmwasser kürzlich",
-              "no_heating_run": "Therme heizt gerade nicht"
+              "no_heating_run": "Therme heizt gerade nicht",
+              "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           },
           "eco_offset_k": {
-            "name": "Sollwert-Korrektur K"
+            "name": "Sollwert-Korrektur (Grad)"
+          },
+          "boiler_helps": {
+            "name": "Therme hilft einem Wärmepumpen-Raum"
           },
           "decision_cop": {
             "name": "Verwendeter COP"
@@ -1015,10 +1119,11 @@
               "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
               "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
-              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
               "frost_protection": "Frostschutz",
@@ -1035,6 +1140,7 @@
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
               "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
               "rooms_satisfied": "Räume warm ohne Bedarf",
@@ -1074,7 +1180,7 @@
               "frequent_defrost_cycles": "Häufige Abtauzyklen",
               "icing_lockout_active": "Vereisungssperre aktiv",
               "outdoor_coil_iced": "Außenregister vereist",
-              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
               "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
@@ -1093,7 +1199,8 @@
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
               "hot_water_recent": "Warmwasser kürzlich",
-              "no_heating_run": "Therme heizt gerade nicht"
+              "no_heating_run": "Therme heizt gerade nicht",
+              "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           },
           "blockers": {
@@ -1116,10 +1223,11 @@
               "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
               "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
-              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
               "frost_protection": "Frostschutz",
@@ -1136,6 +1244,7 @@
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
               "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
               "rooms_satisfied": "Räume warm ohne Bedarf",
@@ -1175,7 +1284,7 @@
               "frequent_defrost_cycles": "Häufige Abtauzyklen",
               "icing_lockout_active": "Vereisungssperre aktiv",
               "outdoor_coil_iced": "Außenregister vereist",
-              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
               "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
@@ -1194,17 +1303,18 @@
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
               "hot_water_recent": "Warmwasser kürzlich",
-              "no_heating_run": "Therme heizt gerade nicht"
+              "no_heating_run": "Therme heizt gerade nicht",
+              "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           },
           "heating_curve_flow": {
             "name": "Vorlauf nach Heizkurve °C"
           },
           "learned_offset_k": {
-            "name": "Gelernte Korrektur K"
+            "name": "Gelernte Korrektur (Grad)"
           },
           "flow_return_spread_k": {
-            "name": "Spreizung K"
+            "name": "Spreizung (Grad)"
           },
           "learning_phase": {
             "name": "Lernphase",
@@ -1268,10 +1378,11 @@
               "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
               "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
-              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
               "frost_protection": "Frostschutz",
@@ -1288,6 +1399,7 @@
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
               "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
               "rooms_satisfied": "Räume warm ohne Bedarf",
@@ -1327,7 +1439,7 @@
               "frequent_defrost_cycles": "Häufige Abtauzyklen",
               "icing_lockout_active": "Vereisungssperre aktiv",
               "outdoor_coil_iced": "Außenregister vereist",
-              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
               "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
@@ -1346,7 +1458,8 @@
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
               "hot_water_recent": "Warmwasser kürzlich",
-              "no_heating_run": "Therme heizt gerade nicht"
+              "no_heating_run": "Therme heizt gerade nicht",
+              "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           },
           "commands_sent": {
@@ -1369,19 +1482,19 @@
         },
         "state_attributes": {
           "heating_curve_offset_k": {
-            "name": "Heizkurven-Korrektur K"
+            "name": "Heizkurven-Korrektur (Grad)"
           },
           "heating_curve_level_k": {
-            "name": "Korrektur der Höhe K (bei jeder Außentemperatur)"
+            "name": "Korrektur der Höhe in Grad (bei jeder Außentemperatur)"
           },
           "heating_curve_slope_k": {
-            "name": "Korrektur der Steigung K (voll bei -10 °C)"
+            "name": "Korrektur der Steigung in Grad (voll bei -10 °C)"
           },
           "adjustments_last_24h": {
             "name": "Änderungen in 24 h"
           },
           "moved_last_24h_k": {
-            "name": "Verstellt in 24 h K (auf und ab zusammen)"
+            "name": "Verstellt in 24 h in Grad (auf und ab zusammen)"
           },
           "last_adjustment_reason": {
             "name": "Letzte Änderung weil",
@@ -1400,10 +1513,11 @@
               "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
               "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
-              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
               "frost_protection": "Frostschutz",
@@ -1420,6 +1534,7 @@
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
               "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
               "rooms_satisfied": "Räume warm ohne Bedarf",
@@ -1459,7 +1574,7 @@
               "frequent_defrost_cycles": "Häufige Abtauzyklen",
               "icing_lockout_active": "Vereisungssperre aktiv",
               "outdoor_coil_iced": "Außenregister vereist",
-              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
               "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
@@ -1478,7 +1593,8 @@
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
               "hot_water_recent": "Warmwasser kürzlich",
-              "no_heating_run": "Therme heizt gerade nicht"
+              "no_heating_run": "Therme heizt gerade nicht",
+              "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           },
           "held_back_because": {
@@ -1498,10 +1614,11 @@
               "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
               "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
-              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
               "frost_protection": "Frostschutz",
@@ -1518,6 +1635,7 @@
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
               "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
               "rooms_satisfied": "Räume warm ohne Bedarf",
@@ -1557,7 +1675,7 @@
               "frequent_defrost_cycles": "Häufige Abtauzyklen",
               "icing_lockout_active": "Vereisungssperre aktiv",
               "outdoor_coil_iced": "Außenregister vereist",
-              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
               "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
@@ -1576,11 +1694,12 @@
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
               "hot_water_recent": "Warmwasser kürzlich",
-              "no_heating_run": "Therme heizt gerade nicht"
+              "no_heating_run": "Therme heizt gerade nicht",
+              "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           },
           "flow_return_spread_k": {
-            "name": "Spreizung K"
+            "name": "Spreizung (Grad)"
           },
           "calling_rooms": {
             "name": "Anfordernde Räume"
@@ -1603,8 +1722,17 @@
               "majority": "Die meisten Räume"
             }
           },
+          "flow_set_by": {
+            "name": "Raum, der den Vorlauf bestimmt"
+          },
+          "heat_up_extra_k": {
+            "name": "Aufheiz-Zuschlag je Raum in Grad (gilt beim Aufheizen, sonst Startwert fürs nächste)"
+          },
+          "rooms_heating_up": {
+            "name": "Räume, die mit Zuschlag aufheizen"
+          },
           "curve_by_load": {
-            "name": "Heizkurven-Korrektur je Lastfall"
+            "name": "Heizkurven-Korrektur je Lastfall und Raum"
           },
           "paused_because": {
             "name": "Pausiert weil"
@@ -1622,7 +1750,7 @@
             "name": "Auskühlkoeffizienten der Räume (1/h)"
           },
           "room_heating_power_k_h": {
-            "name": "Heizleistung je Raum (K/h, ohne Verluste)"
+            "name": "Heizleistung je Raum (Grad pro Stunde, ohne Verluste)"
           },
           "cop_bins": {
             "name": "COP-Datenpunkte"
@@ -1637,7 +1765,7 @@
             }
           },
           "midea_eco_offset_k": {
-            "name": "Sollwert-Korrektur Wärmepumpe K"
+            "name": "Sollwert-Korrektur Wärmepumpe (Grad)"
           },
           "last_reset": {
             "name": "Zuletzt zurückgesetzt"
@@ -1685,10 +1813,11 @@
               "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
               "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
-              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
               "frost_protection": "Frostschutz",
@@ -1705,6 +1834,7 @@
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
               "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
               "rooms_satisfied": "Räume warm ohne Bedarf",
@@ -1744,7 +1874,7 @@
               "frequent_defrost_cycles": "Häufige Abtauzyklen",
               "icing_lockout_active": "Vereisungssperre aktiv",
               "outdoor_coil_iced": "Außenregister vereist",
-              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
               "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
@@ -1763,7 +1893,8 @@
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
               "hot_water_recent": "Warmwasser kürzlich",
-              "no_heating_run": "Therme heizt gerade nicht"
+              "no_heating_run": "Therme heizt gerade nicht",
+              "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           }
         }
@@ -1821,10 +1952,11 @@
               "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
               "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
-              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
               "frost_protection": "Frostschutz",
@@ -1841,6 +1973,7 @@
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
               "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
               "rooms_satisfied": "Räume warm ohne Bedarf",
@@ -1880,7 +2013,7 @@
               "frequent_defrost_cycles": "Häufige Abtauzyklen",
               "icing_lockout_active": "Vereisungssperre aktiv",
               "outdoor_coil_iced": "Außenregister vereist",
-              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
               "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
@@ -1899,7 +2032,8 @@
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
               "hot_water_recent": "Warmwasser kürzlich",
-              "no_heating_run": "Therme heizt gerade nicht"
+              "no_heating_run": "Therme heizt gerade nicht",
+              "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           }
         }
@@ -1938,10 +2072,11 @@
               "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
               "drying_active": "Trocknet",
               "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+              "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
               "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
-              "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+              "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
               "frost_protection": "Frostschutz",
@@ -1958,6 +2093,7 @@
               "spread_large": "Spreizung groß",
               "short_cycling": "Therme taktet",
               "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+              "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
               "rooms_slow": "Räume heizen langsam auf",
               "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
               "rooms_satisfied": "Räume warm ohne Bedarf",
@@ -1997,7 +2133,7 @@
               "frequent_defrost_cycles": "Häufige Abtauzyklen",
               "icing_lockout_active": "Vereisungssperre aktiv",
               "outdoor_coil_iced": "Außenregister vereist",
-              "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+              "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
               "in_sync": "Stimmt überein",
               "waiting_for_thermostat": "Wartet auf das Thermostat",
               "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an",
@@ -2016,7 +2152,8 @@
               "setpoint_recently_changed": "Sollwert kürzlich geändert",
               "boiler_control_not_active": "Thermensteuerung nicht aktiv",
               "hot_water_recent": "Warmwasser kürzlich",
-              "no_heating_run": "Therme heizt gerade nicht"
+              "no_heating_run": "Therme heizt gerade nicht",
+              "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           },
           "started_ts": {
@@ -2033,7 +2170,7 @@
         "name": "Betriebsmodus",
         "state": {
           "auto": "Automatik",
-          "boiler_only": "Nur Therme",
+          "boiler_only": "Nur Heizung",
           "midea_only": "Nur Wärmepumpe",
           "off": "Sommerbetrieb",
           "away": "Abwesend"
@@ -2096,6 +2233,9 @@
       },
       "room_boost": {
         "name": "Schnell aufheizen"
+      },
+      "room_drying": {
+        "name": "Jetzt trocknen"
       }
     },
     "number": {

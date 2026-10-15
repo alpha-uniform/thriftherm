@@ -15,7 +15,7 @@ def test_break_even_formula():
 
 def test_cost_symmetry_at_break_even():
     be = eco.break_even_cop(PRICES)
-    assert eco.heat_pump_cost_per_kwh_thermal(PRICES, be) == pytest.approx(eco.gas_cost_per_kwh_thermal(PRICES))
+    assert eco.heat_pump_cost_per_kwh_thermal(PRICES, be) == pytest.approx(eco.heat_cost_per_kwh_thermal(PRICES))
 
 
 def test_gas_energy_conversion():
@@ -49,7 +49,7 @@ def test_invalid_prices_raise():
     with pytest.raises(ValueError):
         eco.break_even_cop(Prices(0.3, 0.0, 0.84, 11.0, 0.94))
     with pytest.raises(ValueError):
-        eco.gas_cost_per_kwh_thermal(Prices(0.3, 0.09, 0.0, 11.0, 0.94))
+        eco.heat_cost_per_kwh_thermal(Prices(0.3, 0.09, 0.0, 11.0, 0.94))
 
 
 def test_a_gas_price_of_0_without_a_central_source_is_no_division_by_zero():

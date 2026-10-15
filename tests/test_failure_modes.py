@@ -274,7 +274,7 @@ async def test_a_failing_cycle_logs_its_traceback_once(hass: HomeAssistant, monk
 # ------------------------------------------------------------------ restart
 def test_boiler_timers_survive_a_restart():
     mem = boiler_control.BoilerMemory(
-        offset_k=1.5, state="heat", state_since_ts=1_000_000.0, last_flow=35.0, last_flow_ts=1_000_050.0,
+        offset_k=1.5, state="heat", state_since_ts=1_000_000.0, last_flow=35.0,
         ramp_from=30.0, ramp_since_ts=999_900.0, hot_water_seen_ts=999_000.0, last_send_ts=1_000_060.0,
         samples=12, spread_ema=9.0,
     )
@@ -299,6 +299,7 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
             "offset_k": "warm", "adjustments": [1.0, "x", None, *range(2, 14)], "last_adjust_reason": 5, "state": "block",
             "last_flow": "35", "ramp_from": [], "burns": [[1, 61], ["a", 5], [9, 3], "x", [100, 160, 7]], "slope_k": "steep",
             "burn_starts": [1, 2], "burn_durations": [60],  # written by 0.5.4 and earlier: ignored
+            "last_flow_ts": 5.0, "burn_since_ts": 7.0,  # written up to 0.6.0b2: ignored
         }
     )
     assert boiler.offset_k == 0.0 and boiler.last_adjust_reason is None and boiler.state == "block"
@@ -308,20 +309,21 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
     assert boiler_control.BoilerMemory.from_storage({"offset_k": None}).offset_k == 0.0
     assert list(boiler.to_storage()) == [
         "offset_k", "slope_k", "adjustments", "adjustment_steps", "last_adjust_reason", "state", "state_since_ts",
-        "last_flow", "last_flow_ts",
-        "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "burn_since_ts", "burns", "lines",
+        "last_flow", "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "burns", "lines", "heat_up",
     ]
+    assert boiler.burn_since_ts is None  # a burn in progress does not outlast a restart
 
     control = ControlMemory(offset_k=1.5, learning_bins=((2, 10.0),), running_since_ts=5.0, last_hvac_mode="heat", last_target=21.0)
     assert control.to_storage() == {
         "offset_k": 1.5, "learning_bins": [[2, 10.0]], "manual_until_ts": None, "running_since_ts": 5.0, "stopped_since_ts": None,
         "last_command_ts": None, "last_hvac_mode": "heat", "last_target": 21.0, "learning_until_ts": None, "last_offset_review_ts": None,
-        "fan_until_ts": None, "manual_by": None,
+        "fan_until_ts": None, "manual_by": None, "fan_turned_up_from": None, "fan_turned_up_to": None,
+        "lagging_since_ts": None, "boiler_helps": False,
     }
     assert list(control.to_storage()) == [
         "offset_k", "learning_bins", "manual_until_ts", "manual_by", "running_since_ts", "stopped_since_ts",
         "last_command_ts", "last_hvac_mode", "last_target", "learning_until_ts", "last_offset_review_ts",
-        "fan_until_ts",
+        "fan_until_ts", "fan_turned_up_from", "fan_turned_up_to", "lagging_since_ts", "boiler_helps",
     ]
     assert ControlMemory.from_storage({"last_target": "21.5", "learning_bins": [[1], ["x", 2], [3, "4"]]}) == ControlMemory(
         last_target=21.5, learning_bins=((3, 4.0),)
@@ -450,16 +452,22 @@ def test_restore_keeps_only_allowed_modes_and_valid_values():
         good,
         {
             "mode": "away", "control_mode": "off", "boiler_control_mode": "active", "room_control_mode": "off",
-            "midea_block_until": "123.5", "away_return_ts": 0, "away_return_provisional": True,
+            "midea_block_until": "123.5", "midea_block_reason": "sustained_inefficiency",
+            "away_return_ts": 0, "away_return_provisional": True,
             "overrides": {"a": {"target": "20", "until_ts": future}, "b": {"target": 20, "until_ts": 1.0}, "c": {"until_ts": future}, "d": "x"},
             "boosts": {"a": future, "b": 1.0, "c": "x"},
             "room_temps": {"a": {"comfort": "21", "setback": "x", "other": 1}, "b": "x"},
             "room_ctrl_memory": {"a": {"last_sent_target": 21}},
             "last_learning_reset": "x",
+            "last_cheaper": "midea", "preheat_latch": {"a": future, "b": 1.0, "c": "x", "gone": future},
         },
     )
+    # what a decision leans on from one cycle to the next: the hysteresis of the cost comparison,
+    # and a pre-heating that has begun (only for rooms that still exist and starts still to come)
+    assert good._last_cheaper == "midea" and good._preheat_latch == {"a": future}
     assert (good.mode, good.control_mode, good.boiler_control_mode, good.room_control_mode) == ("away", "off", "active", "off")
     assert good.heat_pump_tracker.block_until == 123.5 and good.away_return_ts is None
+    assert good.heat_pump_tracker.block_reason == "sustained_inefficiency"  # it ends in "heat pump only"
     assert good.away_return_provisional is False  # provisional without a return means nothing
     assert list(good.overrides) == ["a"] and good.overrides["a"].target == 20.0
     assert good.boosts == {"a": future}
@@ -472,8 +480,8 @@ def test_restore_keeps_only_allowed_modes_and_valid_values():
     persistence.restore(bad, {"mode": "party", "control_mode": "active", "boiler_control_mode": None, "room_control_mode": "active"})
     assert (bad.mode, bad.control_mode, bad.boiler_control_mode, bad.room_control_mode) == ("auto", "shadow", "shadow", "shadow")
     no_heat_pump = coord()
-    persistence.restore(no_heat_pump, {"mode": "midea_only"})
-    assert no_heat_pump.mode == "auto"
+    persistence.restore(no_heat_pump, {"mode": "midea_only", "last_cheaper": "anything"})
+    assert no_heat_pump.mode == "auto" and no_heat_pump._last_cheaper is None and no_heat_pump._preheat_latch == {}
 
 
 async def test_away_without_a_return_time_keeps_a_planned_one(hass: HomeAssistant) -> None:
@@ -542,7 +550,8 @@ async def test_a_cycling_boiler_still_counts_as_heating(hass: HomeAssistant) -> 
 
 
 STORED_KEYS = (
-    "cop_map", "heat_rates", "cool_rates", "midea_block_until", "overrides", "away_return_ts", "away_return_provisional", "mode",
+    "cop_map", "heat_rates", "cool_rates", "midea_block_until", "midea_block_reason", "overrides", "away_return_ts",
+    "away_return_provisional", "mode",
     "control_mode", "control_memory", "boosts", "boiler_control_mode", "boiler_memory", "room_control_mode",
     "room_temps", "room_ctrl_memory", "learning_basis", "last_learning_reset",
 )
@@ -552,7 +561,9 @@ NESTED_GARBAGE = {
     "cool_rates": {"badezimmer": [1, "x"]},
     "overrides": {"badezimmer": 5},
     "control_memory": {"learning_bins": 3, "running_since_ts": "x"},
-    "boiler_memory": {"adjustments": 5, "burn_starts": "x", "burn_durations": 7, "offset_k": "y"},
+    "boiler_memory": {
+        "adjustments": 5, "burn_starts": "x", "burn_durations": 7, "offset_k": "y", "heat_up": {"kuche": "x", "bad": [1]},
+    },
     "room_temps": {"badezimmer": [21]},
     "room_ctrl_memory": {"badezimmer": [1]},
 }

@@ -2,8 +2,8 @@
 
 Away mode holds every room at the away temperature and pre-heats them so the
 comfort temperature is reached when you get back. That only works if the
-integration knows when "back" is, so the time is an entity of its own rather
-than a service argument.
+integration knows when "back" is, so the time is an entity of its own as well
+as an argument of the action `set_away`.
 """
 
 from __future__ import annotations

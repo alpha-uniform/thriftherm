@@ -25,6 +25,8 @@ OBJECT_IDS: Final[dict[str, dict[str, str]]] = {
         "cheaper_source": "cheaper_heat_source",
         "gas_power": "gas_power",
         "gas_energy": "gas_energy",
+        "gas_energy_heating": "gas_for_heating",
+        "gas_energy_hot_water": "gas_for_hot_water",
         "boiler_thermal_power_estimate": "boiler_thermal_power_estimate",
         "boiler_delta_t": "boiler_flow_return_spread",
         "boiler_burner_share": "boiler_burner_share",
@@ -66,6 +68,7 @@ OBJECT_IDS: Final[dict[str, dict[str, str]]] = {
     },
     "button": {
         "room_boost": "quick_heat_up",
+        "room_drying": "dry_now",
         "resume_automatic": "back_to_automatic",
     },
     "datetime": {

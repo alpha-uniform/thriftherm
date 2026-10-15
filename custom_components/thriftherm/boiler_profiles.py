@@ -31,7 +31,7 @@ class BoilerProfile:
     name: str  # shown to the user, e.g. in the setup summary
     circuit: str  # ebusd circuit the boiler usually appears on
     roles: Mapping[str, tuple[str, str]]  # config key -> (ebusd message, field)
-    fast_messages: tuple[str, ...]  # polled with high priority, read directly while gas burns
+    fast_messages: tuple[str, ...]  # polled with high priority; read directly while gas burns, all the time without a gas meter
     setmode_message: str  # takes the flow temperature and heating block
     heating_states: frozenset[int] = frozenset()  # status codes while the burner serves the heating circuit
     hot_water_states: frozenset[int] = frozenset()  # status codes while it makes hot water
@@ -63,8 +63,11 @@ PROFILES: dict[str, BoilerProfile] = {
                 CONF_BOILER_STATE_NUMBER: ("Statenumber", "value"),  # the S.xx display code
                 CONF_BOILER_HWC_MODE: ("Status02", "hwcmode"),
             },
-            # ebusd reads its ~80 boiler values one after another, every 5 s, so flow and
-            # return arrive only every seven minutes. These drive hot-water detection and learning.
+            # ebusd reads its boiler values one after another, one every few seconds: with the
+            # ~80 of the default configuration flow and return arrive only about every eight minutes.
+            # These drive hot-water detection and learning. With priority they come five times
+            # at 30 s spacing between two rounds of the rest (measured 2026-10-12, 35 others: a
+            # 4-minute pause), so a shorter list still helps: see the setup guide, section 2.5.
             fast_messages=("FlowTemp", "ReturnTemp", "Status01", "WP", "Statenumber"),
             setmode_message="SetMode",
             # S.1–S.4 fan start, ignition, burner on for heating; S.10–S.17 tapping, S.20–S.27

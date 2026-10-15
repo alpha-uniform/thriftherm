@@ -542,7 +542,7 @@ async def test_our_start_is_ours_and_a_person_at_the_heat_pump_is_respected_and_
     await _cycle(hass, coordinator, freezer)
     assert _command(hass) == ("heat", "mode_midea_only", None)
     await _set(hass, "climate.midea", 26.0, Context(user_id=hass_admin_user.id))
-    await _cycle(hass, coordinator, freezer, 5)  # no waiting for a person
+    await hass.async_block_till_done()  # no waiting for a person, not even for the next cycle
     assert _command(hass) == ("hands_off", "manual_takeover", "person")
     until = hass.states.get("sensor.thriftherm_heat_pump_command").attributes["manual_until_ts"]
     assert until == pytest.approx(dt_util.utcnow().timestamp() + 7200, abs=1)
@@ -620,3 +620,25 @@ async def test_who_asked_for_an_override_survives_a_restart_and_nonsense_does_no
     coordinator.overrides.clear()
     persistence.restore(coordinator, stored)
     assert coordinator.overrides["badezimmer"].by is None
+
+
+async def test_a_setpoint_changed_by_hand_shows_as_an_override_at_once(hass, freezer, hass_admin_user) -> None:
+    coordinator, bath, _ = await _setup(hass, freezer)
+    await _cycle(hass, coordinator, freezer, 600)
+    freezer.tick(timedelta(seconds=5))
+    await _set(hass, "climate.bath", 23.0, Context(user_id=hass_admin_user.id))
+    await hass.async_block_till_done()  # no cycle of ours in between: the change itself starts one
+    assert coordinator.overrides["badezimmer"].by == "person"
+    shown = hass.states.get("sensor.thriftherm_badezimmer_target_temperature")
+    assert float(shown.state) == 23.0 and shown.attributes["reason"] == "override"
+    assert shown.attributes["override_until_ts"] == pytest.approx(dt_util.utcnow().timestamp() + 7200, abs=2)
+
+    freezer.tick(timedelta(minutes=10))
+    cycles = []
+    coordinator.async_add_listener(lambda: cycles.append(1))
+    bath.at_the_device(current_temperature=19.2)  # a reading alone starts nothing
+    await hass.async_block_till_done()
+    assert cycles == []
+    bath.at_the_device(target=24.0)  # the knob does
+    await hass.async_block_till_done()
+    assert cycles and coordinator.overrides["badezimmer"].target == 24.0

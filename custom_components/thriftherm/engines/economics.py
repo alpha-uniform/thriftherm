@@ -54,11 +54,6 @@ def heat_cost_per_kwh_thermal(prices: Prices) -> float:
     return prices.gas_eur_kwh / prices.boiler_efficiency
 
 
-def gas_cost_per_kwh_thermal(prices: Prices) -> float:
-    """Backwards-compatible alias kept for callers that predate district heating."""
-    return heat_cost_per_kwh_thermal(prices)
-
-
 def heat_pump_cost_per_kwh_thermal(prices: Prices, cop: float | None) -> float | None:
     if cop is None or cop <= 0:
         return None

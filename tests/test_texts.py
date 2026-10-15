@@ -50,6 +50,12 @@ def test_reason_rendering_per_language() -> None:
     assert de[3] == "COP unbekannt (Luftmenge nicht kalibriert): vorerst Heizung"
 
 
+def test_a_heat_pump_that_runs_through_is_named_with_its_setpoint() -> None:
+    item = [reason("heat_pump_runs_through", target_c=22.0)]
+    assert texts.render_reasons(item, "de", {}) == ["Wärmepumpe läuft durch, Sollwert 22,0 °C"]
+    assert texts.render_reasons(item, "en", {}) == ["heat pump runs through, setpoint 22.0 °C"]
+
+
 def test_unknown_code_does_not_break() -> None:
     assert texts.render_reasons([reason("something_new")], "de", {}) == ["something new"]
 

@@ -33,6 +33,7 @@ from .const import (
     DEFAULT_BOILER_CURVE_WARM,
     DEFAULT_HEAT_PUMP_DUCT_FACTOR,
 )
+from .engines.common import as_float
 
 SCOPE_BOILER = "boiler"
 SCOPE_HEAT_PUMP = "heat_pump"
@@ -52,10 +53,8 @@ def _fingerprint(values: Mapping[str, Any]) -> str:
 
 
 def _as_float(value: Any, default: float) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
+    number = as_float(value)
+    return default if number is None else number
 
 
 def basis(config: Mapping[str, Any]) -> dict[str, str]:

@@ -27,7 +27,8 @@ def _run(snap, cop_value=None, gates=("airflow_curve_not_calibrated",), current=
     mid = heat_pump_engine.evaluate(snap.heat_pump, PARAMS)
     cop = CopResult(cop_value, cop_value, None, mid.electrical_power_w, None, 20 if cop_value else 0, () if cop_value else gates)
     econ = economics.evaluate(PRICES, cop_value, PARAMS.break_even_margin_on, PARAMS.break_even_margin_off, current)
-    return advisor.advise(snap, rooms, econ, cop, mid, boil, saf)
+    calls = frozenset(key for key, room in rooms.items() if (room.demand or 0.0) > advisor.DEMAND_THRESHOLD)
+    return advisor.advise(snap, rooms, econ, cop, mid, boil, saf, boiler_calls=calls)
 
 
 def test_heat_pump_chosen_when_cop_good(two_rooms):

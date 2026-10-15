@@ -1,6 +1,7 @@
 """Thriftherm – demand-driven heating for Home Assistant.
 
-Plans (and, once released, controls) an own gas boiler over ebusd, an optional
+Plans (and, once released, controls) an own gas boiler (over ebusd, or through
+two entities), an optional
 air-to-air heat pump and the room thermostats. Every controller starts in plan
 only mode and writes nothing until active control is released and selected.
 """
@@ -18,6 +19,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -163,12 +165,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
     entry.runtime_data = coordinator
     # Room devices point at the hub via via_device_id. Platforms load concurrently, so the
     # hub must exist before any of them, or a room device registered first loses the link.
+    # Its firmware field shows the installed version: which package runs was not to be seen anywhere.
+    integration = await async_get_integration(hass, DOMAIN)
     dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
         name="Thriftherm",
         manufacturer="Thriftherm",
         model="Heating control",
+        sw_version=str(integration.version) if integration.version else None,
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _remove_stale_registry_entries(hass, entry, coordinator)

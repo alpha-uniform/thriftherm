@@ -797,7 +797,7 @@ async def test_entity_ids_are_english_on_a_german_installation(hass: HomeAssista
     assert boost is not None
     assert boost.attributes["friendly_name"].endswith("Schnell aufheizen")  # still German to read
     assert hass.states.get("select.thriftherm_heat_pump_control") is not None
-    assert hass.states.get("binary_sensor.thriftherm_badezimmer_drying_mode") is not None
+    assert hass.states.get("binary_sensor.thriftherm_badezimmer_window_open") is not None
     assert hass.states.get("number.thriftherm_wohnzimmer_comfort_temperature") is not None
     ours = [s.entity_id for s in hass.states.async_all() if s.entity_id.split(".", 1)[1].startswith("thriftherm_")]
     german = ("steuerung", "trocknungsmodus", "aufheizen", "solltemperatur", "komfort", "absenk", "fenster", "heizen")
@@ -860,6 +860,27 @@ async def test_devices_and_entities_of_removed_rooms_are_cleaned_up(hass: HomeAs
     device = dev_reg.async_get(gone.id)
     assert device is None or entry.entry_id not in device.config_entries
     assert hass.states.get("sensor.thriftherm_badezimmer_target_temperature") is not None  # live rooms untouched
+
+
+async def test_a_room_gets_no_entity_for_what_it_does_not_have(hass: HomeAssistant) -> None:
+    """They stayed unknown for good: a window sensor without contacts, a dew point without humidity, a drying nobody chose."""
+    from homeassistant.helpers import entity_registry as er
+
+    entry = await _setup(hass)  # the bathroom has a window contact and a humidity sensor, the living room neither
+    ent_reg = er.async_get(hass)
+    assert hass.states.get("binary_sensor.thriftherm_badezimmer_window_open") is not None
+    assert ent_reg.async_get("sensor.thriftherm_badezimmer_dew_point") is not None  # off by default, but there
+    assert hass.states.get("binary_sensor.thriftherm_wohnzimmer_window_open") is None
+    assert ent_reg.async_get("sensor.thriftherm_wohnzimmer_dew_point") is None
+    assert ent_reg.async_get("sensor.thriftherm_wohnzimmer_absolute_humidity") is None
+    assert hass.states.get("binary_sensor.thriftherm_badezimmer_drying_mode") is None  # the drying mode is not switched on
+    assert hass.states.get("binary_sensor.thriftherm_wohnzimmer_heating_allowed") is not None  # what every room has stays
+
+    # entities an older version had created for such rooms go with the next start
+    old = ent_reg.async_get_or_create("binary_sensor", DOMAIN, f"{entry.entry_id}_wohnzimmer_window_open", config_entry=entry)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert ent_reg.async_get(old.entity_id) is None
 
 
 async def test_options_heat_pump_step_keeps_the_room_after_a_validation_error(hass: HomeAssistant) -> None:
@@ -984,6 +1005,25 @@ async def test_flow_and_return_are_kept_fresh_on_the_bus(hass: HomeAssistant) ->
     assert not publish  # burner off: ebusd's own polling is enough
     await coordinator._async_keep_boiler_readings_fresh(0.0, now + 700)
     assert [c.data["payload"] for c in publish] == ["?1"] * 5  # priority renewed: survives an ebusd restart
+
+
+async def test_without_a_gas_meter_the_boiler_values_are_read_all_the_time(hass: HomeAssistant) -> None:
+    """Nothing else tells that the burner started, and ebusd's polling pauses for minutes."""
+    publish = async_mock_service(hass, "mqtt", "publish")
+    coordinator = (await _setup(hass)).runtime_data
+    now = coordinator._ebus_read_ts
+    publish.clear()
+    await coordinator._async_keep_boiler_readings_fresh(None, now + 61)
+    assert [(c.data["topic"], c.data["payload"]) for c in publish] == [
+        ("ebusd/bai/FlowTemp/get", ""),
+        ("ebusd/bai/ReturnTemp/get", ""),
+        ("ebusd/bai/Status01/get", ""),
+        ("ebusd/bai/WP/get", ""),
+        ("ebusd/bai/Statenumber/get", ""),
+    ]
+    publish.clear()
+    await coordinator._async_keep_boiler_readings_fresh(None, now + 90)
+    assert not publish  # at most once a minute here too
 
 
 async def test_a_flapping_ebus_signal_does_not_stop_the_boiler_control(hass: HomeAssistant, freezer) -> None:
@@ -1281,6 +1321,33 @@ async def test_the_curve_per_load_class_is_shown_recorded_and_kept(hass: HomeAss
     assert len(entry.runtime_data.load_log) >= len(stored["boiler_load_log"])
 
 
+async def test_hot_water_within_the_hour_does_not_switch_the_whole_learning_off(hass: HomeAssistant, monkeypatch) -> None:
+    """The hour is for the spread to settle; the boiler control holds the spread back itself.
+
+    With the learning switched off for it, a combi boiler with its hourly keep-warm never learned.
+    """
+    import time
+
+    from custom_components.thriftherm import coordinator as coordinator_module
+
+    async_mock_service(hass, "mqtt", "publish")
+    entry = await _setup(hass, options={"boiler_allow_active_control": True})
+    coordinator = entry.runtime_data
+    coordinator.set_boiler_control_mode("active")
+    allowed: list[bool] = []
+    decide = coordinator_module.boiler_control.decide
+
+    def watched(inp, mem):
+        allowed.append(inp.learning_allowed)
+        return decide(inp, mem)
+
+    monkeypatch.setattr(coordinator_module.boiler_control, "decide", watched)
+    coordinator._last_target_change_ts = 0.0  # no setpoint moved lately
+    coordinator.boiler_memory = replace(coordinator.boiler_memory, hot_water_seen_ts=time.time() - 600)
+    await coordinator.async_refresh()
+    assert allowed[-1] is True, coordinator.data["learning_blocked_by"]
+
+
 # ---- a boiler addressed through entities instead of ebusd (e.g. OpenTherm on an ESP) -----
 
 ENTITY_BOILER = {
@@ -1409,6 +1476,35 @@ async def test_the_boiler_is_handed_back_when_the_entry_is_unloaded(hass: HomeAs
     assert [c[0] for c in calls] == ["set_value", "turn_on"]
 
 
+async def test_the_final_hand_back_comes_after_a_block_that_is_under_way(hass: HomeAssistant) -> None:
+    """Review finding C10: a cycle that was writing a block when Home Assistant stopped left it behind for good."""
+    import asyncio
+
+    _entity_boiler(hass)
+    coordinator = (await _setup(hass, options=ENTITY_BOILER)).runtime_data
+    coordinator.set_boiler_control_mode("active")
+    hass.states.async_set("sensor.bath_temp", "22.0")
+    hass.states.async_set("sensor.living_temp", "20.0")
+    coordinator.boiler_memory = replace(coordinator.boiler_memory, state="block", state_since_ts=0.0)
+    switching, switched = asyncio.Event(), asyncio.Event()
+
+    async def slow_turn_off(call) -> None:  # the gateway takes its time
+        switching.set()
+        await switched.wait()
+        hass.states.async_set(call.data["entity_id"], "off")
+
+    hass.services.async_register("homeassistant", "turn_off", slow_turn_off)
+    cycle = hass.async_create_task(coordinator.async_refresh())
+    await switching.wait()  # the cycle is switching the heating off
+    release = hass.async_create_task(coordinator.async_release_boiler(final=True))
+    await asyncio.wait([release], timeout=0.2)  # without waiting for the cycle, the hand-back is done by now
+    switched.set()
+    await cycle
+    await release
+    assert hass.states.get("switch.boiler_heating").state == "on"
+    assert float(hass.states.get("input_number.boiler_flow").state) == 60.0
+
+
 async def test_a_failing_evaluation_does_not_leave_the_heating_blocked(hass: HomeAssistant) -> None:
     calls = _entity_boiler(hass)
     entry = await _blocked_entity_boiler(hass, calls)
@@ -1446,6 +1542,92 @@ async def test_entities_the_control_never_commanded_are_left_alone(hass: HomeAss
     assert calls == [] and hass.states.get("switch.boiler_heating").state == "off"
 
 
+async def test_a_heating_switched_off_after_the_hand_back_stays_off(hass: HomeAssistant) -> None:
+    """Following the curve wrote the number and switched the heating on again with every move."""
+    calls = _entity_boiler(hass)
+    entry = await _blocked_entity_boiler(hass, calls)
+    coordinator = entry.runtime_data
+    coordinator.set_boiler_control_mode("shadow")
+    await coordinator.async_refresh()
+    assert hass.states.get("switch.boiler_heating").state == "on"  # handed back
+    hass.states.async_set("switch.boiler_heating", "off")  # switched off by hand, for the summer
+    calls.clear()
+    hass.states.async_set("sensor.outdoor", "-10.0")
+    await coordinator.async_refresh()
+    assert [c[0] for c in calls] == ["set_value"]  # the flow follows, the switch is left alone
+    assert hass.states.get("switch.boiler_heating").state == "off"
+
+
+async def test_a_boiler_that_follows_the_curve_gets_the_maximum_when_home_assistant_stops(hass: HomeAssistant) -> None:
+    """Review 2026-10-14: handed back while planning only, it kept the curve of a mild day once nothing followed it any more."""
+    calls = _entity_boiler(hass)
+    entry = await _blocked_entity_boiler(hass, calls)
+    coordinator = entry.runtime_data
+    coordinator.set_boiler_control_mode("shadow")
+    await coordinator.async_refresh()
+    assert float(hass.states.get("input_number.boiler_flow").state) < 60.0  # handed back, on the curve
+    hass.states.async_set("switch.boiler_heating", "off")  # switched off by hand meanwhile
+    calls.clear()
+    await coordinator.async_release_boiler(final=True)
+    assert calls == [("set_value", {"entity_id": "input_number.boiler_flow", "value": 60.0})]  # the switch is left alone
+    calls.clear()
+    await coordinator.async_release_boiler(final=True)
+    await coordinator.async_refresh()
+    assert calls == []  # once, and nothing after it
+
+
+async def test_a_control_switched_off_leaves_the_maximum_and_writes_nothing_more(hass: HomeAssistant) -> None:
+    calls = _entity_boiler(hass)
+    entry = await _blocked_entity_boiler(hass, calls)
+    coordinator = entry.runtime_data
+    coordinator.set_boiler_control_mode("off")
+    await coordinator.async_refresh()
+    assert hass.states.get("switch.boiler_heating").state == "on"
+    assert float(hass.states.get("input_number.boiler_flow").state) == 60.0  # as a knob would stand
+    calls.clear()
+    hass.states.async_set("sensor.outdoor", "-10.0")
+    await coordinator.async_refresh()
+    assert calls == []
+
+
+async def test_a_handed_back_boiler_gets_the_maximum_once_the_outdoor_temperature_is_long_gone(hass: HomeAssistant) -> None:
+    calls = _entity_boiler(hass)
+    entry = await _blocked_entity_boiler(hass, calls)
+    coordinator = entry.runtime_data
+    coordinator.set_boiler_control_mode("shadow")
+    await coordinator.async_refresh()
+    assert float(hass.states.get("input_number.boiler_flow").state) < 60.0  # the curve on a mild day
+    hass.states.async_set("sensor.outdoor", "unavailable")
+    value, seen = coordinator._last_outdoor
+    coordinator._last_outdoor = (value, seen - 7 * 3600)  # seven hours without a reading
+    await coordinator.async_refresh()
+    assert float(hass.states.get("input_number.boiler_flow").state) == 60.0
+
+
+async def test_a_boiler_that_cannot_be_reached_is_warned_about_once(hass: HomeAssistant, caplog) -> None:
+    calls = _entity_boiler(hass)
+    entry = await _blocked_entity_boiler(hass, calls)
+    coordinator = entry.runtime_data
+    hass.states.async_set("switch.boiler_heating", "unavailable")  # the gateway is away
+    coordinator.set_boiler_control_mode("shadow")  # the hand-back is due every cycle until it goes through
+    caplog.clear()
+    for _ in range(4):
+        await coordinator.async_refresh()
+
+    def warned() -> int:
+        return len([r for r in caplog.records if r.levelname == "WARNING" and "boiler command not sent" in r.getMessage()])
+
+    assert warned() == 1
+    hass.states.async_set("switch.boiler_heating", "off")
+    await coordinator.async_refresh()  # back, and handed back
+    assert hass.states.get("switch.boiler_heating").state == "on"
+    coordinator.set_boiler_control_mode("active")
+    hass.states.async_set("switch.boiler_heating", "unavailable")  # the next outage is warned about again
+    caplog.clear()
+    await coordinator.async_refresh()
+    assert warned() == 1
+
+
 async def test_a_handed_back_boiler_follows_the_curve_while_home_assistant_runs(hass: HomeAssistant) -> None:
     calls = _entity_boiler(hass)
     entry = await _blocked_entity_boiler(hass, calls)
@@ -1456,3 +1638,16 @@ async def test_a_handed_back_boiler_follows_the_curve_while_home_assistant_runs(
     hass.states.async_set("sensor.outdoor", "-10.0")
     await coordinator.async_refresh()
     assert float(hass.states.get("input_number.boiler_flow").state) > mild + 5.0
+
+
+async def test_the_thriftherm_device_shows_the_installed_version(hass: HomeAssistant) -> None:
+    """Which package runs was not to be seen anywhere in Home Assistant (asked for after an install on 2026-10-14)."""
+    import json
+    from pathlib import Path
+
+    from homeassistant.helpers import device_registry as dr
+
+    entry = await _setup(hass)
+    manifest = json.loads((Path(__file__).parent.parent / "custom_components" / "thriftherm" / "manifest.json").read_text())
+    hub = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
+    assert hub is not None and hub.sw_version == manifest["version"]

@@ -209,7 +209,6 @@ def test_the_boiler_follows_the_calls_not_the_raw_demand():
     rooms = {"wohnzimmer": rr("wohnzimmer", temp=18.3, target=18.5, demand=0.1)}
     assert _advise(rooms, frozenset()).source == "none"
     assert _advise(rooms, frozenset({"wohnzimmer"})).source == "boiler"
-    assert _advise(rooms, None).source == "boiler"  # without calls: the old threshold
 
 
 def test_a_heat_pump_room_just_below_target_does_not_start_the_boiler():

@@ -22,6 +22,7 @@ from .const import (
     AUTOMATION_OBSERVING,
     AUTOMATION_PLANNING,
     BOILER_PLANS,
+    CONF_BOILER_NOMINAL_INPUT_KW,
     CONF_GAS_FLOW,
     CONF_GAS_VOLUME,
     ROOM_PLANS,
@@ -40,7 +41,8 @@ from .const import (
 )
 from . import texts
 from .coordinator import ThrifthermConfigEntry, ThrifthermCoordinator
-from .engines.boiler_control import PHASE_LEARNING, PHASE_PAUSED, PHASE_REFINING
+from .engines import gas_split
+from .engines.boiler_learning import PHASE_LEARNING, PHASE_PAUSED, PHASE_REFINING
 from .entity import DescribedEntity, ThrifthermEntity, is_wanted
 
 Data = dict[str, Any]
@@ -51,9 +53,11 @@ class ThrifthermSensorDescription(SensorEntityDescription):
     value_fn: Callable[[Data], Any]
     attr_fn: Callable[[Data], dict[str, Any]] | None = None
     heat_pump_addon: bool = False  # only created when a Midea heat pump is configured
-    boiler_only: bool = False  # needs an own boiler on ebusd (flow/return, SetMode)
+    boiler_only: bool = False  # needs an own boiler (on ebusd, or addressed through entities)
     heat_source: bool = False  # needs any central heat source to compare against
     needs_input: str | None = None  # config key of an optional input; without it the value would stay unknown
+    needs_one_of: tuple[str, ...] = ()  # config keys of which one is enough
+    room_needs: str | None = None  # for a room's entity: what the room must have (a field of its configuration)
 
 
 def _cop_attrs(d: Data) -> dict[str, Any]:
@@ -121,6 +125,7 @@ def _command_attrs(d: Data) -> dict[str, Any]:
         "manual_by": c.manual_by,
         "commands_not_carried_out": c.not_carried_out,
         "eco_offset_k": d.get("eco_offset_k"),
+        "boiler_helps": not c.delivers,  # set as high as it may be, the unit still does not get a served room warm
         "decision_cop": d.get("decision_cop"),
         "decision_cop_basis": d.get("decision_cop_basis"),
         "break_even_cop": d["econ"].break_even_cop,
@@ -135,6 +140,8 @@ def _iso(ts: float | None) -> str | None:
 
 def _learning_attrs(d: Data) -> dict[str, Any]:
     c = d["boiler_command"]
+    names = d.get("room_names") or {}
+    paused = [*(d.get("learning_blocked_by") or []), *(["rooms_heating_up"] if c.heating_up else [])]
     return {
         "heating_curve_offset_k": c.offset_k,
         "heating_curve_level_k": c.offset_level_k,
@@ -148,9 +155,12 @@ def _learning_attrs(d: Data) -> dict[str, Any]:
         "rooms_total": c.rooms_total,
         "spread_rule": c.spread_rule,
         "load_class": c.load_class,
+        "flow_set_by": names.get(c.flow_set_by, c.flow_set_by),
         "curve_by_load": c.curve_by_load,
+        "heat_up_extra_k": {names.get(k, k): v for k, v in (c.heat_up_k or {}).items()},
+        "rooms_heating_up": [names.get(k, k) for k in c.heating_up],
         # nothing blocks it, but it only learns from a running burner
-        "paused_because": d.get("learning_blocked_by") or (["no_heating_run"] if c.learning_phase == "paused" else []),
+        "paused_because": paused or (["no_heating_run"] if c.learning_phase == "paused" else []),
         "paused_until": _iso(d.get("learning_paused_until_ts")),
         "setpoint_changed_in": [(d.get("room_names") or {}).get(k, k) for k in d.get("setpoint_changed_in") or []],
         "room_heat_up_rates": d.get("heat_rates"),
@@ -184,6 +194,42 @@ def _rounded(value: float | None, digits: int) -> float | None:
 
 def _desc(key: str, **kwargs: Any) -> ThrifthermSensorDescription:
     return ThrifthermSensorDescription(key=key, translation_key=key, **kwargs)
+
+
+def _gas_energy(d: Data) -> float | None:
+    """All the gas the meter has counted, in kWh.
+
+    Counted up step by step once the control watches the meter: worked out anew from the
+    reading and the calorific value, a new calorific value rescaled the whole total, and the
+    statistics booked the difference as consumption of that hour.
+    """
+    counted = gas_split.meter_total_kwh(d["gas_split"])
+    return d["boiler"].gas_energy_kwh if counted is None else round(counted, 3)
+
+
+def _gas_split_attrs(d: Data) -> dict[str, Any]:
+    split = d["gas_split"]
+    share = gas_split.hot_water_share(split)
+    return {
+        "source": split.source,
+        "hot_water_share_pct": None if share is None else round(share * 100.0, 1),
+        "unassigned_kwh": round(split.unassigned_kwh, 2) if split.source == gas_split.SOURCE_METER else None,
+    }
+
+
+def _gas_split(key: str, field: str) -> ThrifthermSensorDescription:
+    """Gas counted for one purpose: from the gas meter, or without one from the boiler's own counters."""
+    return _desc(
+        key,
+        boiler_only=True,
+        needs_one_of=(CONF_GAS_VOLUME, CONF_BOILER_NOMINAL_INPUT_KW),
+        device_class=SensorDeviceClass.ENERGY,
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
+        suggested_display_precision=2,
+        value_fn=lambda d: None if d["gas_split"].source is None else round(getattr(d["gas_split"], field), 3),
+        attr_fn=_gas_split_attrs,
+    )
 
 
 def _room_desc(key: str, **kwargs: Any) -> ThrifthermSensorDescription:
@@ -281,8 +327,10 @@ SYSTEM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=2,
-        value_fn=lambda d: d["boiler"].gas_energy_kwh,
+        value_fn=_gas_energy,
     ),
+    _gas_split("gas_energy_heating", "heating_kwh"),
+    _gas_split("gas_energy_hot_water", "hot_water_kwh"),
     _power(
         "boiler_thermal_power_estimate",
         boiler_only=True,
@@ -438,6 +486,7 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
     ),
     _room_desc(
         "dew_point",
+        room_needs="humidity_sensor",
         device_class=SensorDeviceClass.TEMPERATURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -446,6 +495,7 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
     ),
     _room_desc(
         "abs_humidity",
+        room_needs="humidity_sensor",
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement="g/m³",
         icon="mdi:water-percent",
@@ -459,7 +509,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, a
     coordinator = entry.runtime_data
     entities: list[SensorEntity] = [DescribedSensor(coordinator, d) for d in SYSTEM_SENSORS if is_wanted(coordinator, d)]
     for room in coordinator.builder.rooms:
-        entities.extend(DescribedSensor(coordinator, d, room.key) for d in ROOM_SENSORS)
+        entities.extend(DescribedSensor(coordinator, d, room.key) for d in ROOM_SENSORS if is_wanted(coordinator, d, room))
         if room.climate_entity:
             entities.append(ThermostatPlanSensor(coordinator, room.key))
     async_add_entities(entities)
@@ -479,7 +529,7 @@ class DescribedSensor(DescribedEntity, SensorEntity):
 
 
 class ThermostatPlanSensor(ThrifthermEntity, SensorEntity):
-    """What the integration hands to the room thermostat (Better Thermostat)."""
+    """What the integration hands to the room thermostat."""
 
     _attr_translation_key = "room_thermostat_plan"
     _attr_device_class = SensorDeviceClass.ENUM

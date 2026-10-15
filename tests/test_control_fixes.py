@@ -91,7 +91,7 @@ def _learning_inputs(t: float) -> bc.BoilerInputs:
 def test_offset_does_not_wind_up_while_the_flow_is_already_at_maximum():
     t = 3_000_000.0
     ready = dict(heating_since_ts=t - 7200, samples=50, spread_ema=10.0, last_review_ts=t - 7200,
-                 spread_judging_since_ts=t - 7200)
+                 spread_judging_since_ts=t - 7200, learning_since_ts=t - 7200)
     at_max = bc.BoilerMemory(offset_k=5.0, **ready)  # curve 55 + 5 = 60 = maximum
     below = bc.BoilerMemory(offset_k=0.0, **ready)
     held = learning.learn(_learning_inputs(t), at_max, [_room()], True)
@@ -133,6 +133,21 @@ def test_schedule_preheat_holds_once_started_despite_sensor_ticks():
         targets.append(res.target)
         latch = res.preheat_for_ts
     assert targets == [21.0] * 7
+
+
+def test_a_preheating_that_began_goes_on_while_the_room_has_no_temperature():
+    """Seen 2026-10-13: in the first minute after a restart the bathroom fell back to its setback, the heat pump with it."""
+    tz = ZoneInfo("Europe/Berlin")
+    cfg = room_config("badezimmer", comfort=21.0, setback=18.5)
+    start = datetime(2026, 1, 12, 17, 30, tzinfo=tz)
+    sched = ScheduleState(active=False, temperature=None, next_start=start)
+    now = datetime(2026, 1, 12, 16, 0, tzinfo=tz)
+    begun = replace(room_state(cfg, temp=None), schedule=sched, heat_rate_k_h=1.0, preheat_latch_ts=start.timestamp())
+    res = room_engine.evaluate_room(begun, now, "auto", PARAMS)
+    assert (res.target, res.target_reason, res.preheat_for_ts) == (21.0, "schedule_preheat", start.timestamp())
+    not_begun = replace(begun, preheat_latch_ts=None)  # without a reading none begins
+    res = room_engine.evaluate_room(not_begun, now, "auto", PARAMS)
+    assert (res.target, res.target_reason) == (18.5, "schedule_setback")
 
 
 def test_manual_change_before_our_value_was_echoed_is_still_recognised():

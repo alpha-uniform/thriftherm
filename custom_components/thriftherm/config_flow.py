@@ -16,26 +16,29 @@ from .adapters import ebusd_detect
 from .adapters.config import system_type_from_config
 from .const import (
     CONFIG_VERSION,
+    CONF_BOILER_FILL_DECLINED,
     CONF_BOILER_PROFILE,
     CONF_HEAT_PUMP_ROOM,
+    CONF_ROOMS,
     CONF_ROOM_COMFORT_TEMP,
     CONF_ROOM_KEY,
     CONF_ROOM_SETBACK_TEMP,
-    CONF_ROOMS,
     DEFAULT_ROOM_COMFORT_TEMP,
     DEFAULT_ROOM_SETBACK_TEMP,
-    SYSTEM_GAS,
     DOMAIN,
+    SYSTEM_GAS,
 )
 
 from .config_schema import (
     BOILER_KEYS,
     HEAT_PUMP_KEYS,
+    HEAT_PUMP_TUNING_KEYS,
     OUTDOOR_KEYS,
     PARAMETER_KEYS,
     PRICE_KEYS,
     ROOM_ACTION_ADD,
     SYSTEM_KEYS,
+    flatten_sections,
     has_heat_pump,
     known_keys,
     merge_present,
@@ -45,6 +48,7 @@ from .config_schema import (
     schema_boiler,
     schema_heat_pump,
     schema_outdoor,
+    schema_heat_pump_tuning,
     schema_parameters,
     schema_prices,
     schema_room,
@@ -69,14 +73,25 @@ def _boiler_form(
     fill = ebusd_detect.prefill(current, detection)
     name = boiler_profiles.profile(detection.profile).name if detection.profile else None
     summary = texts.detection_summary(name, detection.circuit, detection.found, detection.total, hass.config.language)
-    return fill, schema_boiler({**current, **fill, **(user_input or {})}), {"detected": summary}
+    # a field the user emptied is missing from the answer: neither its stored value nor a found one shows again
+    answered = {} if user_input is None else {key: user_input.get(key) for key in BOILER_KEYS}
+    return fill, schema_boiler({**current, **fill, **answered}), {"detected": summary}
 
 
-def _merge_boiler(target: dict[str, Any], user_input: Mapping[str, Any], fill: Mapping[str, Any]) -> None:
-    """Apply the boiler step; the profile is stored only when the form took over a boiler found."""
+def _merge_boiler(
+    target: dict[str, Any], user_input: Mapping[str, Any], fill: Mapping[str, Any], current: Mapping[str, Any]
+) -> None:
+    """Apply the boiler step; the profile is stored only when the form took over a boiler found.
+
+    A found value the user emptied is remembered, so the search does not offer it again; a field
+    filled in after all is offered again when it is emptied the next time.
+    """
     merge_step(target, BOILER_KEYS, user_input)
     if CONF_BOILER_PROFILE in fill:
         target[CONF_BOILER_PROFILE] = fill[CONF_BOILER_PROFILE]
+    declined = {key for key in current.get(CONF_BOILER_FILL_DECLINED) or () if not user_input.get(key)}
+    declined |= {key for key in fill if key in BOILER_KEYS and not user_input.get(key)}
+    target[CONF_BOILER_FILL_DECLINED] = sorted(declined)
 
 
 # ---------------------------------------------------------------------------
@@ -96,8 +111,6 @@ class ThrifthermConfigFlow(ConfigFlow, domain=DOMAIN):
         return ThrifthermOptionsFlow()
 
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        await self.async_set_unique_id(DOMAIN)
-        self._abort_if_unique_id_configured()
         if self.hass.config.units.temperature_unit != UnitOfTemperature.CELSIUS:
             # every temperature, curve and limit is read and written as °C
             return self.async_abort(reason="celsius_only")
@@ -119,7 +132,7 @@ class ThrifthermConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             errors = validate_boiler(user_input)
             if not errors:
-                _merge_boiler(self._data, user_input, self._boiler_fill)
+                _merge_boiler(self._data, user_input, self._boiler_fill, self._data)
                 return await self.async_step_midea()
         self._boiler_fill, schema, placeholders = _boiler_form(self.hass, self._data, user_input)
         return self.async_show_form(step_id="boiler", data_schema=schema, errors=errors, description_placeholders=placeholders)
@@ -180,7 +193,10 @@ class ThrifthermOptionsFlow(OptionsFlow):
         options = ["system", "prices"]
         if system_type_from_config(self._config) == SYSTEM_GAS:
             options.append("boiler")
-        options += ["midea", "outdoor", "parameters", "rooms", "reset_learning"]
+        options.append("midea")
+        if has_heat_pump(self._config):
+            options.append("midea_tuning")  # how a heat pump is run: nothing to set without one
+        options += ["outdoor", "parameters", "rooms", "reset_learning"]
         return self.async_show_menu(step_id="init", menu_options=options)
 
     def _simple_step(
@@ -195,13 +211,16 @@ class ThrifthermOptionsFlow(OptionsFlow):
         """Show one group of fields, or merge the answer into the options and save."""
         errors: dict[str, str] | None = {} if validate else None
         if user_input is not None:
+            user_input = flatten_sections(schema_fn(self._config), user_input)  # stored flat, whatever the headings
             if validate:
                 errors = validate(user_input)
             if not errors:
                 changes: dict[str, Any] = {}
                 merge(changes, keys, user_input)
                 return self._save(changes)
-        return self.async_show_form(step_id=step_id, data_schema=schema_fn({**self._config, **(user_input or {})}), errors=errors)
+        # a field the user emptied is missing from the answer: it must not show its stored value again
+        answered = {} if user_input is None else {key: user_input.get(key) for key in keys}
+        return self.async_show_form(step_id=step_id, data_schema=schema_fn({**self._config, **answered}), errors=errors)
 
     async def async_step_system(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """The system type decides which prices and boiler fields apply: those follow, then all is saved at once."""
@@ -223,7 +242,7 @@ class ThrifthermOptionsFlow(OptionsFlow):
             errors = validate_boiler(user_input)
             if not errors:
                 changes: dict[str, Any] = {}
-                _merge_boiler(changes, user_input, self._boiler_fill)
+                _merge_boiler(changes, user_input, self._boiler_fill, self._config)
                 return self._save(changes)
         self._boiler_fill, schema, placeholders = _boiler_form(self.hass, self._config, user_input)
         return self.async_show_form(step_id="boiler", data_schema=schema, errors=errors, description_placeholders=placeholders)
@@ -233,6 +252,9 @@ class ThrifthermOptionsFlow(OptionsFlow):
 
     async def async_step_outdoor(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return self._simple_step("outdoor", user_input, schema_outdoor, OUTDOOR_KEYS)
+
+    async def async_step_midea_tuning(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        return self._simple_step("midea_tuning", user_input, schema_heat_pump_tuning, HEAT_PUMP_TUNING_KEYS)
 
     async def async_step_parameters(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return self._simple_step("parameters", user_input, schema_parameters, PARAMETER_KEYS)
@@ -298,6 +320,23 @@ class ThrifthermOptionsFlow(OptionsFlow):
         )
         return self.async_show_form(step_id="rooms", data_schema=schema)
 
+    def _in_force(self, room: Mapping[str, Any]) -> dict[str, Any]:
+        """The room with the comfort and setback temperatures that apply, as the form shows them.
+
+        The numbers on the dashboard keep their values in the store, not in the room's options. Shown
+        from the options, the form offered a comfort that no longer applied, and saved with only the
+        setback changed it put that old comfort back (review 2026-10-13).
+        """
+        coordinator = getattr(self.config_entry, "runtime_data", None)
+        shown = dict(room)
+        if coordinator is None or self._room_key is None:
+            return shown
+        for key, kind in ((CONF_ROOM_COMFORT_TEMP, "comfort"), (CONF_ROOM_SETBACK_TEMP, "setback")):
+            value = coordinator.room_temperature(self._room_key, kind)
+            if value is not None:
+                shown[key] = value
+        return shown
+
     def _form_temperatures_win(self, before: Mapping[str, Any], after: Mapping[str, Any]) -> None:
         """A comfort or setback temperature changed here replaces the room's values set on the dashboard.
 
@@ -315,6 +354,7 @@ class ThrifthermOptionsFlow(OptionsFlow):
     async def async_step_room(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         rooms: list[dict[str, Any]] = list(self._config.get(CONF_ROOMS, []))
         current = next((r for r in rooms if r[CONF_ROOM_KEY] == self._room_key), {}) if self._room_key else {}
+        current = self._in_force(current)
         errors: dict[str, str] = {}
         if user_input is not None:
             errors = validate_room(user_input, [r for r in rooms if r[CONF_ROOM_KEY] != self._room_key])

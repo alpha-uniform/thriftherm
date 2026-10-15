@@ -142,3 +142,25 @@ async def test_an_echo_is_ignored_and_a_knob_turn_is_taken(hass: HomeAssistant, 
     await hass.async_block_till_done()
     target = hass.states.get("sensor.thriftherm_badezimmer_target_temperature")
     assert target.attributes["reason"] == "override" and float(target.state) == 22.5
+
+
+async def test_a_setpoint_the_thermostat_would_refuse_is_sent_at_its_limit(hass: HomeAssistant) -> None:
+    """Found in the code 2026-10-13: frost protection at 7 °C for a thermostat that starts at 8 °C was
+    refused every five minutes, for good."""
+    set_temp = async_mock_service(hass, "climate", "set_temperature")
+    _register(hass)
+    _set_states(hass)
+    limits = {"min_temp": 8.0, "max_temp": 28.0}
+    hass.states.async_set("climate.bath_trv", "heat", {"temperature": 18.5})
+    hass.states.async_set("climate.bath_bt", "heat", {"temperature": 21.0, **limits})
+    coordinator = await _setup_room_control(hass)
+    off = {"entity_id": "select.thriftherm_operating_mode", "option": "off"}
+    await hass.services.async_call("select", "select_option", off, blocking=True)
+    await hass.async_block_till_done()
+    assert float(hass.states.get("sensor.thriftherm_badezimmer_target_temperature").state) == 7.0  # frost protection
+    assert set_temp[-1].data == {"entity_id": "climate.bath_bt", "temperature": 8.0}  # as low as it goes
+    hass.states.async_set("climate.bath_bt", "heat", {"temperature": 8.0, **limits})
+    await coordinator.async_refresh()
+    plan = hass.states.get("sensor.thriftherm_badezimmer_thermostat_plan")
+    assert plan.attributes["reason"] == "in_sync" and "badezimmer" not in coordinator.overrides  # no change by hand either
+

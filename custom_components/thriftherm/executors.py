@@ -19,6 +19,9 @@ from .models import HeatPumpCommand, RoomCommand
 _LOGGER = logging.getLogger(__name__)
 
 CALL_TIMEOUT_S = 30.0  # a unit that does not answer must not hold up the rest of the cycle
+# How long a unit gets to show what one call asked of it before the next call follows, see async_execute_heat_pump
+SHOWN_WAIT_S = 10.0
+SHOWN_POLL_S = 0.25
 
 
 async def _call(
@@ -34,7 +37,7 @@ async def _call(
     try:
         async with asyncio.timeout(CALL_TIMEOUT_S):
             await hass.services.async_call(domain, service, data, blocking=True, context=context)
-    except Exception as err:  # noqa: BLE001 - foreign code, see above
+    except Exception as err:  # foreign code, see above
         _LOGGER.log(level, "thriftherm %s failed: %s", what, str(err) or type(err).__name__)  # a timeout has no text
         return False
     return True
@@ -71,18 +74,24 @@ def _number_value(state, flow_c: float) -> float:
 
 
 async def async_send_boiler_entities(
-    hass: HomeAssistant, setpoint_entity: str, enable_entity: str, flow_c: float, heating_on: bool
+    hass: HomeAssistant,
+    setpoint_entity: str,
+    enable_entity: str,
+    flow_c: float,
+    heating_on: bool | None,
+    level: int = logging.WARNING,
 ) -> bool:
     """Command a boiler through a number (flow setpoint) and a switch (central heating on).
 
     Nothing is written that the entity already has: many gateways store what they are sent.
     Releasing the heating sends the setpoint first, blocking it the switch first, so the boiler
-    never heats to a setpoint that is about to change. False when an entity is missing or a
-    call failed: the command then counts as not carried out and is tried again.
+    never heats to a setpoint that is about to change. `heating_on` None leaves the switch as
+    it is. False when an entity is missing or a call failed: the command then counts as not
+    carried out and is tried again; `level` is what that is logged at.
     """
     number, switch = hass.states.get(setpoint_entity), hass.states.get(enable_entity)
     if number is None or switch is None or "unavailable" in (number.state, switch.state):
-        _LOGGER.warning("thriftherm boiler command not sent: %s or %s is not available", setpoint_entity, enable_entity)
+        _LOGGER.log(level, "thriftherm boiler command not sent: %s or %s is not available", setpoint_entity, enable_entity)
         return False
     value = _number_value(number, flow_c)
     try:
@@ -92,12 +101,12 @@ async def async_send_boiler_entities(
     calls: list[tuple[str, str, dict[str, Any]]] = []
     if not has_value:
         calls.append((setpoint_entity.split(".", 1)[0], "set_value", {"entity_id": setpoint_entity, "value": value}))
-    if switch.state != ("on" if heating_on else "off"):
+    if heating_on is not None and switch.state != ("on" if heating_on else "off"):
         calls.append(("homeassistant", "turn_on" if heating_on else "turn_off", {"entity_id": enable_entity}))
-    if not heating_on:
+    if heating_on is False:
         calls.reverse()
     for domain, service, data in calls:
-        if not await _call(hass, domain, service, data, f"boiler command {service} {data}"):
+        if not await _call(hass, domain, service, data, f"boiler command {service} {data}", level):
             return False
     if calls:
         _LOGGER.debug("thriftherm boiler command sent: flow %.1f °C, heating %s", value, "on" if heating_on else "off")
@@ -113,32 +122,62 @@ async def async_request_ebus_read(hass: HomeAssistant, topic: str, payload: str 
     return await _call(hass, "mqtt", "publish", data, f"ebusd read request {topic}", logging.DEBUG)
 
 
+async def _shown(hass: HomeAssistant, entity_id: str, asked: dict[str, Any]) -> None:
+    """Wait until the unit shows the mode or fan stage just asked of it, SHOWN_WAIT_S at most.
+
+    A unit that never shows it (it reports late, or not at all) is not waited for any longer:
+    the next call goes out as before, and the control asks again for what did not arrive.
+    """
+    waited = 0.0
+    while waited < SHOWN_WAIT_S:
+        state = hass.states.get(entity_id)
+        if state is None:
+            return
+        if "hvac_mode" in asked and state.state == asked["hvac_mode"]:
+            return
+        if "fan_mode" in asked and state.attributes.get("fan_mode") in (asked["fan_mode"], None):
+            return
+        await asyncio.sleep(SHOWN_POLL_S)
+        waited += SHOWN_POLL_S
+
+
 async def async_execute_heat_pump(
     hass: HomeAssistant, entity_id: str, command: HeatPumpCommand, context: Context | None = None
-) -> bool:
+) -> int | None:
     """Send a heat pump command as climate service calls; stop at the first failure.
 
-    False when a call failed: the command then counts as not carried out.
+    How many calls went out, 0 when the unit had all of it already. None when a call failed:
+    the command then counts as not carried out.
     """
     calls: list[tuple[str, dict[str, Any]]] = []
+    state = hass.states.get(entity_id)
+    has = state.attributes if state is not None else {}
+    # Home Assistant refuses a mode a unit does not offer, and a refused call ends the command:
+    # a unit without "fan_only" was never switched off, one without "auto" never got its setpoint.
+    offered_modes, offered_fans = has.get("hvac_modes") or (), has.get("fan_modes") or ()
     if command.action == "stop":
         # "fan_only" first when the fan is to run on; the "off" follows as a stop of its own
-        calls.append(("set_hvac_mode", {"hvac_mode": command.hvac_mode or "off"}))
+        mode = command.hvac_mode or "off"
+        calls.append(("set_hvac_mode", {"hvac_mode": mode if not offered_modes or mode in offered_modes else "off"}))
     else:
         # Seen 2026-10-11 with a Midea over LAN: the setpoint went out, the fan mode right after
         # it, and the unit kept its old setpoint - the second call carried the state from before
-        # the first. So nothing is sent that the unit already has, and the setpoint goes last.
-        state = hass.states.get(entity_id)
-        has = state.attributes if state is not None else {}
+        # the first. With the setpoint last it was the fan stage that got lost (2026-10-13, a
+        # drying asked for "full" and 22 °C, the unit stayed on "auto"). So nothing is sent that
+        # the unit already has, and a call waits until the unit shows what the call before asked.
         if command.action == "start":
             calls.append(("set_hvac_mode", {"hvac_mode": "heat"}))
-        if command.fan_mode and has.get("fan_mode") != command.fan_mode:
+        fan_known = not offered_fans or command.fan_mode in offered_fans
+        if command.fan_mode and fan_known and has.get("fan_mode") != command.fan_mode:
             calls.append(("set_fan_mode", {"fan_mode": command.fan_mode}))
-        if command.target_temp is not None:
+        if command.target_temp is not None and (command.action == "start" or has.get("temperature") != command.target_temp):
             calls.append(("set_temperature", {"temperature": command.target_temp}))
-    for service, data in calls:
+    for number, (service, data) in enumerate(calls):
         what = f"heat pump command {service} {data}"
         if not await _call(hass, "climate", service, {"entity_id": entity_id, **data}, what, context=context):
-            return False
-    _LOGGER.info("thriftherm heat pump command sent: %s", ", ".join(f"{s} {d}" for s, d in calls))
-    return True
+            return None
+        if number < len(calls) - 1:
+            await _shown(hass, entity_id, data)
+    if calls:
+        _LOGGER.info("thriftherm heat pump command sent: %s", ", ".join(f"{s} {d}" for s, d in calls))
+    return len(calls)

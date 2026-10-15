@@ -43,8 +43,9 @@ LABELS: dict[str, dict[str, str]] = {
         "comfort_ending": "Comfort ends soon: no new heat", "not_allowed": "Heating not allowed",
         # drying mode
         "drying_active": "Drying", "drying_started_humidity_load": "Started: humidity after a shower",
+        "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
         "drying_ended_humidity_normal": "Ended: humidity back to normal", "drying_ended_timeout": "Ended: time limit",
-        "drying_ended_window_ineffective": "Ended: window open without effect", "drying_ended_midea_unavailable": "Ended: heat pump not available",
+        "drying_ended_window_ineffective": "Ended: window open without effect", "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
         # boiler
         "room_demand": "Rooms need heat", "no_room_needs_boiler": "No room needs the boiler", "frost_protection": "Frost protection",
         "summer_mode": "Summer mode", "safety_fallback": "Safety fallback", "boiler_data_unavailable": "Boiler data unavailable", "waiting_for_room_data": "Waiting for room data",
@@ -53,6 +54,9 @@ LABELS: dict[str, dict[str, str]] = {
         "spread_small": "Flow/return spread small", "spread_large": "Flow/return spread large",
         "short_cycling": "Boiler kept switching on and off",
         "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
+        "rooms_lagging_at_flow_min": (
+            "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts"
+        ),
         "rooms_slow": "Rooms heating up slowly",
         "rooms_lagging": "Boiler cycles and a room does not reach its target",
         "blocked_few_rooms": "No: too few rooms call for heat",
@@ -77,9 +81,11 @@ LABELS: dict[str, dict[str, str]] = {
         "measured": "Measured", "learned": "Learned", "prior": "Starting curve", "prior_calibrated": "Starting curve (calibrated)",
         "plug": "Smart plug", "midea_internal": "Heat pump's own value", "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
         "last_known": "Last known value (held up to 6 h)",
+        "gas_meter": "Gas meter, by what the boiler was doing", "boiler_counters": "The boiler's own counters (estimate)",
         # icing
         "persistent": "Icing", "cycle": "Defrost cycle", "frequent_defrost_cycles": "Frequent defrost cycles",
-        "icing_lockout_active": "Icing lockout active", "outdoor_coil_iced": "Outdoor coil iced", "sustained_inefficiency": "Heat output collapsed",
+        "icing_lockout_active": "Icing lockout active", "outdoor_coil_iced": "Outdoor coil iced",
+        "sustained_inefficiency": "Heat too expensive (COP below break-even)",
         # thermostats
         "in_sync": "In sync", "waiting_for_thermostat": "Waiting for the thermostat",
         "person": "Somebody in Home Assistant", "automation": "An automation or a script", "device": "At the device",
@@ -93,6 +99,7 @@ LABELS: dict[str, dict[str, str]] = {
         "raw_cop_out_of_range": "COP implausible", "exceeds_carnot_limit": "above the physical limit",
         "setpoint_recently_changed": "setpoint changed recently", "boiler_control_not_active": "boiler control not active",
         "hot_water_recent": "hot water recently", "no_heating_run": "boiler not heating right now",
+        "rooms_heating_up": "a room heats up on an extra",
     },
     "de": {
         "off": "Aus", "shadow": "Nur planen", "active": "Aktiv",
@@ -107,8 +114,9 @@ LABELS: dict[str, dict[str, str]] = {
         "stalled": "Knapp unter Soll, steigt kaum: gilt als erreicht",
         "comfort_ending": "Komfortzeit endet bald: keine neue Wärme", "not_allowed": "Heizen nicht erlaubt",
         "drying_active": "Trocknet", "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
+        "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
         "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal", "drying_ended_timeout": "Beendet: Zeitlimit",
-        "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung", "drying_ended_midea_unavailable": "Beendet: Wärmepumpe nicht verfügbar",
+        "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung", "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
         "room_demand": "Räume brauchen Wärme", "no_room_needs_boiler": "Kein Raum braucht die Therme", "frost_protection": "Frostschutz",
         "summer_mode": "Sommerbetrieb", "safety_fallback": "Sicherheits-Fallback", "boiler_data_unavailable": "Thermendaten fehlen", "waiting_for_room_data": "Warte auf Raumdaten",
         "hands_off": "Keine Vorgabe", "control_off": "Steuerung aus", "not_configured": "Nicht eingerichtet",
@@ -116,6 +124,7 @@ LABELS: dict[str, dict[str, str]] = {
         "spread_small": "Spreizung klein", "spread_large": "Spreizung groß",
         "short_cycling": "Therme taktet",
         "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
+        "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
         "rooms_slow": "Räume heizen langsam auf",
         "rooms_lagging": "Therme taktet und ein Raum erreicht sein Soll nicht",
         "blocked_few_rooms": "Nein: zu wenige Räume fordern Wärme an",
@@ -138,8 +147,10 @@ LABELS: dict[str, dict[str, str]] = {
         "measured": "Gemessen", "learned": "Gelernt", "prior": "Startkurve", "prior_calibrated": "Startkurve (kalibriert)",
         "plug": "Zwischenstecker", "midea_internal": "Eigener Wert der Wärmepumpe", "nominal_circulation_estimate": "Schätzung aus Nenn-Umlaufmenge (±30 %)",
         "last_known": "Letzter bekannter Wert (bis 6 h gehalten)",
+        "gas_meter": "Gaszähler, nach dem Betrieb der Therme", "boiler_counters": "Eigene Zähler der Therme (Schätzung)",
         "persistent": "Vereisung", "cycle": "Abtauzyklus", "frequent_defrost_cycles": "Häufige Abtauzyklen",
-        "icing_lockout_active": "Vereisungssperre aktiv", "outdoor_coil_iced": "Außenregister vereist", "sustained_inefficiency": "Wärmeabgabe eingebrochen",
+        "icing_lockout_active": "Vereisungssperre aktiv", "outdoor_coil_iced": "Außenregister vereist",
+        "sustained_inefficiency": "Wärme zu teuer (COP unter Break-even)",
         "in_sync": "Stimmt überein", "waiting_for_thermostat": "Wartet auf das Thermostat",
         "person": "Jemand in Home Assistant", "automation": "Eine Automation oder ein Skript", "device": "Am Gerät",
         "action": "Eine Aktion von Thriftherm",
@@ -151,6 +162,7 @@ LABELS: dict[str, dict[str, str]] = {
         "raw_cop_out_of_range": "COP unplausibel", "exceeds_carnot_limit": "über der physikalischen Grenze",
         "setpoint_recently_changed": "Sollwert kürzlich geändert", "boiler_control_not_active": "Thermensteuerung nicht aktiv",
         "hot_water_recent": "Warmwasser kürzlich", "no_heating_run": "Therme heizt gerade nicht",
+        "rooms_heating_up": "ein Raum heizt mit Zuschlag auf",
     },
 }
 
@@ -166,9 +178,10 @@ CALL_STATES = ("calling", "idle", "stalled", "comfort_ending", "not_allowed")
 LOAD_CLASSES = ("single", "few", "majority")
 CHANGED_BY = ("person", "automation", "device", "action")  # who changed something by hand (engines/hand.py)
 SPREAD_RULES = ("active", "blocked_few_rooms")
+GAS_SPLIT_SOURCES = ("gas_meter", "boiler_counters")  # engines/gas_split.py
 _NOT_REASONS = (
     CONTROL_MODES + ACTIONS + COP_BASES + POWER_SOURCES + OUTDOOR_SOURCES + CALL_STATES + LOAD_CLASSES + SPREAD_RULES
-    + CHANGED_BY
+    + CHANGED_BY + GAS_SPLIT_SOURCES
     + ("persistent", "cycle")
 )
 REASON_CODES = tuple(k for k in LABELS["en"] if k not in _NOT_REASONS)
@@ -202,6 +215,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "mode_away": "away: reduced targets",
         "boiler_data_unavailable": "boiler data unavailable (ebusd), boiler state unknown",
         "no_demand": "no room needs heat",
+        "heat_pump_runs_through": "heat pump runs through, setpoint {target_c} °C",
         "heat_pump_plan_only": "heat pump only plans, the boiler heats",
     },
     "de": {
@@ -224,6 +238,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "mode_away": "Abwesend: abgesenkte Sollwerte",
         "boiler_data_unavailable": "Thermendaten fehlen (ebusd), Zustand der Therme unbekannt",
         "no_demand": "Kein Raum braucht Wärme",
+        "heat_pump_runs_through": "Wärmepumpe läuft durch, Sollwert {target_c} °C",
         "heat_pump_plan_only": "Wärmepumpe plant nur, es heizt die Therme",
     },
 }
