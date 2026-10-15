@@ -13,7 +13,7 @@
 ![Status: beta](https://img.shields.io/badge/status-beta-orange)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/alphauniform)
 
-**Demand-based heating for Home Assistant.** Thriftherm heats every room to its schedule and gives your gas boiler the controller it previously lacked. It also works with district heating, and a heat pump can join in.
+**Demand-based heating for Home Assistant.** Thriftherm heats every room to its schedule and gives your gas boiler the controller it previously lacked. It also works with district heating, and a heat pump can join in: an air conditioner in heating mode such as the **Midea PortaSplit**, which Thriftherm controls and whose COP it measures.
 
 ## What Thriftherm does for you
 
@@ -112,7 +112,7 @@ The full list is in the [setup guide, step 1](SETUP.md#1-what-you-need).
 
 **Writing to a gas boiler is your responsibility.** Over ebusd only the `SetMode` message is used and no installer parameters are written; with a boiler through entities (preview) only the two entities you choose. Changing the pump mode is a one-time decision you make yourself.
 
-**Status: beta.** All controllers start in *Plan only*: they compute and publish what they would do and write nothing until you release active control. Blocking, flow control and the safety fallbacks are verified on the maintainer's boiler. The learned corrections have so far seen outdoor temperatures down to 2 °C, no frost yet. Since 2026-10-11 the heat pump add-on has controlled the maintainer's Midea PortaSplit every day, also at 2 °C outside, when it iced up and had to defrost. Other units have not been tried yet.
+**Status: beta.** All controllers start in *Plan only*: they compute and publish what they would do and write nothing until you release active control. Blocking, flow control and the safety fallbacks are verified on the maintainer's boiler. The learned corrections have so far seen outdoor temperatures down to 2 °C, no frost yet. The heat pump add-on controls the maintainer's Midea PortaSplit, icing and defrosting included; other units have not been tried yet.
 
 ## Development
 

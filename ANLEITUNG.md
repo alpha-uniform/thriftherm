@@ -222,7 +222,7 @@ Laufzustand, Sperrzeiten und Handbedienung werden nie zurückgesetzt – ein Zur
 
 ## 7. Wärmepumpe (optional)
 
-Seit dem 11.10.2026 steuert sie täglich eine Midea PortaSplit, auch bei 2 °C draußen mit Vereisung und Abtauen. Andere Geräte sind noch nicht erprobt.
+Erprobt ist sie an einer Midea PortaSplit, auch mit Vereisung und Abtauen; andere Geräte noch nicht.
 
 - **COP:** Thriftherm misst ihn aus der Luft, die die Wärmepumpe ansaugt und ausbläst, und aus ihrem Strom. Taktet sie, zählt der ganze Takt samt Pause (Attribut *COP über den letzten Takt*); dieser Wert bestimmt die Kosten ([COP messen](FUNKTIONSWEISE.md#cop-messen)).
 - **Kosten:** Die Wärmepumpe läuft langsam mit hohem COP. Verglichen wird mit dem Preis der zentralen Wärme. Bei Fernwärme zählt der **Heizkostenschlüssel**: Nur der Verbrauchsanteil folgt dem eigenen Zähler. Eine gesparte kWh spart also weniger als ihr Preis, und die Wärmepumpe braucht einen höheren COP, damit sie sich lohnt.

@@ -37,7 +37,7 @@ Fernwärme oder keine eigene Therme? Dann überspringst du die Schritte 2 und 6;
 
 **Ein zentraler Raumregler an der eBUS-Klemme muss weichen.** Hängt an der eBUS-Klemme deiner Therme schon ein Raumregler, klemmst du ihn ab; an dieselbe Klemme kommt der eBUS-Adapter. Thriftherm übernimmt die Aufgabe des Reglers, und zwei Regler am eBUS würden sich gegenseitig die Vorgaben überschreiben.
 
-Die **Wärmepumpen**-Erweiterung steuert seit dem 11.10.2026 täglich eine Midea PortaSplit, auch bei 2 °C draußen mit Vereisung und Abtauen. Du kannst sie ganz weglassen. Willst du sie nutzen, braucht sie die Climate-Entität der Wärmepumpe, einen Zwischenstecker, der ihre Leistung misst, Temperatur und Feuchte ihrer Ansaugluft und die Temperatur ihrer Ausblasluft.
+Die **Wärmepumpen**-Erweiterung steuert eine Klimaanlage im Heizbetrieb, erprobt an einer Midea PortaSplit. Du kannst sie ganz weglassen. Willst du sie nutzen, braucht sie die Climate-Entität der Wärmepumpe, einen Zwischenstecker, der ihre Leistung misst, Temperatur und Feuchte ihrer Ansaugluft und die Temperatur ihrer Ausblasluft.
 
 ### Was mit deiner Ausstattung geht
 
@@ -242,7 +242,7 @@ Ein Unterschied zu ebusd: Ein ebusd-Befehl läuft nach einigen Minuten ab, und d
 
 ### 4.4 Wärmepumpe (optionales Zusatzmodul)
 
-Diese Erweiterung steuert seit dem 11.10.2026 täglich eine Midea PortaSplit, auch bei 2 °C draußen mit Vereisung und Abtauen. Ohne Wärmepumpe: **Alle Felder leer lassen und auf *Absenden* klicken.** Eine Wärmepumpe lässt sich später in den Optionen ergänzen.
+Erprobt ist diese Erweiterung an einer Midea PortaSplit. Ohne Wärmepumpe: **Alle Felder leer lassen und auf *Absenden* klicken.** Eine Wärmepumpe lässt sich später in den Optionen ergänzen.
 
 Ist eine Wärmepumpe eingerichtet, gibt es unter *Konfigurieren* den zusätzlichen Punkt **Wärmepumpe: Feineinstellung**. Dort stehen die Freigabe der aktiven Steuerung, der Sollwert-Abstand, Mindestlaufzeit und Mindestpause und, in eingeklappten Abschnitten, Bad-Trocknung, COP-Messung und Abtauen. Ohne Wärmepumpe erscheint der Punkt nicht.
 
@@ -290,6 +290,7 @@ Für jeden Raum:
 2. Ein Better Thermostat für den Raum anlegen: die Heizkörperthermostate des Raums wählen, **denselben Raumtemperaturfühler**, den auch Thriftherm bekommen hat, und die **Fensterkontakte** des Raums.
 3. Gibst du ihm einen Außentemperaturfühler, die Außentemperatur, bei der es abschaltet, **hoch genug einstellen, zum Beispiel 25 °C** – oder den Außenfühler leer lassen. Sonst sperrt Better Thermostat Heizen, das Thriftherm anfordert.
 4. In Thriftherm dieses Better Thermostat als Thermostat des Raums wählen (Optionen → *Räume* → Raum → *Bearbeiten*), falls du es in Schritt 4.6 leer gelassen hast.
+5. Soll ein Dreh am Drehknopf des Ventils als Handänderung zählen, in Better Thermostat den Schalter **Kindersicherung** des Raums **ausschalten**. Ist er an, setzt Better Thermostat das Ventil zurück, und der Dreh zählt nicht.
 
 Ein Thermostat, das du von Hand **ausschaltest**, lässt Thriftherm in Ruhe, und dieser Raum fordert die Therme nicht mehr an.
 
