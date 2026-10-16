@@ -61,14 +61,15 @@ Mostly ebusd no longer reaches the boiler, and it heats by its knob. See [No dat
 
 ### The boiler cycles, but the farthest radiator stays cold
 
-There are two causes, often together:
+There are three causes, often together:
 
 - **The pump stops with the burner.** Check the pump mode ([step 6](SETUP.md#6-at-the-boiler)). Why it matters is in the [user guide](GUIDE.md#why-the-pump-mode-matters).
 - **The minimum flow is too low.** On a non-condensing boiler set the minimum flow temperature to about 45 °C ([step 4.3](SETUP.md#43-gas-boiler-ebusd-and-gas-meter)).
+- **The pump runs on its low speed.** Then much of the water goes through the boiler's bypass instead of the farthest radiator. On Vaillant atmoTEC plus and turboTEC plus the diagnosis code d.19 sets it (second diagnosis level, code 17): the factory value 2 means that when heating the speed follows the part load d.00, below 60 % it runs on the low one; 3 means always the high speed. **Warning:** d.19 is an installer setting. Change it only if you know what you are doing, write down the old value, and read your boiler's installation manual. The high speed draws a little more power and can whistle at nearly closed valves. Thriftherm never writes this value.
 
 ### The boiler fires briefly about once an hour
 
-At night too, and with no heating demand. That is the warm start function of the combi boiler: it keeps the hot water exchanger warm, and the display shows a **C**. A room controller on the bus used to suppress it.
+At night too, and with no heating demand. That is the warm start function of the combi boiler: it keeps the hot water exchanger warm, and the display shows a **C**. A room controller on the bus used to suppress it. Thriftherm counts this gas as hot water, not as a burner start of the heating.
 
 How to switch it off:
 
@@ -112,6 +113,12 @@ The room's *Thermostat plan* sensor shows when an echo was last ignored.
 ### A room takes very long after you turn it up
 
 The heating curve is made to hold temperatures, not to heat up fast. How fast it is to go is set with the *heat-up speed* under *Gas boiler (ebusd) and gas meter* ([user guide, heat-up speed](GUIDE.md#heat-up-speed)). More speed burns more gas.
+
+### A room stays a few tenths below its target
+
+The card then shows *Nearly there, heats again below …*. When a room has heated for an hour, is at most 0.3 degrees below its target and hardly rises any more, it counts as reached: otherwise the boiler would cycle for hours over the last tenths. It calls again once it is 0.5 degrees below its target or the target changes. *Quick heat-up* is exempt from this rule.
+
+If a room often falls a little short, the flow is usually too low. Set a *heat-up speed* (e.g. 1 degree per hour): Thriftherm then raises the flow while the room rises too slowly and remembers what it needs. That burns a little more gas.
 
 ### A thermostat does not accept setpoints
 

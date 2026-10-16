@@ -607,6 +607,7 @@
   "sensor.thriftherm_badezimmer_heat_demand": {
    "attributes": {
     "boiler_call": "calling",
+    "calls_again_below": null,
     "friendly_name": "Thriftherm Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -1305,6 +1306,7 @@
   "sensor.thriftherm_wohnzimmer_heat_demand": {
    "attributes": {
     "boiler_call": "calling",
+    "calls_again_below": null,
     "friendly_name": "Thriftherm Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -2113,6 +2115,7 @@
   "sensor.thriftherm_badezimmer_heat_demand": {
    "attributes": {
     "boiler_call": "calling",
+    "calls_again_below": null,
     "friendly_name": "Thriftherm Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -3057,6 +3060,7 @@
   "sensor.thriftherm_wohnzimmer_heat_demand": {
    "attributes": {
     "boiler_call": "calling",
+    "calls_again_below": null,
     "friendly_name": "Thriftherm Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -3871,6 +3875,7 @@
   "sensor.thriftherm_badezimmer_heat_demand": {
    "attributes": {
     "boiler_call": "calling",
+    "calls_again_below": null,
     "friendly_name": "Thriftherm Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -4815,6 +4820,7 @@
   "sensor.thriftherm_wohnzimmer_heat_demand": {
    "attributes": {
     "boiler_call": "calling",
+    "calls_again_below": null,
     "friendly_name": "Thriftherm Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -5489,6 +5495,7 @@
   "sensor.thriftherm_badezimmer_heat_demand": {
    "attributes": {
     "boiler_call": "calling",
+    "calls_again_below": null,
     "friendly_name": "Thriftherm Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -6046,6 +6053,7 @@
   "sensor.thriftherm_wohnzimmer_heat_demand": {
    "attributes": {
     "boiler_call": "calling",
+    "calls_again_below": null,
     "friendly_name": "Thriftherm Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -6747,6 +6755,7 @@
   "sensor.thriftherm_badezimmer_heat_demand": {
    "attributes": {
     "boiler_call": "calling",
+    "calls_again_below": null,
     "friendly_name": "Thriftherm Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
@@ -7348,6 +7357,7 @@
   "sensor.thriftherm_wohnzimmer_heat_demand": {
    "attributes": {
     "boiler_call": "calling",
+    "calls_again_below": null,
     "friendly_name": "Thriftherm Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,

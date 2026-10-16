@@ -179,3 +179,17 @@ async def test_a_room_names_its_schedule_helper(hass: HomeAssistant) -> None:
     living = hass.states.get("sensor.thriftherm_wohnzimmer_target_temperature")
     assert bath.attributes["schedule_entity"] == "schedule.bath"
     assert living.attributes["schedule_entity"] is None
+
+
+def test_a_stalled_room_names_the_temperature_it_calls_again_at() -> None:
+    from dataclasses import replace
+
+    from custom_components.thriftherm.engines import heat_call
+    from custom_components.thriftherm.sensor import ROOM_SENSORS
+
+    from .test_heat_call import rr
+
+    demand = next(d for d in ROOM_SENSORS if d.key == "demand")
+    stalled = replace(rr(temp=20.8, target=21.0), boiler_call=heat_call.CALL_STALLED)
+    assert demand.attr_fn(stalled)["calls_again_below"] == round(21.0 - heat_call.STALL_RELEASE_K, 1)
+    assert demand.attr_fn(replace(stalled, boiler_call=heat_call.CALL_CALLING))["calls_again_below"] is None

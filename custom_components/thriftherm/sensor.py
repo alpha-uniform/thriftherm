@@ -41,7 +41,7 @@ from .const import (
 )
 from . import texts
 from .coordinator import ThrifthermConfigEntry, ThrifthermCoordinator
-from .engines import gas_split
+from .engines import gas_split, heat_call
 from .engines.boiler_learning import PHASE_LEARNING, PHASE_PAUSED, PHASE_REFINING
 from .entity import DescribedEntity, ThrifthermEntity, is_wanted
 
@@ -479,7 +479,15 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         native_unit_of_measurement=PERCENTAGE,
         icon="mdi:radiator",
         value_fn=lambda r: None if r.demand is None else round(r.demand * 100.0, 0),
-        attr_fn=lambda r: {"issues": list(r.issues), "internal_gain_w": r.internal_gain_w, "boiler_call": r.boiler_call},
+        attr_fn=lambda r: {
+            "issues": list(r.issues),
+            "internal_gain_w": r.internal_gain_w,
+            "boiler_call": r.boiler_call,
+            # a room counted as reached calls the boiler again at or below this (engines/heat_call.py)
+            "calls_again_below": (
+                round(r.target - heat_call.STALL_RELEASE_K, 1) if r.boiler_call == heat_call.CALL_STALLED else None
+            ),
+        },
     ),
     _room_desc(
         "trend",

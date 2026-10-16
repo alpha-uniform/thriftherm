@@ -2,6 +2,25 @@
 
 [English](../en/CHANGELOG.md) | **Deutsch**
 
+## 0.6.3 – 16.10.2026
+
+Eine Raumkarte, „fast erreicht“ in den Karten und der Warmstart einer Kombitherme richtig gezählt. Die Konfiguration bleibt bei Version 3, alles Gelernte bleibt erhalten.
+
+### Neu
+
+- **Raumkarte** für die Seite eines einzelnen Raums: *Karte hinzufügen → Thriftherm room*. Ist, Soll und Grund, Soll von Hand, Komfort, Absenkung, Schnell aufheizen, Trocknen und Zeitplan; was erscheint, wählt man im Editor.
+- Die Karten zeigen, wenn ein Raum als fast erreicht gilt: *Fast erreicht, heizt wieder unter …* statt nur des Zeitplans. Den Wert liefert der Sensor *Heizbedarf* als Attribut `calls_again_below`.
+- Bilder der Karten in README und Einrichtung, mit Beispieldaten.
+
+### Behoben
+
+- Der Warmstart einer Kombitherme (sie hält ihr Warmwasser warm und meldet dabei „Heizen“) zählte als Brennerstart der Heizung und sein Gas als *Gas Heizung*. Brennt die Therme bei gesperrter Heizung mit stehender Heizungspumpe, zählt das jetzt als Warmwasser; läuft die Pumpe, heizt sie wirklich und wird als Heizung gezählt.
+
+### Dokumentation
+
+- Fehlersuche: Bleibt der letzte Heizkörper kalt, kann die Pumpe auf der kleinen Stufe laufen. Für Vaillant atmoTEC plus und turboTEC plus erklärt der Eintrag den Diagnosecode d.19, mit Warnung.
+- Fehlersuche: Ein Raum, der ein paar Zehntel unter dem Soll bleibt, und eine fehlende Thriftherm-Karte nach dem Update.
+
 ## 0.6.2 – 16.10.2026
 
 Eine eigene Dashboard-Karte kommt mit der Integration. Die Konfiguration bleibt bei Version 3, alles Gelernte bleibt erhalten.

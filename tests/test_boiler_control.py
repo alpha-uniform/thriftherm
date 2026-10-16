@@ -361,6 +361,89 @@ def test_a_burner_run_after_an_ebus_outage_is_not_hot_water():
     assert mem.hot_water_seen_ts is not None
 
 
+def _warm_start_inputs(t0):
+    # 2026-10-16 10:31: heating blocked for an hour, the combi boiler burnt a minute at S.4 with its
+    # heating pump off to keep its hot water warm; the pump ran only afterwards
+    blocked = _BM(state="block", state_since_ts=t0 - 3600, last_send_ts=t0 - 60, last_flow=40.0, block_since_ts=t0 - 3600)
+    active = replace(_shower_inputs(t0, 24.3, 21.0, burner=False), control_mode="active", advice_source="none",
+                     gas_power_w=7500.0, reported_mode="heating", status_known=True, heating_pump_on=False)
+    return active, blocked
+
+
+def test_a_warm_start_while_heating_is_blocked_is_hot_water_not_a_heating_burn():
+    t0 = 1_000_000.0
+    active, blocked = _warm_start_inputs(t0)
+    cmd, mem = _bc.decide(active, blocked)
+    assert cmd.warm_start and mem.warm_start_ts == t0
+    assert mem.burn_since_ts is None  # not counted as a burner start of the heating
+    assert mem.hot_water_seen_ts is None  # no hold-off of the learning: the circuit stayed cold
+
+    # the gas meter's step comes a little after the burn: still the warm start's
+    after = replace(active, now_ts=t0 + 90, gas_power_w=0.0, reported_mode="heating_after", heating_pump_on=True)
+    cmd, mem = _bc.decide(after, mem)
+    assert cmd.warm_start
+    cmd, _ = _bc.decide(replace(after, now_ts=t0 + 60 + _bc.WARM_START_GAS_S), mem)
+    assert not cmd.warm_start
+
+
+def test_the_gas_meter_running_on_after_a_warm_start_is_no_heating_burn():
+    # 10:32:10 S.7, the meter still read 3.8 kW until 10:32:16
+    t0 = 1_000_000.0
+    active, blocked = _warm_start_inputs(t0)
+    _, mem = _bc.decide(active, blocked)
+    cmd, mem = _bc.decide(replace(active, now_ts=t0 + 50, gas_power_w=3800.0, reported_mode="heating_after"), mem)
+    assert mem.burn_since_ts is None and cmd.burner_starts_last_hour == 0
+
+
+def test_a_burn_with_the_heating_pump_running_is_heating_although_blocked():
+    # the block did not reach the boiler (SetMode writes failing): it heats on its knob, pump on
+    t0 = 1_000_000.0
+    active, blocked = _warm_start_inputs(t0)
+    cmd, mem = _bc.decide(replace(active, heating_pump_on=True), blocked)
+    assert not cmd.warm_start and mem.burn_since_ts == t0
+    # without any pump sign nothing is taken for a warm start either
+    cmd, _ = _bc.decide(replace(active, heating_pump_on=None), blocked)
+    assert not cmd.warm_start
+
+
+def test_after_a_warm_start_the_hot_exchanger_is_no_hot_water_without_a_gas_meter():
+    t0 = 1_000_000.0
+    active, blocked = _warm_start_inputs(t0)
+    active = replace(active, gas_power_w=None)
+    _, mem = _bc.decide(active, blocked)
+    # S.31, burner off, flow 67 °C above the maximum of 60 °C while the block stands
+    idle = replace(active, now_ts=t0 + 180, reported_mode=None, flow_c=67.0, return_c=40.0, heating_pump_on=True)
+    cmd, mem = _bc.decide(idle, mem)
+    assert mem.hot_water_seen_ts is None and not cmd.hot_water
+    # a quarter of an hour later the flow rules count again
+    _, mem = _bc.decide(replace(idle, now_ts=t0 + _bc.WARM_START_COOL_S + 60), mem)
+    assert mem.hot_water_seen_ts is not None
+
+
+def test_a_heating_run_right_after_a_warm_start_is_heating_gas():
+    t0 = 1_000_000.0
+    active, blocked = _warm_start_inputs(t0)
+    _, mem = _bc.decide(active, blocked)
+    # a room calls: the plan is heat now, the boiler burns for the heating with the pump on
+    heating = replace(active, now_ts=t0 + 60, heating_pump_on=True, advice_source="boiler", rooms=(rr(temp=19.0, target=20.0),))
+    mem = replace(mem, state="heat", state_since_ts=t0 + 30, block_since_ts=None)
+    cmd, _ = _bc.decide(heating, mem)
+    assert not cmd.warm_start
+
+
+def test_a_heating_burn_is_no_warm_start():
+    t0 = 1_000_000.0
+    heating = _BM(state="heat", state_since_ts=t0 - 3600, last_send_ts=t0 - 60, last_flow=45.0)
+    active = replace(_shower_inputs(t0, 44.0, 38.0, burner=False), control_mode="active", advice_source="boiler",
+                     gas_power_w=7500.0, reported_mode="heating", status_known=True, heating_pump_on=False)
+    cmd, mem = _bc.decide(active, heating)
+    assert not cmd.warm_start and mem.burn_since_ts == t0
+    # a block that has not stood long enough yet (the boiler may still be on its knob) is no warm start either
+    fresh = _BM(state="block", state_since_ts=t0 - 30, last_send_ts=t0 - 30, block_since_ts=t0 - 30)
+    cmd, _ = _bc.decide(replace(active, advice_source="none"), fresh)
+    assert not cmd.warm_start
+
+
 def test_the_boilers_own_status_outranks_the_guesses():
     assert not _bc.hot_water_suspected(35.0, 33.3, 60.0, gas_w=11300.0, heating_blocked=True, reported_mode="heating")
     assert not _bc.hot_water_suspected(64.0, 63.5, 60.0, reported_mode="heating")  # knob at 75 °C after a fallback

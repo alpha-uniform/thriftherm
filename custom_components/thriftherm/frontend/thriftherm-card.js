@@ -257,8 +257,8 @@ class ThrifthermCard extends HTMLElement {
       this._entities = this._hass.entities;
       this._devices = this._hass.devices;
       this._model = discover(this._hass);
-      const ids = [...Object.values(this._model.system)];
-      for (const room of this._model.rooms) ids.push(...Object.values(room.ids));
+      const ids = this._watchedSystem();
+      for (const room of this._watchedRooms()) ids.push(...Object.values(room.ids));
       this._watched = ids;
     }
     // a stepped number is shown as stepped until Home Assistant reports it (or reports something else)
@@ -270,7 +270,7 @@ class ThrifthermCard extends HTMLElement {
         delete this._overrideRooms[id];
       }
     }
-    const sources = this._model.rooms.map((r) => this._hass.states[r.ids.target]?.attributes.temperature_entity).filter(Boolean);
+    const sources = this._watchedRooms().map((r) => this._hass.states[r.ids.target]?.attributes.temperature_entity).filter(Boolean);
     const signature = [
       JSON.stringify(this._config), [...this._open].join(","), this._compare, JSON.stringify(this._pending),
       this._hass.language, ...[...this._watched, ...sources].map((id) => { const s = this._hass.states[id]; return s ? s.last_updated + s.state : "-"; }),
@@ -287,8 +287,21 @@ class ThrifthermCard extends HTMLElement {
       this._paint(`<div class="empty">${esc(this._t("not_found"))}</div>`);
       return;
     }
+    this._paint(this._paintAll());
+  }
+
+  _paintAll() {
     const title = this._config.title ? `<div class="title">${esc(this._config.title)}</div>` : "";
-    this._paint(title + this._sourceBlock() + this._warnings() + this._roomsBlock() + this._modeBlock());
+    return title + this._sourceBlock() + this._warnings() + this._roomsBlock() + this._modeBlock();
+  }
+
+  // the entities whose changes repaint the card
+  _watchedSystem() {
+    return [...Object.values(this._model.system)];
+  }
+
+  _watchedRooms() {
+    return this._model.rooms;
   }
 
   // a dropdown or field in use: repainting would close it or drop what is being typed
@@ -525,18 +538,24 @@ class ThrifthermCard extends HTMLElement {
     } else if (a.quick_heat_up) reason = this._t("quick_heat_up");
     else if (!allowed && (demandState?.attributes.issues || []).includes("thermostat_silent")) reason = this._t("thermostat_silent");
     else if (!allowed && this._s(room.ids.thermostat_plan)?.attributes.reason === "thermostat_off") reason = this._label("thermostat_off");
-    else reason = this._attr(target, "reason");
+    else if (demandState?.attributes.boiler_call === "stalled" && num(demandState.attributes.calls_again_below) !== null) {
+      // reached within a few tenths and hardly rising any more: the boiler stays off until the room cools
+      reason = this._t("stalled", { temp: this._temp(num(demandState.attributes.calls_again_below)) });
+    } else reason = this._attr(target, "reason");
 
     const open = this._open.has(room.key);
     const bar = allowed && demand !== null && demand > 0
       ? `<div class="bar" role="presentation"><div style="width:${Math.min(100, Math.max(4, demand))}%"></div></div>` : "";
-    return `<div class="room${allowed ? "" : " off"}${open ? " open" : ""}">
-      <button class="room-head" data-action="room" data-room="${esc(room.key)}" aria-expanded="${open}">
-        <span class="room-name"><span class="name">${esc(room.name)}</span><span class="badges">${badges}</span></span>
+    const head = `<span class="room-name"><span class="name">${esc(room.name)}</span><span class="badges">${badges}</span></span>
         <span class="temps">${current !== null ? `<span class="current">${esc(this._num(current))}°</span>` : ""}${setpoint !== null ? `<span class="target">→ ${esc(this._num(setpoint))}°</span>` : ""}</span>
         <span class="reason">${esc(reason)}</span>
-        ${bar}
-      </button>
+        ${bar}`;
+    // the room card shows the room always open: its head is no button to tap
+    const headBlock = this._single
+      ? `<div class="room-head">${head}</div>`
+      : `<button class="room-head" data-action="room" data-room="${esc(room.key)}" aria-expanded="${open}">${head}</button>`;
+    return `<div class="room${allowed ? "" : " off"}${open ? " open" : ""}">
+      ${headBlock}
       ${open ? this._roomDetail(room, byHand) : ""}
     </div>`;
   }
@@ -735,14 +754,23 @@ class ThrifthermCardEditor extends HTMLElement {
       <button data-action="move" data-room="${esc(r.key)}" data-delta="-1" title="${esc(t("editor_up"))}" ${i === 0 ? "disabled" : ""}>${icon("up")}</button>
       <button data-action="move" data-room="${esc(r.key)}" data-delta="1" title="${esc(t("editor_down"))}" ${i === rooms.length - 1 ? "disabled" : ""}>${icon("down")}</button>
     </div>`).join("");
-    const hiddenControls = new Set(this._config.hidden_controls || []);
-    const controls = CONTROLS.map((c) => `<div class="row">
-      <label><input type="checkbox" data-action="control" data-control="${esc(c)}"${hiddenControls.has(c) ? "" : " checked"}> ${esc(t(c))}</label>
-    </div>`).join("");
     this.shadowRoot.innerHTML = `<style>${EDITOR_STYLE}</style>
-      <label class="field"><span>${esc(t("editor_title"))}</span><input type="text" data-action="title" value="${esc(this._config.title || "")}"></label>
+      ${this._titleField(t)}
       <div class="field"><span>${esc(t("editor_rooms"))}</span>${rows}</div>
-      <div class="field"><span>${esc(t("editor_controls"))}</span>${controls}</div>`;
+      ${this._controlsField(t, "editor_controls")}`;
+  }
+
+  _titleField(t) {
+    return `<label class="field"><span>${esc(t("editor_title"))}</span><input type="text" data-action="title" value="${esc(this._config.title || "")}"></label>`;
+  }
+
+  // what a tapped room (or the room card) shows: one checkbox per control
+  _controlsField(t, labelKey) {
+    const hidden = new Set(this._config.hidden_controls || []);
+    const rows = CONTROLS.map((c) => `<div class="row">
+      <label><input type="checkbox" data-action="control" data-control="${esc(c)}"${hidden.has(c) ? "" : " checked"}> ${esc(t(c))}</label>
+    </div>`).join("");
+    return `<div class="field"><span>${esc(t(labelKey))}</span>${rows}</div>`;
   }
 
   _emit(config) {
@@ -858,13 +886,16 @@ const STYLE = `
   select, input { font: inherit; color: var(--primary-text-color); background: var(--ha-card-background, var(--card-background-color, transparent));
     border: 1px solid var(--divider-color); border-radius: 8px; padding: 6px 8px; max-width: 60%; }
   button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }
+  .rooms.single { border: 0; margin: 0; }
+  .rooms.single .room { border: 0; }
+  .rooms.single .room-head { cursor: default; }
 `;
 
 const EDITOR_STYLE = `
   :host { display: block; color: var(--primary-text-color); }
   .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
   .field > span { font-weight: 500; }
-  input[type=text] { font: inherit; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); color: inherit; background: transparent; }
+  select, input[type=text] { font: inherit; padding: 8px; border-radius: 6px; border: 1px solid var(--divider-color); color: inherit; background: transparent; }
   .row { display: flex; align-items: center; gap: 6px; padding: 4px 0; border-bottom: 1px solid var(--divider-color); }
   .spacer { flex: 1; }
   button { background: none; border: 0; cursor: pointer; color: var(--primary-color); padding: 4px; }
@@ -872,10 +903,90 @@ const EDITOR_STYLE = `
   .icon { width: 20px; height: 20px; fill: currentColor; }
 `;
 
+// ------------------------------------------------------------------ one room, for a room's own page
+class ThrifthermRoomCard extends ThrifthermCard {
+  constructor() {
+    super();
+    this._single = true;
+  }
+
+  static getConfigElement() {
+    return document.createElement("thriftherm-room-card-editor");
+  }
+
+  static getStubConfig(hass) {
+    const first = hass ? orderedRooms(discover(hass).rooms, {})[0] : undefined;
+    return first ? { room: first.key } : {};
+  }
+
+  getCardSize() {
+    return 4;
+  }
+
+  getGridOptions() {
+    return { columns: 6, min_columns: 4 };
+  }
+
+  _render() {
+    if (this._config.room) this._open = new Set([this._config.room]); // always open: the room's controls are the point
+    super._render();
+  }
+
+  _watchedSystem() {
+    // the room row's badges: does the boiler or the heat pump heat it
+    return [this._model.system.boiler_command, this._model.system.midea_command].filter(Boolean);
+  }
+
+  _watchedRooms() {
+    return this._model.rooms.filter((r) => r.key === this._config.room);
+  }
+
+  _paintAll() {
+    if (!this._config.room) return `<div class="empty">${esc(this._t("room_choose"))}</div>`;
+    const room = this._model.rooms.find((r) => r.key === this._config.room);
+    if (!room) return `<div class="empty">${esc(this._t("room_not_found", { room: this._config.room }))}</div>`;
+    const title = this._config.title ? `<div class="title">${esc(this._config.title)}</div>` : "";
+    return `${title}<div class="rooms single">${this._room(room)}</div>`;
+  }
+}
+
+class ThrifthermRoomCardEditor extends ThrifthermCardEditor {
+  _render() {
+    if (!this._hass || !this._texts) return;
+    const t = (key) => this._texts.card[key] ?? key;
+    const rooms = this._rooms();
+    const options = rooms.map((r) =>
+      `<option value="${esc(r.key)}"${r.key === this._config.room ? " selected" : ""}>${esc(r.name)}</option>`).join("");
+    // no room yet, or one that is gone: an empty choice first, so that picking any room is a change
+    const known = rooms.some((r) => r.key === this._config.room);
+    this.shadowRoot.innerHTML = `<style>${EDITOR_STYLE}</style>
+      <label class="field"><span>${esc(t("editor_room"))}</span><select data-action="room">${known ? "" : "<option selected></option>"}${options}</select></label>
+      ${this._titleField(t)}
+      ${this._controlsField(t, "editor_controls_room")}`;
+  }
+
+  _onChange(ev) {
+    const el = ev.target;
+    if (el.dataset.action === "room") this._emit({ ...this._config, room: el.value });
+    else super._onChange(ev);
+  }
+}
+
 if (!customElements.get("thriftherm-card")) customElements.define("thriftherm-card", ThrifthermCard);
 if (!customElements.get("thriftherm-card-editor")) customElements.define("thriftherm-card-editor", ThrifthermCardEditor);
+if (!customElements.get("thriftherm-room-card")) customElements.define("thriftherm-room-card", ThrifthermRoomCard);
+if (!customElements.get("thriftherm-room-card-editor")) customElements.define("thriftherm-room-card-editor", ThrifthermRoomCardEditor);
 
 window.customCards = window.customCards || [];
+if (!window.customCards.some((c) => c.type === "thriftherm-room-card")) {
+  window.customCards.push({
+    type: "thriftherm-room-card",
+    name: "Thriftherm room",
+    description: "One room: temperature, target and reason, change it by hand, quick heat-up, drying, schedule. / Ein Raum: Temperatur, Soll und Grund, von Hand ändern, Schnell aufheizen, Trocknen, Zeitplan.",
+    preview: true,
+    documentationURL: "https://github.com/alpha-uniform/thriftherm",
+  });
+}
 if (!window.customCards.some((c) => c.type === "thriftherm-card")) {
   window.customCards.push({
     type: "thriftherm-card",

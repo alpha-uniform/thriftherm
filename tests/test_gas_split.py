@@ -44,6 +44,8 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 def test_the_status_code_says_what_the_gas_is_burnt_for():
     assert hot_water_now(BOILER_REPORTS_HOT_WATER, False, None, NOW) is True
     assert hot_water_now(BOILER_REPORTS_HEATING, True, NOW - 10, NOW) is False  # it outranks every other sign
+    # except a warm start: the boiler says heating while its heating is blocked (engines/boiler_control.py)
+    assert hot_water_now(BOILER_REPORTS_HEATING, False, None, NOW, warm_start=True) is True
     assert hot_water_now(None, True, None, NOW) is True  # no code: the boiler's hot water state
 
 
@@ -232,6 +234,33 @@ async def test_with_a_gas_meter_the_gas_is_split_by_the_boilers_status(hass: Hom
     attributes = hass.states.get(HOT_WATER).attributes
     assert (attributes["hot_water_share_pct"], attributes["unassigned_kwh"]) == (28.6, 0.0)
     assert hass.states.get(HEATING).attributes["state_class"] == "total_increasing"
+
+
+async def test_a_warm_starts_gas_goes_to_hot_water_although_the_boiler_reports_heating(
+    hass: HomeAssistant, freezer, monkeypatch
+) -> None:
+    """The coordinator hands the control's warm start to the gas split (engines/boiler_control.py)."""
+    from dataclasses import replace as _replace
+
+    from custom_components.thriftherm.engines import boiler_control
+
+    real_decide = boiler_control.decide
+
+    def decide_with_warm_start(inp, mem):
+        cmd, mem = real_decide(inp, mem)
+        return _replace(cmd, warm_start=True), mem
+
+    monkeypatch.setattr(boiler_control, "decide", decide_with_warm_start)
+    hass.states.async_set("sensor.gas_volume", "100.0")
+    hass.states.async_set("sensor.statenumber", "4")  # S.4 says heating, the control says warm start
+    coordinator = await _setup(hass, {CONF_GAS_VOLUME: "sensor.gas_volume", CONF_BOILER_STATE_NUMBER: "sensor.statenumber"})
+
+    freezer.tick(60)
+    hass.states.async_set("sensor.gas_volume", "100.02")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert float(hass.states.get(HEATING).state) == 0.0
+    assert float(hass.states.get(HOT_WATER).state) == pytest.approx(0.02 * 0.9381 * 11.45, abs=0.001)
 
 
 async def test_a_new_calorific_value_does_not_rescale_the_gas_already_counted(hass: HomeAssistant, freezer) -> None:

@@ -360,6 +360,8 @@ Keine ebusd-Werte, eine Therme, die den Sollwert nicht annimmt, ein Thermostat, 
 
 Thriftherm bringt eine eigene Karte mit. Sie kommt mit der Integration, du musst nichts weiter installieren. Die Karte findet deine Räume selbst.
 
+<img alt="Die Thriftherm-Karte mit Beispieldaten" width="380" src="../images/card_de.png">
+
 1. Dashboard öffnen, Stift oben rechts, *Karte hinzufügen*.
 2. In der Suche „Thriftherm“ eingeben und die Karte wählen. Die Vorschau zeigt schon deine Räume.
 3. Optional im Editor: einen Titel setzen, Räume ausblenden oder ihre Reihenfolge ändern, und wählen, was ein angetippter Raum zeigt (z. B. Komfort und Absenkung weglassen). Speichern.
@@ -383,7 +385,20 @@ Was die Karte zeigt, von oben nach unten:
 
 Die Karte braucht Home Assistant 2025.1 oder neuer. Zeigt das Dashboard nach der Installation oder einem Update *Custom element doesn't exist: thriftherm-card* oder noch die alte Karte, lade die Seite hart neu (Cmd+Shift+R bzw. Strg+Shift+R). Hilft das nicht, lösche im Browser die Websitedaten deiner Home-Assistant-Adresse; in der App: *Einstellungen → Companion App → Frontend-Cache zurücksetzen* ([Fehlersuche](FEHLERSUCHE.md#die-thriftherm-karte-fehlt-custom-element-doesnt-exist)).
 
-### 9.2 Beispiel-Dashboard aus Standard-Karten (optional)
+### 9.2 Die Raumkarte
+
+Für die Seite eines einzelnen Raums gibt es die Raumkarte: *Karte hinzufügen → Thriftherm room*, dann im Editor den Raum wählen. Sie zeigt den Raum dauerhaft aufgeklappt, mit denselben Knöpfen wie die große Karte; welche davon erscheinen, wählst du im Editor.
+
+<img alt="Die Raumkarte mit Beispieldaten" width="380" src="../images/room_card_de.png">
+
+```yaml
+type: custom:thriftherm-room-card
+room: badezimmer                    # Raumschlüssel
+title: Bad                          # optional
+hidden_controls: [comfort, setback] # optional, wie bei der großen Karte
+```
+
+### 9.3 Beispiel-Dashboard aus Standard-Karten (optional)
 
 Wer lieber nur Standard-Karten von Home Assistant nimmt, findet ein fertiges Dashboard in [`dashboards/thriftherm.yaml`](../dashboards/thriftherm.yaml). Es zeigt zuerst, was gerade heizt und warum.
 

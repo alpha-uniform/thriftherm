@@ -360,6 +360,8 @@ No ebusd values, a boiler that does not take the setpoint, a thermostat that han
 
 Thriftherm brings a card of its own. It comes with the integration, there is nothing else to install. The card finds your rooms by itself.
 
+<img alt="The Thriftherm card with sample data" width="380" src="../images/card_en.png">
+
 1. Open a dashboard, pencil top right, *Add card*.
 2. Type "Thriftherm" in the search and pick the card. The preview already shows your rooms.
 3. Optionally in the editor: set a title, hide rooms or change their order, and choose what a tapped room shows (e.g. leave out comfort and setback). Save.
@@ -383,7 +385,20 @@ What the card shows, from top to bottom:
 
 The card needs Home Assistant 2025.1 or newer. If the dashboard shows *Custom element doesn't exist: thriftherm-card* or still the old card after installing or updating, hard-reload the page (Cmd+Shift+R or Ctrl+Shift+R). If that does not help, clear the browser's site data for your Home Assistant address; in the app: *Settings → Companion app → Reset frontend cache* ([Troubleshooting](TROUBLESHOOTING.md#the-thriftherm-card-is-missing-custom-element-doesnt-exist)).
 
-### 9.2 Example dashboard from standard cards (optional)
+### 9.2 The room card
+
+For the page of a single room there is the room card: *Add card → Thriftherm room*, then pick the room in the editor. It shows the room always open, with the same buttons as the big card; the editor chooses which of them appear.
+
+<img alt="The room card with sample data" width="380" src="../images/room_card_en.png">
+
+```yaml
+type: custom:thriftherm-room-card
+room: badezimmer                    # room key
+title: Bathroom                     # optional
+hidden_controls: [comfort, setback] # optional, as with the big card
+```
+
+### 9.3 Example dashboard from standard cards (optional)
 
 If you prefer Home Assistant's standard cards only, a ready-made dashboard is in [`dashboards/thriftherm.en.yaml`](../dashboards/thriftherm.en.yaml) (German labels: [`dashboards/thriftherm.yaml`](../dashboards/thriftherm.yaml)). It shows first what heats now and why.
 

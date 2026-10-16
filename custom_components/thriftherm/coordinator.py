@@ -60,6 +60,7 @@ from .const import (
     MODE_BOILER_ONLY,
     MODE_HEAT_PUMP_ONLY,
     MODE_OFF,
+    PUMP_STATE_ON,
     SAFETY_FALLBACK,
     SAFETY_OK,
     SOURCE_HEAT_PUMP,
@@ -1028,7 +1029,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await executors.async_request_ebus_read(self.hass, topic)
             self._ebus_read_ts = now
 
-    def _count_gas(self, snapshot: HeatingSnapshot, boiler_res: BoilerResult, now_ts: float) -> None:
+    def _count_gas(self, snapshot: HeatingSnapshot, boiler_res: BoilerResult, now_ts: float, warm_start: bool = False) -> None:
         """Count the gas for heating and the gas for hot water apart, by what the installation has."""
         boiler = snapshot.boiler
         if not self.has_boiler:
@@ -1038,7 +1039,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return  # the meter is away: its next reading is counted from the last one
             reported = None if self.boiler_entities else self.boiler_profile.reported_mode(boiler_res.state_number)
             seen = self.boiler_memory.hot_water_seen_ts
-            hot_water = gas_split.hot_water_now(reported, bool(boiler_res.hwc_active), seen, now_ts)
+            hot_water = gas_split.hot_water_now(reported, bool(boiler_res.hwc_active), seen, now_ts, warm_start)
             prices = snapshot.prices
             kwh_per_m3 = economics.gas_energy_kwh(1.0, prices.gas_z_factor, prices.gas_calorific_kwh_m3)
             self.gas_split = gas_split.by_meter(self.gas_split, boiler.gas_volume_m3.value, kwh_per_m3, hot_water, now_ts)
@@ -1295,6 +1296,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 and not bool(boiler_res.hwc_active),
                 hot_water_active=bool(boiler_res.hwc_active),
+                heating_pump_on=(
+                    snapshot.boiler.pump_running
+                    if snapshot.boiler.pump_running is not None
+                    else None if snapshot.boiler.pump_state is None else snapshot.boiler.pump_state == PUMP_STATE_ON
+                ),
                 learning_allowed=learning_allowed,
             ),
             self.boiler_memory,
@@ -1302,7 +1308,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if hot_water_recent and boiler_cmd.learning_phase == boiler_learning.PHASE_PAUSED:
             learning_blocked.append("hot_water_recent")  # shown as what the paused learning waits for
         self.plan_log.boiler(boiler_cmd, now_ts, self.boiler_control_mode == CTRL_ACTIVE)
-        self._count_gas(snapshot, boiler_res, now_ts)
+        self._count_gas(snapshot, boiler_res, now_ts, boiler_cmd.warm_start)
         if self.has_boiler:
             flow_c, return_c = snapshot.boiler.flow_temp.value_or_none, snapshot.boiler.return_temp.value_or_none
             self.load_log.append([

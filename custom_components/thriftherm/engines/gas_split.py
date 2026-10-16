@@ -97,13 +97,18 @@ class GasSplit:
         )
 
 
-def hot_water_now(reported_mode: str | None, hot_water_active: bool, hot_water_seen_ts: float | None, now_ts: float) -> bool:
+def hot_water_now(
+    reported_mode: str | None, hot_water_active: bool, hot_water_seen_ts: float | None, now_ts: float, warm_start: bool = False
+) -> bool:
     """Whether gas burnt now is burnt for hot water.
 
     The boiler's status code says it where it is known. Otherwise the boiler's hot water state
     counts, or the control's own last hot water sign while it is fresh (it shows hot water for
-    ten minutes after a tap; that long a time would take a heating run for hot water).
+    ten minutes after a tap; that long a time would take a heating run for hot water). A warm
+    start (engines/boiler_control.py) is hot water although the boiler reports heating.
     """
+    if warm_start:
+        return True
     if reported_mode == BOILER_REPORTS_HEATING:
         return False
     if reported_mode == BOILER_REPORTS_HOT_WATER or hot_water_active:
