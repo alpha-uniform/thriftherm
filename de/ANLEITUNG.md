@@ -1,10 +1,10 @@
 # Thriftherm – Anleitung
 
-[English](GUIDE.md) | **Deutsch**
+[English](../en/GUIDE.md) | **Deutsch**
 
 > **Du richtest Thriftherm zum ersten Mal ein?** Fang mit der [Einrichtungsanleitung](EINRICHTUNG.md) an.
 
-Diese Anleitung erklärt den Alltag mit Thriftherm: was die Modi tun, welche Temperatur wann gilt, was Thriftherm lernt und was bei einer Reparaturmeldung zu tun ist. Idee und Hardware stehen im [README](README.md). Wie Thriftherm intern rechnet, mit allen Schwellen und Zeiten, steht in [Wie Thriftherm rechnet](FUNKTIONSWEISE.md). Bei Problemen hilft die [Fehlersuche](FEHLERSUCHE.md).
+Diese Anleitung erklärt den Alltag mit Thriftherm: was die Modi tun, welche Temperatur wann gilt, was Thriftherm lernt und was bei einer Reparaturmeldung zu tun ist. Idee und Hardware stehen im [README](../README.md). Wie Thriftherm intern rechnet, mit allen Schwellen und Zeiten, steht in [Wie Thriftherm rechnet](FUNKTIONSWEISE.md). Bei Problemen hilft die [Fehlersuche](FEHLERSUCHE.md).
 
 **Sprache.** Ist Home Assistant auf Deutsch eingestellt, spricht Thriftherm Deutsch, bei jeder anderen Sprache Englisch – Entitätsnamen, Zustände, Attribute, Entscheidungsgrund, Dialoge, Reparaturmeldungen und Fehlermeldungen. Die Entitäts-IDs sind immer englisch (`sensor.thriftherm_boiler_command`), damit Automationen und Dashboards unabhängig von der Sprache funktionieren.
 

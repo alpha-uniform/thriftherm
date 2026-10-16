@@ -645,7 +645,10 @@
     "preheat_start_ts": null,
     "quick_heat_up": false,
     "reason": "schedule_comfort",
+    "room_key": "badezimmer",
+    "schedule_entity": null,
     "state_class": "measurement",
+    "temperature_entity": "sensor.bath_temp",
     "unit_of_measurement": "°C"
    },
    "capabilities": {
@@ -1340,7 +1343,10 @@
     "preheat_start_ts": null,
     "quick_heat_up": false,
     "reason": "schedule_comfort",
+    "room_key": "wohnzimmer",
+    "schedule_entity": null,
     "state_class": "measurement",
+    "temperature_entity": "sensor.living_temp",
     "unit_of_measurement": "°C"
    },
    "capabilities": {
@@ -2145,7 +2151,10 @@
     "preheat_start_ts": null,
     "quick_heat_up": false,
     "reason": "schedule_comfort",
+    "room_key": "badezimmer",
+    "schedule_entity": null,
     "state_class": "measurement",
+    "temperature_entity": "sensor.bath_temp",
     "unit_of_measurement": "°C"
    },
    "capabilities": {
@@ -3086,7 +3095,10 @@
     "preheat_start_ts": null,
     "quick_heat_up": false,
     "reason": "schedule_comfort",
+    "room_key": "wohnzimmer",
+    "schedule_entity": null,
     "state_class": "measurement",
+    "temperature_entity": "sensor.living_temp",
     "unit_of_measurement": "°C"
    },
    "capabilities": {
@@ -3897,7 +3909,10 @@
     "preheat_start_ts": null,
     "quick_heat_up": false,
     "reason": "schedule_comfort",
+    "room_key": "badezimmer",
+    "schedule_entity": null,
     "state_class": "measurement",
+    "temperature_entity": "sensor.bath_temp",
     "unit_of_measurement": "°C"
    },
    "capabilities": {
@@ -4838,7 +4853,10 @@
     "preheat_start_ts": null,
     "quick_heat_up": false,
     "reason": "schedule_comfort",
+    "room_key": "wohnzimmer",
+    "schedule_entity": null,
     "state_class": "measurement",
+    "temperature_entity": "sensor.living_temp",
     "unit_of_measurement": "°C"
    },
    "capabilities": {
@@ -5509,7 +5527,10 @@
     "preheat_start_ts": null,
     "quick_heat_up": false,
     "reason": "schedule_comfort",
+    "room_key": "badezimmer",
+    "schedule_entity": null,
     "state_class": "measurement",
+    "temperature_entity": "sensor.bath_temp",
     "unit_of_measurement": "°C"
    },
    "capabilities": {
@@ -6063,7 +6084,10 @@
     "preheat_start_ts": null,
     "quick_heat_up": false,
     "reason": "schedule_comfort",
+    "room_key": "wohnzimmer",
+    "schedule_entity": null,
     "state_class": "measurement",
+    "temperature_entity": "sensor.living_temp",
     "unit_of_measurement": "°C"
    },
    "capabilities": {
@@ -6761,7 +6785,10 @@
     "preheat_start_ts": null,
     "quick_heat_up": false,
     "reason": "schedule_comfort",
+    "room_key": "badezimmer",
+    "schedule_entity": null,
     "state_class": "measurement",
+    "temperature_entity": "sensor.bath_temp",
     "unit_of_measurement": "°C"
    },
    "capabilities": {
@@ -7359,7 +7386,10 @@
     "preheat_start_ts": null,
     "quick_heat_up": false,
     "reason": "schedule_comfort",
+    "room_key": "wohnzimmer",
+    "schedule_entity": null,
     "state_class": "measurement",
+    "temperature_entity": "sensor.living_temp",
     "unit_of_measurement": "°C"
    },
    "capabilities": {

@@ -1,10 +1,10 @@
 # Thriftherm user guide
 
-**English** | [Deutsch](ANLEITUNG.md)
+**English** | [Deutsch](../de/ANLEITUNG.md)
 
 > **Setting up for the first time?** Start with the [setup guide](SETUP.md).
 
-This guide explains how to live with Thriftherm day to day: what the modes do, which temperatures apply when, what Thriftherm learns and what to do when Home Assistant reports a problem. The [README](README.en.md) explains the idea and the hardware. How Thriftherm works inside, with every threshold and time, is in [How Thriftherm works](HOW_IT_WORKS.md). When something goes wrong, see [Troubleshooting](TROUBLESHOOTING.md).
+This guide explains how to live with Thriftherm day to day: what the modes do, which temperatures apply when, what Thriftherm learns and what to do when Home Assistant reports a problem. The [README](../README.en.md) explains the idea and the hardware. How Thriftherm works inside, with every threshold and time, is in [How Thriftherm works](HOW_IT_WORKS.md). When something goes wrong, see [Troubleshooting](TROUBLESHOOTING.md).
 
 **Language.** Thriftherm speaks German when Home Assistant is set to German and English for every other language – entity names, states, attributes, the decision reason, dialogs, repairs and error messages. Entity IDs are always English (`sensor.thriftherm_boiler_command`), so automations and dashboards keep working whatever the language.
 

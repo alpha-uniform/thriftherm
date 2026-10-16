@@ -1,6 +1,6 @@
 # Thriftherm setup guide
 
-**English** | [Deutsch](EINRICHTUNG.md)
+**English** | [Deutsch](../de/EINRICHTUNG.md)
 
 This guide takes you from nothing to a working Thriftherm installation, one step at a time. You do not need to know ebusd or Home Assistant internals.
 
@@ -16,7 +16,7 @@ This guide takes you from nothing to a working Thriftherm installation, one step
 | [6](#6-at-the-boiler) | Set the knob, check the pump mode | at the boiler |
 | [7](#7-plan-only-first-then-active) | Watch for a few days, then go active | Home Assistant |
 | [8](#8-troubleshooting) | If something does not work | – |
-| [9](#9-example-dashboard-optional) | Paste a ready-made dashboard | Home Assistant |
+| [9](#9-dashboard) | Put the Thriftherm card on a dashboard | Home Assistant |
 
 Have district heating or no own boiler? Skip steps 2 and 6; the setup dialog leaves out the boiler for you.
 
@@ -144,7 +144,7 @@ Is Thriftherm already set up? Then open *Thriftherm → Configure → Gas boiler
 
 ### 2.5 Poll fewer values so that flow and return are fresher
 
-Optional, for advanced users. ebusd polls the boiler's values in turn; the shorter its list, the more often flow and return come (on the test installation, after trimming, they pause for only 1 minute 48 seconds instead of 4 minutes). The control does not need it, Thriftherm fetches its values itself; it helps if you want to see them promptly in a dashboard. What can go, what has to stay and how to trim: [Poll fewer ebusd values](EBUSD.en.md).
+Optional, for advanced users. ebusd polls the boiler's values in turn; the shorter its list, the more often flow and return come (on the test installation, after trimming, they pause for only 1 minute 48 seconds instead of 4 minutes). The control does not need it, Thriftherm fetches its values itself; it helps if you want to see them promptly in a dashboard. What can go, what has to stay and how to trim: [Poll fewer ebusd values](EBUSD.md).
 
 ## 3. Install Thriftherm
 
@@ -206,7 +206,7 @@ The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fill
 | eBUS signal (binary sensor) | **ebusd's own signal** (`binary_sensor.…_global_signal`), not the adapter's connectivity sensor: when the adapter drops off Wi-Fi, its own sensor keeps its last value "on" (measured) |
 | Nominal circulation flow of the pump | keep the default unless your boiler's manual says otherwise |
 | Gas meter volume (m³, total), Gas meter instantaneous flow (m³/h) | your gas meter entities, if you have them; otherwise leave empty. The control needs no gas meter: it tells burner runs and hot water from the pump and the status code. Without a meter, the *Gas power* and *Gas energy* sensors are not created |
-| Without a gas meter: nominal heat input of the boiler (type plate, kW) | only without a gas meter and only for a Vaillant boiler: the value **Q** or **Qn** from the type plate, the larger one of a range (atmoTEC plus VCW 194/4-5: 22.2). With it Thriftherm estimates *Gas for heating* and *Gas for hot water* from the boiler's counters. For that the six ebusd messages PrEnergySumHc1 to 3 and PrEnergySumHwc1 to 3 must reach Home Assistant, so do not exclude them ([Poll fewer ebusd values](EBUSD.en.md#what-thriftherm-needs)); Thriftherm finds them by itself. On the test installation the estimate was 1 % above the gas meter over 32 days (95.8 kWh on the meter) and off by no more than 0.3 kWh on any day. Leave empty with a gas meter |
+| Without a gas meter: nominal heat input of the boiler (type plate, kW) | only without a gas meter and only for a Vaillant boiler: the value **Q** or **Qn** from the type plate, the larger one of a range (atmoTEC plus VCW 194/4-5: 22.2). With it Thriftherm estimates *Gas for heating* and *Gas for hot water* from the boiler's counters. For that the six ebusd messages PrEnergySumHc1 to 3 and PrEnergySumHwc1 to 3 must reach Home Assistant, so do not exclude them ([Poll fewer ebusd values](EBUSD.md#what-thriftherm-needs)); Thriftherm finds them by itself. On the test installation the estimate was 1 % above the gas meter over 32 days (95.8 kWh on the meter) and off by no more than 0.3 kWh on any day. Leave empty with a gas meter |
 | Keep hot water ready (keep-warm of a combi boiler, cylinder loading) | leave it on. Switch it off only on a combi boiler without a cylinder whose keep-warm bothers you at night (about one burner start an hour with no heating demand); it only acts with active boiler control |
 | ebusd circuit of the boiler (usually bai) | keep `bai` unless your ebusd device uses another circuit name |
 | Heating curve: flow temperature at -10 °C outdoor | start with the default 55 °C |
@@ -354,9 +354,38 @@ Everything about daily use – modes, schedules, away mode, learning – is in t
 
 No ebusd values, a boiler that does not take the setpoint, a thermostat that hangs: what to do then is in [Troubleshooting](TROUBLESHOOTING.md). It is ordered by what you see and also answers frequent questions from daily use.
 
-## 9. Example dashboard (optional)
+## 9. Dashboard
 
-A ready-made dashboard is in [`dashboards/thriftherm.en.yaml`](dashboards/thriftherm.en.yaml) (German labels: [`dashboards/thriftherm.yaml`](dashboards/thriftherm.yaml)). It shows first what heats now and why.
+### 9.1 The Thriftherm card
+
+Thriftherm brings a card of its own. It comes with the integration, there is nothing else to install. The card finds your rooms by itself.
+
+1. Open a dashboard, pencil top right, *Add card*.
+2. Type "Thriftherm" in the search and pick the card. The preview already shows your rooms.
+3. Optionally in the editor: set a title, hide rooms or change their order, and choose what a tapped room shows (e.g. leave out comfort and setback). Save.
+
+In the YAML editor `type: custom:thriftherm-card` is enough. These are the only other settings:
+
+```yaml
+type: custom:thriftherm-card
+title: Heating              # optional
+hidden_rooms: [arbeitszimmer]  # optional, room keys
+hidden_controls: [comfort, setback]  # optional: now, comfort, setback, quick_heat_up, dry_now, schedule
+room_order: [badezimmer, wohnzimmer]  # optional, the other rooms follow
+```
+
+What the card shows, from top to bottom:
+
+- **The heat source in one sentence**, e.g. "Heat pump is heating", below it the cost per kWh of heat. A tap opens the comparison of boiler and heat pump: what each does and why, flow setpoint or COP, cost, the COP from which the heat pump pays off, and what the learning of the heating curve does right now.
+- **Notes, only when there are some:** safety restricted, heat pump blocked, window open, changed by hand (with *Back to automatic*).
+- **One row per room:** measured temperature, target and the reason. Small icons show whether the boiler or the heat pump heats the room right now, whether it was changed by hand or a window is open. A tap on the room opens *Now* (change the target by hand; it holds as long as any change by hand), comfort, setback, *Quick heat-up*, in the bathroom *Dry now*, *Schedule* (opens the room's schedule helper when it has one) and, after a change by hand, *Back to automatic*.
+- **Operating mode**, in *Away* with the return.
+
+The card needs Home Assistant 2025.1 or newer. If the dashboard shows *Custom element doesn't exist: thriftherm-card* or still the old card after installing or updating, hard-reload the page (Cmd+Shift+R or Ctrl+Shift+R). If that does not help, clear the browser's site data for your Home Assistant address; in the app: *Settings → Companion app → Reset frontend cache* ([Troubleshooting](TROUBLESHOOTING.md#the-thriftherm-card-is-missing-custom-element-doesnt-exist)).
+
+### 9.2 Example dashboard from standard cards (optional)
+
+If you prefer Home Assistant's standard cards only, a ready-made dashboard is in [`dashboards/thriftherm.en.yaml`](../dashboards/thriftherm.en.yaml) (German labels: [`dashboards/thriftherm.yaml`](../dashboards/thriftherm.yaml)). It shows first what heats now and why.
 
 1. Settings > Dashboards > *Add dashboard* > *New dashboard from scratch*.
 2. Open the dashboard, pencil top right, then ⋮ > *Raw configuration editor*. Replace everything with the file's content and save.

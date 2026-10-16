@@ -1,6 +1,6 @@
 # Thriftherm einrichten
 
-[English](SETUP.md) | **Deutsch**
+[English](../en/SETUP.md) | **Deutsch**
 
 Diese Anleitung bringt dich Schritt für Schritt von null zu einer laufenden Thriftherm-Installation. Du musst dich weder mit ebusd noch mit den Innereien von Home Assistant auskennen.
 
@@ -16,7 +16,7 @@ Diese Anleitung bringt dich Schritt für Schritt von null zu einer laufenden Thr
 | [6](#6-an-der-therme) | Drehknopf stellen, Pumpenmodus prüfen | an der Therme |
 | [7](#7-erst-nur-planen-dann-aktiv) | Ein paar Tage beobachten, dann aktiv schalten | Home Assistant |
 | [8](#8-wenn-etwas-nicht-klappt) | Wenn etwas nicht klappt | – |
-| [9](#9-beispiel-dashboard-optional) | Ein fertiges Dashboard einfügen | Home Assistant |
+| [9](#9-dashboard) | Die Thriftherm-Karte aufs Dashboard legen | Home Assistant |
 
 Fernwärme oder keine eigene Therme? Dann überspringst du die Schritte 2 und 6; der Einrichtungsdialog lässt die Therme von selbst weg.
 
@@ -354,9 +354,38 @@ Alles zum Alltag – Modi, Zeitpläne, Abwesenheit, Lernen – steht in der [Anl
 
 Keine ebusd-Werte, eine Therme, die den Sollwert nicht annimmt, ein Thermostat, das hängt: Was dann zu tun ist, steht in der [Fehlersuche](FEHLERSUCHE.md). Sie ist nach dem geordnet, was du siehst, und beantwortet auch häufige Fragen aus dem Alltag.
 
-## 9. Beispiel-Dashboard (optional)
+## 9. Dashboard
 
-Ein fertiges Dashboard liegt in [`dashboards/thriftherm.yaml`](dashboards/thriftherm.yaml). Es zeigt zuerst, was gerade heizt und warum.
+### 9.1 Die Thriftherm-Karte
+
+Thriftherm bringt eine eigene Karte mit. Sie kommt mit der Integration, du musst nichts weiter installieren. Die Karte findet deine Räume selbst.
+
+1. Dashboard öffnen, Stift oben rechts, *Karte hinzufügen*.
+2. In der Suche „Thriftherm“ eingeben und die Karte wählen. Die Vorschau zeigt schon deine Räume.
+3. Optional im Editor: einen Titel setzen, Räume ausblenden oder ihre Reihenfolge ändern, und wählen, was ein angetippter Raum zeigt (z. B. Komfort und Absenkung weglassen). Speichern.
+
+Im YAML-Editor genügt `type: custom:thriftherm-card`. Weitere Einstellungen gibt es nur diese:
+
+```yaml
+type: custom:thriftherm-card
+title: Heizung              # optional
+hidden_rooms: [arbeitszimmer]  # optional, Raumschlüssel
+hidden_controls: [comfort, setback]  # optional: now, comfort, setback, quick_heat_up, dry_now, schedule
+room_order: [badezimmer, wohnzimmer]  # optional, die übrigen Räume folgen
+```
+
+Was die Karte zeigt, von oben nach unten:
+
+- **Wärmequelle in einem Satz**, z. B. „Wärmepumpe heizt“, darunter die Kosten je kWh Wärme. Ein Tipp öffnet den Vergleich von Therme und Wärmepumpe: was jede tut und warum, Vorlauf-Soll bzw. COP, Kosten, ab welchem COP sich die Wärmepumpe lohnt, und was das Lernen der Heizkurve gerade macht.
+- **Hinweise, nur wenn es welche gibt:** Sicherheit eingeschränkt, Wärmepumpe gesperrt, Fenster offen, von Hand geändert (mit *Zurück zur Automatik*).
+- **Eine Zeile je Raum:** gemessene Temperatur, Soll und der Grund. Kleine Symbole zeigen, ob die Therme oder die Wärmepumpe gerade für den Raum heizt, ob von Hand geändert wurde oder ein Fenster offen ist. Ein Tipp auf den Raum öffnet *Jetzt* (das Soll von Hand ändern, es gilt so lange wie jede Änderung von Hand), Komfort, Absenkung, *Schnell aufheizen*, im Bad *Jetzt trocknen*, *Zeitplan* (öffnet den Zeitplan-Helfer des Raums, wenn er einen hat) und, nach einer Änderung von Hand, *Zurück zur Automatik*.
+- **Betriebsmodus**, im Modus *Abwesend* mit der Rückkehr.
+
+Die Karte braucht Home Assistant 2025.1 oder neuer. Zeigt das Dashboard nach der Installation oder einem Update *Custom element doesn't exist: thriftherm-card* oder noch die alte Karte, lade die Seite hart neu (Cmd+Shift+R bzw. Strg+Shift+R). Hilft das nicht, lösche im Browser die Websitedaten deiner Home-Assistant-Adresse; in der App: *Einstellungen → Companion App → Frontend-Cache zurücksetzen* ([Fehlersuche](FEHLERSUCHE.md#die-thriftherm-karte-fehlt-custom-element-doesnt-exist)).
+
+### 9.2 Beispiel-Dashboard aus Standard-Karten (optional)
+
+Wer lieber nur Standard-Karten von Home Assistant nimmt, findet ein fertiges Dashboard in [`dashboards/thriftherm.yaml`](../dashboards/thriftherm.yaml). Es zeigt zuerst, was gerade heizt und warum.
 
 1. Einstellungen > Dashboards > *Dashboard hinzufügen* > *Neues Dashboard von Grund auf*.
 2. Dashboard öffnen, Stift oben rechts, dann ⋮ > *Raw-Konfigurationseditor*. Alles durch den Inhalt der Datei ersetzen und speichern.

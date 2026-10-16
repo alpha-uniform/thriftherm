@@ -312,3 +312,112 @@ def detection_summary(name: str | None, circuit: str | None, found: int, total: 
     if name is None:
         return wording["none"]
     return wording["found"].format(name=name, circuit=circuit, found=found, total=total)
+
+
+# ---------------------------------------------------------------- dashboard card
+# The card (frontend/thriftherm-card.js) asks for these over the websocket, so its wording
+# lives here with everything else. Codes Home Assistant translates itself (states, the reason
+# attributes) the card takes from Home Assistant; these are its own words and the lists it shows.
+CARD: dict[str, dict[str, str]] = {
+    "en": {
+        "heat_pump_heats": "Heat pump is heating", "boiler_heats": "Boiler is heating",
+        "both_heat": "Heat pump and boiler are heating", "nothing_heats": "Nothing is heating",
+        "cost_line": "{heat_pump} ct per kWh of heat, {central_name} {central} ct",
+        "gas": "gas", "district": "district heating",
+        "compare_title": "Heat sources compared",
+        "heat_pump": "Heat pump", "boiler": "Boiler", "district_heating": "District heating",
+        "flow_setpoint": "Flow setpoint {value}", "cop_used": "COP {value}", "cop_measured": "measured {value}",
+        "cost_per_kwh": "{value} ct per kWh of heat", "break_even": "Pays off from COP {value}",
+        "learning": "Learning the heating curve: {state}", "because": "{state}, because {why}", "and": " and ",
+        "blocked": "Blocked: {reason}",
+        "safety": "Safety restricted", "frost": "Frost protection in {rooms}",
+        "heat_pump_blocked": "Heat pump blocked: {reason}", "heat_pump_by_hand": "Heat pump changed by hand",
+        "override": "Changed by hand: {rooms}",
+        "back_to_automatic": "Back to automatic",
+        "until": "until {time}", "window_open": "Window open", "by_hand": "Changed by hand",
+        "thermostat_silent": "Thermostat does not report",
+        "comfort": "Comfort", "setback": "Setback", "quick_heat_up": "Quick heat-up",
+        "now": "Now", "dry_now": "Dry now", "schedule": "Schedule",
+        "operating_mode": "Operating mode", "return": "Return",
+        "not_found": "Thriftherm is not set up, or its entities are disabled.",
+        "editor_title": "Title", "editor_rooms": "Rooms", "editor_up": "Up", "editor_down": "Down",
+        "editor_controls": "When a room is tapped, show",
+    },
+    "de": {
+        "heat_pump_heats": "Wärmepumpe heizt", "boiler_heats": "Therme heizt",
+        "both_heat": "Wärmepumpe und Therme heizen", "nothing_heats": "Gerade heizt nichts",
+        "cost_line": "{heat_pump} ct je kWh Wärme, {central_name} {central} ct",
+        "gas": "Gas", "district": "Fernwärme",
+        "compare_title": "Wärmequellen im Vergleich",
+        "heat_pump": "Wärmepumpe", "boiler": "Therme", "district_heating": "Fernwärme",
+        "flow_setpoint": "Vorlauf-Soll {value}", "cop_used": "COP {value}", "cop_measured": "gemessen {value}",
+        "cost_per_kwh": "{value} ct je kWh Wärme", "break_even": "Lohnt sich ab COP {value}",
+        "learning": "Heizkurve lernen: {state}", "because": "{state}, weil {why}", "and": " und ",
+        "blocked": "Gesperrt: {reason}",
+        "safety": "Sicherheit eingeschränkt", "frost": "Frostschutz in {rooms}",
+        "heat_pump_blocked": "Wärmepumpe gesperrt: {reason}", "heat_pump_by_hand": "Wärmepumpe von Hand geändert",
+        "override": "Von Hand geändert: {rooms}",
+        "back_to_automatic": "Zurück zur Automatik",
+        "until": "bis {time}", "window_open": "Fenster offen", "by_hand": "Von Hand geändert",
+        "thermostat_silent": "Thermostat meldet sich nicht",
+        "comfort": "Komfort", "setback": "Absenkung", "quick_heat_up": "Schnell aufheizen",
+        "now": "Jetzt", "dry_now": "Jetzt trocknen", "schedule": "Zeitplan",
+        "operating_mode": "Betriebsmodus", "return": "Rückkehr",
+        "not_found": "Thriftherm ist nicht eingerichtet, oder seine Entitäten sind deaktiviert.",
+        "editor_title": "Titel", "editor_rooms": "Räume", "editor_up": "Nach oben", "editor_down": "Nach unten",
+        "editor_controls": "Beim Antippen eines Raums zeigen",
+    },
+}
+
+# why the learning of the heating curve pauses (sensor learning_state, attribute paused_because),
+# as the end of a sentence "paused, because …"; every safety_* code reads as "safety"
+PAUSED_BECAUSE: dict[str, dict[str, str]] = {
+    "en": {
+        "no_heating_run": "the boiler is not heating right now", "rooms_heating_up": "a room heats up with an extra",
+        "setpoint_recently_changed": "a setpoint was just changed", "quick_heat_up": "a room is in quick heat-up",
+        "drying_mode": "the bathroom is drying", "boiler_control_not_active": "boiler control is not active",
+        "hot_water_recent": "hot water just ran", "safety": "safety is restricted",
+    },
+    "de": {
+        "no_heating_run": "die Therme gerade nicht heizt", "rooms_heating_up": "ein Raum mit Zuschlag aufheizt",
+        "setpoint_recently_changed": "ein Sollwert gerade geändert wurde", "quick_heat_up": "ein Raum schnell aufheizt",
+        "drying_mode": "das Bad getrocknet wird", "boiler_control_not_active": "die Thermensteuerung nicht aktiv ist",
+        "hot_water_recent": "gerade Warmwasser lief", "safety": "die Sicherheit eingeschränkt ist",
+    },
+}
+
+# what restricts the safety (sensor safety_state, attribute issues: "code" or "code:detail");
+# {room} is the room the detail names, {code} an error code of the unit
+SAFETY_ISSUES: dict[str, dict[str, str]] = {
+    "en": {
+        "no_rooms_configured": "No room set up", "all_room_temperatures_missing": "No room temperatures",
+        "room_temperature_missing": "{room}: temperature missing", "window_state_unknown": "{room}: window state unknown",
+        "room_using_trv_fallback": "{room}: uses the thermostat's own temperature",
+        "room_thermostat_silent": "{room}: thermostat does not report",
+        "outdoor_temperature_missing": "Outdoor temperature missing", "ebusd_signal_lost": "No connection to the boiler (eBUS)",
+        "boiler_flow_temp_invalid": "Boiler flow temperature missing", "midea_unavailable": "Heat pump not reachable",
+        "midea_error_code": "Heat pump reports error {code}", "midea_power_sensor_invalid": "Heat pump power reading missing",
+    },
+    "de": {
+        "no_rooms_configured": "Kein Raum eingerichtet", "all_room_temperatures_missing": "Keine Raumtemperaturen",
+        "room_temperature_missing": "{room}: Temperatur fehlt", "window_state_unknown": "{room}: Fensterzustand unbekannt",
+        "room_using_trv_fallback": "{room}: nutzt die Temperatur am Thermostat",
+        "room_thermostat_silent": "{room}: Thermostat meldet sich nicht",
+        "outdoor_temperature_missing": "Außentemperatur fehlt", "ebusd_signal_lost": "Keine Verbindung zur Therme (eBUS)",
+        "boiler_flow_temp_invalid": "Vorlauftemperatur der Therme fehlt", "midea_unavailable": "Wärmepumpe nicht erreichbar",
+        "midea_error_code": "Wärmepumpe meldet Fehler {code}", "midea_power_sensor_invalid": "Strommessung der Wärmepumpe fehlt",
+    },
+}
+
+
+def card_texts(ha_language: str | None) -> dict[str, Any]:
+    """Everything the dashboard card words itself, in the language of the person looking at it."""
+    lang = language_for(ha_language)
+    return {
+        "language": lang,
+        "card": CARD[lang],
+        "labels": LABELS[lang],
+        "templates": TEMPLATES[lang],
+        "paused_because": PAUSED_BECAUSE[lang],
+        "safety_issues": SAFETY_ISSUES[lang],
+    }

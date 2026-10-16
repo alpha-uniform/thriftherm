@@ -23,7 +23,9 @@
 
 **Fernwärme, Zentralheizung oder keine eigene Therme.** Thriftherm heizt die Räume über [Better Thermostat](https://github.com/KartoffelToby/better_thermostat) nach Zeitplan, mit Vorheizen und Abwesenheit; an die Wärmeversorgung geht nie etwas. Richtig lohnt sich das mit einer Wärmepumpe: Dann vergleicht Thriftherm den Strom mit dem Grenzpreis der Fernwärme. Ohne Therme kann die Wärmepumpe auch allein heizen.
 
-Ein Temperaturfühler je Raum reicht, smarte Thermostate lassen sich später ergänzen. Was genau mit welcher Ausstattung geht, zeigt die [Übersicht in der Einrichtungsanleitung](EINRICHTUNG.md#was-mit-deiner-ausstattung-geht).
+Ein Temperaturfühler je Raum reicht, smarte Thermostate lassen sich später ergänzen. Was genau mit welcher Ausstattung geht, zeigt die [Übersicht in der Einrichtungsanleitung](de/EINRICHTUNG.md#was-mit-deiner-ausstattung-geht).
+
+**Alles bleibt bei dir.** Thriftherm läuft vollständig lokal in Home Assistant und sendet keine Daten nach außen: keine Cloud, kein Konto, keine Nutzungsstatistik. Auch die Dashboard-Karte lädt nichts aus dem Internet.
 
 ## Was sich an der Therme ändert
 
@@ -42,24 +44,25 @@ Jede Entscheidung hat einen Grund, den du in Home Assistant nachlesen kannst. Fe
 
 An Therme und Thermostate werden keine Befehle gesendet, bis du selbst auf *Aktiv* stellst.
 
-1. **ebusd:** den eBUS-Adapter an die eBUS-Klemme der Therme (ein vorhandener Raumregler dort wird abgeklemmt), dann die ebusd-App mit MQTT einrichten, mit `--accesslevel=*` und der Ergänzung von `filter-name` ([Schritt 2](EINRICHTUNG.md#2-ebusd-einrichten)); ohne eigene Therme überspringen.
+1. **ebusd:** den eBUS-Adapter an die eBUS-Klemme der Therme (ein vorhandener Raumregler dort wird abgeklemmt), dann die ebusd-App mit MQTT einrichten, mit `--accesslevel=*` und der Ergänzung von `filter-name` ([Schritt 2](de/EINRICHTUNG.md#2-ebusd-einrichten)); ohne eigene Therme überspringen.
 2. **Installieren:** in HACS das benutzerdefinierte Repository `https://github.com/alpha-uniform/thriftherm` (Kategorie *Integration*) hinzufügen, **Thriftherm** herunterladen und Home Assistant neu starten. Schneller geht es mit diesem Knopf, er öffnet das Repository direkt in HACS:
 
    [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
 3. **Integration hinzufügen:** *Einstellungen → Geräte & Dienste → Integration hinzufügen → Thriftherm*. Findet Thriftherm ebusd-Entitäten, ist der Thermen-Schritt schon ausgefüllt – prüfen und weiter.
 4. **Einige Tage *Nur planen*:** *Therme-Steuerbefehl*, *Thermostat-Plan* und *Entscheidungsgrund* mit dem vergleichen, was du selbst getan hättest.
 5. **Auf *Aktiv* schalten:** die aktive Steuerung in den Optionen freigeben, dann *Thermensteuerung* und *Raumsteuerung* auf *Aktiv* stellen.
+6. **Karte aufs Dashboard:** *Karte hinzufügen → Thriftherm*. Sie kommt mit der Integration und findet deine Räume selbst ([Schritt 9](de/EINRICHTUNG.md#9-dashboard)).
 
 ## Dokumentation
 
-- [Einrichtung](EINRICHTUNG.md): Schritt für Schritt von null bis *Aktiv*
-- [Anleitung](ANLEITUNG.md): der Alltag mit Modi, Temperaturen, Diensten, Lernen und Reparaturmeldungen
-- [Funktionsweise](FUNKTIONSWEISE.md): wie Thriftherm entscheidet, mit Schwellen, Lernschritten und Regeln
-- [Fehlersuche](FEHLERSUCHE.md): wenn etwas nicht klappt, geordnet nach dem, was du siehst
-- [Weniger ebusd-Werte abfragen](EBUSD.md): optional, für frischere Werte von Vorlauf und Rücklauf
-- [Änderungen](CHANGELOG.de.md): was jede Version bringt
+- [Einrichtung](de/EINRICHTUNG.md): Schritt für Schritt von null bis *Aktiv*
+- [Anleitung](de/ANLEITUNG.md): der Alltag mit Modi, Temperaturen, Diensten, Lernen und Reparaturmeldungen
+- [Funktionsweise](de/FUNKTIONSWEISE.md): wie Thriftherm entscheidet, mit Schwellen, Lernschritten und Regeln
+- [Fehlersuche](de/FEHLERSUCHE.md): wenn etwas nicht klappt, geordnet nach dem, was du siehst
+- [Weniger ebusd-Werte abfragen](de/EBUSD.md): optional, für frischere Werte von Vorlauf und Rücklauf
+- [Änderungen](de/AENDERUNGEN.md): was jede Version bringt
 
-**Sprachen:** Thriftherm spricht Deutsch oder Englisch, je nach Sprache von Home Assistant. Mehr dazu in der [Anleitung](ANLEITUNG.md).
+**Sprachen:** Thriftherm spricht Deutsch oder Englisch, je nach Sprache von Home Assistant. Mehr dazu in der [Anleitung](de/ANLEITUNG.md).
 
 ## An echter Hardware geprüft
 
@@ -105,7 +108,7 @@ Jede Therme kommt als Profil dazu: welche ebusd-Nachrichten ihre Werte liefern u
 - Ein Temperaturfühler je Raum; Better Thermostat, wenn Thriftherm die Heizkörperthermostate stellen soll
 - Optional: eine Wärmepumpe mit ein paar Sensoren
 
-Die vollständige Liste steht in der [Einrichtungsanleitung, Schritt 1](EINRICHTUNG.md#1-was-du-brauchst).
+Die vollständige Liste steht in der [Einrichtungsanleitung, Schritt 1](de/EINRICHTUNG.md#1-was-du-brauchst).
 
 ## Status und Verantwortung
 

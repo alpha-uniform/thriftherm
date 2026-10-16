@@ -37,7 +37,7 @@ from .const import (
     STORAGE_KEY,
     STORAGE_VERSION,
 )
-from . import issues, learning_reset
+from . import card, issues, learning_reset
 from .config_schema import known_keys
 from .coordinator import ThrifthermConfigEntry, ThrifthermCoordinator
 
@@ -153,8 +153,10 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register services once, so automations referencing them validate at startup."""
+    """Register services once, so automations referencing them validate at startup; serve the dashboard card."""
     _register_services(hass)
+    integration = await async_get_integration(hass, DOMAIN)
+    await card.async_register(hass, str(integration.version) if integration.version else None)
     return True
 
 

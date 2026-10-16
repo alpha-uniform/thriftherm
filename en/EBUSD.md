@@ -1,6 +1,6 @@
 # Poll fewer ebusd values
 
-**English** | [Deutsch](EBUSD.md)
+**English** | [Deutsch](../de/EBUSD.md)
 
 Optional, for advanced users: this page shows how to trim the list ebusd polls in turn, so that flow and return are fresh more often. It belongs to the [setup guide, step 2.5](SETUP.md#25-poll-fewer-values-so-that-flow-and-return-are-fresher).
 
