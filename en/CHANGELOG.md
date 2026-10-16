@@ -2,6 +2,25 @@
 
 **English** | [Deutsch](../de/AENDERUNGEN.md)
 
+## 0.6.3 — 2026-10-16
+
+A room card, "nearly there" in the cards, and a combi boiler's warm start counted right. The configuration stays at version 3; everything learned is kept.
+
+### New
+
+- **Room card** for the page of a single room: *Add card → Thriftherm room*. Current, target and reason, the target by hand, comfort, setback, quick heat-up, drying and the schedule; the editor chooses what appears.
+- The cards show when a room counts as nearly there: *Nearly there, heats again below …* instead of only the schedule. The value comes from the *Heat demand* sensor as the attribute `calls_again_below`.
+- Pictures of the cards in the README and the setup, with sample data.
+
+### Fixed
+
+- A combi boiler's warm start (it keeps its hot water warm and reports "heating" meanwhile) counted as a burner start of the heating and its gas as *Gas for heating*. A burn while Thriftherm blocks the heating and the heating pump stands now counts as hot water; with the pump running it really heats and counts as heating.
+
+### Documentation
+
+- Troubleshooting: if the farthest radiator stays cold, the pump may run on its low speed. For Vaillant atmoTEC plus and turboTEC plus the entry explains diagnosis code d.19, with a warning.
+- Troubleshooting: a room that stays a few tenths below its target, and a missing Thriftherm card after an update.
+
 ## 0.6.2 — 2026-10-16
 
 A dashboard card of its own comes with the integration. The configuration stays at version 3; everything learned is kept.

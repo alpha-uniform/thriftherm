@@ -141,6 +141,8 @@ ebusd meldet Warmwasser nicht bei jeder Therme zuverlässig. Deshalb erkennt Thr
 
 Die ersten beiden greifen innerhalb einer Minute, die Temperaturen kommen nur alle paar Minuten. *Therme Warmwasser aktiv* bleibt nach dem letzten Zeichen noch 10 Minuten an, mit Statuscode 2 Minuten. Das Lernen pausiert eine Stunde, damit Duschwasser nicht die Heizkurve verstellt.
 
+**Warmstart.** Eine Kombitherme hält ihren Warmwasser-Wärmetauscher warm und brennt dafür etwa einmal pro Stunde kurz, auch wenn die Heizung gesperrt ist. Dabei meldet sie denselben Statuscode wie beim Heizen (S.4). Ist der Heizbetrieb seit mindestens zwei Minuten gesperrt, meldet sie trotzdem „Heizen“ und steht dabei die Heizungspumpe, ist das dieser Warmstart: Er zählt nicht als Brennerstart der Heizung, und sein Gas zählt als Warmwasser, auch was der Gaszähler kurz danach noch meldet. Läuft die Pumpe beim Brennen, heizt die Therme wirklich, etwa weil die Sperre sie nicht erreicht hat; ohne Angabe zur Pumpe gilt nichts als Warmstart. Das Lernen pausiert für einen Warmstart nicht, der Heizkreis blieb kalt, und der heiße Wärmetauscher danach zählt 20 Minuten lang nicht als Zeichen für Warmwasser (gemessen am 16.10.2026: eine Minute bei S.4, Heizungspumpe aus, Vorlauf von 21 auf 67 °C).
+
 ### Frische Messwerte
 
 ebusd liest die Werte der Therme reihum; Vorlauf und Rücklauf wären sonst minutenalt.

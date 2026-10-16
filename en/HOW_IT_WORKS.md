@@ -141,6 +141,8 @@ ebusd does not report hot water reliably on every boiler, so Thriftherm recognis
 
 The first two react within a minute; the temperatures only arrive every few minutes. *Boiler hot water active* stays on for 10 minutes after the last sign, 2 minutes with a status code. Learning pauses for an hour so shower water does not teach the heating curve.
 
+**Warm start.** A combi boiler keeps its hot water exchanger warm and burns briefly about once an hour for it, also with heating blocked. It then reports the same status code as when heating (S.4). If heating has been blocked for at least two minutes, the boiler still reports heating and its heating pump stands, that is this warm start: it does not count as a burner start of the heating, and its gas counts as hot water, also what the gas meter reports shortly after. If the pump runs while it burns, the boiler really heats, for example because the block did not reach it; without a pump sign nothing counts as a warm start. Learning does not pause for a warm start, the heating circuit stayed cold, and the hot exchanger afterwards is no sign of hot water for 20 minutes (measured 2026-10-16: one minute at S.4, heating pump off, flow from 21 to 67 °C).
+
 ### Fresh readings
 
 ebusd reads the boiler's values one after another, so flow and return would otherwise be minutes old.

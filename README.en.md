@@ -15,6 +15,8 @@
 
 **Demand-based heating for Home Assistant.** Thriftherm heats every room to its schedule and gives your gas boiler the controller it previously lacked. It also works with district heating, and a heat pump can join in: an air conditioner in heating mode such as the **Midea PortaSplit**, which Thriftherm controls and whose COP it measures.
 
+<p align="center"><img alt="The Thriftherm card and the room card, with sample data" width="720" src="https://raw.githubusercontent.com/alpha-uniform/thriftherm/main/images/cards_en.png"></p>
+
 ## What Thriftherm does for you
 
 **Own gas boiler on ebusd: the core.** Thriftherm becomes your boiler's controller and talks to it through [ebusd](https://ebusd.eu). It keeps the flow temperature as low as possible, blocks heating when no room needs heat, and learns for every room how much flow it needs.

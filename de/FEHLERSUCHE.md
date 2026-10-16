@@ -61,14 +61,15 @@ Meist erreicht ebusd die Therme nicht mehr, und sie heizt nach ihrem Drehknopf. 
 
 ### Die Therme taktet, aber der letzte Heizkörper bleibt kalt
 
-Dafür gibt es zwei Ursachen, oft zusammen:
+Dafür gibt es drei Ursachen, oft zusammen:
 
 - **Die Pumpe steht mit dem Brenner.** Den Pumpenmodus prüfen ([Schritt 6](EINRICHTUNG.md#6-an-der-therme)). Warum das zählt, steht in der [Anleitung](ANLEITUNG.md#warum-der-pumpenmodus-zählt).
 - **Der Mindest-Vorlauf ist zu niedrig.** Bei einer Heizwerttherme die minimale Vorlauftemperatur auf etwa 45 °C stellen ([Schritt 4.3](EINRICHTUNG.md#43-gastherme-ebusd-und-gaszähler)).
+- **Die Pumpe läuft auf der kleinen Stufe.** Dann fließt viel Wasser über den Bypass der Therme statt durch den letzten Heizkörper. Bei Vaillant atmoTEC plus und turboTEC plus regelt das der Diagnosecode d.19 (zweite Diagnoseebene, Code 17): Werkseinstellung 2 heißt, beim Heizen hängt die Stufe von der Teillast d.00 ab, unter 60 % läuft die kleine; 3 heißt immer die große Stufe. **Warnung:** d.19 ist ein Wert für Fachhandwerker. Ändere ihn nur, wenn du weißt, was du tust, schreib den alten Wert auf, und lies die Installationsanleitung deiner Therme. Die große Stufe braucht etwas mehr Strom und kann an fast geschlossenen Ventilen rauschen. Thriftherm schreibt diesen Wert nie.
 
 ### Die Therme springt etwa einmal pro Stunde kurz an
 
-Auch nachts und ohne Heizbedarf. Das ist die Warmstart-Funktion der Kombitherme: Sie hält den Warmwasser-Wärmetauscher warm, im Display steht ein **C**. Früher hat ein Raumregler am Bus sie unterdrückt.
+Auch nachts und ohne Heizbedarf. Das ist die Warmstart-Funktion der Kombitherme: Sie hält den Warmwasser-Wärmetauscher warm, im Display steht ein **C**. Früher hat ein Raumregler am Bus sie unterdrückt. Thriftherm zählt dieses Gas als Warmwasser und nicht als Brennerstart der Heizung.
 
 So schaltest du sie ab:
 
@@ -112,6 +113,12 @@ Wann zuletzt ein Echo ignoriert wurde, zeigt der Sensor *Thermostat-Plan* des Ra
 ### Ein Raum braucht nach dem Hochstellen sehr lange
 
 Die Heizkurve ist dafür gemacht, Temperaturen zu halten, nicht für schnelles Aufheizen. Wie schnell es gehen soll, stellst du mit dem *Aufheiztempo* unter *Gastherme (ebusd) und Gaszähler* ein ([Anleitung, Aufheiztempo](ANLEITUNG.md#aufheiztempo)). Mehr Tempo kostet mehr Gas.
+
+### Ein Raum bleibt ein paar Zehntel unter dem Soll
+
+Die Karte zeigt dann *Fast erreicht, heizt wieder unter …*. Hat ein Raum eine Stunde geheizt, liegt höchstens 0,3 Grad unter dem Soll und steigt kaum noch, gilt er als erreicht: Die Therme würde sonst stundenlang für die letzten Zehntel takten. Er ruft wieder, sobald er 0,5 Grad unter dem Soll liegt oder sich das Soll ändert. *Schnell aufheizen* ist von der Regel ausgenommen.
+
+Kommt ein Raum öfter nicht ganz hin, ist meist der Vorlauf zu niedrig. Stell ein *Aufheiztempo* ein (z. B. 1 Grad pro Stunde): Dann hebt Thriftherm den Vorlauf an, solange der Raum zu langsam steigt, und merkt sich, was er braucht. Das kostet etwas mehr Gas.
 
 ### Ein Thermostat nimmt keine Sollwerte an
 

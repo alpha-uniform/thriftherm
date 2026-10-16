@@ -796,6 +796,9 @@
               "comfort_ending": "Komfortzeit endet bald: keine neue Wärme",
               "not_allowed": "Heizen nicht erlaubt"
             }
+          },
+          "calls_again_below": {
+            "name": "Ruft die Therme wieder unter (°C)"
           }
         }
       },

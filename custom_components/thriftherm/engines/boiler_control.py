@@ -50,6 +50,7 @@ from . import heat_up
 from .boiler_learning import BURNING_GAS_W
 from .boiler_memory import BoilerInputs, BoilerMemory, cold_weight, correction, curve_flow
 from .common import round_half
+from .gas_split import HOT_WATER_SIGN_S
 
 RESEND_INTERVAL_S = 120.0  # boiler falls back to its knob after 9-16 min without SetMode (measured)
 MIN_STATE_S = 300.0  # no heat/block toggling faster than this (frost excepted)
@@ -77,6 +78,11 @@ HOT_WATER_GAS_W = BURNING_GAS_W  # gas burning although space heating was blocke
 # first block is still on its way (measured 2026-09-19 00:59: adapter gone for 12 min,
 # burner ran 20 s in S.4 and was taken for hot water).
 BLOCK_IN_FORCE_S = 120.0
+# A warm start's gas: the meter reports a burn's step a little after it, as with hot water.
+WARM_START_GAS_S = HOT_WATER_SIGN_S
+# After a warm start the exchanger stays hot while the circuit is cold (2026-10-16: flow 67 °C at
+# 10:32, still 52 °C at 10:42, 46 °C at 10:50): the flow is no sign of hot water in that time.
+WARM_START_COOL_S = 1200.0
 HOT_WATER_ABOVE_SETPOINT_K = 15.0  # flow far above the heating flow we sent (burner overshoot stays below)
 HOT_WATER_SHOWN_S = 600.0  # how long "hot water active" stays on after the last sign, given the polling lag
 # With a status code the boiler says hot water itself for as long as it lasts, so there is no gap
@@ -109,6 +115,7 @@ def hot_water_suspected(
     heating_flow_c: float | None = None,
     reported_mode: str | None = None,
     status_known: bool = False,
+    exchanger_kept_warm: bool = False,
 ) -> bool:
     """True when the boiler can only be making hot water.
 
@@ -132,7 +139,8 @@ def hot_water_suspected(
         return False
     if heating_blocked and burning:
         return True
-    if flow_c is None:
+    if flow_c is None or exchanger_kept_warm:
+        # after a warm start the exchanger stays hot for a quarter of an hour with the circuit cold
         return False
     # A hot flow is a sign of hot water being made, so not without a flame where a gas meter
     # tells: after a tap the exchanger stays hot with the pump standing. Seen 2026-10-13: a
@@ -173,6 +181,19 @@ def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerM
         and now - mem.block_since_ts >= BLOCK_IN_FORCE_S
     )
     hot_water_now = False
+    # With the heating blocked for a while the boiler cannot heat the circuit: a burn it reports as
+    # heating is its warm start, which keeps the hot water exchanger warm (seen 2026-10-16 10:31: one
+    # minute at S.4, heating pump off, flow 21 -> 67 °C). It is no heating burn, and its gas is hot
+    # water; the learning does not wait for it as after a tap, the circuit itself stayed cold.
+    # The heating pump tells it apart from a boiler that heats on its own knob because the block
+    # did not reach it: a warm start burns with the pump off (it runs only afterwards), heating with
+    # it on. Without a pump sign nothing counts as a warm start.
+    warm_start = block_in_force and inp.reported_mode == BOILER_REPORTS_HEATING and inp.heating_pump_on is False
+    if warm_start:
+        mem = replace(mem, warm_start_ts=now)
+    since_warm = None if mem.warm_start_ts is None else now - mem.warm_start_ts
+    # its gas, also the meter's late step; only while the block stands, a heating run after it is heating
+    warm = block_in_force and since_warm is not None and since_warm < WARM_START_GAS_S
     if hot_water_suspected(
         inp.flow_c,
         inp.return_c,
@@ -182,6 +203,7 @@ def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerM
         heating_flow_c=mem.last_flow if sent and mem.state == BOILER_PLAN_HEAT else None,
         reported_mode=inp.reported_mode,
         status_known=inp.status_known,
+        exchanger_kept_warm=block_in_force and since_warm is not None and since_warm < WARM_START_COOL_S,
     ):
         # discard whatever this run had collected: those samples already carry the shower
         guessed = inp.reported_mode != BOILER_REPORTS_HOT_WATER
@@ -197,7 +219,7 @@ def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerM
     # One burner sign for everything, hot water never in it: the burn itself is counted (cycling,
     # burner share), and it is a heating run to learn from unless the circuit is still cooling
     # back from hot water.
-    burning = learning.flame(inp) and not hot_water_now
+    burning = learning.flame(inp) and not hot_water_now and not warm
     cooling_back = mem.hot_water_seen_ts is not None and now - mem.hot_water_seen_ts < HOT_WATER_HOLDOFF_S
     if hot_water_now:
         # the burn in progress was the start of this hot water: it is dropped, not kept as a short heating burn
@@ -210,7 +232,7 @@ def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerM
     cmd = replace(cmd, burner_share=share, burner_starts_last_hour=starts)
     shown_for = HOT_WATER_SHOWN_WITH_STATUS_S if inp.status_known else HOT_WATER_SHOWN_S
     recent = mem.hot_water_seen_ts is not None and now - mem.hot_water_seen_ts < shown_for
-    return replace(cmd, hot_water=recent, hot_water_seen_ts=mem.hot_water_seen_ts), mem
+    return replace(cmd, hot_water=recent, hot_water_seen_ts=mem.hot_water_seen_ts, warm_start=warm), mem
 
 
 NO_CLASS = {"class_in_use": None, "class_candidate": None, "class_candidate_since_ts": None, "cell_rooms": ()}

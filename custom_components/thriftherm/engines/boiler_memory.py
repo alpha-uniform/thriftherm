@@ -40,6 +40,7 @@ class BoilerMemory:
     hot_water_seen_ts: float | None = None  # last sample that looked like hot water
     hot_water_guessed: bool = False  # the last hot water sign was a guess, not the boiler's status code
     hot_water_before_guess_ts: float | None = None  # hot_water_seen_ts before that guess; not stored
+    warm_start_ts: float | None = None  # last burn of the boiler's warm start (engines/boiler_control.py); not stored
     # --- what was learned: the curve's level, and what it needs on top towards the cold point. This is
     # the common correction; with a curve per load class each class has a line of its own (`lines`).
     offset_k: float = 0.0  # level: added at every outdoor temperature
@@ -137,6 +138,7 @@ class BoilerInputs:
     gas_power_w: float | None = None  # from a gas meter, None without one
     reported_mode: str | None = None  # BOILER_REPORTS_* from the boiler's status code, None if unknown
     status_known: bool = False  # the boiler's status code is configured and readable
+    heating_pump_on: bool | None = None  # the heating circuit's pump runs (ebusd WP or pump state); None unknown
     learning_allowed: bool = True  # False while setpoints move, boost/drying run or safety is not ok
     # Right after a restart the room sensors report within seconds to minutes. A block decided
     # before they did locks the heating (and the pump) off for the minimum state time.

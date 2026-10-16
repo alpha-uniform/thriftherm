@@ -342,6 +342,10 @@ CARD: dict[str, dict[str, str]] = {
         "not_found": "Thriftherm is not set up, or its entities are disabled.",
         "editor_title": "Title", "editor_rooms": "Rooms", "editor_up": "Up", "editor_down": "Down",
         "editor_controls": "When a room is tapped, show",
+        "editor_room": "Room", "editor_controls_room": "Show",
+        "stalled": "Nearly there, heats again below {temp}",
+        "room_not_found": "No Thriftherm room \"{room}\". Choose one in the editor.",
+        "room_choose": "Choose a room in the editor.",
     },
     "de": {
         "heat_pump_heats": "Wärmepumpe heizt", "boiler_heats": "Therme heizt",
@@ -366,6 +370,10 @@ CARD: dict[str, dict[str, str]] = {
         "not_found": "Thriftherm ist nicht eingerichtet, oder seine Entitäten sind deaktiviert.",
         "editor_title": "Titel", "editor_rooms": "Räume", "editor_up": "Nach oben", "editor_down": "Nach unten",
         "editor_controls": "Beim Antippen eines Raums zeigen",
+        "editor_room": "Raum", "editor_controls_room": "Zeigen",
+        "stalled": "Fast erreicht, heizt wieder unter {temp}",
+        "room_not_found": "Kein Thriftherm-Raum „{room}“. Im Editor einen wählen.",
+        "room_choose": "Im Editor einen Raum wählen.",
     },
 }
 

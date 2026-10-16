@@ -15,6 +15,8 @@
 
 **Bedarfsgerecht heizen mit Home Assistant.** Thriftherm heizt jeden Raum nach seinem Zeitplan und gibt deiner Gastherme eine Regelung, die ihr bisher fehlte. Mit Fernwärme geht es auch, und eine Wärmepumpe kann dazukommen: eine Klimaanlage im Heizbetrieb wie die **Midea PortaSplit**, die Thriftherm steuert und deren COP es misst.
 
+<p align="center"><img alt="Die Thriftherm-Karte und die Raumkarte, mit Beispieldaten" width="720" src="https://raw.githubusercontent.com/alpha-uniform/thriftherm/main/images/cards_de.png"></p>
+
 ## Was Thriftherm bei dir tut
 
 **Eigene Gastherme über ebusd: der Kern.** Thriftherm wird zum Regler deiner Therme und spricht über [ebusd](https://ebusd.eu) mit ihr. Es hält den Vorlauf so niedrig wie möglich, sperrt den Heizbetrieb, wenn kein Raum Wärme braucht, und lernt für jeden Raum, wie viel Vorlauf er braucht.

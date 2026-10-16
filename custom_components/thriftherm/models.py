@@ -427,6 +427,7 @@ class BoilerCommand:
     last_adjust_reason: str | None = None
     hot_water: bool = False  # hot water recognised within the last minutes
     hot_water_seen_ts: float | None = None
+    warm_start: bool = False  # the boiler's warm start burns or just burnt (its heating blocked): hot water gas
     held_back: str | None = None  # a learning step that is due but cannot be taken, e.g. at the flow minimum
     burner_share: float = 0.0  # share of the last hour the burner ran for the heating (0..1)
     burner_starts_last_hour: int = 0

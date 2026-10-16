@@ -796,6 +796,9 @@
               "comfort_ending": "Comfort ends soon: no new heat",
               "not_allowed": "Heating not allowed"
             }
+          },
+          "calls_again_below": {
+            "name": "Calls the boiler again below (°C)"
           }
         }
       },
