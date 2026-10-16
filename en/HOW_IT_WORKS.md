@@ -1,6 +1,6 @@
 # How Thriftherm works
 
-**English** | [Deutsch](FUNKTIONSWEISE.md)
+**English** | [Deutsch](../de/FUNKTIONSWEISE.md)
 
 For day-to-day use the [user guide](GUIDE.md) is enough. This page shows how Thriftherm decides internally.
 

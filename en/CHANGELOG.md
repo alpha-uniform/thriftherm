@@ -1,6 +1,22 @@
 # Changelog
 
-**English** | [Deutsch](CHANGELOG.de.md)
+**English** | [Deutsch](../de/AENDERUNGEN.md)
+
+## 0.6.2 — 2026-10-16
+
+A dashboard card of its own comes with the integration. The configuration stays at version 3; everything learned is kept.
+
+### New
+
+- **A dashboard card of its own.** *Add card → Thriftherm*: the heat source in one sentence with its cost (a tap compares boiler and heat pump), notes only when something needs attention, one row per room with measured temperature, target and reason (a tap opens the target by hand, comfort, setback, quick heat-up, in the bathroom dry now, and the room's schedule; the editor chooses which of these appear), and the operating mode. It comes with the integration, finds the rooms by itself, and speaks German or English. See setup step 9. The example dashboard stays for anyone who prefers standard cards.
+- The room's target temperature sensor names where its measured temperature comes from (`temperature_entity`: the room sensor, or the valve standing in for it), the room key (`room_key`) and its schedule helper (`schedule_entity`) as attributes.
+
+### Changed
+
+- The documentation now lives in the folders `de/` and `en/`, each with setup, guide, how it works, troubleshooting, ebusd and changelog. Only the READMEs stay at the top. Old links to files at the top level no longer work.
+- In the boiler form, *Burner on* and *Gas flow* explain when they are needed: a slow pulse meter is better left out of the gas flow, then the boiler's status code counts.
+- The example dashboard says in plain words why a room is not heating, shows the measured temperature, an override with its date, and per room the history with Thriftherm's target.
+- The README states it plainly: Thriftherm runs entirely locally and sends no data anywhere.
 
 ## 0.6.1 — 2026-10-16
 

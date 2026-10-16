@@ -1,6 +1,22 @@
 # Änderungen
 
-[English](CHANGELOG.md) | **Deutsch**
+[English](../en/CHANGELOG.md) | **Deutsch**
+
+## 0.6.2 – 16.10.2026
+
+Eine eigene Dashboard-Karte kommt mit der Integration. Die Konfiguration bleibt bei Version 3, alles Gelernte bleibt erhalten.
+
+### Neu
+
+- **Eine eigene Dashboard-Karte.** *Karte hinzufügen → Thriftherm*: die Wärmequelle in einem Satz mit ihren Kosten (ein Tipp vergleicht Therme und Wärmepumpe), Hinweise nur, wenn etwas Aufmerksamkeit braucht, eine Zeile je Raum mit gemessener Temperatur, Soll und Grund (ein Tipp öffnet das Soll von Hand, Komfort, Absenkung, Schnell aufheizen, im Bad Jetzt trocknen und den Zeitplan des Raums; was davon erscheint, wählt man im Editor), und der Betriebsmodus. Sie kommt mit der Integration, findet die Räume selbst und spricht Deutsch oder Englisch. Siehe Schritt 9 der Einrichtung. Das Beispiel-Dashboard bleibt für alle, die Standard-Karten wollen.
+- Der Sensor *Solltemperatur* eines Raums nennt, woher seine gemessene Temperatur kommt (`temperature_entity`: der Raumsensor oder das Ventil, das für ihn einspringt), den Raumschlüssel (`room_key`) und seinen Zeitplan-Helfer (`schedule_entity`) als Attribute.
+
+### Geändert
+
+- Die Dokumentation liegt jetzt in den Ordnern `de/` und `en/`, jeweils mit Einrichtung, Anleitung, Funktionsweise, Fehlersuche, ebusd und Änderungen. Im Hauptordner bleiben nur die READMEs. Alte Links auf Dateien im Hauptordner laufen ins Leere.
+- Im Thermen-Formular erklären *Brenner an* und *Gasdurchfluss*, wann man sie braucht: Einen trägen Impulszähler lässt man beim Durchfluss besser leer, dann zählt der Statuscode der Therme.
+- Das Beispiel-Dashboard sagt in Klartext, warum ein Raum gerade nicht heizt, zeigt die gemessene Temperatur, eine Übersteuerung mit Datum, und je Raum den Verlauf mit dem Soll von Thriftherm.
+- Die README sagt ausdrücklich: Thriftherm läuft vollständig lokal und sendet keine Daten nach außen.
 
 ## 0.6.1 – 16.10.2026
 

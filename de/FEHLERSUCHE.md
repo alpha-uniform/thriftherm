@@ -1,6 +1,6 @@
 # Fehlersuche
 
-[English](TROUBLESHOOTING.md) | **Deutsch**
+[English](../en/TROUBLESHOOTING.md) | **Deutsch**
 
 Wenn etwas nicht klappt oder anders aussieht als erwartet: Such hier nach dem, was du siehst. Die Einrichtung steht in der [Einrichtungsanleitung](EINRICHTUNG.md), der Alltag in der [Anleitung](ANLEITUNG.md).
 
@@ -130,6 +130,14 @@ Der Trend braucht etwa 30 Minuten Messwerte. Bei einer neuen Installation ist de
 ### Vorlauf und Rücklauf ändern sich nur alle paar Minuten
 
 Das ist normal: ebusd fragt die Werte der Therme reihum ab. Für die Regelung holt Thriftherm sich seine Werte einmal pro Minute selbst, mit Gaszähler, sobald Gas brennt, ohne Gaszähler durchgehend. Willst du frischere Werte im Dashboard, kürzt du die Abfrageliste von ebusd: [Weniger ebusd-Werte abfragen](EBUSD.md).
+
+### Die Thriftherm-Karte fehlt („Custom element doesn't exist“)
+
+Der Browser zeigt noch die Startseite von Home Assistant von vor der Installation oder dem Update, und die kennt die Karte nicht. Home Assistant hält diese Seite im Browser vor, deshalb hilft einfaches Neuladen oft nicht.
+
+1. Die Seite hart neu laden: Cmd+Shift+R (Mac) bzw. Strg+Shift+R.
+2. Hilft das nicht: im Browser die Websitedaten deiner Home-Assistant-Adresse löschen und neu anmelden. In der App: *Einstellungen → Companion App → Frontend-Cache zurücksetzen*.
+3. Hilft auch das nicht: Home Assistant neu starten. Die Karte wird beim Start angemeldet, ein Neuladen der Integration reicht dafür nicht.
 
 ## Nichts davon passt
 

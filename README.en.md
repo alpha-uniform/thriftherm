@@ -23,7 +23,9 @@
 
 **District heating, central heating or no own boiler.** Thriftherm heats the rooms to their schedules through [Better Thermostat](https://github.com/KartoffelToby/better_thermostat), with pre-heating and away mode; nothing is ever sent to the heat supply. It really pays off with a heat pump: Thriftherm then compares electricity with the marginal price of district heat. Without a boiler, the heat pump can also heat on its own.
 
-One temperature sensor per room is enough, and smart thermostats can be added later. What exactly works with which equipment is in the [overview in the setup guide](SETUP.md#what-works-with-your-equipment).
+One temperature sensor per room is enough, and smart thermostats can be added later. What exactly works with which equipment is in the [overview in the setup guide](en/SETUP.md#what-works-with-your-equipment).
+
+**Everything stays with you.** Thriftherm runs entirely locally in Home Assistant and sends no data anywhere: no cloud, no account, no usage statistics. The dashboard card loads nothing from the internet either.
 
 ## What changes at the boiler
 
@@ -42,7 +44,7 @@ Every decision comes with a reason you can read in Home Assistant. When boiler d
 
 Nothing is written to the boiler or the thermostats until you switch to *Active* yourself.
 
-1. **ebusd:** connect the eBUS adapter to the boiler's eBUS terminal (a room controller already there is disconnected), then set up the ebusd app with MQTT, with `--accesslevel=*` and the `filter-name` addition ([step 2](SETUP.md#2-set-up-ebusd)); skip this without an own boiler.
+1. **ebusd:** connect the eBUS adapter to the boiler's eBUS terminal (a room controller already there is disconnected), then set up the ebusd app with MQTT, with `--accesslevel=*` and the `filter-name` addition ([step 2](en/SETUP.md#2-set-up-ebusd)); skip this without an own boiler.
 2. **Install:** in HACS add the custom repository `https://github.com/alpha-uniform/thriftherm` (category *Integration*), download **Thriftherm** and restart Home Assistant. This button is quicker, it opens the repository in HACS directly:
 
    [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
@@ -50,17 +52,18 @@ Nothing is written to the boiler or the thermostats until you switch to *Active*
 3. **Add the integration:** *Settings → Devices & services → Add integration → Thriftherm*. When ebusd entities are found, the boiler step is filled in for you – check it and continue.
 4. **Plan only for a few days:** compare *Boiler command*, *Thermostat plan* and *Decision reason* with what you would have done.
 5. **Switch to *Active*:** release active control in the options, then set *Boiler control* and *Room control* to *Active*.
+6. **Card on the dashboard:** *Add card → Thriftherm*. It comes with the integration and finds your rooms by itself ([step 9](en/SETUP.md#9-dashboard)).
 
 ## Documentation
 
-- [Setup](SETUP.md): step by step from nothing to *Active*
-- [User guide](GUIDE.md): daily use with modes, temperatures, services, learning and repairs
-- [How it works](HOW_IT_WORKS.md): how Thriftherm decides, with thresholds, learning steps and rules
-- [Troubleshooting](TROUBLESHOOTING.md): when something does not work, ordered by what you see
-- [Poll fewer ebusd values](EBUSD.en.md): optional, for fresher flow and return values
-- [Changelog](CHANGELOG.md): what each version brings
+- [Setup](en/SETUP.md): step by step from nothing to *Active*
+- [User guide](en/GUIDE.md): daily use with modes, temperatures, services, learning and repairs
+- [How it works](en/HOW_IT_WORKS.md): how Thriftherm decides, with thresholds, learning steps and rules
+- [Troubleshooting](en/TROUBLESHOOTING.md): when something does not work, ordered by what you see
+- [Poll fewer ebusd values](en/EBUSD.md): optional, for fresher flow and return values
+- [Changelog](en/CHANGELOG.md): what each version brings
 
-**Languages:** Thriftherm speaks German or English, following Home Assistant's language. More in the [user guide](GUIDE.md).
+**Languages:** Thriftherm speaks German or English, following Home Assistant's language. More in the [user guide](en/GUIDE.md).
 
 ## Verified on real hardware
 
@@ -106,7 +109,7 @@ Each boiler is added as a profile: which ebusd messages carry its values and whi
 - One temperature sensor per room; Better Thermostat if Thriftherm should set the radiator thermostats
 - Optional: a heat pump with a few sensors
 
-The full list is in the [setup guide, step 1](SETUP.md#1-what-you-need).
+The full list is in the [setup guide, step 1](en/SETUP.md#1-what-you-need).
 
 ## Status and responsibility
 

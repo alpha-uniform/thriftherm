@@ -1,6 +1,6 @@
 # Weniger ebusd-Werte abfragen
 
-[English](EBUSD.en.md) | **Deutsch**
+[English](../en/EBUSD.md) | **Deutsch**
 
 Optional, für Fortgeschrittene: Hier kürzt du die Liste, die ebusd reihum abfragt, damit Vorlauf und Rücklauf öfter frisch sind. Die Seite gehört zur [Einrichtungsanleitung, Schritt 2.5](EINRICHTUNG.md#25-weniger-werte-abfragen-damit-vorlauf-und-rücklauf-frischer-sind).
 

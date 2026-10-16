@@ -1,6 +1,6 @@
 # Wie Thriftherm rechnet
 
-[English](HOW_IT_WORKS.md) | **Deutsch**
+[English](../en/HOW_IT_WORKS.md) | **Deutsch**
 
 Für die Bedienung reicht die [Anleitung](ANLEITUNG.md). Hier steht, wie Thriftherm intern entscheidet.
 

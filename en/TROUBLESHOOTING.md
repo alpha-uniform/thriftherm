@@ -1,6 +1,6 @@
 # Troubleshooting
 
-**English** | [Deutsch](FEHLERSUCHE.md)
+**English** | [Deutsch](../de/FEHLERSUCHE.md)
 
 When something does not work or looks different from what you expected: look here for what you see. Setting up is in the [setup guide](SETUP.md), daily use in the [user guide](GUIDE.md).
 
@@ -129,7 +129,15 @@ The trend needs about 30 minutes of readings. On a new installation the sensor i
 
 ### Flow and return change only every few minutes
 
-That is normal: ebusd polls the boiler's values in turn. For the control Thriftherm fetches its values itself once a minute, with a gas meter while gas burns, without one all the time. If you want fresher values in a dashboard, trim ebusd's poll list: [Poll fewer ebusd values](EBUSD.en.md).
+That is normal: ebusd polls the boiler's values in turn. For the control Thriftherm fetches its values itself once a minute, with a gas meter while gas burns, without one all the time. If you want fresher values in a dashboard, trim ebusd's poll list: [Poll fewer ebusd values](EBUSD.md).
+
+### The Thriftherm card is missing ("Custom element doesn't exist")
+
+The browser still shows Home Assistant's start page from before the installation or the update, and that one does not know the card. Home Assistant keeps this page in the browser, so a plain reload often does not help.
+
+1. Hard-reload the page: Cmd+Shift+R (Mac) or Ctrl+Shift+R.
+2. If that does not help: clear the browser's site data for your Home Assistant address and log in again. In the app: *Settings → Companion app → Reset frontend cache*.
+3. If that does not help either: restart Home Assistant. The card is registered at start; reloading the integration is not enough for it.
 
 ## None of this fits
 

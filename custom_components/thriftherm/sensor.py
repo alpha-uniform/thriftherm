@@ -453,6 +453,11 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         value_fn=lambda r: r.target,
         attr_fn=lambda r: {
+            # where the measured temperature the control works with comes from: the room sensor, or the
+            # valve standing in for it; a dashboard reads it there instead of a copy here in every row
+            "temperature_entity": r.temperature_entity,
+            "room_key": r.key,  # the key the heat pump's served_rooms and the actions name the room by
+            "schedule_entity": r.schedule_entity,  # the weekly schedule helper, None with the plain time windows
             "reason": r.target_reason,
             "quick_heat_up": r.boost_active,
             "override_until_ts": r.override_until_ts,

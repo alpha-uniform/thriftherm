@@ -142,6 +142,7 @@ class RoomState:
     thermostat_min_temp: float | None = None
     thermostat_max_temp: float | None = None
     schedule_next_temp: float | None = None  # the temperature the schedule helper's coming block names, None if none
+    trv_local_entity: str | None = None  # the valve trv_local_temp comes from, None when several are averaged
 
 
 @dataclass(frozen=True)
@@ -317,6 +318,10 @@ class RoomResult:
     comfort_end_ts: float | None = None  # end of the running comfort window (schedule only)
     boiler_call: str | None = None  # engines/heat_call.py: calling, idle, stalled, comfort_ending, not_allowed
     thermostat_heating: bool | None = None  # see RoomState
+    # where `temperature` comes from: the room sensor, or the valve standing in for it (None: no
+    # value, or the average of several valves)
+    temperature_entity: str | None = None
+    schedule_entity: str | None = None  # the room's weekly schedule helper, for a dashboard to open
 
 
 @dataclass(frozen=True)

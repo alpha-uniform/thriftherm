@@ -432,8 +432,10 @@ def evaluate_room(
     now_ts = now.timestamp()
 
     temp = state.temperature.value_or_none
+    temp_entity = state.temperature.entity_id if temp is not None else None
     if temp is None and state.trv_local_temp is not None:
         temp = state.trv_local_temp
+        temp_entity = state.trv_local_entity
         issues.append(f"using_trv_local_temperature:{state.temperature.reason}")
     if temp is None:
         issues.append(f"temperature_invalid:{state.temperature.reason}")
@@ -522,4 +524,6 @@ def evaluate_room(
         preheat_for_ts=preheat_for_ts,
         comfort_end_ts=None if end is None else end.timestamp(),
         thermostat_heating=state.thermostat_heating,
+        temperature_entity=temp_entity,
+        schedule_entity=cfg.schedule_entity,
     )

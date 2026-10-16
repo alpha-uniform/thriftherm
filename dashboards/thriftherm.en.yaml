@@ -188,17 +188,27 @@ views:
           # Target now with its reason. A change by hand shows only when there is one.
           - type: markdown
             content: |
-              {% set e = 'sensor.thriftherm_badezimmer_target_temperature' %}
-              {% set f = 'binary_sensor.thriftherm_badezimmer_window_open' %}
-              **Target {{ '%.1f' | format(states(e) | float(0)) }} °C**, {{ state_attr_translated(e, 'reason') }}
+              {%- set e = 'sensor.thriftherm_badezimmer_target_temperature' %}
+              {%- set f = 'binary_sensor.thriftherm_badezimmer_window_open' %}
+              {%- set h = 'binary_sensor.thriftherm_badezimmer_heating_allowed' %}
+              {%- set t = 'sensor.thriftherm_badezimmer_thermostat_plan' %}
+              {%- if states(e) | is_number %}
+              **Target {{ '%.1f' | format(states(e) | float) }} °C**, {{ state_attr_translated(e, 'reason') }}
+              {%- else %}
+              Target not available right now
+              {%- endif %}
               {%- if is_state(f, 'on') %}
 
               Window open, heating paused
+              {%- elif is_state(h, 'off') %}
+
+              Heating paused{% if state_attr(t, 'reason') in ['thermostat_off', 'thermostat_unavailable'] %}: {{ state_attr_translated(t, 'reason') }}{% endif %}
               {%- endif %}
               {%- if state_attr(e, 'override_by') %}
 
               Changed by hand: {{ state_attr_translated(e, 'override_by') }}
-              {%- if state_attr(e, 'override_until_ts') %}, until {{ state_attr(e, 'override_until_ts') | timestamp_custom('%H:%M') }}{% endif %}
+              {%- set u = state_attr(e, 'override_until_ts') %}
+              {%- if u %}, until {{ u | timestamp_custom('%H:%M' if (u | timestamp_custom('%Y-%m-%d')) == now().strftime('%Y-%m-%d') else '%d %b %H:%M') }}{% endif %}
               {%- endif %}
           # What Thriftherm gives the thermostat (thermostat only).
           - type: tile
@@ -252,17 +262,27 @@ views:
             name: Heat demand
           - type: markdown
             content: |
-              {% set e = 'sensor.thriftherm_wohnzimmer_target_temperature' %}
-              {% set f = 'binary_sensor.thriftherm_wohnzimmer_window_open' %}
-              **Target {{ '%.1f' | format(states(e) | float(0)) }} °C**, {{ state_attr_translated(e, 'reason') }}
+              {%- set e = 'sensor.thriftherm_wohnzimmer_target_temperature' %}
+              {%- set f = 'binary_sensor.thriftherm_wohnzimmer_window_open' %}
+              {%- set h = 'binary_sensor.thriftherm_wohnzimmer_heating_allowed' %}
+              {%- set t = 'sensor.thriftherm_wohnzimmer_thermostat_plan' %}
+              {%- if states(e) | is_number %}
+              **Target {{ '%.1f' | format(states(e) | float) }} °C**, {{ state_attr_translated(e, 'reason') }}
+              {%- else %}
+              Target not available right now
+              {%- endif %}
               {%- if is_state(f, 'on') %}
 
               Window open, heating paused
+              {%- elif is_state(h, 'off') %}
+
+              Heating paused{% if state_attr(t, 'reason') in ['thermostat_off', 'thermostat_unavailable'] %}: {{ state_attr_translated(t, 'reason') }}{% endif %}
               {%- endif %}
               {%- if state_attr(e, 'override_by') %}
 
               Changed by hand: {{ state_attr_translated(e, 'override_by') }}
-              {%- if state_attr(e, 'override_until_ts') %}, until {{ state_attr(e, 'override_until_ts') | timestamp_custom('%H:%M') }}{% endif %}
+              {%- set u = state_attr(e, 'override_until_ts') %}
+              {%- if u %}, until {{ u | timestamp_custom('%H:%M' if (u | timestamp_custom('%Y-%m-%d')) == now().strftime('%Y-%m-%d') else '%d %b %H:%M') }}{% endif %}
               {%- endif %}
           - type: tile
             entity: sensor.thriftherm_wohnzimmer_thermostat_plan
@@ -433,6 +453,14 @@ views:
                 attribute: reason
                 name: Reason
                 icon: mdi:information-outline
+          # Shown only when the heat pump is unreachable or not ready to heat.
+          - type: tile
+            entity: binary_sensor.thriftherm_heat_pump_available_for_heating
+            name: Ready to heat
+            visibility:
+              - condition: state
+                entity: binary_sensor.thriftherm_heat_pump_available_for_heating
+                state_not: "on"
           - type: tile
             entity: binary_sensor.thriftherm_heat_pump_blocked_for_heating
             name: Block
@@ -507,7 +535,8 @@ views:
     type: sections
     max_columns: 2
     sections:
-      # Per room: measured temperature, target and when it heated (from the thermostat).
+      # Per room: measured temperature, target and when it heated (from the thermostat),
+      # plus Thriftherm's target (it differs in the mode "Plan only").
       - type: grid
         cards:
           - type: history-graph
@@ -518,6 +547,8 @@ views:
             entities:
               - entity: climate.badezimmer
                 name: Bathroom
+              - entity: sensor.thriftherm_badezimmer_target_temperature
+                name: Target by Thriftherm
           - type: history-graph
             title: Living room (24 h)
             hours_to_show: 24
@@ -526,6 +557,8 @@ views:
             entities:
               - entity: climate.wohnzimmer
                 name: Living room
+              - entity: sensor.thriftherm_wohnzimmer_target_temperature
+                name: Target by Thriftherm
           # Heat demand of the rooms in percent.
           - type: history-graph
             title: Heat demand (24 h)

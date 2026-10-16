@@ -56,7 +56,9 @@
           "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation.",
           "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms. The heating curve per load class counts more rooms than this share as the majority (0.5: three of four rooms).",
           "boiler_load_model": "The flow a flat needs depends on how many radiators take heat, and on each radiator: a small one in a cold room needs a hotter flow than a large one. On: Thriftherm keeps a correction of the heating curve for each room in each of three cases (one room calls, a few, the majority). Of the rooms that want heat, the one that needs the most sets the flow; the others' valves take less. A room that does not get there raises only its own value, so what the bathroom alone taught does not shift the flow for the whole flat. A room without a value starts from its own in the nearest case. A value that has served for some hours counts as found and only moves again on evidence that lasts. Off: one common correction for all rooms and cases, as before; it keeps what it had learned.",
-          "boiler_heat_up_rate_k_h": "How fast a room is to warm up while the boiler heats it, for every heat-up of a room that is 1 °C or more below its target (after a raise, the setback or an open window). Slower than this, Thriftherm raises the flow for this room every 20 minutes and remembers per room how much it took, as the start for its next heat-up; much faster, it lowers it again. More speed burns more gas. Only acts with active boiler control. 0 leaves the flow as before: heating curve, learned correction and up to 8 °C extra while a room is far below target."
+          "boiler_heat_up_rate_k_h": "How fast a room is to warm up while the boiler heats it, for every heat-up of a room that is 1 °C or more below its target (after a raise, the setback or an open window). Slower than this, Thriftherm raises the flow for this room every 20 minutes and remembers per room how much it took, as the start for its next heat-up; much faster, it lowers it again. More speed burns more gas. Only acts with active boiler control. 0 leaves the flow as before: heating curve, learned correction and up to 8 °C extra while a room is far below target.",
+          "boiler_flame": "Only needed without a gas meter and without status codes (ebusd), e.g. with OpenTherm. Thriftherm takes the best burner sign there is: the gas flow first, then the boiler's status code, then this sensor, else the pump.",
+          "gas_flow": "Also tells Thriftherm when the burner runs. Enter it only if it shows the flame within about a minute; a slow pulse sensor is better left empty, then the boiler's status code counts. The meter reading (volume) is enough for gas by purpose."
         }
       },
       "midea": {
@@ -196,7 +198,9 @@
           "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation.",
           "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms. The heating curve per load class counts more rooms than this share as the majority (0.5: three of four rooms).",
           "boiler_load_model": "The flow a flat needs depends on how many radiators take heat, and on each radiator: a small one in a cold room needs a hotter flow than a large one. On: Thriftherm keeps a correction of the heating curve for each room in each of three cases (one room calls, a few, the majority). Of the rooms that want heat, the one that needs the most sets the flow; the others' valves take less. A room that does not get there raises only its own value, so what the bathroom alone taught does not shift the flow for the whole flat. A room without a value starts from its own in the nearest case. A value that has served for some hours counts as found and only moves again on evidence that lasts. Off: one common correction for all rooms and cases, as before; it keeps what it had learned.",
-          "boiler_heat_up_rate_k_h": "How fast a room is to warm up while the boiler heats it, for every heat-up of a room that is 1 °C or more below its target (after a raise, the setback or an open window). Slower than this, Thriftherm raises the flow for this room every 20 minutes and remembers per room how much it took, as the start for its next heat-up; much faster, it lowers it again. More speed burns more gas. Only acts with active boiler control. 0 leaves the flow as before: heating curve, learned correction and up to 8 °C extra while a room is far below target."
+          "boiler_heat_up_rate_k_h": "How fast a room is to warm up while the boiler heats it, for every heat-up of a room that is 1 °C or more below its target (after a raise, the setback or an open window). Slower than this, Thriftherm raises the flow for this room every 20 minutes and remembers per room how much it took, as the start for its next heat-up; much faster, it lowers it again. More speed burns more gas. Only acts with active boiler control. 0 leaves the flow as before: heating curve, learned correction and up to 8 °C extra while a room is far below target.",
+          "boiler_flame": "Only needed without a gas meter and without status codes (ebusd), e.g. with OpenTherm. Thriftherm takes the best burner sign there is: the gas flow first, then the boiler's status code, then this sensor, else the pump.",
+          "gas_flow": "Also tells Thriftherm when the burner runs. Enter it only if it shows the flame within about a minute; a slow pulse sensor is better left empty, then the boiler's status code counts. The meter reading (volume) is enough for gas by purpose."
         }
       },
       "midea": {
@@ -641,6 +645,15 @@
       "room_target": {
         "name": "Target temperature",
         "state_attributes": {
+          "temperature_entity": {
+            "name": "Temperature from"
+          },
+          "room_key": {
+            "name": "Room key"
+          },
+          "schedule_entity": {
+            "name": "Schedule"
+          },
           "reason": {
             "name": "Reason",
             "state": {

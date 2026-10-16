@@ -176,6 +176,9 @@ async def test_a_room_thermostat_without_a_measuring_valve_is_no_stand_in_for_th
     assert builder.valve_temperature("climate.bath_bt") is None  # its valve is unavailable
     assert builder.valve_temperature("climate.bath_vt") is None  # it drives a switch
     assert builder.valve_temperature("climate.plain_trv") == 20.5  # a valve of its own measures itself
+    # and names where the value comes from, so a dashboard reads the same
+    assert builder.valve_reading("climate.plain_trv") == (20.5, "climate.plain_trv")
+    assert builder.valve_reading("climate.bath_bt") == (None, None)
 
 
 async def test_a_plain_thermostat_is_its_own_valve(hass: HomeAssistant, freezer) -> None:

@@ -392,24 +392,30 @@ class SnapshotBuilder:
         silent from 10:40 to 21:02, Better Thermostat kept 20.5 °C, the valve behind it saw
         the room warm to 22.5 °C, and the boiler heated for 4.5 hours.
         """
+        return self.valve_reading(climate_entity)[0]
+
+    def valve_reading(self, climate_entity: str | None) -> tuple[float | None, str | None]:
+        """The valves' temperature and the one entity it comes from (None when several are averaged)."""
         if not climate_entity:
-            return None
-        temps = [
-            value
+            return None, None
+        measured = [
+            (value, entity_id)
             for entity_id in self.valves_behind(climate_entity)
             if entity_id != climate_entity and entity_id.startswith("climate.")
             and (state := self._get(entity_id)) is not None and state.state not in BAD_STATES
             and (value := self.read_attr_float(state, "current_temperature")) is not None
         ]
-        if temps:
-            return round(sum(temps) / len(temps), 2)
+        if measured:
+            temps = [value for value, _ in measured]
+            return round(sum(temps) / len(temps), 2), measured[0][1] if len(measured) == 1 else None
         entry = er.async_get(self.hass).async_get(climate_entity)
         if entry is not None and entry.platform in _WRAPPER_PLATFORMS:
             # no valve behind it measures (Versatile Thermostat over a switch, a valve unavailable):
             # its own temperature is the room sensor again, not a stand-in for it
-            return None
+            return None, None
         # a valve of its own
-        return self.read_attr_float(self._get(climate_entity), "current_temperature")
+        value = self.read_attr_float(self._get(climate_entity), "current_temperature")
+        return value, None if value is None else climate_entity
 
     def read_room_temperature(self, entity_id: str | None, now: datetime) -> SensorReading:
         """A room temperature, still valid while its device keeps reporting other values."""
@@ -558,7 +564,7 @@ class SnapshotBuilder:
         temp = self.read_room_temperature(cfg.temperature_sensor, now)
         hum = self.read_number(cfg.humidity_sensor, RANGE_HUMIDITY, now)
         climate = self._get(cfg.climate_entity)
-        trv_local = self.valve_temperature(cfg.climate_entity)
+        trv_local, trv_local_entity = self.valve_reading(cfg.climate_entity)
         trv_target = self.read_attr_float(climate, "temperature")
         trv_mode = None if climate is None or climate.state in BAD_STATES else climate.state
         # Better Thermostat and Versatile Thermostat say whether they heat right now, that is whether
@@ -596,6 +602,7 @@ class SnapshotBuilder:
             humidity=hum,
             window_readings=self._window_readings(cfg, now),
             trv_local_temp=trv_local,
+            trv_local_entity=trv_local_entity,
             trv_target_temp=trv_target,
             internal_gain_w=gain,
             temperature_history=tuple(history),
