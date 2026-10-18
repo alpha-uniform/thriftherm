@@ -193,3 +193,20 @@ def test_a_stalled_room_names_the_temperature_it_calls_again_at() -> None:
     stalled = replace(rr(temp=20.8, target=21.0), boiler_call=heat_call.CALL_STALLED)
     assert demand.attr_fn(stalled)["calls_again_below"] == round(21.0 - heat_call.STALL_RELEASE_K, 1)
     assert demand.attr_fn(replace(stalled, boiler_call=heat_call.CALL_CALLING))["calls_again_below"] is None
+
+
+def test_a_drying_started_by_hand_says_so_and_back_to_automatic_ends_it() -> None:
+    """The cards offer "back to automatic" for it: the action ends a drying asked for with the button, not one after a shower."""
+    from dataclasses import replace
+
+    from custom_components.thriftherm.binary_sensor import ROOM_BINARY
+    from custom_components.thriftherm.models import DryingState
+
+    from .test_heat_call import rr
+
+    drying = next(d for d in ROOM_BINARY if d.key == "drying_mode")
+    by_button = replace(rr(temp=20.8, target=22.0), drying=DryingState(True, 0.0, None, manual=True))
+    assert drying.attr_fn(by_button)["by_hand"] is True
+    assert drying.attr_fn(replace(by_button, drying=DryingState(True, 0.0, None)))["by_hand"] is False
+    card_js = card.CARD_FILE.read_text()
+    assert '"room_drying_mode"' in card_js and "attributes.by_hand === true" in card_js

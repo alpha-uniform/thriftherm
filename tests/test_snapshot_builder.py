@@ -445,3 +445,27 @@ async def test_a_thermostat_says_whether_its_valve_is_open(hass: HomeAssistant) 
     assert seen == [True, True, False, False, None, None]
     hass.states.async_set("climate.bath_trv", "unavailable", {"hvac_action": "heating"})
     assert _build(builder).rooms["badezimmer"].thermostat_heating is None
+
+
+async def test_the_next_change_of_a_schedule_helper_sees_a_block_at_another_temperature(hass: HomeAssistant, freezer) -> None:
+    """The dashboard's next change: 12:00 to 21 °C, not the comfort end at 22:00 (review 2026-10-18)."""
+    tuesday = datetime(2026, 10, 13, 11, 40, tzinfo=BERLIN)
+    warmer = [_block("06:00:00", "12:00:00", 20), _block("12:00:00", "22:00:00", 21)]
+    same = [_block("06:00:00", "12:00:00", 20), _block("12:00:00", "22:00:00", 20)]
+    snap, bath, living = await _rooms_with_schedules(hass, freezer, tuesday, warmer, same)
+    assert (bath.schedule.next_change, bath.schedule.next_change_target) == (tuesday.replace(hour=12, minute=0), 21.0)
+    assert bath.schedule.next_end == tuesday.replace(hour=22, minute=0)  # the comfort itself runs on
+    # the same temperature on is no change: the next one is the end of the day's comfort
+    to_setback = (tuesday.replace(hour=22, minute=0), living.config.setback_temp)
+    assert (living.schedule.next_change, living.schedule.next_change_target) == to_setback
+    res = room_engine.evaluate_room(bath, snap.now, "auto", snap.params)
+    assert (res.next_change_ts, res.next_target) == (tuesday.replace(hour=12, minute=0).timestamp(), 21.0)
+
+
+async def test_the_next_change_of_a_schedule_helper_before_its_block_and_all_week(hass: HomeAssistant, freezer) -> None:
+    tuesday = datetime(2026, 10, 13, 5, 40, tzinfo=BERLIN)
+    named = [_block("06:00:00", "12:00:00", 20)]
+    all_day = [_block("00:00:00", "24:00:00")]
+    _, bath, living = await _rooms_with_schedules(hass, freezer, tuesday, named, all_day)
+    assert (bath.schedule.next_change, bath.schedule.next_change_target) == (tuesday.replace(hour=6, minute=0), 20.0)
+    assert (living.schedule.next_change, living.schedule.next_change_target) == (None, None)  # comfort all week

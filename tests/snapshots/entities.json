@@ -641,6 +641,8 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "next_change_ts": null,
+    "next_target": null,
     "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
@@ -1340,6 +1342,8 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "next_change_ts": null,
+    "next_target": null,
     "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
@@ -2149,6 +2153,8 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "next_change_ts": null,
+    "next_target": null,
     "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
@@ -3094,6 +3100,8 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "next_change_ts": null,
+    "next_target": null,
     "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
@@ -3909,6 +3917,8 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "next_change_ts": null,
+    "next_target": null,
     "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
@@ -4854,6 +4864,8 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "next_change_ts": null,
+    "next_target": null,
     "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
@@ -5529,6 +5541,8 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "next_change_ts": null,
+    "next_target": null,
     "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
@@ -6087,6 +6101,8 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "next_change_ts": null,
+    "next_target": null,
     "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
@@ -6789,6 +6805,8 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "next_change_ts": null,
+    "next_target": null,
     "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,
@@ -7391,6 +7409,8 @@
    "attributes": {
     "device_class": "temperature",
     "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "next_change_ts": null,
+    "next_target": null,
     "override_by": null,
     "override_until_ts": null,
     "preheat_start_ts": null,

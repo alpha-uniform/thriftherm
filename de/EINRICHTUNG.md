@@ -372,7 +372,7 @@ Im YAML-Editor genügt `type: custom:thriftherm-card`. Weitere Einstellungen gib
 type: custom:thriftherm-card
 title: Heizung              # optional
 hidden_rooms: [arbeitszimmer]  # optional, Raumschlüssel
-hidden_controls: [comfort, setback]  # optional: now, comfort, setback, quick_heat_up, dry_now, schedule
+hidden_controls: [comfort, setback]  # optional: info, now, comfort, setback, quick_heat_up, dry_now, schedule
 room_order: [badezimmer, wohnzimmer]  # optional, die übrigen Räume folgen
 ```
 
@@ -380,7 +380,7 @@ Was die Karte zeigt, von oben nach unten:
 
 - **Wärmequelle in einem Satz**, z. B. „Wärmepumpe heizt“, darunter die Kosten je kWh Wärme. Ein Tipp öffnet den Vergleich von Therme und Wärmepumpe: was jede tut und warum, Vorlauf-Soll bzw. COP, Kosten, ab welchem COP sich die Wärmepumpe lohnt, und was das Lernen der Heizkurve gerade macht.
 - **Hinweise, nur wenn es welche gibt:** Sicherheit eingeschränkt, Wärmepumpe gesperrt, Fenster offen, von Hand geändert (mit *Zurück zur Automatik*).
-- **Eine Zeile je Raum:** gemessene Temperatur, Soll und der Grund. Kleine Symbole zeigen, ob die Therme oder die Wärmepumpe gerade für den Raum heizt, ob von Hand geändert wurde oder ein Fenster offen ist. Ein Tipp auf den Raum öffnet *Jetzt* (das Soll von Hand ändern, es gilt so lange wie jede Änderung von Hand), Komfort, Absenkung, *Schnell aufheizen*, im Bad *Jetzt trocknen*, *Zeitplan* (öffnet den Zeitplan-Helfer des Raums, wenn er einen hat) und, nach einer Änderung von Hand, *Zurück zur Automatik*.
+- **Eine Zeile je Raum:** gemessene Temperatur, Soll und der Grund. Kleine Symbole zeigen, ob die Therme oder die Wärmepumpe gerade für den Raum heizt, ob von Hand geändert wurde oder ein Fenster offen ist. Ein Tipp auf den Raum öffnet eine Infozeile (der nächste Wechsel laut Zeitplan mit dem Soll danach, und der Trend, wenn der Sensor *Temperaturtrend* des Raums aktiviert ist), *Jetzt* (das Soll von Hand ändern, es gilt so lange wie jede Änderung von Hand), Komfort, Absenkung, *Schnell aufheizen*, im Bad *Jetzt trocknen*, *Zeitplan* (öffnet den Zeitplan-Helfer des Raums, wenn er einen hat) und *Zurück zur Automatik*, solange etwas von Hand läuft: eine Änderung, *Schnell aufheizen* oder *Jetzt trocknen*.
 - **Betriebsmodus**, im Modus *Abwesend* mit der Rückkehr.
 
 Die Karte braucht Home Assistant 2025.1 oder neuer. Zeigt das Dashboard nach der Installation oder einem Update *Custom element doesn't exist: thriftherm-card* oder noch die alte Karte, lade die Seite hart neu (Cmd+Shift+R bzw. Strg+Shift+R). Hilft das nicht, lösche im Browser die Websitedaten deiner Home-Assistant-Adresse; in der App: *Einstellungen → Companion App → Frontend-Cache zurücksetzen* ([Fehlersuche](FEHLERSUCHE.md#die-thriftherm-karte-fehlt-custom-element-doesnt-exist)).
@@ -396,7 +396,10 @@ type: custom:thriftherm-room-card
 room: badezimmer                    # Raumschlüssel
 title: Bad                          # optional
 hidden_controls: [comfort, setback] # optional, wie bei der großen Karte
+header: false                       # optional: ohne Kopfzeile, nur die Knöpfe
 ```
+
+Ohne Kopfzeile (`header: false`, im Editor das Häkchen *Kopfzeile*) zeigt die Karte nur die Knöpfe: Sie passt dann unter eine eigene Raumkarte, die Temperatur und Soll schon zeigt.
 
 ### 9.3 Beispiel-Dashboard aus Standard-Karten (optional)
 

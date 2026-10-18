@@ -217,6 +217,27 @@ def comfort_run_end(
     return None
 
 
+def next_level_change(
+    week: tuple[tuple[Block, ...], ...], block_end: datetime, level: float, comfort_temp: float, setback_temp: float
+) -> tuple[datetime, float] | None:
+    """Where the target of a schedule helper changes next, from the end of its running block, and to what.
+
+    A block that starts at that instant at the same temperature carries it on; one at another
+    temperature is the change (to its temperature, `comfort_temp` when it names none), no block the
+    change to `setback_temp`. None: not within a week.
+    """
+    at = block_end
+    while at - block_end < timedelta(days=7):
+        following = block_starting(week, at)
+        if following is None:
+            return at, setback_temp
+        asked = comfort_temp if following[1] is None else following[1]
+        if abs(asked - level) > 0.01 or following[0] <= at:
+            return at, asked
+        at = following[0]
+    return None
+
+
 def _state_age_s(state: State, now: datetime) -> float:
     ts = getattr(state, "last_reported", None) or state.last_updated
     return max((now - ts).total_seconds(), 0.0)
@@ -529,25 +550,37 @@ class SnapshotBuilder:
             return None
         active = state.state == "on"
         temp = self.read_attr_float(state, "temperature")
-        next_start = next_end = None
+        next_start = next_end = change = None
+        change_target: float | None = None
         raw = state.attributes.get("next_event")
         parsed = None if raw is None else dt_util.parse_datetime(str(raw))
         if parsed is not None:
             # while a block runs, the next event is its end; otherwise the next start
+            event = dt_util.as_local(parsed)
+            week = self._schedule_blocks(cfg.schedule_entity)
             if active:
-                next_end = dt_util.as_local(parsed)
-                week = self._schedule_blocks(cfg.schedule_entity)
+                next_end = event
                 if week is not None:
                     level = cfg.comfort_temp if temp is None else temp
-                    next_end = comfort_run_end(week, next_end, level, cfg.comfort_temp)
-                elif next_end.time() in (time(), time(23, 59), time(23, 59, 59)):
+                    next_end = comfort_run_end(week, event, level, cfg.comfort_temp)
+                    found = next_level_change(week, event, level, cfg.comfort_temp, cfg.setback_temp)
+                    if found is not None:
+                        change, change_target = found
+                elif event.time() in (time(), time(23, 59), time(23, 59, 59)):
                     # A block to 24:00 (or to 23:59) is how a schedule says "all day"; an entity that
                     # does not tell its blocks does not tell whether the next day starts at 00:00
                     # again, so midnight is no comfort end (it would end every boiler call at 23:30).
                     next_end = None
+                else:
+                    change, change_target = event, cfg.setback_temp
             else:
-                next_start = dt_util.as_local(parsed)
-        return ScheduleState(active=active, temperature=temp, next_start=next_start, next_end=next_end)
+                next_start = change = event
+                following = None if week is None else block_starting(week, event)
+                change_target = cfg.comfort_temp if following is None or following[1] is None else following[1]
+        return ScheduleState(
+            active=active, temperature=temp, next_start=next_start, next_end=next_end,
+            next_change=change, next_change_target=change_target,
+        )
 
     def _room_state(
         self,

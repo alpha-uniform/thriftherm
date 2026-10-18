@@ -772,6 +772,12 @@
           },
           "preheat_start_ts": {
             "name": "Pre-heating starts"
+          },
+          "next_change_ts": {
+            "name": "Schedule changes"
+          },
+          "next_target": {
+            "name": "Target after the change"
           }
         }
       },
@@ -2188,6 +2194,9 @@
               "no_heating_run": "boiler not heating right now",
               "rooms_heating_up": "a room heats up on an extra"
             }
+          },
+          "by_hand": {
+            "name": "Started by hand"
           },
           "started_ts": {
             "name": "Started"

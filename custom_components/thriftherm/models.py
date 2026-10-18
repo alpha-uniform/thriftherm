@@ -60,6 +60,10 @@ class ScheduleState:
     temperature: float | None = None  # optional per-block temperature
     next_start: datetime | None = None  # start of the next comfort block
     next_end: datetime | None = None  # end of the running comfort block
+    # where the target changes next, and the target from then on: a block that follows at the same
+    # temperature is no change, one at another temperature is (comfort_end runs on across a warmer one)
+    next_change: datetime | None = None
+    next_change_target: float | None = None
 
 
 @dataclass(frozen=True)
@@ -322,6 +326,8 @@ class RoomResult:
     # value, or the average of several valves)
     temperature_entity: str | None = None
     schedule_entity: str | None = None  # the room's weekly schedule helper, for a dashboard to open
+    next_change_ts: float | None = None  # when the schedule switches next (engines/room.py next_schedule_change)
+    next_target: float | None = None  # ... and the target it switches to
 
 
 @dataclass(frozen=True)

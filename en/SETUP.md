@@ -372,7 +372,7 @@ In the YAML editor `type: custom:thriftherm-card` is enough. These are the only 
 type: custom:thriftherm-card
 title: Heating              # optional
 hidden_rooms: [arbeitszimmer]  # optional, room keys
-hidden_controls: [comfort, setback]  # optional: now, comfort, setback, quick_heat_up, dry_now, schedule
+hidden_controls: [comfort, setback]  # optional: info, now, comfort, setback, quick_heat_up, dry_now, schedule
 room_order: [badezimmer, wohnzimmer]  # optional, the other rooms follow
 ```
 
@@ -380,7 +380,7 @@ What the card shows, from top to bottom:
 
 - **The heat source in one sentence**, e.g. "Heat pump is heating", below it the cost per kWh of heat. A tap opens the comparison of boiler and heat pump: what each does and why, flow setpoint or COP, cost, the COP from which the heat pump pays off, and what the learning of the heating curve does right now.
 - **Notes, only when there are some:** safety restricted, heat pump blocked, window open, changed by hand (with *Back to automatic*).
-- **One row per room:** measured temperature, target and the reason. Small icons show whether the boiler or the heat pump heats the room right now, whether it was changed by hand or a window is open. A tap on the room opens *Now* (change the target by hand; it holds as long as any change by hand), comfort, setback, *Quick heat-up*, in the bathroom *Dry now*, *Schedule* (opens the room's schedule helper when it has one) and, after a change by hand, *Back to automatic*.
+- **One row per room:** measured temperature, target and the reason. Small icons show whether the boiler or the heat pump heats the room right now, whether it was changed by hand or a window is open. A tap on the room opens an info line (the schedule's next change with the target after it, and the trend once the room's *Temperature trend* sensor is enabled), *Now* (change the target by hand; it holds as long as any change by hand), comfort, setback, *Quick heat-up*, in the bathroom *Dry now*, *Schedule* (opens the room's schedule helper when it has one) and *Back to automatic* while anything by hand is on: a change, *Quick heat-up* or *Dry now*.
 - **Operating mode**, in *Away* with the return.
 
 The card needs Home Assistant 2025.1 or newer. If the dashboard shows *Custom element doesn't exist: thriftherm-card* or still the old card after installing or updating, hard-reload the page (Cmd+Shift+R or Ctrl+Shift+R). If that does not help, clear the browser's site data for your Home Assistant address; in the app: *Settings → Companion app → Reset frontend cache* ([Troubleshooting](TROUBLESHOOTING.md#the-thriftherm-card-is-missing-custom-element-doesnt-exist)).
@@ -396,7 +396,10 @@ type: custom:thriftherm-room-card
 room: badezimmer                    # room key
 title: Bathroom                     # optional
 hidden_controls: [comfort, setback] # optional, as with the big card
+header: false                       # optional: no head, only the buttons
 ```
+
+Without its head (`header: false`, the box *Head* in the editor) the card shows only the buttons: it then fits under a room card of your own that shows temperature and target already.
 
 ### 9.3 Example dashboard from standard cards (optional)
 

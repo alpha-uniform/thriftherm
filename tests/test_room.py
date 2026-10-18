@@ -180,3 +180,33 @@ def test_humidity_values_come_from_the_room_sensor_alone():
     res = room_engine.evaluate_room(st, now, "auto", PARAMS)
     assert res.temperature == 22.5 and res.dew_point_c is None and res.abs_humidity_g_m3 is None
     assert not res.drying.active
+
+
+def test_the_next_schedule_change_and_the_target_after_it():
+    """What a dashboard shows as the next change: the end of the comfort running now, or the next start."""
+    from custom_components.thriftherm.models import Override, ScheduleState
+
+    cfg = room_config("badezimmer", comfort=21.0, setback=17.0)
+    st = room_state(cfg, temp=20.0)
+    change = room_engine.next_schedule_change
+    monday_evening, monday_noon = datetime(2026, 1, 12, 18, 0), datetime(2026, 1, 12, 12, 0)
+    friday_night = datetime(2026, 1, 16, 23, 0)
+    assert change(st, monday_evening, "auto") == (datetime(2026, 1, 12, 22, 0).timestamp(), 17.0)
+    assert change(st, monday_noon, "auto") == (datetime(2026, 1, 12, 17, 30).timestamp(), 21.0)
+    assert change(st, friday_night, "auto") == (datetime(2026, 1, 17, 9, 0).timestamp(), 21.0)  # Saturday's window
+    # a change by hand does not move what the schedule does next; away and off leave the schedule aside
+    hand = Override(target=23.0, until_ts=monday_evening.timestamp() + 3600, set_at_ts=monday_evening.timestamp())
+    by_hand = replace(st, override=hand)
+    assert change(by_hand, monday_evening, "auto") == change(st, monday_evening, "auto")
+    assert change(st, monday_evening, "away") == change(st, monday_evening, "off") == (None, None)
+    # a schedule helper: the change its blocks make next, as the adapter found it (test_snapshot_builder)
+    four = datetime(2026, 1, 12, 16, 0)
+    helper = replace(st, schedule=ScheduleState(active=False, next_start=four, next_change=four, next_change_target=22.5))
+    assert change(helper, monday_noon, "auto") == (four.timestamp(), 22.5)
+    nine = datetime(2026, 1, 12, 21, 0)
+    running = replace(st, schedule=ScheduleState(active=True, next_end=nine, next_change=nine, next_change_target=17.0))
+    assert change(running, monday_evening, "auto") == (nine.timestamp(), 17.0)
+    all_week = replace(st, schedule=ScheduleState(active=True))
+    assert change(all_week, monday_evening, "auto") == (None, None)
+    result = room_engine.evaluate_room(st, monday_evening, "auto", PARAMS)
+    assert result.next_change_ts == datetime(2026, 1, 12, 22, 0).timestamp()

@@ -387,7 +387,7 @@ def test_following_the_rooms_stops_when_gas_becomes_cheaper():
 # A served room the unit does not get warm: the unit is set higher in small steps, the boiler comes last.
 
 LONG_RUN = replace(RUNNING, running_since_ts=NOW - 7200, last_command_ts=NOW - 7200, last_target=22.0)
-HOLDS_BACK = heat_pump_state(intake=(22.0, 45.0))  # at its setpoint of 22 °C where it stands
+HOLDS_BACK = replace(heat_pump_state(intake=(22.0, 45.0)), indoor_temp=22.0)  # at its setpoint of 22 °C where it stands
 
 
 def lagging_room(now: float, mem: ControlMemory, unit=HOLDS_BACK, trend: float | None = 0.1, temp: float = 19.8, mode: str = "active"):
@@ -420,7 +420,8 @@ def test_following_the_rooms_the_boiler_helps_once_the_higher_setpoint_is_used_u
     mem, now, seen = LONG_RUN, NOW, []
     for _ in range(8):  # the unit's room follows its setpoint: it keeps holding back
         setpoint = 21.0 + (mem.offset_k if mem.offset_k is not None else 1.0)
-        cmd, mem = lagging_room(now, mem, unit=replace(heat_pump_state(intake=(setpoint, 45.0)), target_temp=setpoint))
+        unit = replace(heat_pump_state(intake=(setpoint, 45.0)), target_temp=setpoint, indoor_temp=setpoint)
+        cmd, mem = lagging_room(now, mem, unit=unit)
         seen.append((cmd.target_temp, cmd.delivers))
         now += 1200
     assert [target for target, _ in seen] == [22.0, 22.5, 23.0, 23.5, 24.0, 24.0, 24.0, 24.0]  # two degrees at most
@@ -428,7 +429,7 @@ def test_following_the_rooms_the_boiler_helps_once_the_higher_setpoint_is_used_u
     assert mem.boiler_helps and mem.offset_k == 3.0
 
     # the boiler makes the room rise: it goes on helping until the room is there, not only while it lags
-    at_24 = replace(heat_pump_state(intake=(24.0, 45.0)), target_temp=24.0)
+    at_24 = replace(heat_pump_state(intake=(24.0, 45.0)), target_temp=24.0, indoor_temp=24.0)
     cmd, mem = lagging_room(now, mem, unit=at_24, trend=1.2)
     assert cmd.delivers is False
     cmd, mem = lagging_room(now + 60, mem, unit=at_24, trend=0.5, temp=21.0)
@@ -441,11 +442,50 @@ def test_following_the_rooms_the_boiler_helps_once_the_higher_setpoint_is_used_u
 
 
 def test_following_the_rooms_a_unit_working_flat_out_is_not_set_higher():
-    """Its intake air far below its setpoint: a higher setpoint changes nothing, the unit does not manage."""
-    flat_out = heat_pump_state(intake=(20.0, 45.0))
+    """Its own reading far below its setpoint, its compressor running: a higher setpoint changes nothing, it does not manage."""
+    flat_out = replace(heat_pump_state(intake=(20.0, 45.0)), indoor_temp=20.0)
     cmd, mem = lagging_room(NOW, LONG_RUN, unit=flat_out)
     assert cmd.delivers and not mem.boiler_helps  # a room lags for a while before anything is concluded
     cmd, mem = lagging_room(NOW + 1200, mem, unit=flat_out)
+    assert (cmd.action, cmd.delivers, mem.offset_k, mem.boiler_helps) == ("none", False, None, True)
+
+
+def test_following_the_rooms_a_unit_standing_at_its_own_reading_is_set_higher_whatever_the_intake_sensor_says():
+    """Seen 2026-10-17: the unit read 22 °C at its setpoint of 22 °C and stood, the intake sensor beside it
+    20.3 °C. Taken for working flat out, the unit was left at 22 °C and the boiler called for the bathroom."""
+    standing = replace(heat_pump_state(intake=(20.3, 52.0), compressor_hz=0.0, running_s=None), indoor_temp=22.0)
+    cmd, mem = lagging_room(NOW, LONG_RUN, unit=standing)
+    cmd, mem = lagging_room(NOW + 1200, mem, unit=standing)
+    assert (cmd.action, cmd.target_temp, cmd.delivers, mem.boiler_helps) == ("adjust", 22.5, True, False)
+    # the compressor standing is enough on its own: the unit has nothing left to give at this setpoint
+    no_reading = replace(standing, indoor_temp=None)
+    cmd, mem = lagging_room(NOW + 1200, replace(LONG_RUN, lagging_since_ts=NOW), unit=no_reading)
+    assert (cmd.action, cmd.target_temp, mem.boiler_helps) == ("adjust", 22.5, False)
+
+
+def test_following_the_rooms_a_unit_standing_while_the_boiler_helps_is_set_higher_and_the_boiler_stops():
+    """The evening of 2026-10-17 after the update: the boiler helped, wrongly concluded, and the unit stood at 22 °C."""
+    standing = replace(heat_pump_state(intake=(20.3, 52.0), compressor_hz=0.0, running_s=None), indoor_temp=22.0)
+    helped = replace(LONG_RUN, boiler_helps=True, lagging_since_ts=NOW - 1260, last_offset_review_ts=NOW - 60)
+    cmd, mem = lagging_room(NOW, helped, unit=standing)
+    assert (cmd.action, cmd.delivers, mem.boiler_helps) == ("none", False, True)  # the last review was a minute ago
+    cmd, mem = lagging_room(NOW + 1140, mem, unit=standing)
+    assert (cmd.action, cmd.target_temp, cmd.delivers, mem.boiler_helps, mem.offset_k) == ("adjust", 22.5, True, False, 1.5)
+
+
+def test_following_the_rooms_a_unit_held_up_far_below_its_setpoint_is_not_set_higher():
+    """It stands although it reads 19 °C at 22 °C (a protection stop, a fault without a code): the boiler helps."""
+    held_up = replace(heat_pump_state(intake=(19.0, 45.0), compressor_hz=0.0, running_s=None), indoor_temp=19.0)
+    cmd, mem = lagging_room(NOW, LONG_RUN, unit=held_up)
+    cmd, mem = lagging_room(NOW + 1200, mem, unit=held_up)
+    assert (cmd.action, cmd.delivers, mem.offset_k, mem.boiler_helps) == ("none", False, None, True)
+
+
+def test_following_the_rooms_a_running_unit_near_its_setpoint_does_not_take_the_room_back_from_the_boiler():
+    """Its room warmed by the radiator brings it near its setpoint, but it runs: the boiler goes on helping."""
+    running = replace(heat_pump_state(intake=(21.5, 45.0)), indoor_temp=21.5)
+    helped = replace(LONG_RUN, boiler_helps=True, lagging_since_ts=NOW - 2400, last_offset_review_ts=NOW - 1200)
+    cmd, mem = lagging_room(NOW, helped, unit=running)
     assert (cmd.action, cmd.delivers, mem.offset_k, mem.boiler_helps) == ("none", False, None, True)
 
 
