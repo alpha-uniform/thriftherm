@@ -118,6 +118,7 @@ ROOM_BINARY: tuple[ThrifthermBinaryDescription, ...] = (
         value_fn=lambda r: r.drying.active,
         attr_fn=lambda r: {
             "reason": r.drying_reason,
+            "by_hand": r.drying.manual,  # started with the button: "back to automatic" ends it
             "started_ts": r.drying.started_ts,
             "baseline_abs_humidity_g_m3": r.drying.baseline_abs_humidity,
         },

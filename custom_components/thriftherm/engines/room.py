@@ -418,6 +418,29 @@ def evaluate_drying(
 
 
 # ---------------------------------------------------------------------------
+def next_schedule_change(state: RoomState, now: datetime, mode: str) -> tuple[float | None, float | None]:
+    """When the schedule switches next, and the target it switches to: for a dashboard to show.
+
+    The comfort windows: the end of the one running now (to the setback), else the start of the next
+    (to the comfort). A schedule helper: the change its blocks make next (adapters/inputs.py). What the
+    schedule does, whatever a change by hand or a quick heat-up does meanwhile; nothing in the modes
+    that leave the schedule aside.
+    """
+    if mode in (MODE_AWAY, MODE_OFF):
+        return None, None
+    cfg = state.config
+    if state.schedule is not None:
+        # a schedule helper: its own next change, which also sees a block at another temperature
+        change, target = state.schedule.next_change, state.schedule.next_change_target
+        return (None, None) if change is None or target is None else (change.timestamp(), target)
+    _, reason = scheduled_target(cfg, now)
+    if reason == "schedule_comfort":
+        end = comfort_end(cfg, now)
+        return (None, None) if end is None else (end.timestamp(), cfg.setback_temp)
+    start = next_comfort_start(cfg, now)
+    return (None, None) if start is None else (start.timestamp(), cfg.comfort_temp)
+
+
 def evaluate_room(
     state: RoomState,
     now: datetime,
@@ -498,6 +521,7 @@ def evaluate_room(
 
     override_until = state.override.until_ts if state.override is not None and state.override.until_ts > now_ts else None
     end = comfort_end(cfg, now, state.schedule) if target_reason == "schedule_comfort" else None
+    next_ts, next_target = next_schedule_change(state, now, mode)
 
     return RoomResult(
         key=cfg.key,
@@ -526,4 +550,6 @@ def evaluate_room(
         thermostat_heating=state.thermostat_heating,
         temperature_entity=temp_entity,
         schedule_entity=cfg.schedule_entity,
+        next_change_ts=next_ts,
+        next_target=next_target,
     )

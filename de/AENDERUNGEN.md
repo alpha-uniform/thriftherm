@@ -2,6 +2,24 @@
 
 [English](../en/CHANGELOG.md) | **Deutsch**
 
+## 0.6.4 – 18.10.2026
+
+Die Wärmepumpe wird zuerst höher gestellt, bevor die Therme hilft, auch wenn ihr Ansaugfühler kälter misst als das Gerät selbst. Dazu eine Infozeile am Raum, die Raumkarte ohne Kopfzeile und *Zurück zur Automatik* nach *Schnell aufheizen* und *Jetzt trocknen*. Die Konfiguration bleibt bei Version 3, alles Gelernte bleibt erhalten.
+
+### Neu
+
+- **Infozeile am Raum** (große Karte und Raumkarte): der nächste Wechsel laut Zeitplan mit dem Soll danach, z. B. *Ab 22:00: 17,0 °C*, und der Trend, wenn der Sensor *Temperaturtrend* aktiviert ist. Der Sensor *Solltemperatur* hat dafür die Attribute `next_change_ts` und `next_target`; ausblenden mit `hidden_controls: [info]`.
+- **Raumkarte ohne Kopfzeile:** `header: false` (im Editor das Häkchen *Kopfzeile*) zeigt nur die Knöpfe, etwa unter einer eigenen Raumkarte mit Temperatur und Soll.
+
+### Geändert
+
+- COP-Werte der Midea PortaSplit nachgezogen (11. bis 18.10.2026): bei 6 bis 8 °C draußen 3,86 aus 29 Messpunkten, bei 8 bis 10 °C 3,99 aus 29, bei 10 bis 12 °C 4,30 aus 33.
+
+### Behoben
+
+- **Wärmepumpe mit „Sollwert folgt den Räumen“:** Ob das Gerät drosselt, richtet sich jetzt nach seinem eigenen Messwert, nicht mehr nach dem Ansaugfühler; ohne eigenen Messwert danach, ob der Verdichter steht. Las das Gerät 22 °C bei 22 °C Sollwert und stand, der Ansaugfühler daneben aber 20,3 °C, galt es als ausgelastet: Der Sollwert wurde nicht angehoben und gleich die Therme gerufen. Steht das Gerät, während die Therme schon hilft, wird es jetzt ebenfalls angehoben, und die Therme hört auf. Ein Gerät, das steht, obwohl es selbst weit unter seinem Sollwert misst (etwa nach einem Schutzstopp), wird nicht angehoben: Dann hilft die Therme gleich.
+- **Karten:** *Zurück zur Automatik* erscheint am Raum jetzt auch während *Schnell aufheizen* und nach *Jetzt trocknen*, nicht nur nach einer Übersteuerung von Hand. Der Sensor *Trocknungsmodus* zeigt dafür das Attribut `by_hand`.
+
 ## 0.6.3 – 16.10.2026
 
 Eine Raumkarte, „fast erreicht“ in den Karten und der Warmstart einer Kombitherme richtig gezählt. Die Konfiguration bleibt bei Version 3, alles Gelernte bleibt erhalten.

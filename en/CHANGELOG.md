@@ -2,6 +2,24 @@
 
 **English** | [Deutsch](../de/AENDERUNGEN.md)
 
+## 0.6.4 — 2026-10-18
+
+The heat pump is set higher first, before the boiler helps, also when its intake sensor reads colder than the unit itself. Also an info line at a room, the room card without its head, and *Back to automatic* after *Quick heat-up* and *Dry now*. The configuration stays at version 3; everything learned is kept.
+
+### New
+
+- **Info line at a room** (big card and room card): the schedule's next change with the target after it, e.g. *From 22:00: 17.0 °C*, and the trend once the *Temperature trend* sensor is enabled. The *Target temperature* sensor has the attributes `next_change_ts` and `next_target` for it; hide it with `hidden_controls: [info]`.
+- **Room card without its head:** `header: false` (the box *Head* in the editor) shows only the buttons, for instance under a room card of your own with temperature and target.
+
+### Changed
+
+- COP values of the Midea PortaSplit brought up to date (2026-10-11 to 18): at 6 to 8 °C outside 3.86 from 29 readings, at 8 to 10 °C 3.99 from 29, at 10 to 12 °C 4.30 from 33.
+
+### Fixed
+
+- **Heat pump with "setpoint follows the rooms":** whether the unit throttles is now judged by its own reading, no longer by the intake sensor; without its own reading by whether its compressor stands. A unit reading 22 °C at a setpoint of 22 °C and standing, with the intake sensor beside it at 20.3 °C, was taken for working flat out: its setpoint was not raised and the boiler was called at once. A unit found standing while the boiler helps is now set higher as well, and the boiler stops. A unit that stands although its own reading is far below its setpoint (after a protection stop, say) is not set higher: the boiler helps at once.
+- **Cards:** *Back to automatic* now appears at a room during *Quick heat-up* and after *Dry now* too, not only after a change by hand. The *Drying mode* sensor shows the attribute `by_hand` for it.
+
 ## 0.6.3 — 2026-10-16
 
 A room card, "nearly there" in the cards, and a combi boiler's warm start counted right. The configuration stays at version 3; everything learned is kept.

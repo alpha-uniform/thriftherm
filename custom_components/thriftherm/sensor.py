@@ -463,6 +463,9 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
             "override_until_ts": r.override_until_ts,
             "override_by": r.override_by,
             "preheat_start_ts": r.preheat_start_ts,
+            # what the schedule does next, for a dashboard: changes only when a block begins or ends
+            "next_change_ts": r.next_change_ts,
+            "next_target": r.next_target,
         },
     ),
     _room_desc(

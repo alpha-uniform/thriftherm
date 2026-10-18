@@ -772,6 +772,12 @@
           },
           "preheat_start_ts": {
             "name": "Vorheizen beginnt"
+          },
+          "next_change_ts": {
+            "name": "Zeitplan wechselt"
+          },
+          "next_target": {
+            "name": "Soll nach dem Wechsel"
           }
         }
       },
@@ -2188,6 +2194,9 @@
               "no_heating_run": "Therme heizt gerade nicht",
               "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
+          },
+          "by_hand": {
+            "name": "Von Hand gestartet"
           },
           "started_ts": {
             "name": "Gestartet"

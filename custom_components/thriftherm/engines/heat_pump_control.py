@@ -94,7 +94,7 @@ LIFT_MAX_K = 2.0  # what is added to the configured offset at most
 LIFT_REVIEW_S = 1200.0  # a room lags this long before the next step: the last one needs time to show
 LIFT_LOWER_S = 7200.0  # ... and this long passes after the last step before one back, with the rooms at their targets
 LIFT_WARM_K = 0.5  # every served room this far above its target: the steps back come at the pace of the steps up
-THROTTLED_WITHIN_K = 1.0  # intake air this close to the setpoint: the unit holds back, a higher setpoint helps
+THROTTLED_WITHIN_K = 1.0  # its own reading this close to the setpoint: the unit holds back, a higher setpoint helps
 RATE_TOO_FAST_K_H = 1.5
 LEARNING_MIN_RATIO = 0.85  # estimate must be at least 85 % of break-even
 DRYING_MAX_OVERSHOOT_K = 1.5  # drying keeps asking for heat, but not without a ceiling
@@ -260,6 +260,32 @@ def eco_setpoint(heat_pump: HeatPumpState, offset_k: float) -> float | None:
 
 def _intake(heat_pump: HeatPumpState) -> float | None:
     return heat_pump.intake_temp.value_or_none if heat_pump.intake_temp.valid else heat_pump.indoor_temp
+
+
+def _stands(heat_pump: HeatPumpState) -> bool:
+    """The unit heats, and its compressor stands."""
+    return heat_pump.compressor_hz is not None and heat_pump.compressor_hz <= 0
+
+
+def _holds_back(heat_pump: HeatPumpState, setpoint: float | None) -> bool:
+    """The unit throttles by itself, and a higher setpoint makes it give more.
+
+    The air it regulates on is near its setpoint. That air is its own reading, not the intake
+    sensor: seen 2026-10-17, the unit read 22 °C at its setpoint of 22 °C and stood, the intake
+    sensor beside it 20.3 °C, and the unit was taken for working flat out. The bathroom stayed
+    1.3 K short, the boiler was called and the setpoint never went up. A unit that stands although
+    its own reading is far below its setpoint is held up by something else (a protection stop, a
+    fault without a code): a higher setpoint does nothing for it. Without its own reading a
+    standing compressor says it holds back, and the intake sensor is the last resort.
+    """
+    if setpoint is None:
+        return False
+    if heat_pump.indoor_temp is not None:
+        return heat_pump.indoor_temp >= setpoint - THROTTLED_WITHIN_K
+    if _stands(heat_pump):
+        return True
+    intake = _intake(heat_pump)
+    return intake is not None and intake >= setpoint - THROTTLED_WITHIN_K
 
 
 def wanted_rooms(rooms: tuple[RoomResult, ...]) -> list[RoomResult]:
@@ -438,11 +464,13 @@ def _adapt_lift(inp: ControlInputs, mem: ControlMemory, need: list[RoomResult], 
 
     A room lags that is below its target and rises more slowly than `RATE_TOO_SLOW_K_H`; an
     unknown trend is no evidence. After `LIFT_REVIEW_S` of that the offset goes up by half a degree,
-    `LIFT_MAX_K` at most, while the unit holds back (its intake air near its setpoint). Once the
+    `LIFT_MAX_K` at most, while the unit holds back (`_holds_back`). Once the
     offset is used up, or the unit works flat out already and a higher setpoint would change
-    nothing, the boiler helps until the rooms are at their targets. With the rooms at their targets
-    `LIFT_LOWER_S` after the last step, the offset takes a step back; every step makes the unit
-    beep, so there are few. Rooms clearly too warm (`LIFT_WARM_K`) take one every `LIFT_REVIEW_S`:
+    nothing, the boiler helps until the rooms are at their targets. A unit found standing while the
+    boiler helps, with offset left, is set higher all the same and the boiler stops helping: the
+    unit comes first (asked for 2026-10-13), and a unit that stands is no unit that does not manage.
+    With the rooms at their targets `LIFT_LOWER_S` after the last step, the offset takes a step
+    back; every step makes the unit beep, so there are few. Rooms clearly too warm (`LIFT_WARM_K`) take one every `LIFT_REVIEW_S`:
     seen 2026-10-13, the unit ran for 1.7 h at the raised setpoint with every served room 1-2 K above
     its target, because the two hours had begun anew with a restart.
     """
@@ -455,13 +483,17 @@ def _adapt_lift(inp: ControlInputs, mem: ControlMemory, need: list[RoomResult], 
         since = mem.lagging_since_ts if mem.lagging_since_ts is not None else now
         if since != mem.lagging_since_ts:
             mem = replace(mem, lagging_since_ts=since)
-        if mem.boiler_helps or now - max(since, last or since) < LIFT_REVIEW_S:
+        if now - max(since, last or since) < LIFT_REVIEW_S:
             return mem
-        intake = _intake(inp.heat_pump)
-        holds_back = setpoint is not None and intake is not None and intake >= setpoint - THROTTLED_WITHIN_K
+        # Once the boiler helps, only a unit that stands is set higher again: one that runs and nears
+        # its setpoint because the radiator warms the room it stands in would hand the room back and
+        # forth, and every hand-back is a burner start.
+        holds_back = _holds_back(inp.heat_pump, setpoint) and (not mem.boiler_helps or _stands(inp.heat_pump))
         if holds_back and offset < base + LIFT_MAX_K:
             step = max(OFFSET_STEP, inp.heat_pump.target_temp_step or 0.0)
-            return replace(mem, offset_k=min(offset + step, base + LIFT_MAX_K), last_offset_review_ts=now)
+            return replace(mem, offset_k=min(offset + step, base + LIFT_MAX_K), last_offset_review_ts=now, boiler_helps=False)
+        if mem.boiler_helps:
+            return mem
         return replace(mem, boiler_helps=True, last_offset_review_ts=now)
     if mem.lagging_since_ts is not None:
         mem = replace(mem, lagging_since_ts=None)

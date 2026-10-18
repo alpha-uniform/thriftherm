@@ -34,9 +34,9 @@ const ICONS = {
 const DOMAIN = "thriftherm";
 // what the integration names a room's entities and the system's (translation keys)
 const ROOM_KEYS = ["room_target", "room_demand", "room_window_open", "room_heating_allowed", "room_boost",
-  "room_drying", "room_comfort_temp", "room_setback_temp", "room_thermostat_plan"];
+  "room_drying", "room_drying_mode", "room_comfort_temp", "room_setback_temp", "room_thermostat_plan", "room_trend"];
 // what a tapped room can offer; the card's option hidden_controls leaves any of them out
-const CONTROLS = ["now", "comfort", "setback", "quick_heat_up", "dry_now", "schedule"];
+const CONTROLS = ["info", "now", "comfort", "setback", "quick_heat_up", "dry_now", "schedule"];
 const OVERRIDE_MIN = 5; // the range of the set_override action
 const OVERRIDE_MAX = 30;
 // decision reasons that only describe normal operation; the others are worth a line
@@ -258,7 +258,8 @@ class ThrifthermCard extends HTMLElement {
       this._devices = this._hass.devices;
       this._model = discover(this._hass);
       const ids = this._watchedSystem();
-      for (const room of this._watchedRooms()) ids.push(...Object.values(room.ids));
+      // a room's trend changes nearly every minute and shows in its info line only: watched below while the room is open
+      for (const room of this._watchedRooms()) ids.push(...Object.entries(room.ids).filter(([k]) => k !== "trend").map(([, id]) => id));
       this._watched = ids;
     }
     // a stepped number is shown as stepped until Home Assistant reports it (or reports something else)
@@ -271,6 +272,7 @@ class ThrifthermCard extends HTMLElement {
       }
     }
     const sources = this._watchedRooms().map((r) => this._hass.states[r.ids.target]?.attributes.temperature_entity).filter(Boolean);
+    sources.push(...this._watchedRooms().filter((r) => this._open.has(r.key) && r.ids.trend).map((r) => r.ids.trend));
     const signature = [
       JSON.stringify(this._config), [...this._open].join(","), this._compare, JSON.stringify(this._pending),
       this._hass.language, ...[...this._watched, ...sources].map((id) => { const s = this._hass.states[id]; return s ? s.last_updated + s.state : "-"; }),
@@ -550,14 +552,28 @@ class ThrifthermCard extends HTMLElement {
         <span class="temps">${current !== null ? `<span class="current">${esc(this._num(current))}°</span>` : ""}${setpoint !== null ? `<span class="target">→ ${esc(this._num(setpoint))}°</span>` : ""}</span>
         <span class="reason">${esc(reason)}</span>
         ${bar}`;
-    // the room card shows the room always open: its head is no button to tap
+    // the room card shows the room always open: its head is no button to tap, and with `header: false`
+    // none at all, for a room page whose own card shows temperature and target already
     const headBlock = this._single
-      ? `<div class="room-head">${head}</div>`
+      ? (this._config.header === false ? "" : `<div class="room-head">${head}</div>`)
       : `<button class="room-head" data-action="room" data-room="${esc(room.key)}" aria-expanded="${open}">${head}</button>`;
     return `<div class="room${allowed ? "" : " off"}${open ? " open" : ""}">
       ${headBlock}
       ${open ? this._roomDetail(room, byHand) : ""}
     </div>`;
+  }
+
+  // what the schedule does next and where the room is heading: on a room page also without the head.
+  // The trend comes from the room's trend sensor, which is off until it is switched on.
+  _infoLine(room, target) {
+    const out = [];
+    const at = num(target?.attributes.next_change_ts);
+    const to = num(target?.attributes.next_target);
+    if (at !== null && to !== null) out.push(this._t("next_change", { time: this._time(at), temp: this._temp(to) }));
+    const trend = num(this._s(room.ids.trend)?.state);
+    if (trend !== null && Math.abs(trend) < 0.05) out.push(this._t("trend_steady"));
+    else if (trend !== null) out.push(this._t(trend > 0 ? "trend_rising" : "trend_falling", { value: this._num(Math.abs(trend), 1) }));
+    return out.join(" · ");
   }
 
   // the room temperature where Thriftherm reads it: the room sensor, or the valve standing in for it
@@ -572,6 +588,8 @@ class ThrifthermCard extends HTMLElement {
     const shown = (control) => !(this._config.hidden_controls || []).includes(control);
     // the target right now, changed by hand: Thriftherm keeps it for the usual time of a change by hand
     const target = this._s(room.ids.target);
+    const info = shown("info") ? this._infoLine(room, target) : "";
+    if (info) parts.push(`<div class="room-info">${esc(info)}</div>`);
     if (shown("now") && target && num(target.state) !== null) {
       const value = this._pending[target.entity_id] ?? num(target.state);
       parts.push(`<div class="stepper">
@@ -604,7 +622,10 @@ class ThrifthermCard extends HTMLElement {
     if (shown("schedule") && schedule && this._s(schedule)) {
       buttons.push(`<button class="btn" data-action="more-info" data-entity="${esc(schedule)}">${icon("calendar")}<span>${esc(this._t("schedule"))}</span></button>`);
     }
-    if (byHand) {
+    // what "back to automatic" ends for the room: a change by hand, a quick heat-up, a drying started with the button
+    const quick = target?.attributes.quick_heat_up === true;
+    const driedByHand = this._s(room.ids.drying_mode)?.attributes.by_hand === true;
+    if (byHand || quick || driedByHand) {
       buttons.push(`<button class="btn" data-action="room-resume" data-room="${esc(room.key)}">${icon("restore")}<span>${esc(this._t("back_to_automatic"))}</span></button>`);
     }
     if (buttons.length) parts.push(`<div class="buttons">${buttons.join("")}</div>`);
@@ -870,6 +891,7 @@ const STYLE = `
   .bar > div { height: 100%; background: var(--state-climate-heat-color, #ff8100); border-radius: 2px; }
 
   .detail { display: flex; flex-direction: column; gap: 10px; padding: 0 0 12px; }
+  .room-info { color: var(--secondary-text-color); font-size: 0.9rem; }
   .stepper { display: flex; align-items: center; gap: 8px; }
   .step-label { flex: 1; }
   .step-value { min-width: 72px; text-align: center; font-weight: 500; }
@@ -962,13 +984,18 @@ class ThrifthermRoomCardEditor extends ThrifthermCardEditor {
     this.shadowRoot.innerHTML = `<style>${EDITOR_STYLE}</style>
       <label class="field"><span>${esc(t("editor_room"))}</span><select data-action="room">${known ? "" : "<option selected></option>"}${options}</select></label>
       ${this._titleField(t)}
+      <div class="field"><div class="row"><label><input type="checkbox" data-action="header"${this._config.header === false ? "" : " checked"}> ${esc(t("editor_header"))}</label></div></div>
       ${this._controlsField(t, "editor_controls_room")}`;
   }
 
   _onChange(ev) {
     const el = ev.target;
     if (el.dataset.action === "room") this._emit({ ...this._config, room: el.value });
-    else super._onChange(ev);
+    else if (el.dataset.action === "header") {
+      const config = { ...this._config, header: false };
+      if (el.checked) delete config.header;
+      this._emit(config);
+    } else super._onChange(ev);
   }
 }
 
