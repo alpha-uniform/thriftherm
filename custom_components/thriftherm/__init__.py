@@ -92,6 +92,9 @@ def _register_services(hass: HomeAssistant) -> None:
 
     async def clear_override(call: ServiceCall) -> None:
         for coord in _coordinators(hass):
+            if "room" in call.data:
+                # a wrong key would clear nothing and still report success, leaving the override in force
+                _require_room(coord, call.data["room"])
             await coord.async_clear_override(call.data.get("room"))
 
     async def set_away(call: ServiceCall) -> None:
@@ -155,12 +158,15 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry)
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register services once, so automations referencing them validate at startup; serve the dashboard card."""
     _register_services(hass)
-    integration = await async_get_integration(hass, DOMAIN)
-    await card.async_register(hass, str(integration.version) if integration.version else None)
+    await card.async_register(hass)
     return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> bool:
+    integration = await async_get_integration(hass, DOMAIN)
+    version = str(integration.version) if integration.version else None
+    # first: the dashboards keep the card while a failing first refresh makes the entry retry
+    await card.async_load(hass, version)
     coordinator = ThrifthermCoordinator(hass, entry)
     await coordinator.async_start()
     await coordinator.async_config_entry_first_refresh()
@@ -168,14 +174,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
     # Room devices point at the hub via via_device_id. Platforms load concurrently, so the
     # hub must exist before any of them, or a room device registered first loses the link.
     # Its firmware field shows the installed version: which package runs was not to be seen anywhere.
-    integration = await async_get_integration(hass, DOMAIN)
     dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
         identifiers={(DOMAIN, entry.entry_id)},
         name="Thriftherm",
         manufacturer="Thriftherm",
         model="Heating control",
-        sw_version=str(integration.version) if integration.version else None,
+        sw_version=version,
     )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     _remove_stale_registry_entries(hass, entry, coordinator)
@@ -245,9 +250,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) 
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> None:
-    """The entry is gone: so are its repairs and its stored learning and controller state."""
+    """The entry is gone: so are its repairs, its stored learning and controller state, and the card's resource."""
     issues.async_clear(hass)
     await Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}").async_remove()
+    await card.async_remove_resource(hass)
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> None:

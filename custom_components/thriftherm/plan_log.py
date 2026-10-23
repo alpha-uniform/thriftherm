@@ -72,6 +72,15 @@ class PlanLog:
         if self.command_log:
             self.command_log[-1]["sent"] = False
 
+    def went_out(self, now_ts: float) -> None:
+        """The heat pump command on record last did go out.
+
+        A repeat of a command that had not gone out is not recorded again, so its entry still says
+        not sent, with the time of the earlier try: it now says sent, at the time it went out.
+        """
+        if not self._recorded and self.command_log:
+            self.command_log[-1].update(ts=round(now_ts), sent=True)
+
     def nothing_sent(self) -> None:
         """The heat pump command just recorded needed no call: the unit had all of it already.
 

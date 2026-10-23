@@ -328,6 +328,24 @@ def test_switched_off_there_is_one_common_correction_as_before():
     assert cmd.offset_k == 5.0
 
 
+def test_switched_off_a_flow_the_demand_boost_holds_at_its_maximum_is_not_raised_further():
+    """The curve's 55 °C and the boost of 8 K ask for 63 °C: the flow stands at 60, a step would move nothing."""
+    room = [replace(rr(demand=1.0, temp=18.0, target=20.0, trend=0.5), boiler_call="calling")]
+    cmd, mem, _ = feed_with(COMMON, room, flow=60.0, ret=40.0, outdoor=-10.0)
+    assert cmd.flow_setpoint == COMMON.boiler_flow_max
+    assert mem.adjustments == () and (mem.offset_k, mem.slope_k) == (0.0, 0.0)
+
+
+def test_switched_off_a_slow_room_on_a_flow_its_boost_lifts_above_the_minimum_raises_the_curve():
+    """The curve's 33 °C lies below the minimum of 35, but with the boost of 4.8 K the flow sent is 38 °C."""
+    params = replace(COMMON, boiler_flow_min=35.0)
+    room = [replace(rr(demand=0.6, temp=19.4, target=20.0, trend=0.05), boiler_call="calling")]
+    before, _ = decide(inp(room, mode="active", params=params, outdoor=12.0), heating_memory())
+    assert before.flow_setpoint == 38.0
+    _, mem, _ = feed_with(params, room, flow=38.0, ret=30.0, outdoor=12.0)
+    assert mem.last_adjust_reason == "rooms_slow" and len(mem.adjustments) == 1
+
+
 def test_the_safe_flow_limits_hold_for_every_line():
     lines = {"majority": LoadLine(level_k=10.0, slope_k=10.0, hours=30.0)}
     mem = replace(heating_memory(), lines=lines, last_flow=60.0)

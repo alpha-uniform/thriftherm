@@ -9,10 +9,10 @@ import pytest
 
 from custom_components.thriftherm.engines import advisor, heat_call
 from custom_components.thriftherm.engines.heat_call import CallMemory
-from custom_components.thriftherm.engines.room import comfort_end, parse_schedule
+from custom_components.thriftherm.engines.room import comfort_end, evaluate_room, parse_schedule
 from custom_components.thriftherm.models import RoomResult, ScheduleState
 
-from .conftest import room_config, room_state, snapshot
+from .conftest import PARAMS, room_config, room_state, snapshot
 
 NOW = 2_000_000.0
 HOUR = 3600.0
@@ -109,6 +109,33 @@ def test_no_call_in_the_last_half_hour_of_comfort():
     assert state == "calling"
 
 
+def test_a_comfort_block_that_ended_a_moment_ago_starts_no_call_while_its_helper_has_not_switched_yet():
+    # seen 2026-10-21 22:00 and 2026-10-22 07:30: the bedroom's schedule helper switched 15 ms before the
+    # bathroom's. The cycle it set off still saw the bathroom's block running (21 °C, its end passed by
+    # 15 ms), the bathroom called, and the boiler lit once for a target that fell to 17 °C seconds later.
+    cfg = room_config("badezimmer", comfort=21.0, setback=17.0)
+    end = datetime(2026, 10, 21, 20, 0, tzinfo=UTC)  # 22:00 in Berlin
+    bath = replace(room_state(cfg, temp=20.5), schedule=ScheduleState(active=True, temperature=21.0, next_end=end))
+    for late in (timedelta(milliseconds=15), timedelta(seconds=90)):
+        res = evaluate_room(bath, end + late, "auto", PARAMS)
+        assert (res.target, res.target_reason, res.comfort_end_ts) == (21.0, "schedule_comfort", end.timestamp())
+        state, mem = heat_call.update(res, CallMemory(), (end + late).timestamp(), res.comfort_end_ts)
+        assert state == "comfort_ending" and mem == CallMemory()
+
+
+def test_a_comfort_end_long_past_a_new_block_or_a_quick_heat_up_still_calls():
+    # the grace after a comfort end covers the moment until the schedule helper switches, no longer
+    state, _ = step(rr(temp=20.5), CallMemory(), NOW, end=NOW - heat_call.COMFORT_END_PASSED_S - 1)
+    assert state == "calling"
+    # a new block that has begun brings its own end, far enough ahead
+    state, _ = step(rr(temp=20.5), CallMemory(), NOW, end=NOW + 2 * HOUR)
+    assert state == "calling"
+    # quick heat-up, drying and preheat ask for heat now, whatever the comfort end
+    for reason in ("boost", "schedule_comfort+boost", "bathroom_drying", "schedule_preheat"):
+        state, _ = step(rr(temp=20.5, reason=reason), CallMemory(), NOW, end=NOW - 0.015)
+        assert state == "calling", reason
+
+
 def test_comfort_end_of_text_windows():
     cfg = replace(room_config("badezimmer"), schedule_weekday=parse_schedule("05:15-07:30,17:30-22:00"))
     tz = UTC
@@ -141,6 +168,24 @@ def test_without_a_temperature_the_demand_decides():
     assert state == "calling"
     state, _ = step(rr(temp=None, demand=0.0), CallMemory())
     assert state == "idle"
+
+
+def test_a_stall_outlasts_a_restart_whose_first_cycle_has_no_room_temperature():
+    # the Zigbee sensors report one by one after a restart, the bathroom after 38 s
+    _, mem = step(rr(temp=19.7), CallMemory(), NOW)
+    state, mem = step(rr(temp=20.8, trend=0.1), mem, NOW + HOUR)
+    assert state == "stalled"
+    restored = CallMemory.from_storage(mem.to_storage())
+    _, mem = step(rr(temp=None), restored, NOW + HOUR + 60)  # the room sensor has not reported since the restart
+    state, mem = step(rr(temp=20.6, trend=None), mem, NOW + HOUR + 120)  # 0.4 K below: inside the stall's release
+    assert state == "stalled" and mem.stalled_target == 21.0
+
+
+def test_a_call_keeps_its_hysteresis_and_its_age_through_a_cycle_without_a_temperature():
+    _, mem = step(rr(temp=20.6), CallMemory(), NOW)
+    _, mem = step(rr(temp=None), mem, NOW + 60)
+    state, mem = step(rr(temp=20.8), mem, NOW + 120)  # 0.2 K below: a running call goes on to 0.1 K
+    assert state == "calling" and mem.since_ts == NOW
 
 
 @pytest.mark.parametrize("stored", [None, 3, "x", {"calling": "yes", "since_ts": "a", "stalled_target": True}])

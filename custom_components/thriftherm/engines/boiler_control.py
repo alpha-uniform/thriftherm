@@ -19,7 +19,10 @@ Principles
 * Flow temperature = heating curve (two points, -10 °C and +15 °C outdoor)
   + what the room that needs the most asks for: its learned line, and while it
   calls the demand boost and its heat-up extra (`heat_up`); limited to the
-  configured range and ramped up by at most 5 °C per 10 minutes.
+  configured range and ramped up by at most 5 °C per 10 minutes, never more
+  than one step above the flow last sent; a rise waits while the boiler runs its
+  pump on or waits out its burner lockout after a heating run (S.5-S.8), at most
+  30 minutes, except for frost and a quick heat-up.
 
 The learning of the curve lives in `boiler_learning`, what is remembered in `boiler_memory`.
 """
@@ -38,6 +41,7 @@ from ..const import (
     BOILER_REPORTS_HOT_WATER,
     CTRL_ACTIVE,
     CTRL_OFF,
+    MODE_HEAT_PUMP_ONLY,
     MODE_OFF,
     SAFETY_FALLBACK,
     SOURCE_BOILER,
@@ -56,6 +60,10 @@ RESEND_INTERVAL_S = 120.0  # boiler falls back to its knob after 9-16 min withou
 MIN_STATE_S = 300.0  # no heat/block toggling faster than this (frost excepted)
 RAMP_UP_K = 5.0
 RAMP_WINDOW_S = 600.0
+# A rise waits while the boiler runs its pump on or waits out its burner lockout after a heating run
+# (S.5-S.8), but no longer than this: S.7 took 4.6 minutes (measured 2026-10-22) and d.02 allows a
+# lockout of 20 minutes at most, so a status that says lockout for longer is stale.
+LOCKOUT_HOLD_MAX_S = 1800.0
 DEMAND_BOOST_K = 8.0  # added at 100 % room demand
 
 # Hot water on a combi boiler heats the primary exchanger, and the circuit sensors
@@ -169,6 +177,15 @@ def _heating_after_all(inp: BoilerInputs, mem: BoilerMemory, now: float) -> bool
     return inp.reported_mode == BOILER_REPORTS_HEATING or (inp.reported_mode == BOILER_REPORTS_HEATING_AFTER and not burning)
 
 
+def _in_lockout(inp: BoilerInputs) -> bool:
+    """The boiler says it runs its pump on or waits out its burner lockout after a heating run, and no gas burns.
+
+    With gas burning the code lags behind a new start; without a gas meter the code alone decides.
+    """
+    burning = inp.gas_power_w is not None and inp.gas_power_w > HOT_WATER_GAS_W
+    return inp.reported_mode == BOILER_REPORTS_HEATING_AFTER and not burning
+
+
 def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerMemory]:
     """Plan the boiler command, keeping hot-water episodes out of the learning."""
     now = inp.now_ts
@@ -226,10 +243,10 @@ def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerM
         mem = learning.drop_burn_in_progress(mem)
     # Where the boiler does not say itself what it burns for, a tap in the hour after hot water is
     # likely more hot water that the temperatures missed: those burns are left out as well.
-    mem = learning.track_burns(mem, burning and (inp.status_known or not cooling_back), now)
+    mem = learning.track_burns(mem, burning and (inp.status_known or not cooling_back), now, inp.day_start_ts)
     cmd, mem = _decide(inp, mem, burning and not cooling_back, burning)
     share, starts = learning.burner_share(mem, now)
-    cmd = replace(cmd, burner_share=share, burner_starts_last_hour=starts)
+    cmd = replace(cmd, burner_share=share, burner_starts_last_hour=starts, starts_today=mem.starts_today)
     shown_for = HOT_WATER_SHOWN_WITH_STATUS_S if inp.status_known else HOT_WATER_SHOWN_S
     recent = mem.hot_water_seen_ts is not None and now - mem.hot_water_seen_ts < shown_for
     return replace(cmd, hot_water=recent, hot_water_seen_ts=mem.hot_water_seen_ts, warm_start=warm), mem
@@ -360,6 +377,9 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
         return replace(mem, heat_up=heat_up.follow(mem.heat_up, inp.rooms, p.boiler_heat_up_rate_k_h, now, False, False))
 
     if inp.control_mode == CTRL_OFF:
+        # Nothing is sent, so the boiler goes back to its knob as after an outage: a block sent once the
+        # control is active again counts from then on, not from the block before the switch-off; so does a lockout.
+        mem = replace(mem, block_since_ts=None, lockout_since_ts=None)
         return command(BOILER_PLAN_DISABLED, False, None, None, False, "control_off"), not_ours(mem)
 
     mem = learning.follow_heating_run(mem, heating_run, now)
@@ -373,7 +393,8 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
     if blockers:
         # send nothing: the boiler returns to its front knob after ~10 min
         cmd = command(BOILER_PLAN_HANDS_OFF, False, None, None, False, "hands_off", blockers=blockers)
-        mem = not_ours(replace(mem, block_since_ts=None, **NO_CLASS))
+        # a lockout seen before the gap is no measure of one after it (review 2026-10-22)
+        mem = not_ours(replace(mem, block_since_ts=None, lockout_since_ts=None, **NO_CLASS))
         if blockers != ["waiting_for_room_data"]:
             return cmd, replace(mem, state=None, state_since_ts=None)
         # Waiting for the rooms right after a start is no outage: the boiler still does what was sent
@@ -383,7 +404,9 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
         return cmd, mem
 
     frost = bool(inp.frost_rooms)
-    need = frost or (inp.op_mode != MODE_OFF and inp.advice_source in (SOURCE_BOILER, SOURCE_BOTH))
+    # In heat pump only mode the user asked for no gas: only frost releases the boiler. The advice reaches
+    # it as "boiler" there too while the unit is held by hand, waits or cannot deliver (advisor.boiler_source).
+    need = frost or (inp.op_mode not in (MODE_OFF, MODE_HEAT_PUMP_ONLY) and inp.advice_source in (SOURCE_BOILER, SOURCE_BOTH))
     reason = "frost_protection" if frost and inp.advice_source not in (SOURCE_BOILER, SOURCE_BOTH) else ("room_demand" if need else "no_room_needs_boiler")
     if inp.op_mode == MODE_OFF and not frost:
         reason = "summer_mode"
@@ -429,6 +452,20 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
         # more would not reach the radiators: at the maximum, or swallowed by the minimum
         held = not p.boiler_flow_min <= curve + need < p.boiler_flow_max
         flow = round_half(min(max(flow, p.boiler_flow_min), p.boiler_flow_max))
+        # Seen 2026-10-22: a rise sent while the boiler ran its pump on (S.7) or waited out its burner
+        # lockout (S.8) lit the burner early (06:38: 4 K more, a pause of 4.8 instead of 12 minutes), and
+        # every such cut is one start more. So it waits until the boiler leaves those states, though not
+        # for frost or a quick heat-up the user asked for. To the ramp below the held flow is a steady
+        # one: the window of the rise starts when the rise is sent, or 8 K clicked in the lockout would go
+        # out at once after it. Nor is it a flow held for the heat-up: it waits one lockout at most, and a
+        # heat-up whose every review saw one would never be given more.
+        lockout_since = (now if mem.lockout_since_ts is None else mem.lockout_since_ts) if _in_lockout(inp) else None
+        mem = replace(mem, lockout_since_ts=lockout_since)
+        quick = any(r.boost_active for r in heating_rooms)
+        holding = lockout_since is not None and now - lockout_since < LOCKOUT_HOLD_MAX_S and not (frost or quick)
+        if holding and mem.last_flow is not None and flow > mem.last_flow:
+            flow = mem.last_flow
+            waiting = waiting or "lockout_hold"
         if frost:
             # frost protection goes straight to its floor; a ramp would only delay it
             mem = replace(mem, ramp_from=None, ramp_since_ts=None)
@@ -438,6 +475,11 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
             base = mem.ramp_from if mem.ramp_from is not None else mem.last_flow
             since = mem.ramp_since_ts if mem.ramp_since_ts is not None else now
             limit = base + RAMP_UP_K * (1 + int((now - since) // RAMP_WINDOW_S))
+            if limit > mem.last_flow + RAMP_UP_K:
+                # Windows passed while nothing was sent (hands-off, control off, Home Assistant down): they would
+                # let the whole rise out at once, 35 -> 60 °C in one cycle after three hours of hands-off (review
+                # 2026-10-22), or one step a cycle if only capped. The rise starts a window of its own instead.
+                base, since, limit = mem.last_flow, now, mem.last_flow + RAMP_UP_K
             if flow > limit:
                 flow = limit
                 waiting = waiting or "ramp_limit"
@@ -459,8 +501,9 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
         held = False
         # blocked time is no operation of any class, and none is in use
         mem = replace(mem, lines_seen_ts=None, **NO_CLASS)
-        # the next heating run ramps from its own start, not from a rise that ended with this block
-        mem = replace(mem, ramp_from=None, ramp_since_ts=None)
+        # the next heating run ramps from its own start, not from a rise that ended with this block, and
+        # counts a lockout it begins in from its first cycle
+        mem = replace(mem, ramp_from=None, ramp_since_ts=None, lockout_since_ts=None)
 
     if mem.last_flow is None or flow != mem.last_flow:
         mem = replace(mem, last_flow=flow)

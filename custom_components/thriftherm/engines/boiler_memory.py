@@ -22,7 +22,7 @@ CURVE_COLD_C = -10.0
 ADJUSTMENTS_STORED = 48  # the steps of a day: the daily allowances of the learning are counted from them
 
 # restored as they are, anything that is not a number becomes None
-_STORED_FLOATS = ("state_since_ts", "last_flow", "ramp_from", "ramp_since_ts", "hot_water_seen_ts")
+_STORED_FLOATS = ("state_since_ts", "last_flow", "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "starts_day_ts")
 
 
 @dataclass(frozen=True)
@@ -35,6 +35,7 @@ class BoilerMemory:
     state_since_ts: float | None = None
     ramp_from: float | None = None  # flow at which the current rise began
     ramp_since_ts: float | None = None
+    lockout_since_ts: float | None = None  # the boiler has reported its overrun or lockout since then; not stored
     block_since_ts: float | None = None  # first block of an unbroken series of sends; not stored
     # --- hot water
     hot_water_seen_ts: float | None = None  # last sample that looked like hot water
@@ -48,6 +49,7 @@ class BoilerMemory:
     adjustments: tuple[float, ...] = ()  # timestamps of the corrections
     adjustment_steps: tuple[float, ...] = ()  # and by how much each moved the flow (signed K); older ones had 1 K
     last_adjust_reason: str | None = None
+    limit_cut_ts: float | None = None  # the last step the ±10 K limit swallowed or cut short; shown, not stored
     # --- evidence of the heating run in progress
     heating_since_ts: float | None = None
     spread_ema: float | None = None
@@ -55,6 +57,9 @@ class BoilerMemory:
     last_review_ts: float | None = None
     burn_since_ts: float | None = None  # the burner is on for the heating since then; not stored
     burns: tuple[tuple[float, float], ...] = ()  # (start, end) of the heating burns of the last hour
+    # the heating burner's starts since local midnight, and that midnight: a sensor shows them, the statistics a day each
+    starts_today: int = 0
+    starts_day_ts: float | None = None
     # --- by how many rooms call (boiler_load): a line per load class, and the cycle the operation was last booked at
     lines: Mapping[str, LoadLine] = field(default_factory=dict)
     lines_seen_ts: float | None = None  # not stored
@@ -85,6 +90,7 @@ class BoilerMemory:
             "state": self.state,
             **{key: getattr(self, key) for key in _STORED_FLOATS},
             "burns": [list(burn) for burn in self.burns],
+            "starts_today": self.starts_today,
             "lines": lines_to_storage(self.lines),
             "heat_up": heat_up.to_storage(self.heat_up),
         }
@@ -101,6 +107,7 @@ class BoilerMemory:
             pair = as_floats(burn) if isinstance(burn, (list, tuple)) else []
             if len(pair) == 2 and pair[1] >= pair[0]:
                 burns.append((pair[0], pair[1]))
+        starts = as_float(data.get("starts_today"))
         level = offset if offset is not None and isfinite(offset) else 0.0
         slope = slope if slope is not None and isfinite(slope) else 0.0
         return cls(
@@ -111,6 +118,7 @@ class BoilerMemory:
             last_adjust_reason=reason if isinstance(reason, str) else None,
             state=state if state in (BOILER_PLAN_HEAT, BOILER_PLAN_BLOCK) else None,
             burns=tuple(burns),
+            starts_today=int(starts) if starts is not None and isfinite(starts) and starts > 0 else 0,
             lines=lines_from_storage(data.get("lines")),
             heat_up=heat_up.from_storage(data.get("heat_up")),
             **{key: as_float(data.get(key)) for key in _STORED_FLOATS},
@@ -143,6 +151,7 @@ class BoilerInputs:
     # Right after a restart the room sensors report within seconds to minutes. A block decided
     # before they did locks the heating (and the pump) off for the minimum state time.
     room_data_pending: bool = False
+    day_start_ts: float | None = None  # local midnight of today: the day's starts are counted from it
 
 
 def cold_weight(outdoor_c: float | None) -> float:

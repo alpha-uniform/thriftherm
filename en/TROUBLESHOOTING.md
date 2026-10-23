@@ -140,11 +140,22 @@ That is normal: ebusd polls the boiler's values in turn. For the control Thrifth
 
 ### The Thriftherm card is missing ("Custom element doesn't exist")
 
-The browser still shows Home Assistant's start page from before the installation or the update, and that one does not know the card. Home Assistant keeps this page in the browser, so a plain reload often does not help.
+The dashboard shows *Custom element not found: thriftherm-card* or *Custom element doesn't exist*. Thriftherm adds the card as a dashboard resource itself at start: *Settings → Dashboards → ⋮ → Resources* shows `/thriftherm/thriftherm-card.js?v=…` as a JavaScript module. So every dashboard loads it before it draws its cards. An entry for the same file you added by hand is taken over instead of adding a second one. When Thriftherm is removed, the entry goes as well.
+
+If your installation keeps its resources in YAML (`lovelace: resource_mode: yaml`), Thriftherm cannot add anything there and loads the card on every page as before. That is not always reliable, so add the resource yourself then:
+
+```yaml
+lovelace:
+  resources:
+    - url: /thriftherm/thriftherm-card.js
+      type: module
+```
+
+If the card is still missing, the browser usually shows a start page from before the installation or the update. Home Assistant keeps this page in the browser, so a plain reload often does not help.
 
 1. Hard-reload the page: Cmd+Shift+R (Mac) or Ctrl+Shift+R.
 2. If that does not help: clear the browser's site data for your Home Assistant address and log in again. In the app: *Settings → Companion app → Reset frontend cache*.
-3. If that does not help either: restart Home Assistant. The card is registered at start; reloading the integration is not enough for it.
+3. If that does not help either: reload Thriftherm (*Settings → Devices & services → Thriftherm → ⋮ → Reload*) or restart Home Assistant. Thriftherm registers the card again then.
 
 ## None of this fits
 

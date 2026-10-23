@@ -9,7 +9,7 @@
 
 [English](README.en.md) | **Deutsch**
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5)](https://hacs.xyz/docs/faq/custom_repositories)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5)](https://hacs.xyz)
 ![Status: Beta](https://img.shields.io/badge/Status-Beta-orange)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/alphauniform)
 
@@ -47,7 +47,7 @@ Jede Entscheidung hat einen Grund, den du in Home Assistant nachlesen kannst. Fe
 An Therme und Thermostate werden keine Befehle gesendet, bis du selbst auf *Aktiv* stellst.
 
 1. **ebusd:** den eBUS-Adapter an die eBUS-Klemme der Therme (ein vorhandener Raumregler dort wird abgeklemmt), dann die ebusd-App mit MQTT einrichten, mit `--accesslevel=*` und der Ergänzung von `filter-name` ([Schritt 2](de/EINRICHTUNG.md#2-ebusd-einrichten)); ohne eigene Therme überspringen.
-2. **Installieren:** in HACS das benutzerdefinierte Repository `https://github.com/alpha-uniform/thriftherm` (Kategorie *Integration*) hinzufügen, **Thriftherm** herunterladen und Home Assistant neu starten. Schneller geht es mit diesem Knopf, er öffnet das Repository direkt in HACS:
+2. **Installieren:** in HACS nach **Thriftherm** suchen, herunterladen und Home Assistant neu starten. Schneller geht es mit diesem Knopf, er öffnet Thriftherm direkt in HACS:
 
    [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
 3. **Integration hinzufügen:** *Einstellungen → Geräte & Dienste → Integration hinzufügen → Thriftherm*. Findet Thriftherm ebusd-Entitäten, ist der Thermen-Schritt schon ausgefüllt – prüfen und weiter.

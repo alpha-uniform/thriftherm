@@ -124,3 +124,16 @@ def test_the_cop_of_a_cycle_enters_the_map_once_however_many_settled_samples_are
             entries.append((minute, value if value is not None else res.value))
     assert res.value == 4.2 and res.samples >= 12  # the cycle's COP is reported, next to the count of older samples
     assert [entry for entry in entries if entry[0] >= 20] == [(20, 4.2)]
+
+
+def test_a_fan_turning_below_the_calibrated_range_between_two_starts_does_not_spoil_the_cycle():
+    # The PortaSplit keeps its fan at 328-344 rpm between two starts, below 0.8 x its lowest calibrated 496 rpm;
+    # here 200 rpm against the lowest calibrated 300 rpm, with the outlet still warm for a few minutes after the stop.
+    tracker = HeatPumpTracker()
+    res = None
+    for minute in range(21):
+        on = (minute % 20) < 10
+        outlet = 34.0 if on else (26.0 if minute < 14 else 22.0)
+        res = sample(tracker, minute * 60.0, on=on, outlet=outlet, fan_rpm=600.0 if on else 200.0)
+    assert res.cycle_cop is not None and res.value == res.cycle_cop
+    assert 2.0 < res.cycle_cop < 6.0

@@ -372,7 +372,8 @@ async def test_active_control_sends_commands(hass: HomeAssistant) -> None:
     hass.states.async_set(
         "climate.midea",
         "off",
-        {"temperature": 22, "indoor_temperature": 21, "outdoor_temperature": 4.0, "compressor_frequency": 0, "error_code": 0},
+        {"temperature": 22, "indoor_temperature": 21, "outdoor_temperature": 4.0, "compressor_frequency": 0, "error_code": 0,
+         "fan_modes": ["auto", "high", "full"], "fan_mode": "high"},  # a unit with fan stages shows them
     )
     await hass.async_block_till_done()
     select = hass.states.get("select.thriftherm_heat_pump_control")
@@ -906,6 +907,20 @@ async def test_services_without_a_loaded_entry_raise(hass: HomeAssistant) -> Non
         await hass.services.async_call(DOMAIN, SERVICE_CLEAR_AWAY, {}, blocking=True)
 
 
+async def test_back_to_automatic_for_a_room_that_does_not_exist_is_refused(hass: HomeAssistant) -> None:
+    """A wrong room must not pass as done: the override meant to end would stay in force unnoticed."""
+    from homeassistant.exceptions import ServiceValidationError
+
+    await _setup(hass)
+    await hass.services.async_call(DOMAIN, "set_override", {"room": "badezimmer", "temperature": 23}, blocking=True)
+    await hass.async_block_till_done()
+
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(DOMAIN, "clear_override", {"room": "Badezimmer"}, blocking=True)  # the name, not the key
+    await hass.async_block_till_done()
+    assert "badezimmer" in hass.states.get("binary_sensor.thriftherm_override_active").attributes["overrides"]
+
+
 async def test_entry_from_a_newer_version_is_not_set_up(hass: HomeAssistant) -> None:
     _set_states(hass)
     entry = MockConfigEntry(domain=DOMAIN, data=_entry_data(), options={}, unique_id=DOMAIN, title="Thriftherm", version=4)
@@ -1024,6 +1039,16 @@ async def test_without_a_gas_meter_the_boiler_values_are_read_all_the_time(hass:
     publish.clear()
     await coordinator._async_keep_boiler_readings_fresh(None, now + 90)
     assert not publish  # at most once a minute here too
+
+
+async def test_flow_and_return_are_read_in_the_next_cycle_also_when_it_comes_a_millisecond_early(hass: HomeAssistant) -> None:
+    """Home Assistant starts each cycle 60 s after the last, give or take a millisecond: once a minute must hold."""
+    publish = async_mock_service(hass, "mqtt", "publish")
+    coordinator = (await _setup(hass)).runtime_data  # gas flow 1.2 m³/h: the burner is on
+    now = coordinator._ebus_read_ts
+    publish.clear()
+    await coordinator._async_keep_boiler_readings_fresh(20000.0, now + 59.999)
+    assert [c.data["payload"] for c in publish] == [""] * 5  # flow, return, status, pump, S.xx
 
 
 async def test_a_flapping_ebus_signal_does_not_stop_the_boiler_control(hass: HomeAssistant, freezer) -> None:
@@ -1178,6 +1203,25 @@ async def test_rooms_heat_along_while_another_room_calls_the_boiler(hass: HomeAs
     bath = hass.states.get("sensor.thriftherm_badezimmer_target_temperature")
     assert float(bath.state) == 21.5 and bath.attributes["reason"] == "joined_boiler_run"
     assert hass.states.get("sensor.thriftherm_wohnzimmer_target_temperature").attributes["reason"] == "schedule_comfort"
+
+
+async def test_a_stalled_room_heating_along_names_the_temperature_its_own_target_calls_again_at(hass: HomeAssistant) -> None:
+    """The bathroom, stalled 0.2 K below its 21.0 °C, heats along to 21.5 °C while the living room calls:
+    it calls the boiler again below 20.5 °C, not below 21.0 °C."""
+    from custom_components.thriftherm.engines.heat_call import CallMemory
+
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    coordinator.call_memory["badezimmer"] = CallMemory(stalled_target=21.0)
+    hass.states.async_set("sensor.bath_temp", "20.8")
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+
+    bath = hass.states.get("sensor.thriftherm_badezimmer_target_temperature")
+    assert float(bath.state) == 21.5 and bath.attributes["reason"] == "joined_boiler_run"
+    demand = hass.states.get("sensor.thriftherm_badezimmer_heat_demand").attributes
+    assert demand["boiler_call"] == "stalled"
+    assert demand["calls_again_below"] == 20.5
 
 
 async def test_rooms_of_a_cooling_heat_pump_never_call_the_boiler(hass: HomeAssistant) -> None:
@@ -1651,3 +1695,12 @@ async def test_the_thriftherm_device_shows_the_installed_version(hass: HomeAssis
     manifest = json.loads((Path(__file__).parent.parent / "custom_components" / "thriftherm" / "manifest.json").read_text())
     hub = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
     assert hub is not None and hub.sw_version == manifest["version"]
+
+
+async def test_the_boiler_heating_starts_of_the_day_are_a_sensor(hass: HomeAssistant) -> None:
+    entry = await _setup(hass)
+
+    state = hass.states.get("sensor.thriftherm_boiler_heating_starts_today")
+    assert state is not None
+    assert int(state.state) == entry.runtime_data.data["boiler_command"].starts_today == 1  # the test home burns at start
+    assert state.attributes["state_class"] == "total_increasing"  # a daily counter: the statistics give starts per day

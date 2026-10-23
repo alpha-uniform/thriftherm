@@ -361,6 +361,18 @@ def test_a_burner_run_after_an_ebus_outage_is_not_hot_water():
     assert mem.hot_water_seen_ts is not None
 
 
+def test_a_block_sent_again_after_the_control_was_switched_off_counts_only_after_it_has_stood_a_while():
+    # with the control switched off the boiler heats on its front knob, as after an eBUS outage
+    t0 = 1_000_000.0
+    blocked = _BM(state="block", state_since_ts=t0 - 7200, last_send_ts=t0 - 7200, last_flow=30.0, block_since_ts=t0 - 7300)
+    knob = replace(_shower_inputs(t0, 45.0, 38.0, burner=False), control_mode="off", advice_source="none", gas_power_w=11300.0)
+    _, mem = _bc.decide(knob, blocked)
+    mem = replace(mem, last_payload=None, last_send_ts=None)  # what switching the control back to active does
+    _, mem = _bc.decide(replace(knob, control_mode="active", now_ts=t0 + 60), mem)  # the first block goes out
+    cmd, mem = _bc.decide(replace(knob, control_mode="active", now_ts=t0 + 120), mem)  # the knob's run still burns
+    assert mem.hot_water_seen_ts is None and not cmd.hot_water
+
+
 def _warm_start_inputs(t0):
     # 2026-10-16 10:31: heating blocked for an hour, the combi boiler burnt a minute at S.4 with its
     # heating pump off to keep its hot water warm; the pump ran only afterwards
@@ -823,6 +835,64 @@ def test_a_step_the_limit_swallows_is_not_spent():
     assert (after.offset_k, after.slope_k, after.adjustments) == (10.0, 0.0, ())
 
 
+def _bathroom_lagging(mem, now, outdoor):
+    """One cycle of the control while the boiler cycles and the bathroom alone calls and does not get there."""
+    bath = replace(rr(key="badezimmer", temp=20.5, target=21.0, demand=0.0, trend=0.0), boiler_call="calling")
+    idle = [replace(rr(key=key, temp=21.0, target=21.0, demand=0.0), boiler_call="idle") for key in ("kuche", "wohnzimmer")]
+    runs = tuple((now - 3000 + i * 900, now - 2950 + i * 900) for i in range(3))  # three short burner runs in the hour
+    return decide(inp([bath, *idle], mode="active", outdoor=outdoor, now=now), replace(mem, burns=runs))
+
+
+def test_a_step_the_correction_limit_swallows_is_shown_as_held_back():
+    """Seen 2026-10-23: the bathroom's line at +9.01 K level and +3.44 K slope, +10.18 K at 6.5 °C outside.
+
+    Once the ±10 K limit bit, its steps were swallowed while the learning state gave no reason, only that the room lagged.
+    """
+    mem = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200,
+                       lines={"single:badezimmer": LoadLine(level_k=9.01, slope_k=3.44)})
+    cmd, mem = _bathroom_lagging(mem, NOW, 6.5)
+    line = mem.lines["single:badezimmer"]
+    assert mem.adjustment_steps == (1.0,) and line.level_k < 10.0  # a step of 1 K still fits under the limit
+    assert cmd.held_back is None
+
+    cmd, after = _bathroom_lagging(mem, NOW + 2760, 6.5)  # the next one, 2 K, takes the level past +10 K
+    # swallowed as before: the flow at 6.5 °C would feel less than the smallest step
+    assert after.adjustments == mem.adjustments
+    assert (after.lines["single:badezimmer"].level_k, after.lines["single:badezimmer"].slope_k) == (line.level_k, line.slope_k)
+    assert cmd.held_back == "correction_limit"
+    from custom_components.thriftherm import texts
+
+    assert all(texts.label("correction_limit", lang) != "correction limit" for lang in texts.LANGUAGES)  # worded in both
+
+
+def test_a_step_the_correction_limit_cuts_short_still_moves_up_to_it_and_says_so():
+    """At 0 °C outside a step of 1 K from a level of +9.8 K: the level to +10 K, the slope as before, and the reason shown."""
+    mem = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200,
+                       lines={"single:badezimmer": LoadLine(level_k=9.8, slope_k=2.0)})
+    cmd, after = _bathroom_lagging(mem, NOW, 0.0)
+    line = after.lines["single:badezimmer"]
+    assert line.level_k == 10.0 and line.slope_k == pytest.approx(2.789, abs=1e-3)
+    assert after.adjustment_steps == (0.674,)  # what the limit left of the step, felt at 0 °C
+    assert cmd.held_back == "correction_limit"
+
+
+def test_the_correction_limit_is_shown_only_while_it_holds_steps_back():
+    """A step within the limit takes the reason back, and so does a while without a step that met it.
+
+    Review 2026-10-23: after a step that was taken, the next try comes only at the third review window, a
+    little over an hour later with the cycles drifting; an hour's reason went blank just before it."""
+    def held(mem, minutes):
+        return learning.held_back(inp([rr(demand=0.5)], mode="active", outdoor=15.0, now=NOW + minutes * 60), mem)
+
+    cut = _step(BoilerMemory(offset_k=9.5), 1, 0)  # at +15 °C all level: 0.5 K of the 1 K step fit
+    assert (cut.offset_k, cut.adjustment_steps) == (10.0, (0.5,))
+    assert held(cut, 0) == "correction_limit" and held(cut, 65) == "correction_limit"
+    assert held(cut, 79) == "correction_limit" and held(cut, 81) is None
+    down = _step(cut, -1, 81)
+    assert down.offset_k == 9.5 and held(down, 81) is None
+    assert held(learning.reset(cut), 0) is None  # nothing learned is nothing at its limit
+
+
 # ------------------------------------------------------------------ review 2026-10-13
 def test_the_smallest_step_is_taken_at_every_outdoor_temperature():
     """Shared between level and slope and added up again, half a kelvin came out as 0.49999999999999994 and was dropped."""
@@ -1015,3 +1085,101 @@ def test_below_the_flow_minimum_the_curve_takes_no_step_up():
     # where the curve lies above the minimum the room is learned from as before
     cold = learning.learn(replace(on, outdoor_c=0.0), mem, [room], False)
     assert cold.last_adjust_reason == "rooms_lagging" and cold.adjustment_steps == (1.0,)
+
+
+def test_the_heating_starts_of_the_day_are_counted_from_midnight_and_kept_through_a_restart():
+    """Seen 2026-10-22: 66 starts in 23 hours on gas alone; the owner wants the starts of each day as a sensor."""
+    midnight = NOW - 3600.0
+    mem = _bc.BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=40.0)
+    rooms = [replace(rr(temp=20.5, target=21.0, trend=0.3), boiler_call="calling")]
+    cmd = None
+    for i in range(3):  # three burns of 45 s, told by the gas meter
+        start = NOW + i * 900.0
+        on = replace(inp(rooms, mode="active", now=start, flow=38.0, ret=34.0), gas_power_w=9000.0, day_start_ts=midnight)
+        cmd, mem = _bc.decide(on, mem)
+        _, mem = _bc.decide(replace(on, now_ts=start + 45.0, gas_power_w=0.0), mem)
+    assert cmd.starts_today == 3  # each one counted as it starts
+
+    restored = _bc.BoilerMemory.from_storage(mem.to_storage())
+    shower = replace(inp(rooms, mode="active", now=NOW + 3000.0), gas_power_w=20000.0, reported_mode="hot_water")
+    shower = replace(shower, day_start_ts=midnight)
+    cmd, restored = _bc.decide(shower, restored)
+    assert cmd.starts_today == 3  # kept through a restart, and hot water is no start of the heating
+
+    next_day = replace(inp(rooms, mode="active", now=midnight + 86400.0 + 60.0), gas_power_w=0.0, day_start_ts=midnight + 86400.0)
+    cmd, _ = _bc.decide(next_day, restored)
+    assert cmd.starts_today == 0  # a new day begins at nought
+
+
+def test_a_burn_that_turned_out_to_be_hot_water_is_no_start_of_the_heating():
+    mem = learning.track_burns(_bc.BoilerMemory(), True, NOW, day_start_ts=NOW - 60.0)
+    assert mem.starts_today == 1
+    assert learning.drop_burn_in_progress(mem).starts_today == 0
+
+
+def _rising(at):
+    """A rise that has begun: 30 °C sent before, 35 °C now, the ramp's first window open."""
+    cmd, mem = decide(at(NOW), replace(BoilerMemory(), state="block", state_since_ts=NOW - 600, last_flow=30.0))
+    assert cmd.flow_setpoint == 35.0 and cmd.waiting == "ramp_limit"
+    return mem
+
+
+def _one_step_a_window(at, mem, start):
+    """From `start` on, the rise opens a window of its own: 40 °C for ten minutes, then 45 °C."""
+    flows = []
+    for seconds in (0, 40, 80, 300, 590, 600):  # cycles also come 35-40 s apart when entities change (seen 2026-10-22)
+        cmd, mem = decide(at(start + seconds), mem)
+        flows.append(cmd.flow_setpoint)
+    assert flows == [40.0, 40.0, 40.0, 40.0, 40.0, 45.0]
+
+
+@pytest.mark.parametrize(("available", "safety"), [(False, "ok"), (True, "fallback")])
+def test_after_an_outage_the_next_rise_starts_its_own_ramp_from_the_last_flow_sent(available, safety):
+    """Review 2026-10-22: after a long hands-off the windows that had passed let the flow go from 35 to 60 °C in one cycle."""
+    cold = [rr(demand=1.0)]
+
+    def at(t, **kw):
+        return inp(cold, mode="active", outdoor=-10.0, now=t, **kw)
+
+    mem = _rising(at)
+    for minute in (1, 90, 179):  # three hours with nothing sent: the boiler runs on its knob
+        cmd, mem = decide(at(NOW + minute * 60.0, available=available, safety=safety), mem)
+        assert cmd.plan == "hands_off"
+    cmd, _ = decide(at(NOW + 3 * 3600.0), mem)
+    assert cmd.flow_setpoint == 40.0 and cmd.waiting == "ramp_limit"  # one step above the last flow sent
+    _one_step_a_window(at, mem, NOW + 3 * 3600.0)
+
+
+def test_after_hours_with_the_control_off_the_rise_goes_on_one_step_at_a_time():
+    """The same stale window, with the control switched off in the middle of a rise."""
+    cold = [rr(demand=1.0)]
+    mem = _rising(lambda t: inp(cold, mode="active", outdoor=-10.0, now=t))
+    cmd, mem = decide(inp(cold, mode="off", outdoor=-10.0, now=NOW + 60.0), mem)
+    assert cmd.plan == "disabled"
+    cmd, _ = decide(inp(cold, mode="active", outdoor=-10.0, now=NOW + 3 * 3600.0), mem)
+    assert cmd.flow_setpoint == 40.0 and cmd.waiting == "ramp_limit"
+    _one_step_a_window(lambda t: inp(cold, mode="active", outdoor=-10.0, now=t), mem, NOW + 3 * 3600.0)
+
+
+def test_a_rise_restored_after_hours_of_home_assistant_being_down_goes_on_one_step_at_a_time():
+    """The stored window survives a restart; after hours of downtime it must not let the whole rise out at once."""
+    stored = BoilerMemory(state="heat", state_since_ts=NOW - 600, last_flow=35.0, ramp_from=30.0, ramp_since_ts=NOW)
+    restored = BoilerMemory.from_storage(stored.to_storage())
+    cmd, _ = decide(inp([rr(demand=1.0)], mode="active", outdoor=-10.0, now=NOW + 3 * 3600.0), restored)
+    assert cmd.flow_setpoint == 40.0 and cmd.waiting == "ramp_limit"
+    _one_step_a_window(lambda t: inp([rr(demand=1.0)], mode="active", outdoor=-10.0, now=t), restored, NOW + 3 * 3600.0)
+
+
+def test_a_restart_inside_the_first_window_gives_no_second_step_at_once():
+    """A real restart begins with the boiler data missing and the rooms not read yet (seen at every restart
+    from 2026-10-13 to 10-22); the boiler still holds the 35 °C sent before it, so the rise stays in its window."""
+    stored = BoilerMemory(state="heat", state_since_ts=NOW - 120, last_flow=35.0, ramp_from=30.0, ramp_since_ts=NOW - 120)
+    mem = BoilerMemory.from_storage(stored.to_storage())
+    waiting = replace(inp([rr(temp=None, demand=None)], mode="active", outdoor=-10.0, now=NOW + 5, available=False),
+                      room_data_pending=True)
+    cmd, mem = decide(waiting, mem)
+    assert cmd.plan == "hands_off"
+    cmd, mem = decide(replace(waiting, boiler_available=True, now_ts=NOW + 30), mem)
+    assert cmd.plan == "hands_off"
+    cmd, _ = decide(inp([rr(demand=1.0)], mode="active", outdoor=-10.0, now=NOW + 90), mem)
+    assert cmd.flow_setpoint == 35.0 and cmd.waiting == "ramp_limit"

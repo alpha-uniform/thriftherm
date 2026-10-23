@@ -124,7 +124,10 @@ def follow(
                 continue
             s = HeatUp(extra_k=s.extra_k, since_ts=now, mark_ts=now, mark_c=r.temperature, start_c=r.temperature)
         elif not wants or gap < END_K:
-            out[r.key] = _ended(s, r, rate_k_h, now, reached=wants)
+            # got there whether or not it still calls: with sensors in tenths the call stops 0.1 K short
+            # of target (heat_call.CALL_OFF_K) in the very cycle the room comes this close
+            reached = r.heating_allowed and gap is not None and gap < END_K
+            out[r.key] = _ended(s, r, rate_k_h, now, reached=reached)
             continue
         s = replace(
             s,

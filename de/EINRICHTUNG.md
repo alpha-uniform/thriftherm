@@ -148,18 +148,19 @@ Optional, für Fortgeschrittene. ebusd fragt die Werte der Therme reihum ab; je 
 
 ## 3. Thriftherm installieren
 
-**Mit HACS (empfohlen):**
+**Mit HACS (empfohlen):** Thriftherm steht seit dem 21.10.2026 in der Standardliste von HACS, ein benutzerdefiniertes Repository braucht es nicht mehr.
 
-Am schnellsten mit diesem Knopf, er öffnet das Repository direkt in HACS; dann *Herunterladen* klicken und bei Schritt 4 unten weitermachen:
+Am schnellsten mit diesem Knopf, er öffnet Thriftherm direkt in HACS; dann *Herunterladen* klicken und bei Punkt 3 der Liste unten weitermachen:
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
 
 Oder von Hand:
 
-1. **HACS** öffnen, oben rechts ⋮ → *Benutzerdefinierte Repositories*.
-2. Repository: `https://github.com/alpha-uniform/thriftherm`, Typ: **Integration**. *Hinzufügen* klicken.
-3. In HACS nach **Thriftherm** suchen, öffnen und *Herunterladen* klicken.
-4. Home Assistant neu starten (*Einstellungen → System → ⋮ → Home Assistant neu starten*).
+1. **HACS** öffnen und nach **Thriftherm** suchen.
+2. Öffnen und *Herunterladen* klicken.
+3. Home Assistant neu starten (*Einstellungen → System → ⋮ → Home Assistant neu starten*).
+
+Wer Thriftherm schon als benutzerdefiniertes Repository eingetragen hat, muss nichts ändern: Es ist dasselbe Repository, die Updates kommen weiter über HACS.
 
 **Von Hand:** den Ordner `custom_components/thriftherm` aus dem Repository nach `config/custom_components/` deiner Home-Assistant-Installation kopieren, dann neu starten.
 
@@ -379,11 +380,11 @@ room_order: [badezimmer, wohnzimmer]  # optional, die übrigen Räume folgen
 Was die Karte zeigt, von oben nach unten:
 
 - **Wärmequelle in einem Satz**, z. B. „Wärmepumpe heizt“, darunter die Kosten je kWh Wärme. Ein Tipp öffnet den Vergleich von Therme und Wärmepumpe: was jede tut und warum, Vorlauf-Soll bzw. COP, Kosten, ab welchem COP sich die Wärmepumpe lohnt, und was das Lernen der Heizkurve gerade macht.
-- **Hinweise, nur wenn es welche gibt:** Sicherheit eingeschränkt, Wärmepumpe gesperrt, Fenster offen, von Hand geändert (mit *Zurück zur Automatik*).
+- **Hinweise, nur wenn es welche gibt:** Sicherheit eingeschränkt, Wärmepumpe gesperrt (nur in einer Betriebsart, die sie nutzt, also nicht bei *Nur Heizung* oder *Sommerbetrieb*), Fenster offen, von Hand geändert (mit *Zurück zur Automatik*).
 - **Eine Zeile je Raum:** gemessene Temperatur, Soll und der Grund. Kleine Symbole zeigen, ob die Therme oder die Wärmepumpe gerade für den Raum heizt, ob von Hand geändert wurde oder ein Fenster offen ist. Ein Tipp auf den Raum öffnet eine Infozeile (der nächste Wechsel laut Zeitplan mit dem Soll danach, und der Trend, wenn der Sensor *Temperaturtrend* des Raums aktiviert ist), *Jetzt* (das Soll von Hand ändern, es gilt so lange wie jede Änderung von Hand), Komfort, Absenkung, *Schnell aufheizen*, im Bad *Jetzt trocknen*, *Zeitplan* (öffnet den Zeitplan-Helfer des Raums, wenn er einen hat) und *Zurück zur Automatik*, solange etwas von Hand läuft: eine Änderung, *Schnell aufheizen* oder *Jetzt trocknen*.
 - **Betriebsmodus**, im Modus *Abwesend* mit der Rückkehr.
 
-Die Karte braucht Home Assistant 2025.1 oder neuer. Zeigt das Dashboard nach der Installation oder einem Update *Custom element doesn't exist: thriftherm-card* oder noch die alte Karte, lade die Seite hart neu (Cmd+Shift+R bzw. Strg+Shift+R). Hilft das nicht, lösche im Browser die Websitedaten deiner Home-Assistant-Adresse; in der App: *Einstellungen → Companion App → Frontend-Cache zurücksetzen* ([Fehlersuche](FEHLERSUCHE.md#die-thriftherm-karte-fehlt-custom-element-doesnt-exist)).
+Die Karte braucht Home Assistant 2025.1 oder neuer. Thriftherm trägt die Karte selbst als Dashboard-Ressource ein. Zeigt das Dashboard nach der Installation oder einem Update trotzdem *Custom element not found: thriftherm-card* oder noch die alte Karte, lade die Seite hart neu (Cmd+Shift+R bzw. Strg+Shift+R). Hilft das nicht, lösche im Browser die Websitedaten deiner Home-Assistant-Adresse; in der App: *Einstellungen → Companion App → Frontend-Cache zurücksetzen* ([Fehlersuche](FEHLERSUCHE.md#die-thriftherm-karte-fehlt-custom-element-doesnt-exist)).
 
 ### 9.2 Die Raumkarte
 

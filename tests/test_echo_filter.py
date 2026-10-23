@@ -144,6 +144,46 @@ async def test_an_echo_is_ignored_and_a_knob_turn_is_taken(hass: HomeAssistant, 
     assert target.attributes["reason"] == "override" and float(target.state) == 22.5
 
 
+async def test_a_late_echo_the_thermostat_adopts_seconds_after_our_setpoint_is_still_ignored(hass: HomeAssistant, start) -> None:
+    """Our setpoint makes Better Thermostat rewrite its valve, and that is when a late reply comes.
+
+    Adopted within the few seconds Home Assistant keeps our context on the entity, the stale value
+    is marked as ours. It is no rendering of what we sent all the same, and must not be held as one.
+    """
+    set_temp = async_mock_service(hass, "climate", "set_temperature")
+    _register(hass)
+    _set_states(hass)
+    hass.states.async_set("climate.bath_trv", "heat", {"temperature": 20.5, "current_temperature": 20.0})
+    hass.states.async_set("climate.bath_bt", "heat", {"temperature": 17.0, "current_temperature": 18.5})
+    coordinator = await _setup_room_control(hass)
+    _thermostat(hass, start, 5, 21.0)  # Better Thermostat confirms our 21
+    await coordinator.async_refresh()
+    start.tick(timedelta(minutes=10))
+    coordinator.room_temps["badezimmer"] = {"comfort": 22.0}
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert set_temp[-1].data == {"entity_id": "climate.bath_bt", "temperature": 22.0}
+    ours = set_temp[-1].context
+
+    def write(entity: str, seconds: float, setpoint: float, current: float) -> None:
+        start.tick(timedelta(seconds=seconds))  # all within the five seconds our context stays on the entities
+        hass.states.async_set(entity, "heat", {"temperature": setpoint, "current_temperature": current}, context=ours)
+
+    write("climate.bath_bt", 0.3, 22.0, 18.5)  # it takes our 22
+    write("climate.bath_trv", 0.5, 21.5, 20.0)  # and writes its valve twice; the reply to the first comes late
+    write("climate.bath_trv", 1.5, 21.0, 20.0)
+    write("climate.bath_trv", 0.5, 21.5, 20.0)
+    write("climate.bath_bt", 0.2, 21.5, 18.5)  # and it adopts the stale 21.5 as its target
+    for _ in range(6):
+        start.tick(timedelta(seconds=70))
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+    plan = hass.states.get("sensor.thriftherm_badezimmer_thermostat_plan")
+    assert plan.attributes["echo_ignored_value"] == 21.5 and plan.attributes["reason"] != "in_sync"
+    assert "badezimmer" not in coordinator.overrides
+    assert [call.data["temperature"] for call in set_temp].count(22.0) >= 2  # our 22 again
+
+
 async def test_a_setpoint_the_thermostat_would_refuse_is_sent_at_its_limit(hass: HomeAssistant) -> None:
     """Found in the code 2026-10-13: frost protection at 7 °C for a thermostat that starts at 8 °C was
     refused every five minutes, for good."""

@@ -24,9 +24,10 @@ From what
 Careful, not slow: evidence only after the first 10 minutes of a burner run and a 20 minute
 review window; 45 minutes before a step up and an hour before a step down; a step up doubles
 after a step up (to 4 K at most), any step halves after one against it (down to 0.5 K), and
-steps down never grow; per day at most 10 K up and 4 K down, each correction within ±10 K,
-and never further than the flow limits let the flow follow. After six steps or a quiet day a
-run of steps starts at 0.5 K ("refining") instead of 1 K ("learning").
+steps down never grow; per day at most 10 K up and 4 K down, each correction within ±10 K (a step
+the limit swallows or cuts short is shown as held back), and never further than the flow limits
+let the flow follow. After six steps or a quiet day a run of steps starts at 0.5 K ("refining")
+instead of 1 K ("learning").
 """
 
 from __future__ import annotations
@@ -93,6 +94,11 @@ ADJUST_MAX_UP_K_PER_DAY = 10.0  # what the curve may be raised by within a day .
 ADJUST_MAX_DOWN_K_PER_DAY = 4.0  # ... and lowered (the four 1 K steps a day of before)
 DAY_S = 24 * 3600.0
 REFINE_AFTER_ADJUSTMENTS = 6
+# A step the ±10 K limit swallowed or cut short is shown as held back this long: longer than the wait
+# for the next try, which after a step that was taken is the third review window (the cooldown ends in
+# the second), a little over an hour with the cycles drifting. So the reason stands for as long as the
+# room keeps asking, and goes once nothing has met the limit for four windows (review 2026-10-23).
+LIMIT_SHOWN_S = 4 * REVIEW_S
 
 PHASE_LEARNING = "learning"
 PHASE_REFINING = "refining"
@@ -119,19 +125,24 @@ def flame(inp: BoilerInputs) -> bool:
     return inp.burner_heating
 
 
-def track_burns(mem: BoilerMemory, burning: bool, now_ts: float) -> BoilerMemory:
-    """Keep the heating burns of the last hour."""
+def track_burns(mem: BoilerMemory, burning: bool, now_ts: float, day_start_ts: float | None = None) -> BoilerMemory:
+    """Keep the heating burns of the last hour, and count the starts of the day (from `day_start_ts`, local midnight)."""
+    if day_start_ts is not None and mem.starts_day_ts != day_start_ts:
+        mem = replace(mem, starts_day_ts=day_start_ts, starts_today=0)
     burns = tuple(burn for burn in mem.burns if now_ts - burn[1] <= BURNS_KEPT_S)
     if burning and mem.burn_since_ts is None:
-        return replace(mem, burn_since_ts=now_ts, burns=burns)
+        return replace(mem, burn_since_ts=now_ts, burns=burns, starts_today=mem.starts_today + 1)
     if not burning and mem.burn_since_ts is not None:
         return replace(mem, burn_since_ts=None, burns=(*burns, (mem.burn_since_ts, now_ts)))
     return mem if burns == mem.burns else replace(mem, burns=burns)
 
 
 def drop_burn_in_progress(mem: BoilerMemory) -> BoilerMemory:
-    """Forget the burn that is running: it turned out not to be for the heating."""
-    return mem if mem.burn_since_ts is None else replace(mem, burn_since_ts=None)
+    """Forget the burn that is running: it turned out not to be for the heating, so it is no start of the heating either."""
+    if mem.burn_since_ts is None:
+        return mem
+    counted = mem.starts_day_ts is None or mem.burn_since_ts >= mem.starts_day_ts
+    return replace(mem, burn_since_ts=None, starts_today=max(mem.starts_today - 1, 0) if counted else mem.starts_today)
 
 
 def burner_share(mem: BoilerMemory, now_ts: float) -> tuple[float, int]:
@@ -323,6 +334,17 @@ def _capped(
     return replace(after, lines=lines)
 
 
+def _boost(boosts: Mapping[str, float], cell: str | None) -> float:
+    """What the rooms ask for on top of the line `cell` while they call.
+
+    A room's own line carries that room's boosts. A line no room owns (the common correction, or
+    a class's own) is shared by all of them, and the room asking the most on top sets the flow
+    (`boiler_control._need`): without it the flow sent and the flow the limits see would differ.
+    """
+    room = load.room_of(cell)
+    return boosts.get(room, 0.0) if room is not None else max((0.0, *boosts.values()))
+
+
 def apply(
     inp: BoilerInputs,
     mem: BoilerMemory,
@@ -351,9 +373,9 @@ def apply(
     line_flow = raw + correction(mem, inp.outdoor_c, cell)
     # what the room asked for, and the flow that was sent: what the room that set it asked for, never
     # below the minimum (each a line and, while the room calls, its boosts)
-    planned = line_flow + extra.get(load.room_of(cell), 0.0)
+    planned = line_flow + _boost(extra, cell)
     setter = deciding or cell
-    asked = raw + correction(mem, inp.outdoor_c, setter) + extra.get(load.room_of(setter), 0.0)
+    asked = raw + correction(mem, inp.outdoor_c, setter) + _boost(extra, setter)
     if direction > 0 and asked < p.boiler_flow_min:
         # The flow stands at its minimum, not on any line: a room that does not get there needs more
         # than the minimum on a day this mild, which says nothing about the curve. Taken into a line,
@@ -393,15 +415,18 @@ def apply(
     cold = cold_weight(inp.outdoor_c)
     share = step / (1.0 - cold + cold * cold)
     from_level, from_slope = (mem.offset_k, mem.slope_k) if line is None else (line.level_k, line.slope_k)
-    level = _limited(from_level + share * (1.0 - cold))
-    slope = _limited(from_slope + share * cold)
+    wanted = (from_level + share * (1.0 - cold), from_slope + share * cold)
+    level, slope = _limited(wanted[0]), _limited(wanted[1])
+    # Seen 2026-10-23: at the limit, the bathroom's line swallowed step after step while the learning state
+    # said nothing but that the room lagged. A step the limit touches is remembered, to be shown (`held_back`).
+    cut = (level, slope) != wanted
     # Rounded as it is stored. Shared between level and slope and added up again, half a kelvin comes
     # out as 0.49999999999999994 at many outdoor temperatures, and four in ten of the smallest steps
     # were thrown away as "swallowed" (review 2026-10-13).
     moved = round((level - from_level) + (slope - from_slope) * cold - below, 3)
     if abs(moved) < STEP_REFINING_K:
         # the ±10 K limit swallows it: no step is spent on what the flow at this temperature would not feel
-        return mem
+        return replace(mem, limit_cut_ts=now) if cut else mem
     known = [size for size in _sizes(mem) if size is not None]
     return replace(
         mem,
@@ -413,6 +438,8 @@ def apply(
         last_adjust_reason=reason,
         last_review_ts=now,
         samples=0,
+        # a step cut short still moves up to the limit and says so; one that fits takes the reason back
+        limit_cut_ts=now if cut else None,
     )
 
 
@@ -500,7 +527,7 @@ def reset(mem: BoilerMemory) -> BoilerMemory:
     """Forget what was learned; the control's own state stays."""
     return replace(
         mem, offset_k=0.0, slope_k=0.0, lines={}, adjustments=(), adjustment_steps=(), last_adjust_reason=None,
-        spread_ema=None, samples=0, last_review_ts=None, heat_up={},
+        limit_cut_ts=None, spread_ema=None, samples=0, last_review_ts=None, heat_up={},
     )
 
 
@@ -515,15 +542,20 @@ def shown_phase(inp: BoilerInputs, mem: BoilerMemory, burning: bool) -> str:
 
 
 def held_back(inp: BoilerInputs, mem: BoilerMemory, cell: str | None = None, asked: float | None = None) -> str | None:
-    """A step that is due but cannot be taken, because the flow stands at its minimum.
+    """A step that is due but cannot be taken in full, because the flow stands at its minimum or the correction at its limit.
 
     Cycling asks for less; or a room does not get there while the flow the rooms ask for (`asked`)
-    lies below the minimum, where the learning takes no step up (`apply`).
+    lies below the minimum, where the learning takes no step up (`apply`). Both are what holds back
+    now, so they come first. Otherwise a step within the last `LIMIT_SHOWN_S` met the ±10 K limit of
+    a correction, which swallowed it or cut it short (`apply`). That is remembered once for all lines:
+    it says the last step tried met the limit, whichever line that was (`curve_by_load` shows which).
     """
     if asked is not None and asked < inp.params.boiler_flow_min and load.lagging(inp.rooms):
         return "rooms_lagging_at_flow_min"
-    if not short_cycling(mem, inp.now_ts) or cycling_direction(inp, mem)[0] >= 0:
-        return None
-    planned = curve_flow(inp.outdoor_c, inp.params, limited=False) + correction(mem, inp.outdoor_c, cell)
-    at_minimum = planned <= inp.params.boiler_flow_min
-    return "short_cycling_at_flow_min" if at_minimum else None
+    if short_cycling(mem, inp.now_ts) and cycling_direction(inp, mem)[0] < 0:
+        planned = curve_flow(inp.outdoor_c, inp.params, limited=False) + correction(mem, inp.outdoor_c, cell)
+        if planned <= inp.params.boiler_flow_min:
+            return "short_cycling_at_flow_min"
+    if mem.limit_cut_ts is not None and inp.now_ts - mem.limit_cut_ts < LIMIT_SHOWN_S:
+        return "correction_limit"
+    return None

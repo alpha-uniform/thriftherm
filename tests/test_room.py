@@ -1,5 +1,5 @@
 from dataclasses import replace
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 
 import pytest
 
@@ -165,6 +165,27 @@ def test_the_hours_after_midnight_belong_to_the_evening_before():
     # within the week nothing changes
     wednesday = datetime(2026, 10, 14, 0, 30)
     assert reason(wednesday) == "schedule_comfort" and reason(wednesday.replace(hour=12)) == "schedule_setback"
+
+
+@pytest.mark.parametrize(("text", "start"), [("00:00-00:00", time(0, 0)), ("06:00-06:00", time(6, 0))])
+def test_a_window_that_ends_where_it_starts_runs_a_whole_day_instead_of_being_preheated_for_in_vain(text, start):
+    # found in the code 2026-10-22: read as an empty window it never counted as comfort, yet its start still came
+    # up as the next comfort start: the room pre-heated to comfort every day and fell back to the setback at the start
+    cfg = replace(
+        room_config("wohnzimmer", comfort=21.0, setback=17.0),
+        schedule_weekday=room_engine.parse_schedule(text),
+        schedule_weekend=(),
+    )
+    st = room_state(cfg, temp=19.0)
+    tuesday = datetime(2026, 10, 13)
+    targets = {
+        room_engine.target_temperature(st, tuesday + timedelta(minutes=30 * step), "auto", PARAMS, 19.0, 9.0, None)[:2]
+        for step in range(2 * 48)
+    }
+    assert targets == {(21.0, "schedule_comfort")}
+    # Friday's runs a full day from its start into Saturday, where the weekend has none
+    friday_noon = datetime(2026, 10, 16, 12, 0)
+    assert room_engine.comfort_end(cfg, friday_noon) == datetime.combine(datetime(2026, 10, 17), start)
 
 
 def test_humidity_values_come_from_the_room_sensor_alone():

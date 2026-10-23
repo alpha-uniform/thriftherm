@@ -198,7 +198,7 @@ Einzelheiten zu allen Bereichen: [Wie Thriftherm rechnet: Lernen](FUNKTIONSWEISE
 - den *Lastfall jetzt* und den *Raum, der den Vorlauf bestimmt*;
 - unter *Heizkurven-Korrektur je Lastfall und Raum* für jeden Fall und Raum (Einträge wie `few:badezimmer`) Korrektur, Höhe, Steigung, ob der Wert gefunden ist, die Betriebsstunden und wie oft dabei ein Raum hing.
 
-Der Sensor *Therme Brenneranteil* zeigt, welchen Anteil der letzten Stunde der Brenner für die Heizung lief, und die Zahl der Starts. Er schreibt vorerst nur mit.
+Der Sensor *Therme Brenneranteil* zeigt, welchen Anteil der letzten Stunde der Brenner für die Heizung lief, und die Zahl der Starts. Er schreibt vorerst nur mit. Der Sensor *Therme Heizstarts heute* zählt die Brennerstarts für die Heizung seit Mitternacht; die Statistik von Home Assistant zeigt damit die Starts jedes Tages.
 
 **Was du einstellen kannst** (Thermen-Optionen):
 
@@ -244,6 +244,7 @@ Wann sie startet und endet: [Bad-Trocknung](FUNKTIONSWEISE.md#bad-trocknung).
 
 - Sie bleibt Tag und Nacht an, solange sie die günstigere Wärmequelle ist, und geht nur aus, solange niemand die versorgten Räume warm haben will (abwesend, aus, in jedem ein Fenster offen). Braucht gerade kein Raum Wärme, steht im *Entscheidungsgrund* deshalb „Wärmepumpe läuft durch, Sollwert 22,0 °C“ und nicht „Kein Raum braucht Wärme“.
 - *Schnell aufheizen* stellt dann nur den Lüfter hoch.
+- Beim Trocknen bekommt das Gerät mindestens 1 Grad über seinem eigenen Messwert, höchstens 2 Grad über dem Trocknungsziel, damit es samt Lüfter läuft ([Einzelheiten](FUNKTIONSWEISE.md#bad-trocknung)).
 - Bleibt ein versorgter Raum zurück, stellt Thriftherm das Gerät in kleinen Schritten höher (Attribut `eco_offset_k`) und später wieder zurück. Die Therme hilft erst, wenn das nicht reicht (Attribut `boiler_helps`), und nur, bis der Raum warm ist ([Einzelheiten](FUNKTIONSWEISE.md#sollwert-folgt-den-räumen)).
 
 Ohne den Schalter nutzt Thriftherm den Sollwert als Leistungshebel (Ansaugluft plus gelernter Abstand) und schaltet nach dem Bedarf der Räume ([Einzelheiten](FUNKTIONSWEISE.md#ohne-sollwert-folgt-den-räumen)).

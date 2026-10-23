@@ -42,11 +42,21 @@ class TimeWindow:
     start: time
     end: time
 
+    @property
+    def across_midnight(self) -> bool:
+        """Runs on past midnight: "22:00-02:00", and one that ends where it starts.
+
+        "00:00-00:00" or "06:00-06:00" is a natural way to write a whole day: it runs to the same time
+        the next day. Read as empty, it never ran, yet its start still came up as the next comfort start,
+        and the room pre-heated for it every day. "23:59-23:59" stays the last minute of the day.
+        """
+        return self.start > self.end or (self.start == self.end and self.end != _LAST_MINUTE)
+
     def contains(self, t: time) -> bool:
         if self.end == _LAST_MINUTE:
             # "to 23:59" is how the form says "to the end of the day": the last minute belongs to it
             return t >= self.start
-        if self.start <= self.end:
+        if not self.across_midnight:
             return self.start <= t < self.end
         # window across midnight
         return t >= self.start or t < self.end
@@ -321,6 +331,8 @@ class RoomResult:
     preheat_for_ts: float | None = None  # comfort start / away return this room is preheating for
     comfort_end_ts: float | None = None  # end of the running comfort window (schedule only)
     boiler_call: str | None = None  # engines/heat_call.py: calling, idle, stalled, comfort_ending, not_allowed
+    # the room's own target its stall was accepted at: heating along raises `target`, the stall is still held against this
+    stalled_target: float | None = None
     thermostat_heating: bool | None = None  # see RoomState
     # where `temperature` comes from: the room sensor, or the valve standing in for it (None: no
     # value, or the average of several valves)
@@ -437,6 +449,7 @@ class BoilerCommand:
     held_back: str | None = None  # a learning step that is due but cannot be taken, e.g. at the flow minimum
     burner_share: float = 0.0  # share of the last hour the burner ran for the heating (0..1)
     burner_starts_last_hour: int = 0
+    starts_today: int = 0  # the heating burner's starts since local midnight
     calling_rooms: int = 0  # rooms that really ask the boiler for heat (not the ones heating along)
     rooms_total: int = 0  # rooms whose radiator could take heat right now
     spread_rule: str | None = None  # active | blocked_few_rooms, None while the heating is not released

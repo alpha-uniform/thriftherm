@@ -95,7 +95,13 @@ def thermal_power_now(heat_pump: HeatPumpState, params: Parameters) -> float | N
         return None  # a unit that does not say how fast its fan turns: no air flow, no heat to add up
     if heat_pump.fan_rpm <= 0:
         return 0.0
-    airflow = airflow_from_rpm(params.airflow_curve, heat_pump.fan_rpm)
+    curve, rpm = params.airflow_curve, heat_pump.fan_rpm
+    airflow = airflow_from_rpm(curve, rpm)
+    if airflow is None and not heat_pump.compressor_hz and len(curve) >= 2 and rpm < curve[0][0]:
+        # Between two starts a unit may turn its fan slower than any calibrated point (the PortaSplit: about
+        # 330 rpm against 496), while the outlet still gives off heat. The fan law holds down there too, and
+        # that heat is a small part of the cycle: without it every cycle would be spoiled instead.
+        airflow = curve[0][1] * rpm / curve[0][0]
     intake, outlet = heat_pump.intake_temp, heat_pump.outlet_temp
     if airflow is None or not (intake.valid and heat_pump.intake_rh.valid and outlet.valid):
         return None

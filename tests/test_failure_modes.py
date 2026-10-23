@@ -309,7 +309,8 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
     assert boiler_control.BoilerMemory.from_storage({"offset_k": None}).offset_k == 0.0
     assert list(boiler.to_storage()) == [
         "offset_k", "slope_k", "adjustments", "adjustment_steps", "last_adjust_reason", "state", "state_since_ts",
-        "last_flow", "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "burns", "lines", "heat_up",
+        "last_flow", "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "starts_day_ts", "burns", "starts_today",
+        "lines", "heat_up",
     ]
     assert boiler.burn_since_ts is None  # a burn in progress does not outlast a restart
 

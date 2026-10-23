@@ -9,7 +9,7 @@
 
 **English** | [Deutsch](README.md)
 
-[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5)](https://hacs.xyz/docs/faq/custom_repositories)
+[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5)](https://hacs.xyz)
 ![Status: beta](https://img.shields.io/badge/status-beta-orange)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/alphauniform)
 
@@ -47,7 +47,7 @@ Every decision comes with a reason you can read in Home Assistant. When boiler d
 Nothing is written to the boiler or the thermostats until you switch to *Active* yourself.
 
 1. **ebusd:** connect the eBUS adapter to the boiler's eBUS terminal (a room controller already there is disconnected), then set up the ebusd app with MQTT, with `--accesslevel=*` and the `filter-name` addition ([step 2](en/SETUP.md#2-set-up-ebusd)); skip this without an own boiler.
-2. **Install:** in HACS add the custom repository `https://github.com/alpha-uniform/thriftherm` (category *Integration*), download **Thriftherm** and restart Home Assistant. This button is quicker, it opens the repository in HACS directly:
+2. **Install:** search for **Thriftherm** in HACS, download it and restart Home Assistant. This button is quicker, it opens Thriftherm in HACS directly:
 
    [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
 

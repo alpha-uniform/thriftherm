@@ -390,6 +390,27 @@ async def test_a_window_open_when_the_control_starts_counts_as_open_at_once(hass
     assert window(1030, "on")[0] is False and window(1120)[0] is True
 
 
+async def test_an_open_window_that_drops_out_for_a_moment_is_still_open_when_it_returns(hass: HomeAssistant, freezer) -> None:
+    """A broker reconnect makes every contact unavailable for about 45 s: back open, the window was open all along."""
+    freezer.move_to(START)
+    _set_states(hass)
+    builder = _builder(hass)
+    grace = builder.params.window_grace_s
+
+    def window(seconds: float, state: str | None = None):
+        freezer.move_to(START + timedelta(seconds=seconds))
+        if state is not None:
+            hass.states.async_set("binary_sensor.bath_window", state)
+        return room_engine.window_status(_build(builder).rooms["badezimmer"].window_readings, grace)
+
+    assert window(0)[0] is False
+    assert window(400, "on")[0] is False  # opened while the control runs, long after its start: the grace applies
+    assert window(600)[0] is True
+    assert window(700, "unavailable")[0] is None  # the broker reconnects
+    assert window(745, "on") == (True, False, 345.0)  # back open: still timed from its opening (drying: "window open long")
+    assert window(760) == (True, False, 360.0)
+
+
 async def test_the_plug_power_of_a_running_heat_pump_counts_for_six_minutes(hass: HomeAssistant, freezer) -> None:
     """Review 2026-10-13: ten minutes kept the draw of a plug gone quiet long after the compressor had stopped."""
     freezer.move_to(START)

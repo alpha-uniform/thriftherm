@@ -60,6 +60,27 @@ def test_iced_coil_locks_out_once_heat_delivery_collapses():
     assert res.block_reason == "outdoor_coil_iced"
 
 
+def test_an_inverter_that_speeds_up_and_back_down_in_frost_is_not_locked_out_as_iced():
+    """The PortaSplit on 2026-10-20 17:29-17:31: 28, 39, 24 Hz at 401, 630, 348 W, warm air all the while."""
+    pts = [(dt, 24, 340, -9.5, 36, 21, 36) for dt in range(600, 121, -60)]
+    pts += [(120, 28, 401, -9.5, 36.5, 21, 36), (60, 39, 630, -10.5, 37.5, 21, 37), (0, 24, 348, -9.5, 37, 21, 36.5)]
+    res = defrost.evaluate(_state(_hist(pts)), "heating_stable", 0.0, 70.0, NOW, PARAMS, (), None, None)
+    assert {"D3_iced_coil", "D4_power_drop"} <= set(res.indicators)  # 9.5 K below the air at 0 °C: normal full load
+    assert (res.kind, res.block_reason, res.block_until_ts) == ("none", None, None)
+    tracker = HeatPumpTracker()
+    tracker.defrost(snapshot({}, heat_pump=_state(_hist(pts)), outdoor=0.0), "heating_stable", PARAMS, NOW)
+    assert (tracker.block_until, tracker.block_reason) == (None, None)
+
+
+def test_a_compressor_that_has_stopped_by_itself_in_frost_is_no_power_drop_and_no_iced_coil():
+    """2026-10-18 11:09: the plug read 63 W at 11:09:08 while the unit still said 24 Hz until 11:09:11."""
+    pts = [(dt, 24, 377, -9.0, 38, 21, 37) for dt in range(660, 119, -60)]
+    pts += [(60, 24, 63, -9.0, 38, 21, 37), (0, 0, 16, -5.0, 30, 21, 30)]  # the minute after: compressor off
+    res = defrost.evaluate(_state(_hist(pts)), "heating_idle", 0.0, 70.0, NOW, PARAMS, (), None, None)
+    assert not {"D3_iced_coil", "D4_power_drop"} & set(res.indicators)
+    assert (res.kind, res.block_reason, res.block_until_ts) == ("none", None, None)
+
+
 def test_sustained_inefficiency_locks_out():
     hist = _hist([(60, 50, 800, 0.0, 44, 20, 38), (0, 50, 800, 0.0, 44, 20, 38)])
     res = defrost.evaluate(_state(hist), "heating_stable", 3.0, 60.0, NOW, PARAMS, (), NOW - 31 * 60, None)

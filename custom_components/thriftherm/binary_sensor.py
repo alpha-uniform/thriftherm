@@ -14,6 +14,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import MODE_BOILER_ONLY, MODE_OFF
 from .coordinator import ThrifthermConfigEntry
 from .entity import DescribedEntity, is_wanted
 
@@ -63,7 +64,8 @@ SYSTEM_BINARY: tuple[ThrifthermBinaryDescription, ...] = (
         "midea_blocked",
         heat_pump_addon=True,
         device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda d: "midea" in d["advice"].blocked,
+        # a problem only in a mode that uses the heat pump: unplugged in "boiler only" it was on all along (2026-10-21)
+        value_fn=lambda d: "midea" in d["advice"].blocked and d["mode"] not in (MODE_OFF, MODE_BOILER_ONLY),
         attr_fn=lambda d: {"reason": d["advice"].blocked.get("midea")},
     ),
     _desc(

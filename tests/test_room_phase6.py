@@ -300,6 +300,18 @@ def test_air_that_clears_by_itself_needs_no_drying():
     assert res.drying == DryingState() and res.drying_reason is None
 
 
+def test_a_shower_noticed_before_a_restart_is_still_dried_after_it():
+    # the store keeps the wait (test_drying_button), the humidity history starts empty after a restart
+    waiting = _shower(85.0, DryingState(), 0).drying
+    assert waiting.wet_since_ts is not None and waiting.baseline_abs_humidity == 9.0
+    cfg = RoomConfig(**{**room_config("badezimmer", heat_pump=True).__dict__, "bathroom_drying": True})
+    drying = waiting
+    for minute in range(1, 5):  # the humidity stands: three minutes without a new highest value
+        restarted = _with(room_state(cfg, temp=22.0, rh=85.0), abs_humidity_history=(), drying=drying)
+        drying = room_engine.evaluate_room(restarted, MON_EVENING + timedelta(minutes=minute), "auto", PARAMS).drying
+    assert drying.active and drying.baseline_abs_humidity == 9.0  # measured against the air from before the shower
+
+
 def test_a_drying_asked_for_by_hand_runs_its_time_whatever_the_humidity():
     now_ts = MON_EVENING.timestamp()
     asked = DryingState(True, now_ts, manual=True)

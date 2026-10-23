@@ -823,6 +823,18 @@ def test_a_unit_that_spells_its_stages_with_capitals_gets_them_as_it_spells_them
     assert cmd.fan_mode == "High"  # and so does a quick heat-up
 
 
+def test_a_unit_without_an_auto_stage_gets_back_the_stage_it_had_before_a_drying_that_began_with_a_start():
+    """It was to get "auto" back, a stage it does not offer: nothing was sent, and it stayed on its loudest stage."""
+    fans = ("silent", "low", "medium", "high", "full")
+    off = replace(off_heat_pump(), fan_mode="low", fan_modes=fans)
+    cmd, mem = decide(inp([rr(temp=21.0, target=22.0, drying=True)], mode="active", heat_pump=off, params=FIXED), ControlMemory())
+    assert (cmd.action, cmd.fan_mode) == ("start", "full")
+    full = replace(heat_pump_state(), target_temp=23.0, fan_mode="full", fan_modes=fans)
+    dried = inp([rr(temp=22.5, target=22.0)], mode="active", heat_pump=full, params=FIXED, cheaper=True, now=NOW + 3600)
+    cmd, _ = decide(dried, mem)
+    assert (cmd.action, cmd.fan_mode) == ("adjust", "low")
+
+
 # ---- a run of ours stays ours across an interruption ------------------------------------------
 HALF_HOUR_RUN = ControlMemory(running_since_ts=NOW - 1800, last_command_ts=NOW - 1800, last_hvac_mode="heat", last_target=21.0)
 AS_SENT = replace(heat_pump_state(), target_temp=21.0, settings_watched_since_ts=NOW - 86400)
@@ -1006,3 +1018,31 @@ def test_following_the_rooms_rooms_clearly_too_warm_take_the_setpoint_back_at_th
     assert (cmd.action, cmd.target_temp, mem.offset_k, mem.last_offset_review_ts) == ("adjust", 22.5, 1.5, NOW)
     cmd, mem = lagging_room(NOW + 600, mem, unit=replace(at_23, target_temp=22.5), trend=0.0, temp=22.0)
     assert mem.offset_k == 1.5  # the next one in 20 minutes, not at once
+
+
+def test_following_the_rooms_a_drying_sets_the_unit_above_its_own_reading_so_that_it_runs():
+    """Seen 2026-10-18: 22.5 °C read where the unit stands, 22 °C set for the bathroom being dried: it stood, fan and all."""
+    warm_study = replace(heat_pump_state(compressor_hz=0.0, running_s=None), indoor_temp=22.5, target_temp=23.0,
+                         fan_mode="auto", fan_modes=MIDEA_FANS)
+    wet = [rr(temp=21.0, target=22.0, drying=True)]  # below its ceiling: the drying still asks for heat
+    cmd, mem = decide(inp(wet, mode="active", heat_pump=warm_study, params=FIXED, cheaper=True), AT_23)
+    assert (cmd.action, cmd.target_temp, cmd.fan_mode) == ("adjust", 23.5, "full")  # its reading plus one degree
+    # never more than two degrees above the drying target, however warm the unit's room
+    hot_study = replace(warm_study, indoor_temp=23.8)
+    cmd, _ = decide(inp(wet, mode="active", heat_pump=hot_study, params=FIXED, cheaper=True), AT_23)
+    assert cmd.target_temp == 24.0
+    # no drying: the rooms' setpoint as before
+    cmd, _ = decide(inp([rr(temp=21.0, target=22.0)], mode="active", heat_pump=warm_study, params=FIXED, cheaper=True), AT_23)
+    assert cmd.target_temp == 23.0
+
+
+def test_following_the_rooms_a_drying_does_not_make_the_unit_look_flat_out_and_call_the_boiler_for_another_room():
+    """22.3 °C read: the drying's lead gave 23.5 °C, and the unit read more than a degree below that looked flat out."""
+    unit = replace(heat_pump_state(), indoor_temp=22.3, target_temp=23.5, fan_mode="full", fan_modes=MIDEA_FANS)
+    mem = replace(LONG_RUN, last_target=23.5, lagging_since_ts=NOW - 1200, fan_turned_up_from="auto", fan_turned_up_to="full")
+    rooms = [
+        rr(key="badezimmer", temp=21.0, target=22.0, drying=True),
+        rr(key="schlafzimmer", temp=19.0, target=20.0, trend=0.1),  # lags for 20 minutes
+    ]
+    cmd, mem = decide(inp(rooms, mode="active", heat_pump=unit, params=FIXED, cheaper=True), mem)
+    assert cmd.delivers and not mem.boiler_helps and mem.offset_k == 1.5  # set higher, as without the drying

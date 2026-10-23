@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from custom_components.thriftherm import texts
 from custom_components.thriftherm.engines import advisor
 from custom_components.thriftherm.engines import boiler_control as bc
 from custom_components.thriftherm.engines import boiler_learning as learning
@@ -120,6 +121,16 @@ def test_other_advice_passes_through_unchanged():
     assert advisor.boiler_source("none", "off", "active", "active") == "none"
 
 
+@pytest.mark.parametrize(("plan", "delivers"), [("off", True), ("hands_off", True), ("heat", False)])
+def test_in_heat_pump_only_mode_a_heat_pump_that_does_not_heat_leaves_the_boiler_blocked(plan, delivers):
+    """The advice names the heat pump because only it may heat, not for its price: no gas but for frost."""
+    source = advisor.boiler_source("midea", plan, "active", "active", heat_pump_delivers=delivers)
+    cmd, _ = bc.decide(replace(_boiler(1_000_000.0, source), op_mode="midea_only"), bc.BoilerMemory())
+    assert cmd.plan == "block"
+    cmd, _ = bc.decide(replace(_boiler(1_000_000.0, source, frost=("bad",)), op_mode="midea_only"), bc.BoilerMemory())
+    assert cmd.plan == "heat"  # frost protection still overrides the mode
+
+
 # --- rooms ----------------------------------------------------------------------------------------
 def test_schedule_preheat_holds_once_started_despite_sensor_ticks():
     tz = ZoneInfo("Europe/Berlin")
@@ -160,3 +171,119 @@ def test_manual_change_before_our_value_was_echoed_is_still_recognised():
 def test_boiler_takes_over_while_the_heat_pump_idles_at_its_own_setpoint():
     assert advisor.boiler_source("midea", "heat", "active", "active", heat_pump_delivers=False) == "boiler"
     assert advisor.boiler_source("midea", "heat", "active", "active", heat_pump_delivers=True) == "midea"
+
+
+# --- a rise of the flow while the boiler waits out its lockout --------------------------------------
+HEATING_AFTER = "heating_after"  # S.5-S.8: overrun and remaining burner lockout after a heating run
+
+
+def _status(t: float, demand: float, mode: str | None, gas: float | None = None, **kw) -> bc.BoilerInputs:
+    """The bathroom alone calls on a mild day (curve 30 °C, demand boost 8 K), and the boiler's status code is read."""
+    inp = replace(_boiler(t, "boiler", outdoor=15.0, **kw), rooms=(_room(demand=demand),))
+    return replace(inp, reported_mode=mode, status_known=mode is not None, gas_power_w=gas)
+
+
+def _burnt(t: float, demand: float = 0.5, gas: float | None = None) -> bc.BoilerMemory:
+    """A heating burn at 30 °C plus the demand boost; the boiler then runs its pump on (S.7)."""
+    _, mem = bc.decide(_status(t, demand, "heating", None if gas is None else 1500.0), bc.BoilerMemory())
+    return mem
+
+
+@pytest.mark.parametrize("gas", [None, 0.0])
+def test_a_rise_waits_while_the_boiler_sits_in_its_lockout_and_goes_out_once_it_has_ended(gas):
+    """Seen 2026-10-22 06:38: 4 K more during S.7 lit the burner 1.5 min later, a pause of 4.8 instead of 12 minutes."""
+    t = 4_000_000.0
+    mem = _burnt(t, gas=gas)  # 34 °C
+    cmd, mem = bc.decide(_status(t + 120, 1.0, HEATING_AFTER, gas), mem)  # 4 K more asked for in S.7
+    assert (cmd.flow_setpoint, cmd.waiting) == (34.0, "lockout_hold")
+    assert not mem.flow_held  # it waits only for the burner to be allowed again: the heat-up is still judged
+    cmd, mem = bc.decide(_status(t + 600, 1.0, HEATING_AFTER, gas), mem)  # S.8, the remaining burner lockout
+    assert (cmd.flow_setpoint, cmd.waiting) == (34.0, "lockout_hold")
+    cmd, mem = bc.decide(_status(t + 840, 1.0, "heating", None if gas is None else 1500.0), mem)  # the burner lit
+    assert (cmd.flow_setpoint, cmd.waiting) == (38.0, None)
+
+
+def test_in_the_lockout_a_falling_flow_burning_gas_frost_and_a_quick_heat_up_are_not_held():
+    t = 4_100_000.0
+    mem = _burnt(t, gas=0.0)  # 34 °C
+    cmd, _ = bc.decide(_status(t + 120, 0.25, HEATING_AFTER, 0.0), mem)
+    assert cmd.flow_setpoint == 32.0  # less goes out at once
+    cmd, _ = bc.decide(_status(t + 120, 1.0, HEATING_AFTER, 1500.0), mem)
+    assert (cmd.flow_setpoint, cmd.waiting) == (38.0, None)  # gas burns: the code lags behind a new start
+    cmd, _ = bc.decide(_status(t + 120, 0.5, HEATING_AFTER, 0.0, frost=("bad",)), mem)
+    assert (cmd.flow_setpoint, cmd.waiting) == (40.0, None)  # frost protection goes straight to its floor
+    quick = replace(_room(demand=1.0), target_reason="schedule_comfort+boost", boost_active=True)
+    cmd, _ = bc.decide(replace(_status(t + 120, 1.0, HEATING_AFTER, 0.0), rooms=(quick,)), mem)
+    assert (cmd.flow_setpoint, cmd.waiting) == (38.0, None)  # the user asked for heat now
+
+
+def test_a_boiler_without_a_status_code_rises_as_before():
+    t = 4_200_000.0
+    mem = _burnt(t)
+    cmd, _ = bc.decide(_status(t + 120, 1.0, None), mem)
+    assert (cmd.flow_setpoint, cmd.waiting) == (38.0, None)
+
+
+def test_a_status_that_says_lockout_for_too_long_holds_the_rise_no_longer():
+    t = 4_300_000.0
+    mem = _burnt(t)
+    cmd, mem = bc.decide(_status(t + 120, 1.0, HEATING_AFTER), mem)
+    assert (cmd.flow_setpoint, cmd.waiting) == (34.0, "lockout_hold")
+    assert bc.LOCKOUT_HOLD_MAX_S > (4.6 + 20.0) * 60  # S.7 as measured plus the longest lockout d.02 allows
+    cmd, mem = bc.decide(_status(t + 60 + bc.LOCKOUT_HOLD_MAX_S, 1.0, HEATING_AFTER), mem)
+    assert cmd.flow_setpoint == 34.0
+    cmd, mem = bc.decide(_status(t + 120 + bc.LOCKOUT_HOLD_MAX_S, 1.0, HEATING_AFTER), mem)
+    assert (cmd.flow_setpoint, cmd.waiting) == (38.0, None)  # a stale status: the rise goes out
+
+
+def test_the_ramp_window_of_a_held_rise_starts_when_it_is_sent():
+    """The 5 K per 10 minutes count from what the boiler is sent: 8 K clicked in the lockout do not go out at once."""
+    t = 4_400_000.0
+    mem = _burnt(t, demand=0.0)  # 30 °C
+    cmd, mem = bc.decide(_status(t + 120, 1.0, HEATING_AFTER), mem)
+    assert (cmd.flow_setpoint, cmd.waiting) == (30.0, "lockout_hold")
+    cmd, mem = bc.decide(_status(t + 840, 1.0, "heating"), mem)  # 12 minutes later, more than a window
+    assert (cmd.flow_setpoint, cmd.waiting) == (35.0, "ramp_limit")
+    cmd, mem = bc.decide(_status(t + 1440, 1.0, "heating"), mem)
+    assert cmd.flow_setpoint == 38.0
+
+
+def test_why_the_rise_waits_is_said_in_both_languages():
+    assert texts.label("lockout_hold", "de") == "Therme in Sperrzeit: Anstieg wartet"
+    assert texts.label("lockout_hold", "en") == "Boiler in its lockout: the rise waits"
+
+
+def test_a_heating_run_that_begins_in_the_lockout_starts_at_the_minimum_and_rises_when_the_burner_may_light():
+    """Deliberate: after a block the boiler can still show S.8 (seen 2026-10-22 07:00-07:05). The burner cannot light
+    before the lockout ends anyway, so the run is released at the minimum and its flow follows once the boiler starts."""
+    t = 4_500_000.0
+    blocked = replace(bc.BoilerMemory(), state="block", state_since_ts=t - 600, last_flow=30.0)
+    cmd, mem = bc.decide(_status(t, 0.5, HEATING_AFTER), blocked)
+    assert (cmd.plan, cmd.flow_setpoint, cmd.waiting) == ("heat", 30.0, "lockout_hold")
+    cmd, _ = bc.decide(_status(t + 300, 0.5, "heating"), mem)
+    assert (cmd.flow_setpoint, cmd.waiting) == (34.0, None)
+
+
+def test_the_next_window_of_a_ramp_waits_too_when_it_opens_in_the_lockout():
+    """The ramp's next 5 K are a rise like any other: opened during S.8 they wait for the burner."""
+    t = 4_600_000.0
+    mem = _burnt(t, demand=0.0)  # 30 °C
+    cmd, mem = bc.decide(_status(t + 60, 1.0, "heating"), mem)
+    assert (cmd.flow_setpoint, cmd.waiting) == (35.0, "ramp_limit")
+    cmd, mem = bc.decide(_status(t + 720, 1.0, HEATING_AFTER), mem)  # the next window opens in S.8
+    assert (cmd.flow_setpoint, cmd.waiting) == (35.0, "lockout_hold")
+    cmd, _ = bc.decide(_status(t + 840, 1.0, "heating"), mem)
+    assert cmd.flow_setpoint == 38.0
+
+
+@pytest.mark.parametrize("gap", [{"boiler_available": False}, {"control_mode": "off"}])
+def test_a_lockout_seen_before_a_gap_does_not_cut_the_hold_short_after_it(gap):
+    """Review 2026-10-22: the lockout's start survived 40 minutes without boiler data, so a fresh S.8 after it held nothing."""
+    t = 4_700_000.0
+    mem = _burnt(t)  # 34 °C
+    _, mem = bc.decide(_status(t + 120, 0.5, HEATING_AFTER), mem)  # S.7, nothing to hold yet
+    for minute in range(3, 43):
+        cmd, mem = bc.decide(replace(_status(t + minute * 60.0, 0.5, HEATING_AFTER), **gap), mem)
+    assert cmd.plan in ("hands_off", "disabled")
+    cmd, _ = bc.decide(_status(t + 2700, 1.0, HEATING_AFTER), mem)  # a fresh S.8 with 4 K more asked
+    assert (cmd.flow_setpoint, cmd.waiting) == (34.0, "lockout_hold")

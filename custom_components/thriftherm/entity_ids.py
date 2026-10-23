@@ -30,6 +30,7 @@ OBJECT_IDS: Final[dict[str, dict[str, str]]] = {
         "boiler_thermal_power_estimate": "boiler_thermal_power_estimate",
         "boiler_delta_t": "boiler_flow_return_spread",
         "boiler_burner_share": "boiler_burner_share",
+        "boiler_starts_today": "boiler_heating_starts_today",
         "active_source_advice": "recommended_heat_source",
         "decision_reason": "decision_reason",
         "automation_state": "automation_state",

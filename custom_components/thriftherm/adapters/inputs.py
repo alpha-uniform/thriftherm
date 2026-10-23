@@ -274,6 +274,7 @@ class SnapshotBuilder:
         self._started_at: datetime | None = None  # the first snapshot
         self._windows_seen: set[str] = set()  # contacts that have said open or shut since the start
         self._open_from_start: set[str] = set()  # contacts first found open at the start, not shut since
+        self._opened_at: dict[str, datetime] = {}  # open contacts: their last change when first seen open, until seen shut
 
     # ------------------------------------------------------------------ readers
     def _get(self, entity_id: str | None) -> State | None:
@@ -473,7 +474,9 @@ class SnapshotBuilder:
 
         A contact first found open in the first minutes (`WINDOW_FOUND_OPEN_S`) counts as open for
         at least the grace, until it is seen shut: its last change is the restart, not an opening.
-        One opened while the control runs is timed from its change and gets the grace.
+        One opened while the control runs is timed from its change and gets the grace. One that drops
+        out and comes back open (a broker reconnect makes every contact unavailable for about 45 s) has
+        its last change at the return, yet stood open all along: it stays timed from its opening.
         """
         starting = self._started_at is None or (now - self._started_at).total_seconds() < WINDOW_FOUND_OPEN_S
         out: list[tuple[str, str | None, float | None]] = []
@@ -487,11 +490,12 @@ class SnapshotBuilder:
             if text in WINDOW_CLOSED_STATES:
                 self._windows_seen.add(entity_id)
                 self._open_from_start.discard(entity_id)
+                self._opened_at.pop(entity_id, None)
             elif text in WINDOW_OPEN_STATES:
                 if starting and entity_id not in self._windows_seen:
                     self._open_from_start.add(entity_id)
                 self._windows_seen.add(entity_id)
-                open_since = (now - state.last_changed).total_seconds()
+                open_since = (now - self._opened_at.setdefault(entity_id, state.last_changed)).total_seconds()
                 if entity_id in self._open_from_start:
                     open_since = max(open_since, self.params.window_grace_s)
             out.append((entity_id, state.state, open_since))
