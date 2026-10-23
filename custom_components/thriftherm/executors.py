@@ -167,7 +167,9 @@ async def async_execute_heat_pump(
         # the unit already has, and a call waits until the unit shows what the call before asked.
         if command.action == "start":
             calls.append(("set_hvac_mode", {"hvac_mode": "heat"}))
-        fan_known = not offered_fans or command.fan_mode in offered_fans
+        # A unit without fan stages shows neither a list of them nor a current one, and Home Assistant
+        # refuses it any fan stage: every start carries one, and the refusal ended it before its setpoint.
+        fan_known = command.fan_mode in offered_fans if offered_fans else "fan_mode" in has
         if command.fan_mode and fan_known and has.get("fan_mode") != command.fan_mode:
             calls.append(("set_fan_mode", {"fan_mode": command.fan_mode}))
         if command.target_temp is not None and (command.action == "start" or has.get("temperature") != command.target_temp):

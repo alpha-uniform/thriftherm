@@ -90,11 +90,11 @@ def _window_at(cfg: RoomConfig, at: datetime) -> tuple[TimeWindow, date] | None:
     """
     clock = at.time()
     for w in _windows_on(cfg, at.date()):
-        if (clock >= w.start) if w.start > w.end else w.contains(clock):
+        if (clock >= w.start) if w.across_midnight else w.contains(clock):
             return w, at.date()
     yesterday = at.date() - timedelta(days=1)
     for w in _windows_on(cfg, yesterday):
-        if w.start > w.end and clock < w.end:
+        if w.across_midnight and clock < w.end:
             return w, yesterday
     return None
 
@@ -133,7 +133,7 @@ def comfort_end(cfg: RoomConfig, now: datetime, schedule: ScheduleState | None =
             # cycle every night at 23:59.
             end = datetime.combine(began + timedelta(days=1), time(), tzinfo=at.tzinfo)
         else:
-            end = datetime.combine(began + timedelta(days=1 if w.start > w.end else 0), w.end, tzinfo=at.tzinfo)
+            end = datetime.combine(began + timedelta(days=1 if w.across_midnight else 0), w.end, tzinfo=at.tzinfo)
         at = end + timedelta(minutes=1)
     return None  # comfort all week
 
@@ -400,6 +400,10 @@ def evaluate_drying(
         return DryingState(), None
 
     # not active: check triggers
+    if baseline is None and prev.wet_since_ts is not None:
+        # The humidity history lives in memory only and starts empty after a restart, while the store
+        # keeps the wait for a shower: it measures the rise against the air it kept from before it.
+        baseline = prev.baseline_abs_humidity
     rise_abs = None if baseline is None else abs_humidity - baseline
     trig_abs = rise_abs is not None and rise_abs > params.drying_abs_humidity_rise_g_m3
     # second trigger: air that is damp already (above 70 % relative humidity) needs a smaller rise

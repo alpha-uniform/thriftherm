@@ -362,6 +362,14 @@ SYSTEM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         },
     ),
     _desc(
+        "boiler_starts_today",
+        boiler_only=True,
+        # a counter that starts again each day: the statistics give the starts of every day
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        icon="mdi:counter",
+        value_fn=lambda d: d["boiler_command"].starts_today,
+    ),
+    _desc(
         "active_source_advice",
         device_class=SensorDeviceClass.ENUM,
         options=[SOURCE_BOILER, SOURCE_HEAT_PUMP, SOURCE_BOTH, SOURCE_NONE],
@@ -486,9 +494,12 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
             "issues": list(r.issues),
             "internal_gain_w": r.internal_gain_w,
             "boiler_call": r.boiler_call,
-            # a room counted as reached calls the boiler again at or below this (engines/heat_call.py)
+            # a room counted as reached calls the boiler again at or below this (engines/heat_call.py); measured
+            # from the target the stall was accepted at, as heating along may have raised `target` by half a degree
             "calls_again_below": (
-                round(r.target - heat_call.STALL_RELEASE_K, 1) if r.boiler_call == heat_call.CALL_STALLED else None
+                round(r.stalled_target - heat_call.STALL_RELEASE_K, 1)
+                if r.boiler_call == heat_call.CALL_STALLED and r.stalled_target is not None
+                else None
             ),
         },
     ),

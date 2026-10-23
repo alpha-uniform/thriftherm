@@ -32,7 +32,8 @@ Principles
   heat-up only raises the fan. A served room that stays below its target and
   barely rises gets the unit set higher, half a degree at a time (`_adapt_lift`).
   Only once that is used up the command says the unit does not get the room there
-  (`delivers`), and the boiler brings what it still lacks.
+  (`delivers`), and the boiler brings what it still lacks. A drying sets the unit
+  a degree above its own reading (`drying_setpoint`): at its setpoint it would stand, fan and all.
 * A quick heat-up and the drying of a room turn the fan up, the drying to the
   strongest stage the unit has, never down from a stronger one. Once neither
   applies any more the fan gets back the stage it was turned up from, as long as
@@ -98,6 +99,7 @@ THROTTLED_WITHIN_K = 1.0  # its own reading this close to the setpoint: the unit
 RATE_TOO_FAST_K_H = 1.5
 LEARNING_MIN_RATIO = 0.85  # estimate must be at least 85 % of break-even
 DRYING_MAX_OVERSHOOT_K = 1.5  # drying keeps asking for heat, but not without a ceiling
+DRYING_LEAD_K = 1.0  # a drying sets a unit that follows the rooms this far above its own reading, so that it runs
 LEARNING_REPEAT_S = 24 * 3600.0
 LEARNING_RUN_S = 3600.0
 MANUAL_DETECT_GRACE_S = 120.0  # a unit may take this long to show what it was sent
@@ -332,6 +334,23 @@ def room_setpoint(
         return None
     offset = p.heat_pump_setpoint_offset_k if offset is None else offset
     return _in_range(to_step(max(r.target for r in wanted) + offset, step))
+
+
+def drying_setpoint(heat_pump: HeatPumpState, own: float | None, drying: list[RoomResult]) -> float | None:
+    """The setpoint of a unit that follows the rooms while it dries one: high enough that it runs.
+
+    At the rooms' setpoint a unit whose own reading is there already stands, and a PortaSplit then
+    stops its fan too (seen 2026-10-18: 22.5 °C read where it stands, 22 °C set for the bathroom
+    being dried, no air through the hose). Its own reading plus `DRYING_LEAD_K`, never below the
+    rooms' setpoint and never more than `LIFT_MAX_K` above the drying target.
+    """
+    if own is None or not drying:
+        return own
+    reading = heat_pump.indoor_temp if heat_pump.indoor_temp is not None else _intake(heat_pump)
+    if reading is None:
+        return own
+    top = max(r.target for r in drying) + LIFT_MAX_K
+    return max(own, _in_range(to_step(min(reading + DRYING_LEAD_K, top), heat_pump.target_temp_step)))
 
 
 def fan_plan(
@@ -708,6 +727,8 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
     # warm air carries the moisture out. It still needs a ceiling, or the
     # bathroom would be driven up for the full hour the mode may last.
     drying = [r for r in allowed if r.drying.active and r.temperature < r.target + DRYING_MAX_OVERSHOOT_K]
+    if follows:
+        own = drying_setpoint(unit, own, drying)
     boost = [r for r in allowed if r.boost_active and r.temperature < r.target]
     below = [r for r in allowed if r.temperature < r.target + STOP_ABOVE_TARGET_K]
     satisfied = not below and not drying
@@ -819,6 +840,10 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
             # a learning run only counts once it really ran; a planned one must not use up the bin
             if active:
                 bins = tuple((b, t) for b, t in bins if b != inp.outdoor_bin) + ((inp.outdoor_bin, now),)
+        # A start sets the fan anyway, to "auto": that is what it gets back. A unit that offers no such
+        # stage is never sent it and keeps the one it shows, so that one is put back: asked for "auto"
+        # instead, it stayed on its top stage for the rest of the run.
+        back = eco_fan if not unit.fan_modes or eco_fan in unit.fan_modes else unit.fan_mode or eco_fan
         new = replace(
             mem,
             running_since_ts=now,
@@ -829,7 +854,7 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
             learning_bins=bins,
             learning_until_ts=learning_until,
             last_offset_review_ts=None,
-            fan_turned_up_from=eco_fan if up else None,  # a start sets the fan anyway: that is what it gets back
+            fan_turned_up_from=back if up else None,
             fan_turned_up_to=up,
             lagging_since_ts=None,
             boiler_helps=False,
@@ -857,7 +882,10 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         if review_ts != mem.last_offset_review_ts:
             mem = replace(mem, offset_k=offset, last_offset_review_ts=review_ts)
     if follows and load == "eco" and active:
-        mem = _adapt_lift(inp, mem, need, own)
-        own = room_setpoint(p, inp.rooms, unit.target_temp_step, follow_offset(p, mem))
+        # Judged at the rooms' setpoint, not at a drying's lead: set a degree above its own reading on
+        # purpose, the unit read more than a degree below that whenever the lead was rounded up, was
+        # taken for working flat out, and the boiler was called for another room with the lift unused.
+        mem = _adapt_lift(inp, mem, need, room_setpoint(p, inp.rooms, unit.target_temp_step, follow_offset(p, mem)))
+        own = drying_setpoint(unit, room_setpoint(p, inp.rooms, unit.target_temp_step, follow_offset(p, mem)), drying)
         gives_up = mem.boiler_helps
     return keep_heating(mem, reason, load, setpoint(load))

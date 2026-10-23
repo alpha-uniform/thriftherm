@@ -2409,6 +2409,32 @@
    "unique_id": "ENTRY_boiler_flow_setpoint",
    "unit_of_measurement": "°C"
   },
+  "sensor.thriftherm_boiler_heating_starts_today": {
+   "attributes": {
+    "friendly_name": "Thriftherm Boiler heating starts today",
+    "icon": "mdi:counter",
+    "state_class": "total_increasing"
+   },
+   "capabilities": {
+    "state_class": "total_increasing"
+   },
+   "device": {
+    "identifiers": [
+     "thriftherm/ENTRY"
+    ],
+    "manufacturer": "Thriftherm",
+    "model": "Heating control",
+    "name": "Thriftherm",
+    "via": null
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": "mdi:counter",
+   "state": "1",
+   "translation_key": "boiler_starts_today",
+   "unique_id": "ENTRY_boiler_starts_today",
+   "unit_of_measurement": null
+  },
   "sensor.thriftherm_boiler_thermal_power_estimate": {
    "attributes": null,
    "capabilities": {
@@ -4173,6 +4199,32 @@
    "unique_id": "ENTRY_boiler_flow_setpoint",
    "unit_of_measurement": "°C"
   },
+  "sensor.thriftherm_boiler_heating_starts_today": {
+   "attributes": {
+    "friendly_name": "Thriftherm Boiler heating starts today",
+    "icon": "mdi:counter",
+    "state_class": "total_increasing"
+   },
+   "capabilities": {
+    "state_class": "total_increasing"
+   },
+   "device": {
+    "identifiers": [
+     "thriftherm/ENTRY"
+    ],
+    "manufacturer": "Thriftherm",
+    "model": "Heating control",
+    "name": "Thriftherm",
+    "via": null
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": "mdi:counter",
+   "state": "1",
+   "translation_key": "boiler_starts_today",
+   "unique_id": "ENTRY_boiler_starts_today",
+   "unit_of_measurement": null
+  },
   "sensor.thriftherm_boiler_thermal_power_estimate": {
    "attributes": null,
    "capabilities": {
@@ -5750,6 +5802,32 @@
    "translation_key": "boiler_flow_setpoint",
    "unique_id": "ENTRY_boiler_flow_setpoint",
    "unit_of_measurement": "°C"
+  },
+  "sensor.thriftherm_boiler_heating_starts_today": {
+   "attributes": {
+    "friendly_name": "Thriftherm Boiler heating starts today",
+    "icon": "mdi:counter",
+    "state_class": "total_increasing"
+   },
+   "capabilities": {
+    "state_class": "total_increasing"
+   },
+   "device": {
+    "identifiers": [
+     "thriftherm/ENTRY"
+    ],
+    "manufacturer": "Thriftherm",
+    "model": "Heating control",
+    "name": "Thriftherm",
+    "via": null
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": "mdi:counter",
+   "state": "1",
+   "translation_key": "boiler_starts_today",
+   "unique_id": "ENTRY_boiler_starts_today",
+   "unit_of_measurement": null
   },
   "sensor.thriftherm_boiler_thermal_power_estimate": {
    "attributes": null,

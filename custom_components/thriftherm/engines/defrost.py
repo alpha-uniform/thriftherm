@@ -13,8 +13,9 @@ Indicators
                   compressor runs and the indoor coil falls
   D2 cold outlet: heating_stable, outlet − intake < 1 K for > 3 min
   D3 iced coil  : outdoor coil < outdoor air − depression_k for > 10 min — only
-                  counts together with D2 or D4: at full load in frost an
-                  evaporator 8–12 K below the air is normal operation
+                  counts together with D2: at full load in frost an evaporator
+                  8–12 K below the air is normal operation, and so is the power
+                  drop of D4 when the inverter slows down
   D4 power drop : electrical power falls > 40 % within 2 min, compressor on
   D5 environment: outdoor < 5 °C and RH > 80 % (shown only, it enters no decision)
   D6 reverse    : compressor runs and the indoor coil is more than 5 K colder than the
@@ -99,13 +100,20 @@ def _cold_outlet(history: tuple[HeatPumpSample, ...], now_ts: float, run_state: 
     return max(deltas) < 1.0 and (recent[-1].ts - recent[0].ts) >= COLD_OUTLET_S * 0.8
 
 
+def _compressor_on(s: HeatPumpSample) -> bool:
+    return (s.compressor_hz or 0) > 0
+
+
 def _iced_coil(history: tuple[HeatPumpSample, ...], now_ts: float, outdoor_air: float | None, depression_k: float) -> bool:
     if outdoor_air is None:
         return False
     recent = _samples_within(history, now_ts, ICED_COIL_S)
     if len(recent) < 3 or (recent[-1].ts - recent[0].ts) < ICED_COIL_S * 0.8:
         return False
-    coils = [s.outdoor_coil_temp for s in recent if s.outdoor_coil_temp is not None and (s.compressor_hz or 0) > 0]
+    # Once the compressor has stopped, the cold coil of the run that ended is no ice: the coil warms up now.
+    if not _compressor_on(recent[-1]):
+        return False
+    coils = [s.outdoor_coil_temp for s in recent if s.outdoor_coil_temp is not None and _compressor_on(s)]
     if len(coils) < 3:
         return False
     return max(coils) < outdoor_air - depression_k
@@ -113,7 +121,12 @@ def _iced_coil(history: tuple[HeatPumpSample, ...], now_ts: float, outdoor_air: 
 
 def _power_drop(history: tuple[HeatPumpSample, ...], now_ts: float) -> bool:
     recent = _samples_within(history, now_ts, POWER_DROP_WINDOW_S)
-    powers = [(s.ts, s.power_w) for s in recent if s.power_w is not None and (s.compressor_hz or 0) > 0]
+    # The plug and the unit's frequency update at different moments, so the sample at a stop often still says
+    # the compressor runs while the plug reads the fan alone. Judged without the stopped sample after it, that
+    # one stayed the last power with the compressor on, and an ordinary stop looked like a drop for two minutes.
+    if not recent or not _compressor_on(recent[-1]):
+        return False
+    powers = [(s.ts, s.power_w) for s in recent if s.power_w is not None and _compressor_on(s)]
     if len(powers) < 2:
         return False
     peak = max(p for _, p in powers)
@@ -184,7 +197,9 @@ def evaluate(
     if cycles > params.defrost_max_cycles_90min:
         persistent = True
         block_reason = "frequent_defrost_cycles"
-    if "D3_iced_coil" in indicators and ("D2_cold_outlet" in indicators or "D4_power_drop" in indicators):
+    # Iced only once the heat output collapses as well. A power drop is no sign of it: the PortaSplit on 2026-10-20
+    # slowed from 39 to 24 Hz, 630 to 348 W, and went on heating. In frost that locked it out as iced.
+    if "D3_iced_coil" in indicators and "D2_cold_outlet" in indicators:
         persistent = True
         block_reason = "outdoor_coil_iced"
 

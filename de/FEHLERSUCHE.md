@@ -140,11 +140,22 @@ Das ist normal: ebusd fragt die Werte der Therme reihum ab. Für die Regelung ho
 
 ### Die Thriftherm-Karte fehlt („Custom element doesn't exist“)
 
-Der Browser zeigt noch die Startseite von Home Assistant von vor der Installation oder dem Update, und die kennt die Karte nicht. Home Assistant hält diese Seite im Browser vor, deshalb hilft einfaches Neuladen oft nicht.
+Das Dashboard zeigt *Custom element not found: thriftherm-card* oder *Custom element doesn't exist*. Thriftherm trägt die Karte beim Start selbst als Dashboard-Ressource ein: *Einstellungen → Dashboards → ⋮ → Ressourcen* zeigt `/thriftherm/thriftherm-card.js?v=…` als JavaScript-Modul. So lädt jedes Dashboard sie, bevor es seine Karten zeichnet. Steht dort ein Eintrag für dieselbe Datei, den du von Hand angelegt hast, übernimmt Thriftherm ihn, statt einen zweiten anzulegen. Wird Thriftherm entfernt, verschwindet der Eintrag wieder.
+
+Hält deine Installation die Ressourcen in YAML (`lovelace: resource_mode: yaml`), kann Thriftherm dort nichts eintragen und lädt die Karte wie bisher auf jeder Seite mit. Das klappt nicht immer zuverlässig, deshalb die Ressource dann selbst eintragen:
+
+```yaml
+lovelace:
+  resources:
+    - url: /thriftherm/thriftherm-card.js
+      type: module
+```
+
+Fehlt die Karte trotzdem, zeigt der Browser meist noch eine Startseite von vor der Installation oder dem Update. Home Assistant hält diese Seite im Browser vor, deshalb hilft einfaches Neuladen oft nicht.
 
 1. Die Seite hart neu laden: Cmd+Shift+R (Mac) bzw. Strg+Shift+R.
 2. Hilft das nicht: im Browser die Websitedaten deiner Home-Assistant-Adresse löschen und neu anmelden. In der App: *Einstellungen → Companion App → Frontend-Cache zurücksetzen*.
-3. Hilft auch das nicht: Home Assistant neu starten. Die Karte wird beim Start angemeldet, ein Neuladen der Integration reicht dafür nicht.
+3. Hilft auch das nicht: Thriftherm neu laden (*Einstellungen → Geräte & Dienste → Thriftherm → ⋮ → Neu laden*) oder Home Assistant neu starten. Dabei meldet Thriftherm die Karte wieder an.
 
 ## Nichts davon passt
 

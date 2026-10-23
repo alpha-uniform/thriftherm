@@ -63,8 +63,9 @@ from .const import (
     PUMP_STATE_ON,
     SAFETY_FALLBACK,
     SAFETY_OK,
+    SOURCE_BOILER,
+    SOURCE_BOTH,
     SOURCE_HEAT_PUMP,
-    SOURCE_NONE,
     STORAGE_KEY,
     STORAGE_VERSION,
     SYSTEM_GAS,
@@ -115,7 +116,9 @@ from .plan_log import PlanLog
 _LOGGER = logging.getLogger(__name__)
 
 EBUS_PRIORITY_REFRESH_S = 600.0  # a restart of ebusd forgets the priority; renew it so a gap lasts minutes, not an hour
-EBUS_READ_WHILE_BURNING_S = 60.0  # fresh values once a minute while gas is burning, all the time without a gas meter
+# Fresh values once a minute while gas is burning, all the time without a gas meter. Home Assistant starts the
+# cycles 60 s apart give or take a few milliseconds, so a full 60 s would skip the read every other cycle.
+EBUS_READ_WHILE_BURNING_S = 55.0
 OUTDOOR_FALLBACK_MAX_AGE_S = 6 * 3600.0  # how long the last known outdoor temperature stands in
 OUTDOOR_LAST_KNOWN = "last_known"  # the outdoor source shown while it does
 # After a restart the Zigbee room sensors come back one by one (measured 2026-09-18: the bathroom
@@ -194,6 +197,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # heat pump control
         self.control_mode: str = CTRL_SHADOW
         self.control_memory = ControlMemory()
+        self._control_memory_before = ControlMemory()  # as it was before this cycle's plan, see _forget
         self.boosts: dict[str, float] = {}
         # boiler control
         self.boiler_control_mode: str = CTRL_SHADOW
@@ -793,9 +797,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if learning_reset.SCOPE_HEAT_PUMP in scopes:
             self.cop_map = CopMap()
             self.heat_pump_tracker.reset()
-            self.control_memory = replace(
-                self.control_memory, offset_k=None, learning_bins=(), last_offset_review_ts=None, learning_until_ts=None
-            )
+            forgotten = {"offset_k": None, "learning_bins": (), "last_offset_review_ts": None, "learning_until_ts": None}
+            self.control_memory = replace(self.control_memory, **forgotten)
+            # A cycle that waits for the unit's answer puts the memory from before its plan back when
+            # the command fails: the learned values must not come back with it.
+            self._control_memory_before = replace(self._control_memory_before, **forgotten)
         if learning_reset.SCOPE_ROOMS in scopes:
             self.heat_rates.forget(None if rooms is None else list(rooms))
             self.cool_rates.forget(None if rooms is None else list(rooms))
@@ -833,7 +839,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 settings_watched_since_ts=self._settings_watched_since_ts,
             )
             self._track_setpoints()  # the build looked the valves up anew
-            memory_before = self.control_memory  # the heat pump decision moves it on as if its command went through
+            self._control_memory_before = self.control_memory  # the heat pump decision moves it on as if its command went through
             result = self._evaluate(snapshot)
         except Exception as err:  # surface to HA as UpdateFailed
             if self.last_update_success:
@@ -857,11 +863,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             stop = command.action == "stop"
             if self._asked_meanwhile(heat_pump_entity, cycle_ts):
                 # planned without what somebody just asked for: not sent, and not on record as sent
-                self.control_memory = memory_before
+                self.control_memory = self._control_memory_before
                 self.plan_log.not_sent()
             elif not stop and cycle_ts < self._heat_pump_retry_ts:
                 # a call failed lately: the next try waits, see below
-                self.control_memory = replace(memory_before, last_hvac_mode=None)
+                self.control_memory = replace(self._control_memory_before, last_hvac_mode=None)
                 self.plan_log.not_sent()
             elif (
                 calls := await executors.async_execute_heat_pump(self.hass, heat_pump_entity, command, self._own_context())
@@ -872,6 +878,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     # so. The memory keeps the command as carried out, the unit shows it.
                     self.plan_log.nothing_sent()
                     result["command_log"] = list(self.plan_log.command_log)
+                else:
+                    self.plan_log.went_out(cycle_ts)
             elif stop:
                 # A stop reported as failed may have gone through all the same (the answer was lost,
                 # the call timed out). The memory stays as decided, and it covers both: a unit
@@ -885,7 +893,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # the failure leaves the unit's mode open, so no judgement about a change by hand
                 # until a command goes through. The next try waits 2, 4, 8 ... minutes, an hour
                 # at most: sent again every cycle, each try held the cycle up for its timeout.
-                self.control_memory = replace(memory_before, last_hvac_mode=None)
+                self.control_memory = replace(self._control_memory_before, last_hvac_mode=None)
                 self.plan_log.not_sent()
                 wait = heat_pump_control.MANUAL_DETECT_GRACE_S * 2 ** min(self._heat_pump_call_failures, 8)
                 self._heat_pump_retry_ts = cycle_ts + min(wait, heat_pump_control.RETRY_MAX_S)
@@ -1172,7 +1180,10 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._store_dirty = True
             self.call_memory[key] = memory
             call_states[key] = state
-        rooms = {key: replace(res, boiler_call=call_states[key]) for key, res in rooms.items()}
+        rooms = {
+            key: replace(res, boiler_call=call_states[key], stalled_target=self.call_memory[key].stalled_target)
+            for key, res in rooms.items()
+        }
         heat_pump_mode = self.control_mode if self.has_heat_pump else CTRL_OFF
         # while the heat pump only plans and the boiler really heats, its cost edge decides nothing
         heat_pump_acts = heat_pump_mode == CTRL_ACTIVE or self.boiler_control_mode != CTRL_ACTIVE
@@ -1262,9 +1273,14 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # name the boiler for the rooms the unit serves, and the boiler would hold that for its
         # minimum time in state once the unit is back (review 2026-10-14).
         heat_pump_pending = heat_pump_res.run_state == HEAT_PUMP_UNAVAILABLE and self.control_memory.running_since_ts is not None
+        # After a failed call a start is held back for 2, 4, 8 ... minutes (see _async_update_data)
+        # and planned again every cycle: counted as heating, it kept the boiler blocked for the
+        # whole wait while nothing heated the rooms the unit serves. It counts once a call went through.
+        start_failing = heat_pump_mode == CTRL_ACTIVE and command.action == "start" and self._heat_pump_call_failures > 0
         boiler_cmd, self.boiler_memory = boiler_control.decide(
             BoilerInputs(
                 now_ts=now_ts,
+                day_start_ts=dt_util.start_of_local_day(dt_util.as_local(snapshot.now)).timestamp(),
                 control_mode=self.boiler_control_mode,
                 op_mode=snapshot.mode,
                 safety_state=safety_res.state,
@@ -1278,7 +1294,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     command.plan,
                     heat_pump_mode,
                     self.boiler_control_mode,
-                    command.delivers,
+                    command.delivers and not start_failing,
                 ),
                 outdoor_c=outdoor,
                 params=params,
@@ -1368,10 +1384,21 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             self._last_room_plans[cfg.key] = plan
 
-        # --- learning: heat-up rates (heating = a source is advised for the room) ----
+        # --- learning: heat-up rates (heating = a source that reaches the room is on) ----
+        # Another room's call heats nothing here: a radiator gets the boiler's heat only where it may open,
+        # and the unit reaches only the rooms it serves. The sun warming the living room while the unit
+        # heated the bathroom and the boiler was blocked was learned as its heat-up rate, and its real
+        # cool-downs were cut off. The boiler's plan already holds the mode and a unit that cannot deliver;
+        # with the boiler on its own knob (control off, hands off) the advice is the best guess.
+        if boiler_cmd.plan in (BOILER_PLAN_HEAT, BOILER_PLAN_BLOCK):
+            boiler_heats = boiler_cmd.plan == BOILER_PLAN_HEAT
+        else:
+            boiler_heats = advice.source in (SOURCE_BOILER, SOURCE_BOTH)
+        heat_pump_heats = advice.source in (SOURCE_HEAT_PUMP, SOURCE_BOTH)
         for key, res in rooms.items():
+            reached = (boiler_heats and res.heating_allowed) or (heat_pump_heats and key in heat_pump_room_keys)
             # a shower warms the bathroom by itself within minutes; that is not a heat-up rate
-            heating = advice.source != SOURCE_NONE and (res.demand or 0.0) > 0.0 and not res.drying.active
+            heating = reached and (res.demand or 0.0) > 0.0 and not res.drying.active
             # the valve's own reading stands in for a failed room sensor, but it sits at the
             # radiator: rates learned from it would not be the room's
             measured = None if any(i.startswith("using_trv_local_temperature") for i in res.issues) else res.temperature
@@ -1389,6 +1416,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         return {
             "snapshot": snapshot,  # what the cycle read; nothing in the integration uses it, the tests look at it
+            "mode": snapshot.mode,  # the operating mode the cycle ran in, the advice's own
             "rooms": sent_rooms,
             "safety": safety_res,
             "boiler": boiler_res,
@@ -1479,7 +1507,10 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if mem is None:
                 continue
             # The thermostat's answer to our own setpoint is nobody's hand, whatever value it shows.
-            if room_control.own_answer(state.trv_target_temp, mem, state.thermostat_change):
+            # A late echo of its valve is no answer: our setpoint is what makes Better Thermostat
+            # rewrite the valve, so a stale reply it adopts within seconds still carries our context.
+            answer = room_control.own_answer(state.trv_target_temp, mem, state.thermostat_change)
+            if answer and not self._is_echo(key, state.trv_target_temp, now_ts):
                 if mem.answered_with != state.trv_target_temp:
                     self.room_ctrl_memory[key] = replace(mem, answered_with=state.trv_target_temp, confirmed=True)
                     self._store_dirty = True

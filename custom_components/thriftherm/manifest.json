@@ -5,6 +5,7 @@
     "climate",
     "frontend",
     "http",
+    "lovelace",
     "mqtt",
     "schedule"
   ],
@@ -19,5 +20,5 @@
   "issue_tracker": "https://github.com/alpha-uniform/thriftherm/issues",
   "requirements": [],
   "single_config_entry": true,
-  "version": "0.6.4"
+  "version": "0.6.5"
 }

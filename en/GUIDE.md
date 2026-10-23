@@ -198,7 +198,7 @@ Details on every area: [How Thriftherm works: learning](HOW_IT_WORKS.md#learning
 - the *Load class now* and the *Room that sets the flow*;
 - under *Heating curve correction per load class and room*, for each class and room (entries such as `few:bathroom`), the correction, level, slope, whether the value is found, the hours of operation and how often a room lagged in them.
 
-The sensor *Boiler burner share* shows the share of the last hour the burner ran for the heating, and the number of starts. For now it only records.
+The sensor *Boiler burner share* shows the share of the last hour the burner ran for the heating, and the number of starts. For now it only records. The sensor *Boiler heating starts today* counts the burner's starts for the heating since midnight; Home Assistant's statistics then show the starts of every day.
 
 **What you can set** (boiler options):
 
@@ -244,6 +244,7 @@ When it starts and ends: [bathroom drying](HOW_IT_WORKS.md#bathroom-drying).
 
 - It stays on, day and night, for as long as it is the cheaper source, and goes off only while nobody wants the rooms it serves warm (away, off, a window open in each of them). So while no room needs heat, the *Decision reason* reads "heat pump runs through, setpoint 22.0 °C" and not "no room needs heat".
 - *Quick heat-up* then only raises the fan.
+- While drying, the unit is set at least 1 degree above its own reading, at most 2 degrees above the drying target, so that it runs, fan and all ([details](HOW_IT_WORKS.md#bathroom-drying)).
 - When a served room falls behind, Thriftherm sets the unit higher in small steps (attribute `eco_offset_k`) and back again later. The boiler helps only once that is not enough (attribute `boiler_helps`), and only until the room is warm ([details](HOW_IT_WORKS.md#setpoint-follows-the-rooms)).
 
 Without the switch Thriftherm uses the setpoint as a power lever (intake air plus a learned offset) and switches by the rooms' demand ([details](HOW_IT_WORKS.md#without-setpoint-follows-the-rooms)).

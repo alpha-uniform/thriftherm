@@ -15,6 +15,7 @@ answer it:
   room falls STALL_RELEASE_K below target or the target changes.
 * End of comfort: no call in the last half hour of a comfort window. The room
   cools by a tenth of a degree in that time; the heat would arrive too late.
+  Nor in the moment after its end, while the schedule helper has not switched yet.
 * A lower target is a new question: a call that began for a higher target is
   judged again by the start threshold (seen 2026-09-26: an override of 21.5 °C
   was lifted, and the bathroom kept calling 0.2 K below its 21.0 °C).
@@ -40,6 +41,11 @@ STALL_BAND_K = 0.3
 STALL_RATE_K_H = 0.15
 STALL_RELEASE_K = 0.5
 COMFORT_END_GUARD_S = 1800.0
+# seen 2026-10-21 22:00 and 2026-10-22 07:30: one schedule helper switched 15 ms before another, and the
+# cycle it set off still saw the other room's block running with its end just passed. That room called,
+# the boiler lit once for nothing, and the target fell to setback seconds later. An end this recent still
+# counts as ending; a new block brings an end of its own, so this never holds back a comfort that began.
+COMFORT_END_PASSED_S = 120.0
 JOIN_K = 0.5  # Better Thermostat gets half-degree steps
 PULL_FORWARD_S = 3600.0
 DEMAND_FALLBACK = 0.05  # without a temperature: the room's demand decides, as before
@@ -89,8 +95,10 @@ def update(room: RoomResult, mem: CallMemory, now_ts: float, comfort_end_ts: flo
     if not room.heating_allowed:
         return CALL_NOT_ALLOWED, CallMemory()
     if room.temperature is None:
+        # A cycle without a reading tells nothing about the call, so the memory waits for the next one:
+        # after a restart the sensors report one by one, and a stall or a running call must outlast that.
         calling = (room.demand or 0.0) > DEMAND_FALLBACK
-        return (CALL_CALLING if calling else CALL_IDLE), CallMemory(calling=calling, since_ts=mem.since_ts if calling else None)
+        return (CALL_CALLING if calling else CALL_IDLE), mem
 
     deficit = round(room.target - room.temperature, 2)  # sensors report tenths: 21.0 - 20.9 must be 0.1
     urgent = any(room.target_reason.startswith(r) or room.target_reason.endswith("+" + r) for r in _URGENT_REASONS)
@@ -104,7 +112,7 @@ def update(room: RoomResult, mem: CallMemory, now_ts: float, comfort_end_ts: flo
         not urgent
         and room.target_reason in _COMFORT_REASONS
         and comfort_end_ts is not None
-        and 0.0 <= comfort_end_ts - now_ts < COMFORT_END_GUARD_S
+        and -COMFORT_END_PASSED_S <= comfort_end_ts - now_ts < COMFORT_END_GUARD_S
     ):
         return CALL_COMFORT_ENDING, CallMemory()
 

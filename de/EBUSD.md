@@ -57,7 +57,7 @@ Thriftherm liest diese Nachrichten nicht, nützlich sind sie trotzdem:
 - CounterStartattempts1 und 2, DeactivationsTemplimiter, WaterpressureMeasureCounter, ValveStarts, StorageLoadPumpHours, StorageloadPumpStarts, HcUnderHundredStarts, HwcUnderHundredStarts – neun weitere Zähler
 - PumpPower (dauernd 0) und Templimiter
 
-Eine Ausnahme, falls du Brennerstarts genau zählen willst: HcStarts und HwcStarts zählen in Hunderterschritten, HcUnderHundredStarts und HwcUnderHundredStarts liefern die letzten beiden Stellen dazu. Thriftherm braucht das nicht, es zählt die Brennerläufe selbst.
+Eine Ausnahme, falls du Brennerstarts genau zählen willst: HcStarts und HwcStarts zählen in Hunderterschritten, HcUnderHundredStarts und HwcUnderHundredStarts liefern die letzten beiden Stellen dazu. Thriftherm braucht das nicht, es zählt die Brennerläufe selbst; die Starts für die Heizung zeigt der Sensor *Therme Heizstarts heute*.
 
 ## Was auf der Testanlage schon ausgeschlossen ist
 

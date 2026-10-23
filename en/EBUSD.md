@@ -57,7 +57,7 @@ Thriftherm does not read these messages, but they are useful all the same:
 - CounterStartattempts1 and 2, DeactivationsTemplimiter, WaterpressureMeasureCounter, ValveStarts, StorageLoadPumpHours, StorageloadPumpStarts, HcUnderHundredStarts, HwcUnderHundredStarts – nine more counters
 - PumpPower (always 0) and Templimiter
 
-One exception in case you want to count burner starts exactly: HcStarts and HwcStarts count in steps of a hundred, HcUnderHundredStarts and HwcUnderHundredStarts deliver the last two digits. Thriftherm does not need that, it counts the burner runs itself.
+One exception in case you want to count burner starts exactly: HcStarts and HwcStarts count in steps of a hundred, HcUnderHundredStarts and HwcUnderHundredStarts deliver the last two digits. Thriftherm does not need that, it counts the burner runs itself; the sensor *Boiler heating starts today* shows the starts for the heating.
 
 ## Already excluded on the test installation
 

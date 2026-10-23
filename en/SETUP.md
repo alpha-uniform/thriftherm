@@ -148,18 +148,19 @@ Optional, for advanced users. ebusd polls the boiler's values in turn; the short
 
 ## 3. Install Thriftherm
 
-**With HACS (recommended):**
+**With HACS (recommended):** Thriftherm has been in the HACS default list since 2026-10-21; no custom repository is needed any more.
 
-Quickest with this button, it opens the repository in HACS directly; then click *Download* and continue with step 4 below:
+Quickest with this button, it opens Thriftherm in HACS directly; then click *Download* and continue with point 3 of the list below:
 
 [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
 
 Or by hand:
 
-1. Open **HACS**, click ⋮ (top right) → *Custom repositories*.
-2. Repository: `https://github.com/alpha-uniform/thriftherm`, type: **Integration**. Click *Add*.
-3. Search for **Thriftherm** in HACS, open it and click *Download*.
-4. Restart Home Assistant (*Settings → System → ⋮ → Restart Home Assistant*).
+1. Open **HACS** and search for **Thriftherm**.
+2. Open it and click *Download*.
+3. Restart Home Assistant (*Settings → System → ⋮ → Restart Home Assistant*).
+
+If you added Thriftherm as a custom repository before, there is nothing to change: it is the same repository, and updates keep coming through HACS.
 
 **By hand:** copy the folder `custom_components/thriftherm` from the repository into `config/custom_components/` of your Home Assistant, then restart.
 
@@ -237,7 +238,7 @@ A boiler without eBUS can be controlled through two entities that have to exist 
 | Heating pump running | optional: binary sensor "central heating active" |
 | Flow temperature | the flow temperature sensor (needed) |
 
-With the number and the switch chosen nothing goes to ebusd any more; the ebusd circuit and *keep hot water ready* have no effect then. Both are always needed.
+With the number and the switch chosen nothing goes to ebusd any more; the ebusd circuit and *Keep hot water ready* have no effect then. Both are always needed.
 
 One difference to ebusd: an ebusd command runs out after a few minutes and the boiler heats by its knob again. An entity keeps what it was sent. So Thriftherm hands the boiler back itself (heating on) whenever it stops controlling: when switched to *Plan only* and without boiler data with the flow of the heating curve, which then keeps following the outdoor temperature; when Home Assistant stops with the maximum flow, as a knob would stand. Entities Thriftherm never commanded are not touched. If Home Assistant crashes or loses power, the last state stays – a blocked heating included. Check whether your adapter has a timeout of its own for that case.
 
@@ -379,11 +380,11 @@ room_order: [badezimmer, wohnzimmer]  # optional, the other rooms follow
 What the card shows, from top to bottom:
 
 - **The heat source in one sentence**, e.g. "Heat pump is heating", below it the cost per kWh of heat. A tap opens the comparison of boiler and heat pump: what each does and why, flow setpoint or COP, cost, the COP from which the heat pump pays off, and what the learning of the heating curve does right now.
-- **Notes, only when there are some:** safety restricted, heat pump blocked, window open, changed by hand (with *Back to automatic*).
+- **Notes, only when there are some:** safety restricted, heat pump blocked (only in a mode that uses it, so not in *Central heating only* or *Summer (heating off)*), window open, changed by hand (with *Back to automatic*).
 - **One row per room:** measured temperature, target and the reason. Small icons show whether the boiler or the heat pump heats the room right now, whether it was changed by hand or a window is open. A tap on the room opens an info line (the schedule's next change with the target after it, and the trend once the room's *Temperature trend* sensor is enabled), *Now* (change the target by hand; it holds as long as any change by hand), comfort, setback, *Quick heat-up*, in the bathroom *Dry now*, *Schedule* (opens the room's schedule helper when it has one) and *Back to automatic* while anything by hand is on: a change, *Quick heat-up* or *Dry now*.
 - **Operating mode**, in *Away* with the return.
 
-The card needs Home Assistant 2025.1 or newer. If the dashboard shows *Custom element doesn't exist: thriftherm-card* or still the old card after installing or updating, hard-reload the page (Cmd+Shift+R or Ctrl+Shift+R). If that does not help, clear the browser's site data for your Home Assistant address; in the app: *Settings → Companion app → Reset frontend cache* ([Troubleshooting](TROUBLESHOOTING.md#the-thriftherm-card-is-missing-custom-element-doesnt-exist)).
+The card needs Home Assistant 2025.1 or newer. Thriftherm adds the card as a dashboard resource itself. If the dashboard still shows *Custom element not found: thriftherm-card* or the old card after installing or updating, hard-reload the page (Cmd+Shift+R or Ctrl+Shift+R). If that does not help, clear the browser's site data for your Home Assistant address; in the app: *Settings → Companion app → Reset frontend cache* ([Troubleshooting](TROUBLESHOOTING.md#the-thriftherm-card-is-missing-custom-element-doesnt-exist)).
 
 ### 9.2 The room card
 

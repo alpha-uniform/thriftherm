@@ -266,9 +266,7 @@ class ThrifthermCard extends HTMLElement {
     for (const [id, v] of Object.entries(this._pending)) {
       const s = this._hass.states[id];
       if (!s || (num(s.state) === v) || (this._pendingSeen[id] && this._pendingSeen[id] !== s.last_updated)) {
-        delete this._pending[id];
-        delete this._pendingSeen[id];
-        delete this._overrideRooms[id];
+        this._dropPending(id);
       }
     }
     const sources = this._watchedRooms().map((r) => this._hass.states[r.ids.target]?.attributes.temperature_entity).filter(Boolean);
@@ -442,9 +440,14 @@ class ThrifthermCard extends HTMLElement {
     }
 
     const blocked = this._sys("midea_blocked");
-    if (blocked?.state === "on") {
-      out.push(this._warning("warning", "lock", this._t("heat_pump_blocked", { reason: this._attr(blocked, "reason") })));
-      covered.add("heat_pump_blocked").add("heat_pump_outdoor_too_cold");
+    // in boiler only and off the heat pump does not heat: what keeps it from heating is no warning there;
+    // switched to a mode that uses it, the warning is back with the new mode
+    const heatPumpUnused = ["boiler_only", "off"].includes(this._sys("mode")?.state);
+    if (blocked?.state === "on" || heatPumpUnused) {
+      if (!heatPumpUnused) out.push(this._warning("warning", "lock", this._t("heat_pump_blocked", { reason: this._attr(blocked, "reason") })));
+      // its reason names the block already: icing, not ready to heat (off, out of reach, another mode), too cold
+      // outside; and that heat pump rooms wait for it says the block once more
+      covered.add("heat_pump_blocked").add("heat_pump_unavailable").add("heat_pump_outdoor_too_cold").add("heat_pump_rooms_blocked");
     }
 
     const hidden = new Set(this._config.hidden_rooms || []); // a room hidden on purpose does not nag about its window
@@ -709,10 +712,22 @@ class ThrifthermCard extends HTMLElement {
     this._stepTimer = setTimeout(() => {
       for (const [id, v] of Object.entries(this._pending)) {
         const room = this._overrideRooms[id];
-        if (room) this._hass.callService(DOMAIN, "set_override", { room, temperature: v });
-        else this._hass.callService("number", "set_value", { value: v }, { entity_id: id });
+        const sent = room ? this._hass.callService(DOMAIN, "set_override", { room, temperature: v })
+          : this._hass.callService("number", "set_value", { value: v }, { entity_id: id });
+        // refused (a setback above comfort): the entity keeps its value and its time, so _render would never drop it
+        sent.catch(() => {
+          if (this._pending[id] !== v) return; // stepped on since: the newer value is still to go out
+          this._dropPending(id);
+          this._render();
+        });
       }
     }, 600);
+  }
+
+  _dropPending(id) {
+    delete this._pending[id];
+    delete this._pendingSeen[id];
+    delete this._overrideRooms[id];
   }
 
   _onChange(ev) {

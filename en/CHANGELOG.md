@@ -2,6 +2,53 @@
 
 **English** | [Deutsch](../de/AENDERUNGEN.md)
 
+## 0.6.5 — 2026-10-23
+
+Fewer needless burner starts: a rise of the flow waits while the boiler waits out its lockout, and a comfort period that has just ended no longer calls the boiler for nothing. Also a sensor for the heating starts of the day, the card as a dashboard resource (issue #1), no heat pump warning in *Central heating only*, and 25 defects from a test-driven review. The configuration stays at version 3; everything learned is kept.
+
+### New
+
+- **Sensor *Boiler heating starts today*:** counts the burner's starts for the heating since midnight (hot water does not count) and starts at nought each day. Home Assistant's statistics then show the starts of every day, for instance in a statistics graph with *change* per day. It is kept through a restart.
+
+### Changed
+
+- COP values of the Midea PortaSplit brought up to date (2026-10-11 to 10-21), a little lower than before: at 4 to 6 °C outside 3.30 from 41 points, at 6 to 8 °C 3.63 from 59, at 8 to 10 °C 3.55 from 64, at 10 to 12 °C 3.91 from 49, at 12 to 14 °C 4.13 from 37.
+- **Learning state at the limit of the heating curve correction:** when a learning step meets the limit of ±10 degrees for level or slope, the learning state now shows *Heating curve correction at its limit (level or slope, ±10 degrees each)*. Before, it only said that a room does not get there, and the step was dropped silently.
+- **HACS:** Thriftherm has been in the HACS default list since 2026-10-21. The setup now describes searching for it in HACS instead of adding a custom repository.
+
+### Fixed
+
+- **Card in *Central heating only*:** with the heat pump unplugged and the mode *Central heating only* or *Summer (heating off)*, the card shows no warning any more and the problem sensor *Heat pump blocked for heating* stays off. In a mode that uses it (*Auto*, *Heat pump only*, *Away*) the warning is back as soon as you switch, and as one line instead of two.
+- **Fewer needless burner starts:**
+  - When the flow setpoint rises while the boiler runs its pump on after a heating run or waits out its burner lockout (S.5–S.8), the rise now waits until the burner may light again. Before, it lit minutes early, one start more each time (seen 2026-10-22). Frost protection, *Quick heat-up* and falling setpoints do not wait, and after 30 minutes at most the rise goes out anyway. While it waits, *Boiler command* shows *Boiler in its lockout: the rise waits* under *Waiting for*. Boilers without a status code behave as before.
+  - When two rooms' comfort ended in the same minute and one schedule switched milliseconds before the other, the second room called the boiler once more for nothing. A comfort end that passed up to two minutes ago now still counts as the end.
+- After hours without a setpoint sent to the boiler (boiler data missing, control off, Home Assistant down), the flow could jump from 35 to 60 °C in one step. It now rises at most 5 degrees above the last value sent, then 5 degrees per 10 minutes as usual.
+- **Review, second round (test-driven):** 7 more defects fixed, each with a test that failed before:
+  - *Heat pump COP:* when the fan turns slower than the lowest point of the airflow curve between two starts, the airflow follows the fan law instead of the whole cycle being thrown away. On the PortaSplit the COP had a value for only about 35 % of the running time.
+  - *Defrost detection:* ordinary inverter slow-downs in frost no longer lock the heat pump out for two hours as iced. A compressor that has just stopped by itself no longer counts as a power drop or an iced coil.
+  - Learning the heat-up rates counts a room as heated only while a heat source really reaches it.
+  - A late valve echo that Better Thermostat adopts right after our setpoint is recognised as an echo instead of being held as the thermostat's answer.
+  - When the heat pump fails to start, the boiler takes over the served rooms at once, not only after the wait for the next try.
+  - A reset of the heat pump learning made while a command fails is kept.
+- **Whole-program review (test-driven):** 18 defects fixed, each with a test that failed before:
+  - *Heat pump only:* the boiler heats for frost alone, no longer when the heat pump is run by hand, waits or does not deliver.
+  - The flow boost after a heat-up goes back also when the room stops calling a tenth short of its target.
+  - Heating-curve learning without the load model counts the demand boost of the shared line: no step at a flow already at its maximum, and a slow room raises the curve.
+  - A shower noticed before a restart is still dried after it.
+  - A drying no longer makes the heat pump look flat out, which would call the boiler for another room.
+  - *Nearly there* names the temperature of the room's own target while it heats along.
+  - A heat pump without fan stages gets its setpoint at a start; before, the start ended at the refused fan stage. A unit without *auto* gets back its own stage after a drying or quick heat-up.
+  - A window contact that drops out and comes back open counts as open again at once.
+  - After the boiler control is switched on again, a block counts only once it has stood a while.
+  - A cycle without a room temperature (right after a restart, say) no longer forgets whether the room calls or counts as nearly there.
+  - A time window that ends where it starts (e.g. `00:00-00:00`) runs a whole day instead of being an empty window.
+  - The boiler's data is read every minute again, not every second minute when a cycle comes milliseconds early.
+  - *Back to automatic* for an unknown room is refused instead of silently doing nothing.
+  - A heat pump command that went out on a second try is on record as sent.
+  - Card: when Home Assistant refuses a stepped value, the card shows the old one again. A heat pump that cannot heat is one warning, not two. After Thriftherm is removed and added again, the card is among the resources again.
+- **Card sometimes not found** ([#1](https://github.com/alpha-uniform/thriftherm/issues/1)): *Custom element not found: thriftherm-card*, mostly in Firefox and the app. Thriftherm now adds the card as a dashboard resource itself (*Settings → Dashboards → Resources*), with the version in its address; an entry added by hand for the same file is taken over. If you keep resources in YAML, add it yourself ([Troubleshooting](TROUBLESHOOTING.md#the-thriftherm-card-is-missing-custom-element-doesnt-exist)).
+- **Drying with the heat pump under "setpoint follows the rooms":** the unit now gets at least its own reading plus 1 degree, at most 2 degrees above the drying target. Before, it got the drying target only; reading more than that where it stands, it stood, fan and all, and no air reached the bathroom.
+
 ## 0.6.4 — 2026-10-18
 
 The heat pump is set higher first, before the boiler helps, also when its intake sensor reads colder than the unit itself. Also an info line at a room, the room card without its head, and *Back to automatic* after *Quick heat-up* and *Dry now*. The configuration stays at version 3; everything learned is kept.

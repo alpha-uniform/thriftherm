@@ -2,6 +2,53 @@
 
 [English](../en/CHANGELOG.md) | **Deutsch**
 
+## 0.6.5 – 23.10.2026
+
+Weniger unnötige Brennerstarts: Ein Anstieg des Vorlaufs wartet, solange die Therme ihre Sperrzeit abwartet, und ein gerade beendetes Komfortfenster ruft die Therme nicht mehr für nichts. Dazu ein Sensor für die Heizstarts am Tag, die Karte als Dashboard-Ressource (Issue #1), keine Wärmepumpen-Warnung bei *Nur Heizung* und 25 Fehler aus einem testgetriebenen Review. Die Konfiguration bleibt bei Version 3, alles Gelernte bleibt erhalten.
+
+### Neu
+
+- **Sensor *Therme Heizstarts heute*:** zählt die Starts des Brenners für die Heizung seit Mitternacht (Warmwasser zählt nicht) und beginnt jeden Tag bei null. Die Statistik von Home Assistant zeigt damit die Starts jedes Tages, etwa in einer Statistik-Grafik mit *Änderung* je Tag. Er bleibt über einen Neustart erhalten.
+
+### Geändert
+
+- COP-Werte der Midea PortaSplit nachgezogen (11. bis 21.10.2026), etwas niedriger als bisher: bei 4 bis 6 °C draußen 3,30 aus 41 Messpunkten, bei 6 bis 8 °C 3,63 aus 59, bei 8 bis 10 °C 3,55 aus 64, bei 10 bis 12 °C 3,91 aus 49, bei 12 bis 14 °C 4,13 aus 37.
+- **Lernstatus an der Grenze der Heizkurven-Korrektur:** Stößt ein Lernschritt an die Grenze von ±10 Grad für Höhe oder Steigung, zeigt der Lernstatus jetzt *Heizkurven-Korrektur an ihrer Grenze (Höhe oder Steigung, je ±10 Grad)*. Vorher stand dort nur, dass ein Raum nicht hinkommt, und der Schritt fiel still weg.
+- **HACS:** Thriftherm steht seit dem 21.10.2026 in der Standardliste von HACS. Die Anleitung beschreibt jetzt die Suche in HACS statt eines benutzerdefinierten Repositorys.
+
+### Behoben
+
+- **Karte bei *Nur Heizung*:** Ist die Wärmepumpe ausgesteckt und die Betriebsart *Nur Heizung* oder *Sommerbetrieb*, zeigt die Karte keine Warnung mehr, und der Problem-Sensor *Wärmepumpe für Heizen gesperrt* bleibt aus. Erst in einer Betriebsart, die sie nutzt (*Automatik*, *Nur Wärmepumpe*, *Abwesend*), ist die Warnung mit dem Umschalten wieder da, und nur noch als eine Zeile statt zwei.
+- **Weniger unnötige Brennerstarts:**
+  - Steigt der Vorlauf-Sollwert, während die Therme nach einem Heizlauf nachläuft oder ihre Brennersperre abwartet (S.5–S.8), wartet der Anstieg jetzt, bis sie wieder zünden darf. Vorher zündete sie dadurch Minuten zu früh, jedes Mal ein Start mehr (gesehen am 22.10.2026). Frostschutz, *Schnell aufheizen* und sinkende Sollwerte warten nicht, und nach höchstens 30 Minuten geht der Anstieg auch so hinaus. Solange er wartet, zeigt *Therme-Steuerbefehl* unter *Wartet auf*: *Therme in Sperrzeit: Anstieg wartet*. Thermen ohne Statuscode verhalten sich wie bisher.
+  - Endete die Komfortzeit zweier Räume zur selben Minute und schaltete ein Zeitplan Millisekunden vor dem anderen, rief der zweite Raum die Therme noch einmal für nichts. Ein Komfortende, das bis zu zwei Minuten zurückliegt, zählt jetzt noch als Ende.
+- Nach Stunden ohne Vorgabe an die Therme (Thermendaten fehlten, Steuerung aus, Home Assistant aus) konnte der Vorlauf in einem Schritt von 35 auf 60 Grad springen. Er steigt jetzt höchstens 5 Grad über den zuletzt gesendeten Wert, danach wie gewohnt 5 Grad je 10 Minuten.
+- **Review, zweite Runde (testgetrieben):** 7 weitere Fehler mit je einem Test behoben, der vorher fehlschlug:
+  - *COP der Wärmepumpe:* Dreht der Lüfter in den Taktpausen langsamer als der tiefste Punkt der Luftmengen-Kennlinie, wird die Luftmenge nach dem Lüftergesetz weitergerechnet, statt den ganzen Takt zu verwerfen. Bei der PortaSplit hatte der COP vorher nur in rund 35 % der Laufzeit einen Wert.
+  - *Abtau-Erkennung:* Normales Herunterregeln des Verdichters bei Frost sperrt die Wärmepumpe nicht mehr zwei Stunden als vereist. Ein Verdichter, der gerade von selbst stoppt, zählt nicht mehr als Leistungsabfall oder vereister Außen-Coil.
+  - Beim Lernen der Aufheizraten zählt ein Raum nur noch als beheizt, wenn eine Wärmequelle ihn wirklich erreicht.
+  - Ein spätes Echo des Ventils, das Better Thermostat direkt nach unserem Sollwert übernimmt, wird als Echo erkannt, statt als Antwort des Thermostats festgehalten zu werden.
+  - Scheitert der Start der Wärmepumpe, übernimmt die Therme die versorgten Räume sofort, nicht erst nach der Wartezeit bis zum nächsten Versuch.
+  - Ein Zurücksetzen des Wärmepumpen-Lernens während eines fehlschlagenden Befehls bleibt bestehen.
+- **Gesamt-Review (testgetrieben):** 18 Fehler mit je einem Test behoben, der vorher fehlschlug:
+  - *Nur Wärmepumpe:* Die Therme heizt nur noch bei Frost, nicht mehr, wenn die Wärmepumpe von Hand gesteuert wird, wartet oder nicht liefert.
+  - Der Vorlauf-Zuschlag nach einem Aufheizen geht zurück, auch wenn der Raum eine Zehntel vor dem Soll aufhört zu rufen.
+  - Das Lernen der Heizkurve ohne Lastmodell zählt den Bedarfszuschlag der gemeinsamen Linie mit: kein Lernschritt mehr bei schon maximalem Vorlauf, und ein langsamer Raum hebt die Kurve.
+  - Eine Dusche, die vor einem Neustart erkannt wurde, wird danach noch getrocknet.
+  - Ein Trocknen lässt die Wärmepumpe nicht mehr als ausgelastet erscheinen, sodass die Therme für einen anderen Raum gerufen würde.
+  - *Fast erreicht* nennt beim Mitheizen die Temperatur des eigenen Solls.
+  - Eine Wärmepumpe ohne Lüfterstufen bekommt beim Start ihren Sollwert; vorher brach der Start an der abgelehnten Lüfterstufe ab. Ein Gerät ohne *Auto* bekommt nach Trocknen oder Schnell aufheizen seine eigene Stufe zurück.
+  - Ein Fensterkontakt, der kurz ausfällt und offen zurückkommt, gilt sofort wieder als offen.
+  - Nach dem Wiedereinschalten der Thermensteuerung zählt eine Sperre erst, wenn sie eine Weile steht.
+  - Ein Zyklus ohne Raumtemperatur (etwa direkt nach einem Neustart) vergisst nicht mehr, ob der Raum ruft oder als fast erreicht gilt.
+  - Ein Zeitfenster, das endet, wo es beginnt (z. B. `00:00-00:00`), gilt als ganzer Tag statt als leeres Fenster.
+  - Die Daten der Therme werden wieder jede Minute gelesen, nicht nur jede zweite, wenn ein Zyklus Millisekunden zu früh kommt.
+  - *Zurück zur Automatik* für einen unbekannten Raum wird abgelehnt statt still nichts zu tun.
+  - Ein Befehl an die Wärmepumpe, der erst beim zweiten Versuch rausging, steht im Protokoll als gesendet.
+  - Karte: Lehnt Home Assistant einen gestuften Wert ab, zeigt die Karte wieder den alten. Eine Wärmepumpe, die nicht heizen kann, ist eine Warnung statt zwei. Nach dem Entfernen und erneuten Hinzufügen von Thriftherm steht die Karte wieder unter den Ressourcen.
+- **Karte manchmal nicht gefunden** ([#1](https://github.com/alpha-uniform/thriftherm/issues/1)): *Custom element not found: thriftherm-card*, vor allem in Firefox und in der App. Thriftherm trägt die Karte jetzt selbst als Dashboard-Ressource ein (*Einstellungen → Dashboards → Ressourcen*), mit der Version in der Adresse; einen Eintrag von Hand für dieselbe Datei übernimmt es. Wer die Ressourcen in YAML hält, trägt sie selbst ein ([Fehlersuche](FEHLERSUCHE.md#die-thriftherm-karte-fehlt-custom-element-doesnt-exist)).
+- **Trocknen mit der Wärmepumpe im Modus „Sollwert folgt den Räumen“:** Das Gerät bekommt jetzt mindestens seinen eigenen Messwert plus 1 Grad, höchstens 2 Grad über dem Trocknungsziel. Vorher bekam es nur das Trocknungsziel; maß es dort, wo es steht, schon mehr, stand es samt Lüfter, und ins Bad kam keine Luft.
+
 ## 0.6.4 – 18.10.2026
 
 Die Wärmepumpe wird zuerst höher gestellt, bevor die Therme hilft, auch wenn ihr Ansaugfühler kälter misst als das Gerät selbst. Dazu eine Infozeile am Raum, die Raumkarte ohne Kopfzeile und *Zurück zur Automatik* nach *Schnell aufheizen* und *Jetzt trocknen*. Die Konfiguration bleibt bei Version 3, alles Gelernte bleibt erhalten.

@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import pytest
 
-from custom_components.thriftherm.engines import heat_up
+from custom_components.thriftherm.engines import heat_call, heat_up
 from custom_components.thriftherm.engines.boiler_control import DEMAND_BOOST_K, decide
 from custom_components.thriftherm.engines.boiler_load import LoadLine
 from custom_components.thriftherm.engines.boiler_memory import BoilerMemory
@@ -179,6 +179,18 @@ def test_a_short_heat_up_that_raced_takes_a_step_off_at_its_end():
         room = living(21.3 + minute * 0.05, target=22.5)
         window = heat_up.follow(window, (replace(room, heating_allowed=minute < 19),), 1.0, NOW + minute * 60, True, True)
     assert window["wohnzimmer"].extra_k == 16.0
+
+
+def test_a_short_heat_up_that_raced_takes_a_step_off_when_its_call_ends_a_tenth_short_of_target():
+    """Sensors report tenths: the room's call stops 0.1 K below target in the very cycle the heat-up ends."""
+    states = {"wohnzimmer": HeatUp(extra_k=16.0)}
+    call = heat_call.CallMemory()
+    for minute in range(23):  # 1.1 K in 22 minutes, a tenth every two minutes
+        room = living(round(21.3 + 0.1 * (minute // 2), 1), target=22.5)
+        state, call = heat_call.update(room, call, NOW + minute * 60)
+        states = heat_up.follow(states, (replace(room, boiler_call=state),), 1.0, NOW + minute * 60, True, True)
+    assert state == heat_call.CALL_IDLE
+    assert states["wohnzimmer"] == HeatUp(extra_k=14.0)
 
 
 def test_the_extra_is_judged_in_the_hour_after_a_shower():

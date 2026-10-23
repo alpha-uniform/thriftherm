@@ -104,7 +104,8 @@ Die Bedienung steht in der [Anleitung, Abschnitt 5](ANLEITUNG.md#5-thermensteuer
   - solange er anfordert, ein Bedarfszuschlag von 8 Grad mal seinem Heizbedarf. 100 % Heizbedarf heißt: Der Raum liegt 2 Grad unter Soll (Standard, *Abweichung für 100 % Heizbedarf*), mit seinem Trend eine halbe Stunde vorausgerechnet (Standard, *Trend-Vorausschau*);
   - solange er mit Zuschlag aufheizt, sein Zuschlag fürs [Aufheiztempo](#aufheiztempo).
 - **Grenzen:** Erst die Summe wird auf Minimum und Maximum begrenzt.
-- **Anstieg begrenzt:** höchstens 5 Grad je 10 Minuten, gerechnet ab dem Beginn des Anstiegs. So springt die Therme nicht von 30 auf 60 °C. Frostschutz ist davon ausgenommen.
+- **Anstieg begrenzt:** höchstens 5 Grad je 10 Minuten, gerechnet ab dem Beginn des Anstiegs, und nie mehr als 5 Grad über dem zuletzt gesendeten Wert, auch nach einer Pause ohne Vorgabe. So springt die Therme nicht von 30 auf 60 °C. Frostschutz ist davon ausgenommen.
+- **Anstieg wartet in der Sperrzeit:** Meldet die Therme nach einem Heizlauf Nachlauf oder Brennersperre (S.5 bis S.8), geht ein höherer Sollwert erst hinaus, wenn sie wieder zünden darf. Ein Anstieg in dieser Zeit ließ sie sonst Minuten zu früh zünden, jedes Mal ein Start mehr. Frostschutz und *Schnell aufheizen* warten nicht, und nach spätestens 30 Minuten geht der Anstieg auch so hinaus. Solange er wartet, zeigt *Therme-Steuerbefehl* unter *Wartet auf*: *Therme in Sperrzeit: Anstieg wartet*. Thermen ohne Statuscode sind nicht betroffen.
 - **Heizen und Sperren** wechseln höchstens alle 5 Minuten. Frostschutz ist davon ausgenommen.
 - **Frostschutz** heizt, bis der Raum 1 Grad über der Frostschutztemperatur liegt. So schaltet ein Raum knapp an der Grenze die Therme nicht alle paar Minuten an und aus.
 
@@ -113,7 +114,7 @@ Die Bedienung steht in der [Anleitung, Abschnitt 5](ANLEITUNG.md#5-thermensteuer
 - Ein Raum fordert ab 0,3 Grad unter Soll an und hört auf, wenn er weniger als 0,1 Grad darunter liegt.
 - **Stillstand:** Läuft die Anforderung seit einer Stunde, liegt der Raum höchstens 0,3 Grad unter Soll und steigt langsamer als 0,15 Grad je Stunde, gilt er als erreicht. Er fordert erst wieder an, wenn er 0,5 Grad unter Soll fällt oder sich der Sollwert ändert. Ein unbekannter Trend, etwa kurz nach einem Neustart, gilt nicht als Stillstand.
 - **Sinkt der Sollwert** (z. B. eine Übersteuerung endet), wird eine laufende Anforderung neu mit der Startschwelle bewertet.
-- **Ende der Komfortzeit:** In der letzten halben Stunde einer Komfortzeit fordert kein Raum mehr an. Die Wärme käme zu spät.
+- **Ende der Komfortzeit:** In der letzten halben Stunde einer Komfortzeit fordert kein Raum mehr an. Die Wärme käme zu spät. Das gilt auch kurz nach dem Ende, solange der Zeitplan noch nicht umgeschaltet hat (bis zu 2 Minuten).
 - *Schnell aufheizen* ist von Stillstand und Komfortende ausgenommen.
 
 ### Mitheizen
@@ -208,12 +209,14 @@ Was gelernt wird und wo du es siehst, steht in der [Anleitung, Abschnitt 6](ANLE
 | Bereich | Was gelernt wird | Woraus |
 |---|---|---|
 | Therme | Heizkurven-Korrektur je Lastfall und Raum, in zwei Teilen, je ±10 Grad: **Höhe** (gilt bei jeder Außentemperatur) und **Steigung** (voll bei −10 °C, gar nicht bei +15 °C) | Spreizung Vorlauf/Rücklauf, wie schnell die Räume warm werden, und Taktbetrieb |
-| Räume | Aufheizrate je Raum (Grad je Stunde) | Heizphasen bei geschlossenem Fenster, mindestens 30 Minuten lang und mindestens 0,5 Grad Anstieg. Es gilt der Median der letzten 10 |
+| Räume | Aufheizrate je Raum (Grad je Stunde) | Heizphasen bei geschlossenem Fenster, in denen eine Wärmequelle den Raum erreicht, mindestens 30 Minuten lang und mindestens 0,5 Grad Anstieg. Es gilt der Median der letzten 10 |
 | Räume | Auskühlkoeffizient je Raum (1/h): Temperaturabfall je Stunde = Koeffizient × (drinnen − draußen) | Phasen ohne Heizen, Fenster zu, drinnen mindestens 5 Grad wärmer als draußen, mindestens eine Stunde lang und mindestens 0,3 Grad Abfall. Es gilt der Median der letzten 10 |
 | Räume | Heizleistung je Raum (Grad je Stunde ohne Verluste) | Aufheizrate plus die Verluste während der Phase. Anders als die reine Rate gilt sie auch im Winter |
 | Wärmepumpe | COP-Kennfeld über der Außentemperatur, Sollwert-Korrektur | gemessene COP-Läufe, siehe [Wärmepumpe](#wärmepumpe) |
 
 **Am Vorlauf-Minimum lernt die Kurve nicht nach oben.** An einem milden Tag liegt die Kurve unter dem Minimum, und gesendet wird das Minimum. Kommt ein Raum dann nicht hin, braucht er mehr als das Minimum; über die Kurve an einem kalten Tag sagt das nichts. Früher hob ein Schritt den Wert um die ganze Lücke bis zum Minimum: Im Test vom 15.10.2026 stieg bei 16 °C draußen ein Wert mit einem Schritt um 4,4 Grad, nach drei Schritten stand das Schlafzimmer bei 9,3 Grad mehr. Jetzt bleibt das Lernen dort stehen, und der Lernstatus zeigt *Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum*. Hält das an, ist das Minimum für diesen Raum zu niedrig, und du hebst es in den Thermen-Optionen an.
+
+**An der Grenze der Korrektur** (±10 Grad für Höhe oder Steigung) geht ein Schritt nur noch bis zur Grenze, oder er entfällt. Dann zeigt der Lernstatus *Heizkurven-Korrektur an ihrer Grenze (Höhe oder Steigung, je ±10 Grad)*, bis eine Stunde und 20 Minuten lang kein Schritt mehr an die Grenze stößt. Welche Linie es ist, steht im Attribut `curve_by_load`. Steht ein einzelner Raum dauerhaft dort, liegt es meist nicht an der Kurve, sondern am Heizkörper oder an der Hydraulik dieses Raums.
 
 ### Höhe und Steigung
 
@@ -339,7 +342,7 @@ Die Bedienung steht in der [Anleitung, Abschnitt 7](ANLEITUNG.md#7-wärmepumpe-o
 Der COP ist die Wärme, die die Wärmepumpe in die Luft bringt, geteilt durch den Strom, den sie braucht.
 
 - **Wärme:** aus der Luftmenge und dem Unterschied im Wärmeinhalt zwischen Ansaug- und Ausblasluft. Dafür zählen Temperatur und Feuchte der Ansaugluft und die Temperatur der Ausblasluft.
-- **Luftmenge:** aus der Lüfterdrehzahl über die Kennlinie (Drehzahl → m³/h) aus der Einrichtung, mal Schlauchfaktor. Knapp außerhalb der Kennlinie (bis 20 % darüber oder darunter) rechnet Thriftherm mit der Drehzahl weiter.
+- **Luftmenge:** aus der Lüfterdrehzahl über die Kennlinie (Drehzahl → m³/h) aus der Einrichtung, mal Schlauchfaktor. Knapp außerhalb der Kennlinie (bis 20 % darüber oder darunter) rechnet Thriftherm mit der Drehzahl weiter. Steht der Verdichter zwischen zwei Starts, auch weiter darunter: Sonst fehlte die Wärme der Pause, und der ganze Takt fiele weg.
 - **Schlauchfaktor:** Er korrigiert die Luftmenge, nicht die Wärme. Gegen den Widerstand der Schläuche fördert der Lüfter bei gleicher Drehzahl weniger Luft. Was die Schläuche unterwegs an Wärme abgeben, bleibt in der Wohnung und ist kein Verlust.
 
 Ein Messwert zählt erst, wenn das Gerät eingeschwungen ist:
@@ -372,18 +375,18 @@ Die Midea meldet kein Abtauen. Thriftherm schließt es aus Mustern: aus den Temp
 | Innen-Coil zweimal in Folge mehr als 5 Grad kälter als die Ansaugluft (ohne Ansaugwert: unter 5 °C), Verdichter läuft | Kreislauf läuft rückwärts |
 | Ausblasluft über 3 Minuten weniger als 1 Grad wärmer als die Ansaugluft, im eingeschwungenen Heizen | kalte Ausblasluft |
 | Leistung fällt innerhalb von 2 Minuten um mehr als 40 % (von über 300 W), Verdichter läuft | Leistungsabfall |
-| Außen-Coil über 10 Minuten mehr als 8 Grad (Standard) unter der Außenluft | vereister Außen-Coil |
+| Außen-Coil über 10 Minuten mehr als 8 Grad (Standard) unter der Außenluft, Verdichter läuft | vereister Außen-Coil |
 | unter 5 °C draußen und über 80 % Luftfeuchte | Vereisungswetter, nur angezeigt |
 
 - **Ein Abtauzyklus** ist: Kreislauf umgekehrt, Kreislauf läuft rückwärts, oder kalte Ausblasluft zusammen mit Leistungsabfall. Er wird einmal gezählt, wie lange er auch dauert. Seine COP-Werte werden verworfen.
-- **Gesperrt** wird bei mehr als 3 Abtauzyklen in 90 Minuten (Standard) oder bei vereistem Außen-Coil zusammen mit kalter Ausblasluft oder Leistungsabfall. Ein Außen-Coil 8 bis 12 Grad unter der Luft ist bei Volllast im Frost allein noch normal.
+- **Gesperrt** wird bei mehr als 3 Abtauzyklen in 90 Minuten (Standard) oder bei vereistem Außen-Coil zusammen mit kalter Ausblasluft. Ein Außen-Coil 8 bis 12 Grad unter der Luft ist bei Volllast im Frost allein noch normal, ein Leistungsabfall dabei auch: So drosselt der Verdichter (gesehen am 20.10.2026: von 630 auf 348 W, und die Wärmepumpe heizte weiter).
 - Kreislauf und Leistung werden nur im Heizbetrieb gelesen. Ein Verdichter, der zum Kühlen oder Entfeuchten anläuft, zeigt dieselben Temperaturen.
 
 ### Bad-Trocknung
 
 - **Auslöser:** Die absolute Feuchte liegt mehr als 2,5 g/m³ über ihrem Grundwert (Standard, *Auslöser: Anstieg der absoluten Feuchte*). Der Grundwert ist der Median der letzten drei Stunden ohne die letzten 20 Minuten. Liegt die relative Feuchte schon über 70 %, reichen 60 % dieses Anstiegs.
 - **Start nach dem Duschen:** Der Anstieg merkt die Dusche nur vor. Die Trocknung beginnt, sobald die Feuchte drei Minuten lang keinen neuen Höchstwert erreicht (mehr als 0,2 g/m³ darüber), spätestens 20 Minuten nach dem Anstieg.
-- **Während der Trocknung** bläst die Wärmepumpe mit ihrer höchsten Lüfterstufe und der Trocknungs-Solltemperatur (Standard 22 °C), nie über Soll plus 1,5 Grad. Kann sie gerade nicht heizen, wartet die Trocknung mit ihrer restlichen Zeit.
+- **Während der Trocknung** bläst die Wärmepumpe mit ihrer höchsten Lüfterstufe und der Trocknungs-Solltemperatur (Standard 22 °C), nie über Soll plus 1,5 Grad. Folgt ihr Sollwert den Räumen, bekommt sie dabei ihren eigenen Messwert plus 1 Grad, wenn das mehr ist als der Sollwert der Räume; dieser Vorsprung reicht höchstens bis 2 Grad über das Trocknungsziel. Mit dem Sollwert der Räume allein bliebe sie samt Lüfter stehen, wenn es an ihrem Platz schon so warm ist (gesehen am 18.10.2026). Kann sie gerade nicht heizen, wartet die Trocknung mit ihrer restlichen Zeit.
 - **Ende:** wenn der Taupunkt wieder mindestens 4 Grad unter der Raumtemperatur liegt und die absolute Feuchte höchstens 1 g/m³ über dem Grundwert; spätestens nach der längsten Dauer (Standard 60 Minuten). Bei offenem Fenster bläst die Wärmepumpe weiter. Bleibt es länger als 20 Minuten offen und liegt die Feuchte dann noch mehr als 1 g/m³ über dem Grundwert, endet die Trocknung ebenfalls.
 - **Pause danach:** Endete eine Trocknung wegen ihrer längsten Dauer oder wegen eines wirkungslos offenen Fensters, startet drei Stunden lang keine neue von selbst. Der Grundwert enthält in dieser Zeit noch die Luft von vor dem Duschen (gemessen am 25.09.2026).
 - **Der Knopf *Jetzt trocknen*** startet sofort und läuft die volle Dauer, egal wie Feuchte und Fenster stehen.
@@ -396,7 +399,7 @@ Mit dem Schalter bekommt die Wärmepumpe die höchste Solltemperatur der versorg
 
 - Ein versorgter Raum hängt, wenn er unter Soll liegt und langsamer als 0,3 Grad je Stunde steigt. Ein unbekannter Trend zählt nicht, ein Raum in der Trocknung auch nicht.
 - Hängt er 20 Minuten, hebt Thriftherm den Sollwert um ein halbes Grad (oder die gröbere Stufe des Geräts), höchstens 2 Grad über den Sollwert-Abstand (Attribut `eco_offset_k`).
-- Das geschieht nur, solange das Gerät drosselt, also seine Ansaugluft bis auf 1 Grad an seinem Sollwert liegt. Läuft es schon mit voller Kraft oder ist das Anheben ausgeschöpft, hilft die Therme (Attribut `boiler_helps`), bis die Räume warm sind.
+- Das geschieht nur, solange das Gerät drosselt, also sein eigener Messwert bis auf 1 Grad an seinem Sollwert liegt (ohne eigenen Messwert: der Verdichter steht, zuletzt die Ansaugluft). Läuft es schon mit voller Kraft oder ist das Anheben ausgeschöpft, hilft die Therme (Attribut `boiler_helps`), bis die Räume warm sind.
 
 **Zurücknehmen:** Sind alle versorgten Räume warm, geht der Sollwert in denselben Schritten zurück, frühestens zwei Stunden nach dem letzten Schritt. Liegen alle mindestens 0,5 Grad über Soll, alle 20 Minuten. Jeder Schritt lässt das Gerät piepen, deshalb gibt es wenige. Gesehen am 13.10.2026: Nach einem Neustart begannen die zwei Stunden neu, und das Gerät lief 1,7 Stunden mit angehobenem Sollwert, obwohl alle Räume 1 bis 2 Grad über Soll lagen.
 
