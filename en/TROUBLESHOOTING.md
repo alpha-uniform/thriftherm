@@ -92,7 +92,7 @@ A boiler through entities (preview) is different: if Home Assistant crashes or l
 
 A window is open, or the room's thermostat is switched off. Close the window or switch the thermostat back to *heat*.
 
-If a radiator thermostat has not reported for two and a half hours, the room does not call for heat either. A repair notice appears for it.
+If a radiator thermostat has not reported for two and a half hours, the room does not call for heat either. A repair notice appears for it. With ZHA, ZHA's own *Last seen* counts as a report as well.
 
 ### A room is at 15 °C
 

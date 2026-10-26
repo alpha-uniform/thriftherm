@@ -4,6 +4,10 @@
 
 Since 0.5.0 the configuration stays at version 3: every update since keeps everything learned.
 
+## 0.6.7 — 2026-10-26
+
+- Fixed: with ZHA, thermostats and room sensors counted as silent when their values did not change for a long time ([#2](https://github.com/alpha-uniform/thriftherm/issues/2)).
+
 ## 0.6.6 — 2026-10-26
 
 - Troubleshooting: a room does not reach its target although the correction is at its limit (radiator too small).
