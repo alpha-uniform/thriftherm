@@ -4,6 +4,11 @@
 
 Seit 0.5.0 bleibt die Konfiguration bei Version 3: Jedes Update seitdem behält alles Gelernte.
 
+## 0.6.6 – 26.10.2026
+
+- Fehlersuche: Ein Raum kommt nicht ans Soll, obwohl die Korrektur an der Grenze steht (Heizkörper zu klein).
+- Behoben: Der Sensor *Therme Heizstarts heute* zählte manchmal einen Start wieder ab; Home Assistant warnte dann im Protokoll.
+
 ## 0.6.5 – 23.10.2026
 
 - Weniger unnötige Brennerstarts: Ein Anstieg des Vorlaufs wartet, solange die Therme ihre Sperrzeit abwartet (S.5–S.8).

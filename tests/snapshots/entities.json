@@ -2430,7 +2430,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:counter",
-   "state": "1",
+   "state": "0",
    "translation_key": "boiler_starts_today",
    "unique_id": "ENTRY_boiler_starts_today",
    "unit_of_measurement": null
@@ -4220,7 +4220,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:counter",
-   "state": "1",
+   "state": "0",
    "translation_key": "boiler_starts_today",
    "unique_id": "ENTRY_boiler_starts_today",
    "unit_of_measurement": null
@@ -5824,7 +5824,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:counter",
-   "state": "1",
+   "state": "0",
    "translation_key": "boiler_starts_today",
    "unique_id": "ENTRY_boiler_starts_today",
    "unit_of_measurement": null

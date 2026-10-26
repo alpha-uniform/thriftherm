@@ -198,7 +198,7 @@ Einzelheiten zu allen Bereichen: [Wie Thriftherm rechnet: Lernen](FUNKTIONSWEISE
 - den *Lastfall jetzt* und den *Raum, der den Vorlauf bestimmt*;
 - unter *Heizkurven-Korrektur je Lastfall und Raum* für jeden Fall und Raum (Einträge wie `few:badezimmer`) Korrektur, Höhe, Steigung, ob der Wert gefunden ist, die Betriebsstunden und wie oft dabei ein Raum hing.
 
-Der Sensor *Therme Brenneranteil* zeigt, welchen Anteil der letzten Stunde der Brenner für die Heizung lief, und die Zahl der Starts. Er schreibt vorerst nur mit. Der Sensor *Therme Heizstarts heute* zählt die Brennerstarts für die Heizung seit Mitternacht; die Statistik von Home Assistant zeigt damit die Starts jedes Tages.
+Der Sensor *Therme Brenneranteil* zeigt, welchen Anteil der letzten Stunde der Brenner für die Heizung lief, und die Zahl der Starts. Er schreibt vorerst nur mit. Der Sensor *Therme Heizstarts heute* zählt die Brennerstarts für die Heizung seit Mitternacht. Ein Start zählt, sobald sein Brennerlauf endet, denn erst dann steht fest, dass er nicht für Warmwasser war. Die Statistik von Home Assistant zeigt damit die Starts jedes Tages.
 
 **Was du einstellen kannst** (Thermen-Optionen):
 

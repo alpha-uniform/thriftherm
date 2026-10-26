@@ -1702,5 +1702,10 @@ async def test_the_boiler_heating_starts_of_the_day_are_a_sensor(hass: HomeAssis
 
     state = hass.states.get("sensor.thriftherm_boiler_heating_starts_today")
     assert state is not None
-    assert int(state.state) == entry.runtime_data.data["boiler_command"].starts_today == 1  # the test home burns at start
+    assert int(state.state) == entry.runtime_data.data["boiler_command"].starts_today == 0  # the test home burns at start
+    hass.states.async_set("sensor.gas_flow", "0.0")  # the burn ends as a heating burn: now it is a start
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    state = hass.states.get("sensor.thriftherm_boiler_heating_starts_today")
+    assert int(state.state) == entry.runtime_data.data["boiler_command"].starts_today == 1
     assert state.attributes["state_class"] == "total_increasing"  # a daily counter: the statistics give starts per day

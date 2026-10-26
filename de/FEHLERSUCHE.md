@@ -120,6 +120,12 @@ Die Karte zeigt dann *Fast erreicht, heizt wieder unter …*. Hat ein Raum eine 
 
 Kommt ein Raum öfter nicht ganz hin, ist meist der Vorlauf zu niedrig. Stell ein *Aufheiztempo* ein (z. B. 1 Grad pro Stunde): Dann hebt Thriftherm den Vorlauf an, solange der Raum zu langsam steigt, und merkt sich, was er braucht. Das kostet etwas mehr Gas.
 
+### Ein Raum kommt nicht ans Soll, obwohl die Korrektur an der Grenze steht
+
+Der *Lernstatus* zeigt dann *Heizkurven-Korrektur an ihrer Grenze*, und im Attribut `curve_by_load` steht die Linie dieses Raums bei rund 10 Grad. Thriftherm hat den Vorlauf für ihn also so weit angehoben, wie es darf. Meist ist der Heizkörper zu klein für den Raum, etwa ein schmaler Handtuchheizkörper in einem Bad mit Außenwand. Mehr Vorlauf bringt so einem Raum nur noch wenig.
+
+Prüf zuerst, ob das Ventil ganz öffnet und der Heizkörper entlüftet ist. Bleibt es dabei, stell das Soll des Raums etwas niedriger oder ersetz den Heizkörper durch einen größeren. Über die 10 Grad geht die Korrektur nie hinaus, und der höhere Vorlauf, solange der Raum ruft, kostet nur wenig Gas.
+
 ### Ein Thermostat nimmt keine Sollwerte an
 
 Das Thermostat hängt. Nimm die Batterie heraus und setz sie wieder ein, und aktualisiere die Firmware.

@@ -120,6 +120,12 @@ The card then shows *Nearly there, heats again below …*. When a room has heate
 
 If a room often falls a little short, the flow is usually too low. Set a *heat-up speed* (e.g. 1 degree per hour): Thriftherm then raises the flow while the room rises too slowly and remembers what it needs. That burns a little more gas.
 
+### A room does not reach its target although the correction is at its limit
+
+The *Learning state* then shows *Heating curve correction at its limit*, and in the attribute `curve_by_load` this room's line stands at about 10 degrees. So Thriftherm has raised the flow for it as far as it may. Usually the radiator is too small for the room, a narrow towel radiator in a bathroom with an outside wall, say. More flow does little for such a room.
+
+First check that the valve opens fully and the radiator is bled. If it stays that way, set the room's target a little lower or replace the radiator with a bigger one. The correction never goes beyond the 10 degrees, and the higher flow while the room calls costs only a little gas.
+
 ### A thermostat does not accept setpoints
 
 The thermostat hangs. Take the battery out and put it back, and update its firmware.

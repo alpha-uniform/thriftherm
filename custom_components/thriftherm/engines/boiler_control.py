@@ -243,7 +243,9 @@ def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerM
         mem = learning.drop_burn_in_progress(mem)
     # Where the boiler does not say itself what it burns for, a tap in the hour after hot water is
     # likely more hot water that the temperatures missed: those burns are left out as well.
-    mem = learning.track_burns(mem, burning and (inp.status_known or not cooling_back), now, inp.day_start_ts)
+    mem = learning.track_burns(
+        mem, burning and (inp.status_known or not cooling_back), now, inp.day_start_ts, readable=inp.boiler_available
+    )
     cmd, mem = _decide(inp, mem, burning and not cooling_back, burning)
     share, starts = learning.burner_share(mem, now)
     cmd = replace(cmd, burner_share=share, burner_starts_last_hour=starts, starts_today=mem.starts_today)

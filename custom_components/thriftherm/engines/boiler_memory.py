@@ -56,6 +56,7 @@ class BoilerMemory:
     samples: int = 0
     last_review_ts: float | None = None
     burn_since_ts: float | None = None  # the burner is on for the heating since then; not stored
+    burn_interrupted: bool = False  # it was on when Home Assistant stopped; its start is not counted yet (`track_burns`)
     burns: tuple[tuple[float, float], ...] = ()  # (start, end) of the heating burns of the last hour
     # the heating burner's starts since local midnight, and that midnight: a sensor shows them, the statistics a day each
     starts_today: int = 0
@@ -81,6 +82,8 @@ class BoilerMemory:
         # Restored, a burn was closed at the first cycle after the stop: six hours away gave a burn of
         # six hours and a burner share of 1.0, and a short restart stretched a burn of one minute
         # (review 2026-10-13). A store that still holds `burn_since_ts` or `last_flow_ts` is read without them.
+        # Only that a burn was on is kept, as `burn_interrupted`: a start is counted as its burn ends, so
+        # without it a burn that ended while Home Assistant was away would never be counted.
         return {
             "offset_k": self.offset_k,
             "slope_k": self.slope_k,
@@ -91,6 +94,7 @@ class BoilerMemory:
             **{key: getattr(self, key) for key in _STORED_FLOATS},
             "burns": [list(burn) for burn in self.burns],
             "starts_today": self.starts_today,
+            "burn_interrupted": self.burn_since_ts is not None or self.burn_interrupted,
             "lines": lines_to_storage(self.lines),
             "heat_up": heat_up.to_storage(self.heat_up),
         }
@@ -119,6 +123,7 @@ class BoilerMemory:
             state=state if state in (BOILER_PLAN_HEAT, BOILER_PLAN_BLOCK) else None,
             burns=tuple(burns),
             starts_today=int(starts) if starts is not None and isfinite(starts) and starts > 0 else 0,
+            burn_interrupted=data.get("burn_interrupted") is True,
             lines=lines_from_storage(data.get("lines")),
             heat_up=heat_up.from_storage(data.get("heat_up")),
             **{key: as_float(data.get(key)) for key in _STORED_FLOATS},
