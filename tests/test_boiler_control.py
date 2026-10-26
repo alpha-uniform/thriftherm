@@ -1096,9 +1096,9 @@ def test_the_heating_starts_of_the_day_are_counted_from_midnight_and_kept_throug
     for i in range(3):  # three burns of 45 s, told by the gas meter
         start = NOW + i * 900.0
         on = replace(inp(rooms, mode="active", now=start, flow=38.0, ret=34.0), gas_power_w=9000.0, day_start_ts=midnight)
-        cmd, mem = _bc.decide(on, mem)
-        _, mem = _bc.decide(replace(on, now_ts=start + 45.0, gas_power_w=0.0), mem)
-    assert cmd.starts_today == 3  # each one counted as it starts
+        _, mem = _bc.decide(on, mem)
+        cmd, mem = _bc.decide(replace(on, now_ts=start + 45.0, gas_power_w=0.0), mem)
+    assert cmd.starts_today == 3  # each one counted as its burn ends
 
     restored = _bc.BoilerMemory.from_storage(mem.to_storage())
     shower = replace(inp(rooms, mode="active", now=NOW + 3000.0), gas_power_w=20000.0, reported_mode="hot_water")
@@ -1113,8 +1113,126 @@ def test_the_heating_starts_of_the_day_are_counted_from_midnight_and_kept_throug
 
 def test_a_burn_that_turned_out_to_be_hot_water_is_no_start_of_the_heating():
     mem = learning.track_burns(_bc.BoilerMemory(), True, NOW, day_start_ts=NOW - 60.0)
-    assert mem.starts_today == 1
-    assert learning.drop_burn_in_progress(mem).starts_today == 0
+    assert mem.starts_today == 0  # not yet: the burn may still turn out to be hot water
+    dropped = learning.track_burns(learning.drop_burn_in_progress(mem), False, NOW + 10.0, day_start_ts=NOW - 60.0)
+    assert dropped.starts_today == 0 and dropped.burns == ()
+    heated = learning.track_burns(mem, False, NOW + 45.0, day_start_ts=NOW - 60.0)
+    assert heated.starts_today == 1 and heated.burns == ((NOW, NOW + 45.0),)  # it ended as a heating burn: a start
+
+
+def test_a_burn_the_boiler_then_reports_as_hot_water_never_takes_a_start_of_the_day_back():
+    """Seen 2026-10-22 to 25: the starts of the day went from 71 to 72 and ten seconds later back to 71.
+
+    The gas meter saw the flame before the status code said hot water. Home Assistant warns when a total_increasing
+    sensor goes down, and a drop of more than a tenth (3 to 2 early in the day) its statistics take for a new meter.
+    """
+    midnight = NOW - 3600.0
+    heating = BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=40.0, last_send_ts=NOW - 60)
+    flame = replace(inp([rr()], mode="active", flow=40.0, ret=36.0), gas_power_w=20000.0, status_known=True)
+    flame = replace(flame, day_start_ts=midnight)
+    shown = []
+    mem = heating
+    for cycle in (
+        flame,  # the flame, the status code not read yet
+        replace(flame, now_ts=NOW + 10.0, reported_mode="hot_water"),  # ten seconds later: hot water
+        replace(flame, now_ts=NOW + 300.0, gas_power_w=0.0, reported_mode=None),  # the tap is shut
+        replace(flame, now_ts=NOW + 900.0, gas_power_w=9000.0, reported_mode="heating"),  # a burn for the heating
+        replace(flame, now_ts=NOW + 945.0, gas_power_w=0.0, reported_mode="heating_after"),
+    ):
+        cmd, mem = decide(cycle, mem)
+        shown.append(cmd.starts_today)
+    assert shown == [0, 0, 0, 0, 1]  # the hot water never counted, the heating burn once as it ended
+    assert mem.burns == ((NOW + 900.0, NOW + 945.0),)
+
+
+def test_over_random_days_the_starts_never_go_down_and_are_the_heating_burns_that_ended_that_day():
+    """Burner on and off, hot water dropping the burn in progress, restarts and midnights in any order, called as `decide` does.
+
+    A restart changes nothing in the count: a burn it interrupted is judged at the first cycle after it like any other.
+    """
+    import random
+
+    for seed in range(300):
+        rnd = random.Random(seed)
+        mem, now, day = BoilerMemory(), NOW, NOW - 3600.0
+        burning_before, counted, shown = False, 0, 0
+        for _ in range(300):
+            now += rnd.choice((5.0, 10.0, 60.0, 600.0, 3600.0))
+            while now >= day + 86400.0:  # local midnight: a new day begins at nought
+                day, counted, shown = day + 86400.0, 0, 0
+            if rnd.random() < 0.05:  # Home Assistant restarts, now and then twice in a row
+                mem = BoilerMemory.from_storage(mem.to_storage())
+            hot_water = rnd.random() < 0.15
+            burning = not hot_water and rnd.random() < 0.5
+            if hot_water:  # the burn in progress was hot water: dropped, and this cycle burns for no heating
+                mem = learning.drop_burn_in_progress(mem)
+                burning_before = False
+            mem = learning.track_burns(mem, burning, now, day)
+            if burning_before and not burning:  # a heating burn has ended
+                counted += 1
+            burning_before = burning
+            assert mem.starts_today >= shown, f"seed {seed}: the starts of the day went down"
+            assert mem.starts_today == counted, f"seed {seed}"
+            shown = mem.starts_today
+
+
+def test_a_burn_running_across_midnight_counts_once_on_the_day_it_ends():
+    midnight, yesterday = NOW, NOW - 86400.0
+    mem = learning.track_burns(BoilerMemory(), True, midnight - 600.0, yesterday)
+    mem = learning.track_burns(mem, False, midnight - 555.0, yesterday)
+    mem = learning.track_burns(mem, True, midnight - 30.0, yesterday)  # half a minute before midnight
+    assert mem.starts_today == 1  # the day's last value: the burn still running is not in it
+    mem = learning.track_burns(mem, True, midnight + 30.0, midnight)
+    assert mem.starts_today == 0  # a new day begins at nought
+    ended = learning.track_burns(mem, False, midnight + 90.0, midnight)
+    assert ended.starts_today == 1 and ended.burns[-1] == (midnight - 30.0, midnight + 90.0)
+    # one that turns out to be hot water after midnight counts on neither day
+    dropped = learning.track_burns(learning.drop_burn_in_progress(mem), False, midnight + 90.0, midnight)
+    assert dropped.starts_today == 0
+
+
+def test_a_burn_in_progress_when_home_assistant_stops_counts_once_whether_it_ends_during_the_restart_or_after():
+    """Its times are not kept (review 2026-10-13), but that it was burning is: so it is neither lost nor counted twice."""
+    day = NOW - 3600.0
+    mem = learning.track_burns(BoilerMemory(), True, NOW - 120.0, day)
+    mem = learning.track_burns(mem, False, NOW - 75.0, day)  # one start
+    mem = learning.track_burns(mem, True, NOW, day)  # burning as Home Assistant stops
+    stored = mem.to_storage()
+
+    ended = learning.track_burns(BoilerMemory.from_storage(stored), False, NOW + 120.0, day)
+    assert ended.starts_today == 2  # it ended while Home Assistant was away: counted at the first cycle after
+    assert ended.burns == ((NOW - 120.0, NOW - 75.0),)  # nobody watched it, so it is no burn of the burner share
+    goes_on = learning.track_burns(BoilerMemory.from_storage(stored), True, NOW + 120.0, day)
+    assert goes_on.starts_today == 1  # still burning: the same burn, counted as it ends
+    assert learning.track_burns(goes_on, False, NOW + 600.0, day).starts_today == 2
+    # stored again before the first cycle (a second restart right after the first) it is still not lost
+    again = BoilerMemory.from_storage(BoilerMemory.from_storage(stored).to_storage())
+    assert learning.track_burns(again, False, NOW + 120.0, day).starts_today == 2
+    # and one the boiler reports as hot water at the first cycle is no start of the heating, as without a restart
+    shower = learning.drop_burn_in_progress(BoilerMemory.from_storage(stored))
+    assert learning.track_burns(shower, False, NOW + 120.0, day).starts_today == 1
+
+
+def test_a_burn_still_going_after_a_restart_counts_once_although_the_boiler_is_not_readable_in_the_first_cycle():
+    """Review 2026-10-26: after a restart the first cycle often came seconds before the boiler's entities.
+
+    Taken in that cycle for a burn that had ended, the interrupted burn was counted at once and again as it ended.
+    """
+    midnight = NOW - 3600.0
+    heating = BoilerMemory(state="heat", state_since_ts=NOW - 3600, last_flow=40.0, last_send_ts=NOW - 60)
+    flame = replace(inp([rr()], mode="active", flow=40.0, ret=36.0), gas_power_w=9000.0, status_known=True)
+    flame = replace(flame, day_start_ts=midnight, reported_mode="heating")
+    _, mem = decide(flame, heating)  # burning as Home Assistant stops
+    mem = BoilerMemory.from_storage(mem.to_storage())
+    shown = []
+    for cycle in (
+        replace(flame, now_ts=NOW + 60.0, boiler_available=False, gas_power_w=None, status_known=False, reported_mode=None),
+        replace(flame, now_ts=NOW + 64.0),  # the boiler's entities are back: still the same burn
+        replace(flame, now_ts=NOW + 120.0, gas_power_w=0.0, reported_mode="heating_after"),
+    ):
+        cmd, mem = decide(cycle, mem)
+        shown.append(cmd.starts_today)
+    assert shown == [0, 0, 1]
 
 
 def _rising(at):

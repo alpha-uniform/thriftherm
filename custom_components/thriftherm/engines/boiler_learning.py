@@ -125,24 +125,41 @@ def flame(inp: BoilerInputs) -> bool:
     return inp.burner_heating
 
 
-def track_burns(mem: BoilerMemory, burning: bool, now_ts: float, day_start_ts: float | None = None) -> BoilerMemory:
-    """Keep the heating burns of the last hour, and count the starts of the day (from `day_start_ts`, local midnight)."""
+def track_burns(
+    mem: BoilerMemory, burning: bool, now_ts: float, day_start_ts: float | None = None, *, readable: bool = True
+) -> BoilerMemory:
+    """Keep the heating burns of the last hour, and count the starts of the day (from `day_start_ts`, local midnight).
+
+    A start is counted when its burn ends as a heating burn: until then it may still turn out to be hot
+    water (`drop_burn_in_progress`). Counted as the burn began, a start had to be taken back, and the day's
+    count went down (seen 2026-10-22 to 25: 72, ten seconds later 71). Home Assistant warns about that for a
+    total_increasing sensor, and its statistics take a drop of more than a tenth for a new meter. So a burn
+    running across midnight is a start of the day it ends on.
+    """
     if day_start_ts is not None and mem.starts_day_ts != day_start_ts:
         mem = replace(mem, starts_day_ts=day_start_ts, starts_today=0)
+    if mem.burn_interrupted and readable:
+        # The first cycle after Home Assistant stopped during a burn in which the boiler can be read: the first
+        # cycles often come seconds before its entities (review 2026-10-26). A burner on now is taken for that
+        # burn still going, and counted as it ends; otherwise it ended while nobody watched, and is counted now.
+        mem = replace(mem, burn_interrupted=False, starts_today=mem.starts_today + (0 if burning else 1))
     burns = tuple(burn for burn in mem.burns if now_ts - burn[1] <= BURNS_KEPT_S)
     if burning and mem.burn_since_ts is None:
-        return replace(mem, burn_since_ts=now_ts, burns=burns, starts_today=mem.starts_today + 1)
+        return replace(mem, burn_since_ts=now_ts, burns=burns)
     if not burning and mem.burn_since_ts is not None:
-        return replace(mem, burn_since_ts=None, burns=(*burns, (mem.burn_since_ts, now_ts)))
+        return replace(mem, burn_since_ts=None, burns=(*burns, (mem.burn_since_ts, now_ts)), starts_today=mem.starts_today + 1)
     return mem if burns == mem.burns else replace(mem, burns=burns)
 
 
 def drop_burn_in_progress(mem: BoilerMemory) -> BoilerMemory:
-    """Forget the burn that is running: it turned out not to be for the heating, so it is no start of the heating either."""
-    if mem.burn_since_ts is None:
+    """Forget the burn that is running: it turned out not to be for the heating, so it is no start of the heating either.
+
+    Its start was not counted yet (`track_burns`), so the count stays as it is. A burn that Home Assistant's
+    stop interrupted is judged the same way at the first cycle after the restart.
+    """
+    if mem.burn_since_ts is None and not mem.burn_interrupted:
         return mem
-    counted = mem.starts_day_ts is None or mem.burn_since_ts >= mem.starts_day_ts
-    return replace(mem, burn_since_ts=None, starts_today=max(mem.starts_today - 1, 0) if counted else mem.starts_today)
+    return replace(mem, burn_since_ts=None, burn_interrupted=False)
 
 
 def burner_share(mem: BoilerMemory, now_ts: float) -> tuple[float, int]:

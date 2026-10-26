@@ -4,6 +4,11 @@
 
 Since 0.5.0 the configuration stays at version 3: every update since keeps everything learned.
 
+## 0.6.6 — 2026-10-26
+
+- Troubleshooting: a room does not reach its target although the correction is at its limit (radiator too small).
+- Fixed: the sensor *Boiler heating starts today* sometimes took a start back, and Home Assistant then warned in its log.
+
 ## 0.6.5 — 2026-10-23
 
 - Fewer needless burner starts: a rise of the flow waits while the boiler waits out its lockout (S.5–S.8).

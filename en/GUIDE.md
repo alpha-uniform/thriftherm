@@ -198,7 +198,7 @@ Details on every area: [How Thriftherm works: learning](HOW_IT_WORKS.md#learning
 - the *Load class now* and the *Room that sets the flow*;
 - under *Heating curve correction per load class and room*, for each class and room (entries such as `few:bathroom`), the correction, level, slope, whether the value is found, the hours of operation and how often a room lagged in them.
 
-The sensor *Boiler burner share* shows the share of the last hour the burner ran for the heating, and the number of starts. For now it only records. The sensor *Boiler heating starts today* counts the burner's starts for the heating since midnight; Home Assistant's statistics then show the starts of every day.
+The sensor *Boiler burner share* shows the share of the last hour the burner ran for the heating, and the number of starts. For now it only records. The sensor *Boiler heating starts today* counts the burner's starts for the heating since midnight. A start counts once its burn has ended, as only then is it certain that it was not for hot water. Home Assistant's statistics then show the starts of every day.
 
 **What you can set** (boiler options):
 
