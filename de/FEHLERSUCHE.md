@@ -92,7 +92,7 @@ Bei einer Therme über Entitäten (Vorschau) ist das anders: Stürzt Home Assist
 
 Ein Fenster ist offen, oder das Thermostat des Raums ist ausgeschaltet. Schließ das Fenster oder stell das Thermostat wieder auf *Heizen*.
 
-Hat sich ein Heizkörperthermostat seit zweieinhalb Stunden nicht gemeldet, fordert der Raum ebenfalls keine Wärme an. Dazu erscheint eine Reparaturmeldung.
+Hat sich ein Heizkörperthermostat seit zweieinhalb Stunden nicht gemeldet, fordert der Raum ebenfalls keine Wärme an. Dazu erscheint eine Reparaturmeldung. Mit ZHA zählt auch ZHAs eigenes *Zuletzt gesehen* als Meldung.
 
 ### Ein Raum steht auf 15 °C
 

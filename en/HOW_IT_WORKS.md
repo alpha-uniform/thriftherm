@@ -129,7 +129,7 @@ How to use it is in the [user guide, section 5](GUIDE.md#5-boiler-control-own-bo
 - **Resend:** Thriftherm sends its command every 2 minutes. Without one the boiler returns to its knob after 9–16 minutes (measured). A lost telegram is harmless that way, and a Home Assistant that stops hands the boiler back to its knob.
 - **Short dropouts:** adapters lose the eBUS signal for a second now and then. Only a signal that stays gone for two minutes counts as a data outage.
 - **After a restart** Thriftherm waits up to five minutes for the room sensors before it blocks heating. Until then it sends nothing, and the boiler keeps its last command.
-- **Silent radiator thermostat:** the limit is two and a half hours. It leaves room for thermostats that report only about hourly (the Zigbee default), and for one missed report. A limit of one hour took healthy valves for lost (reported 2026-10-10). On the test installation the thermostats report at least every 15 minutes. Any change of one of the thermostat's entities counts as a sign of life; a report with unchanged values leaves no trace in Home Assistant.
+- **Silent radiator thermostat:** the limit is two and a half hours. It leaves room for thermostats that report only about hourly (the Zigbee default), and for one missed report. A limit of one hour took healthy valves for lost (reported 2026-10-10). On the test installation the thermostats report at least every 15 minutes. Any change of one of the thermostat's entities counts as a sign of life; a report with unchanged values leaves no trace in Home Assistant. With ZHA, ZHA's own *Last seen* counts as well, unless ZHA marks the device unavailable.
 
 ### Hot water detection
 

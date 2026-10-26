@@ -17,6 +17,7 @@ from typing import Any
 
 from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant, State
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_component import DATA_INSTANCES
 from homeassistant.util import dt as dt_util
@@ -82,6 +83,12 @@ WINDOW_FOUND_OPEN_S = 300.0
 # stands; while it runs, a plug quiet for longer gives way to the unit's own value (`realtime_power`).
 PLUG_POWER_MAX_AGE_S = 360.0
 PLUG_STANDBY_MAX_W = 50.0  # standby here 1.3-1.8 W or 8-11 W, the fan alone about 35-50 W
+# ZHA leaves the timestamps of a device's entities alone while their values stay the same (issue #2,
+# 2026-10-26): a valve ZHA had seen two minutes before had entities 2.5 hours old and counted as silent,
+# a thermometer seen 42 seconds before had a temperature six hours old and counted as stale. So for a
+# device ZHA pairs, its own "last seen" is a report as well. No other integration is asked: Zigbee2MQTT
+# has a *Last seen* entity of its own for this (see the guide), which counts like any entity of the device.
+ZHA = "zha"
 from ..models import (
     BoilerState,
     DryingState,
@@ -243,6 +250,26 @@ def _state_age_s(state: State, now: datetime) -> float:
     return max((now - ts).total_seconds(), 0.0)
 
 
+def _zha_device_seen_s(hass: HomeAssistant, device_id: str, now: datetime) -> float | None:
+    """How long ago ZHA last saw one of its devices; None while ZHA calls it unavailable, or without a usable answer.
+
+    ZHA's helper belongs to ZHA and may change with any Home Assistant version. ZHA not set up, a device it
+    does not know, another name, signature or shape of the helper, a time it never saw the device, one that
+    is no number or lies ahead: all of it is no sign, never an error in the control (issue #2, 2026-10-26).
+    """
+    try:
+        from homeassistant.components.zha.helpers import async_get_zha_device_proxy
+
+        device = async_get_zha_device_proxy(hass, device_id).device
+        available, last_seen = device.available, device.last_seen
+        if available is not True or isinstance(last_seen, bool) or not isinstance(last_seen, (int, float)):
+            return None
+        age = now.timestamp() - last_seen  # zigpy keeps it as a Unix timestamp in seconds
+    except Exception:  # whatever ZHA raises, the entities' own timestamps still count
+        return None
+    return age if math.isfinite(age) and age >= 0.0 else None
+
+
 def _trim(history: deque, cutoff: float, ts: Callable[[Any], float] = itemgetter(0)) -> None:
     """Drop the entries older than `cutoff` from a history kept in time order."""
     while history and ts(history[0]) < cutoff:
@@ -271,6 +298,7 @@ class SnapshotBuilder:
         self._device_sensors: dict[str, tuple[str, ...]] = {}
         self._valve_entities: dict[str, tuple[str, ...]] = {}  # room thermostat -> its valves, for one build
         self._valve_heard: dict[str, float] = {}  # climate entity -> when its valve last reported (ts)
+        self._zha_devices: dict[str, str | None] = {}  # entity -> its device if ZHA pairs it, for one build
         self._started_at: datetime | None = None  # the first snapshot
         self._windows_seen: set[str] = set()  # contacts that have said open or shut since the start
         self._open_from_start: set[str] = set()  # contacts first found open at the start, not shut since
@@ -327,6 +355,28 @@ class SnapshotBuilder:
             for sibling in siblings
             if (state := self._get(sibling)) is not None and state.state not in BAD_STATES
         ]
+        return min(ages, default=None)
+
+    def _zha_device(self, entity_id: str) -> str | None:
+        """The device of an entity if ZHA pairs it (a "zha" identifier in the device registry), else None."""
+        if entity_id in self._zha_devices:
+            return self._zha_devices[entity_id]
+        entry = er.async_get(self.hass).async_get(entity_id)
+        device = None if entry is None or entry.device_id is None else dr.async_get(self.hass).async_get(entry.device_id)
+        found = device.id if device is not None and any(ident[:1] == (ZHA,) for ident in device.identifiers) else None
+        self._zha_devices[entity_id] = found
+        return found
+
+    def _zha_seen_s(self, entity_ids: Iterable[str], now: datetime) -> float | None:
+        """How long ago ZHA last saw the devices of these entities (the newest), None without such a sign (see `ZHA`).
+
+        Asked only while ZHA is loaded: then its helpers are imported already, and an installation
+        without ZHA does no more than before.
+        """
+        if ZHA not in self.hass.config.components:
+            return None
+        devices = dict.fromkeys(device for entity_id in entity_ids if (device := self._zha_device(entity_id)) is not None)
+        ages = [age for device in devices if (age := _zha_device_seen_s(self.hass, device, now)) is not None]
         return min(ages, default=None)
 
     def valves_behind(self, climate_entity: str) -> tuple[str, ...]:
@@ -387,6 +437,9 @@ class SnapshotBuilder:
         Measured 2026-09-27: the bathroom valve dropped out of the Zigbee network at 15:50
         and kept its last setpoint; Better Thermostat went on reporting "heat" at 21 °C.
         Healthy valves here report at least every 15 minutes.
+
+        A valve paired with ZHA was also heard when ZHA last saw it, unless ZHA calls it
+        unavailable: its entities keep their timestamps while the values stay the same (see `ZHA`).
         """
         if not climate_entity:
             return None
@@ -395,6 +448,8 @@ class SnapshotBuilder:
             return None
         states = [state for entity_id in entities if (state := self._get(entity_id)) is not None]
         ages = [_state_age_s(state, now) for state in states if state.state not in BAD_STATES]
+        if (seen := self._zha_seen_s(entities, now)) is not None:
+            ages.append(seen)
         if ages:
             self._valve_heard[climate_entity] = now.timestamp() - min(ages)
             return min(ages)
@@ -440,13 +495,17 @@ class SnapshotBuilder:
         return value, None if value is None else climate_entity
 
     def read_room_temperature(self, entity_id: str | None, now: datetime) -> SensorReading:
-        """A room temperature, still valid while its device keeps reporting other values."""
+        """A room temperature, still valid while its device keeps reporting other values.
+
+        A device paired with ZHA is alive as well while ZHA has seen it within the same age (see `ZHA`).
+        The reading keeps its own age, and a day without a change is too long either way.
+        """
         max_age = min(self.params.sensor_max_age_s, ROOM_TEMP_MAX_AGE_S)
         reading = self.read_number(entity_id, RANGE_ROOM_TEMP, now, max_age_s=max_age)
         if reading.reason != "stale" or entity_id is None or (reading.age_s or 0.0) > ROOM_TEMP_UNCHANGED_MAX_S:
             return reading
-        alive = self._device_age_s(entity_id, now)
-        if alive is not None and alive <= max_age:
+        alive = [age for age in (self._device_age_s(entity_id, now), self._zha_seen_s((entity_id,), now)) if age is not None]
+        if alive and min(alive) <= max_age:
             return replace(reading, valid=True, reason=None)
         return reading
 
@@ -833,6 +892,7 @@ class SnapshotBuilder:
         local_now = dt_util.as_local(now)
         changes = setting_changes or {}
         self._valve_entities.clear()  # see valves_behind
+        self._zha_devices.clear()  # a device paired anew, with ZHA or elsewhere, counts from the next build
         if self._started_at is None:
             self._started_at = now
         rooms = {
