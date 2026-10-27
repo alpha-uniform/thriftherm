@@ -1,9 +1,4 @@
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alpha-uniform/thriftherm/main/custom_components/thriftherm/brand/dark_logo@2x.png">
-    <img alt="Thriftherm" width="450" src="https://raw.githubusercontent.com/alpha-uniform/thriftherm/main/custom_components/thriftherm/brand/logo@2x.png">
-  </picture>
-</p>
+<p align="center"><img alt="Thriftherm" width="128" src="https://raw.githubusercontent.com/alpha-uniform/thriftherm/main/custom_components/thriftherm/brand/icon@2x.png"></p>
 
 # Thriftherm für Home Assistant
 

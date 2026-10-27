@@ -4,6 +4,10 @@
 
 Seit 0.5.0 bleibt die Konfiguration bei Version 3: Jedes Update seitdem behält alles Gelernte.
 
+## 0.6.8 – 27.10.2026
+
+- Etwas weniger Arbeitsspeicher (rund 0,5 MB).
+
 ## 0.6.7 – 26.10.2026
 
 - Behoben: Mit ZHA galten Thermostate und Raumfühler als stumm, wenn sich ihre Werte lange nicht änderten ([#2](https://github.com/alpha-uniform/thriftherm/issues/2)).

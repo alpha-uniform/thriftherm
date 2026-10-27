@@ -291,7 +291,10 @@ class SnapshotBuilder:
         self.prices: Prices = prices_from_config(config)
         self.params: Parameters = parameters_from_config(config)
         self._history: dict[str, deque[tuple[float, float]]] = {r.key: deque(maxlen=240) for r in self.rooms}
-        self._abs_hum_history: dict[str, deque[tuple[float, float]]] = {r.key: deque(maxlen=400) for r in self.rooms}
+        # The humidity a shower is told by, only where a drying starts by itself: no other part reads it.
+        self._abs_hum_history: dict[str, deque[tuple[float, float]]] = {
+            r.key: deque(maxlen=400) for r in self.rooms if r.bathroom_drying and r.served_by_heat_pump and r.drying_automatic
+        }
         self._compressor_started_at: datetime | None = None
         self._outlet_history: deque[tuple[float, float]] = deque(maxlen=120)
         self._heat_pump_history: deque[HeatPumpSample] = deque(maxlen=240)
@@ -685,10 +688,11 @@ class SnapshotBuilder:
         # two hours, so the 90-minute trend window is always fully covered
         _trim(history, now_ts - 7200.0)
 
-        abs_hist = self._abs_hum_history[cfg.key]
-        if temp.valid and hum.valid and (not abs_hist or now_ts - abs_hist[-1][0] >= SAMPLE_SPACING_S):
-            abs_hist.append((now_ts, psy.absolute_humidity_g_m3(temp.value, hum.value)))
-        _trim(abs_hist, now_ts - 3 * 3600.0 - 600.0)
+        abs_hist = self._abs_hum_history.get(cfg.key)
+        if abs_hist is not None:
+            if temp.valid and hum.valid and (not abs_hist or now_ts - abs_hist[-1][0] >= SAMPLE_SPACING_S):
+                abs_hist.append((now_ts, psy.absolute_humidity_g_m3(temp.value, hum.value)))
+            _trim(abs_hist, now_ts - 3 * 3600.0 - 600.0)
 
         return RoomState(
             config=cfg,
@@ -702,7 +706,7 @@ class SnapshotBuilder:
             trv_target_temp=trv_target,
             internal_gain_w=gain,
             temperature_history=tuple(history),
-            abs_humidity_history=tuple(abs_hist),
+            abs_humidity_history=() if abs_hist is None else tuple(abs_hist),
             override=override,
             drying=drying or DryingState(),
             heat_rate_k_h=heat_rate,
