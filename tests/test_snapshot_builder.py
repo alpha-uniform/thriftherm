@@ -11,7 +11,12 @@ from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 
 from custom_components.thriftherm.adapters.inputs import SnapshotBuilder
-from custom_components.thriftherm.const import CONF_HEAT_PUMP_OUTLET_TEMP, CONF_OUTDOOR_RH_SENSOR, CONF_WEATHER_ENTITY
+from custom_components.thriftherm.const import (
+    CONF_HEAT_PUMP_OUTLET_TEMP,
+    CONF_OUTDOOR_RH_SENSOR,
+    CONF_ROOM_DRYING,
+    CONF_WEATHER_ENTITY,
+)
 from custom_components.thriftherm.engines import room as room_engine
 
 from .test_integration import _entry_data, _set_states
@@ -20,8 +25,11 @@ START = datetime(2026, 1, 15, 12, 0, tzinfo=dt_util.UTC)
 
 
 def _builder(hass: HomeAssistant) -> SnapshotBuilder:
+    """The bathroom dries by itself after a shower, so it keeps its humidity history."""
+    data = _entry_data()
+    data["rooms"][0][CONF_ROOM_DRYING] = True
     config = {
-        **_entry_data(),
+        **data,
         CONF_HEAT_PUMP_OUTLET_TEMP: "sensor.outlet",
         CONF_OUTDOOR_RH_SENSOR: "sensor.outdoor_rh",
         CONF_WEATHER_ENTITY: "weather.home",

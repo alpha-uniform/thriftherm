@@ -124,9 +124,9 @@ OUTDOOR_LAST_KNOWN = "last_known"  # the outdoor source shown while it does
 # After a restart the Zigbee room sensors come back one by one (measured 2026-09-18: the bathroom
 # after 38 s). Until they have, the boiler gets no command instead of a block decided on gaps.
 ROOM_DATA_GRACE_S = 300.0
-# The cycles the boiler learning by load is judged on: about a day at one row a minute (extra
-# cycles started by user actions take their rows from it).
-LOAD_LOG_ROWS = 1440
+# The boiler's load log, one row a cycle: as many as are stored (`LOAD_LOG_STORED_ROWS`, about half a day).
+# 1440 rows were kept, 720 stored and 120 shown in the diagnostics; nothing read the rest (measured 2026-10-23).
+LOAD_LOG_ROWS = 720
 
 
 STORE_SAVE_INTERVAL_S = 600.0
