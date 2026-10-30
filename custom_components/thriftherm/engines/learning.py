@@ -2,8 +2,8 @@
 
 * CopMap      – mean COP per outdoor-temperature bin ; falls back to a
                 prior curve scaled by a factor learned from the measured bins
-* HeatRateStats – heat-up rate per room in K/h from observed episodes,
-                  used for the away-return and schedule preheat planning.
+* HeatRateStats – heat-up rate per room and heat source in K/h from observed
+                  episodes, used for the away-return and schedule preheat planning.
 
 Everything serialises to plain dicts for Home Assistant storage.
 """
@@ -282,29 +282,48 @@ class CoolRateStats:
 # ---------------------------------------------------------------------------
 # Heat-up rate learning
 # ---------------------------------------------------------------------------
+# A room heats up at another pace from each source: seen 2026-10-20 to 30, the heat pump at its least
+# speed warmed the bedroom 0.46-0.5 degrees an hour, the boiler 0.23-0.6, and a quick heat-up at
+# 650-930 W 1.4-2.1. Kept in one list they planned a preheat with a pace neither source had.
+HEAT_BY_BOILER = "boiler"  # the boiler (or the district heating) through the radiator
+HEAT_BY_HEAT_PUMP = "heat_pump"  # the heat pump at the least speed it is held at
+HEAT_BY_BOTH = "both"  # both at once: a rate of neither
+HEAT_SOURCES = (HEAT_BY_BOILER, HEAT_BY_HEAT_PUMP)
+
+
+@dataclass
+class HeatEpisode(Episode):
+    source: str = HEAT_BY_BOILER
+
+
 @dataclass
 class HeatRateStats:
-    """Median heat-up rate per room (K/h) from the last episodes."""
+    """Median heat-up rate per room and heat source (K/h) from the last episodes."""
 
-    rates: dict[str, list[float]] = field(default_factory=dict)
+    rates: dict[str, dict[str, list[float]]] = field(default_factory=dict)
     # the mean indoor-outdoor gradient of each episode, in step with `rates`: a rate
     # measured in mild weather hides a small loss, one measured in frost a large one
-    gradients: dict[str, list[float | None]] = field(default_factory=dict)
-    episodes: dict[str, Episode] = field(default_factory=dict)
+    gradients: dict[str, dict[str, list[float | None]]] = field(default_factory=dict)
+    episodes: dict[str, HeatEpisode] = field(default_factory=dict)
 
     def observe(
-        self, room: str, ts: float, temp: float | None, heating: bool, window_open: bool, outdoor: float | None = None
+        self, room: str, ts: float, temp: float | None, source: str | None, window_open: bool, outdoor: float | None = None
     ) -> float | None:
-        """Feed one sample. Returns a newly learned rate when an episode closes, else None."""
+        """Feed one sample: `source` is the heat source that heats the room now, None for none.
+
+        Returns a newly learned rate when an episode closes, else None. A change of source, or both
+        at once, ends the episode without a value: the radiator gives off its heat for a while after
+        the boiler stopped, and the heat pump's first minutes after a start are no pace of its own.
+        """
         ep = self.episodes.get(room)
-        if temp is None or not heating or window_open:
+        if ep is not None and source is not None and source != ep.source:
+            del self.episodes[room]
+            ep = None
+        if temp is None or source not in HEAT_SOURCES or window_open:
             return self._close(room, ep)
         gradient = None if outdoor is None else temp - outdoor
-        if ep is None:
-            self.episodes[room] = Episode(ts, temp, ts, temp, gradient or 0.0, 1 if gradient is not None else 0)
-            return None
-        if temp < ep.last_temp - 0.3:  # temperature fell: not a clean heat-up
-            self.episodes[room] = Episode(ts, temp, ts, temp, gradient or 0.0, 1 if gradient is not None else 0)
+        if ep is None or temp < ep.last_temp - 0.3:  # none yet, or the temperature fell: not a clean heat-up
+            self.episodes[room] = HeatEpisode(ts, temp, ts, temp, gradient or 0.0, 1 if gradient is not None else 0, source)
             return None
         ep.last_ts, ep.last_temp = ts, temp
         if gradient is not None:
@@ -312,7 +331,7 @@ class HeatRateStats:
             ep.samples += 1
         return None
 
-    def _close(self, room: str, ep: Episode | None) -> float | None:
+    def _close(self, room: str, ep: HeatEpisode | None) -> float | None:
         if ep is None:
             return None
         del self.episodes[room]
@@ -323,10 +342,10 @@ class HeatRateStats:
         rate = rise / (duration / 3600.0)
         if not HEAT_RATE_MIN <= rate <= HEAT_RATE_MAX:
             return None
-        lst = self.rates.setdefault(room, [])
+        lst = self.rates.setdefault(room, {}).setdefault(ep.source, [])
         lst.append(round(rate, 3))
         del lst[:-HEAT_RATE_KEEP]
-        grad = self.gradients.setdefault(room, [])
+        grad = self.gradients.setdefault(room, {}).setdefault(ep.source, [])
         grad.append(None if ep.samples == 0 else round(ep.gradient_sum / ep.samples, 2))
         del grad[:-HEAT_RATE_KEEP]
         return rate
@@ -343,14 +362,14 @@ class HeatRateStats:
             self.gradients.pop(room, None)
             self.episodes.pop(room, None)
 
-    def rate(self, room: str) -> float | None:
-        lst = self.rates.get(room)
+    def rate(self, room: str, source: str) -> float | None:
+        lst = self.rates.get(room, {}).get(source)
         return round(median(lst), 3) if lst else None
 
-    def heating_power_k_h(self, room: str, cool_k: float | None) -> float | None:
-        """Heat-up rate the room would reach with no losses at all: rate + k * gradient.
+    def heating_power_k_h(self, room: str, source: str, cool_k: float | None) -> float | None:
+        """Heat-up rate the room would reach from that source with no losses at all: rate + k * gradient.
 
-        Unlike the measured rate this is a property of room and radiator rather than
+        Unlike the measured rate this is a property of room and heat source rather than
         of the weather during the episode, so pre-heating can be planned in winter
         from episodes recorded in autumn. Needs the cool-down coefficient.
         """
@@ -358,39 +377,77 @@ class HeatRateStats:
             return None
         pairs = [
             (rate, grad)
-            for rate, grad in zip(self.rates.get(room, []), self.gradients.get(room, []), strict=False)
+            for rate, grad in zip(
+                self.rates.get(room, {}).get(source, []), self.gradients.get(room, {}).get(source, []), strict=False
+            )
             if grad is not None
         ]
         if not pairs:
             return None
         return round(median([rate + cool_k * grad for rate, grad in pairs]), 3)
 
-    def to_dict(self) -> dict[str, dict]:
-        return {
-            room: {
-                "median_k_h": self.rate(room),
-                "episodes": len(lst),
-                "mean_gradient_k": (
-                    round(median([g for g in self.gradients.get(room, []) if g is not None]), 1)
-                    if any(g is not None for g in self.gradients.get(room, []))
-                    else None
-                ),
+    def planning_rate(
+        self, room: str, source: str, cool_k: float | None, temp: float | None, outdoor: float | None
+    ) -> float | None:
+        """The pace a preheat from that source is planned with, for the weather of now; None: nothing learned.
+
+        Where the heating power is known, the room reaches that less what it loses at the present gap to
+        outdoors: at 3 °C the heat pump's minimum barely holds the bathroom, at 8 °C it adds about 0.5 an
+        hour. Otherwise the median of the rates learned, whatever the weather was then. Used for the heat pump only:
+        a boiler's heating curve raises its flow in frost, so its median is planned with (review 2026-10-30).
+        """
+        power = self.heating_power_k_h(room, source, cool_k)
+        if power is None or cool_k is None or temp is None or outdoor is None:
+            return self.rate(room, source)
+        return round(max(power - cool_k * (temp - outdoor), HEAT_RATE_MIN), 3)
+
+    def to_dict(self) -> dict[str, dict[str, dict]]:
+        def shown(rates: list[float], grads: list[float | None]) -> dict:
+            known = [g for g in grads if g is not None]
+            return {
+                "median_k_h": round(median(rates), 3) if rates else None,
+                "episodes": len(rates),
+                "mean_gradient_k": round(median(known), 1) if known else None,
             }
-            for room, lst in self.rates.items()
+
+        return {
+            room: {source: shown(lst, self.gradients.get(room, {}).get(source, [])) for source, lst in by_source.items()}
+            for room, by_source in self.rates.items()
         }
 
     def to_storage(self) -> dict:
         return {"rates": self.rates, "gradients": self.gradients}
 
     @classmethod
-    def from_storage(cls, data: dict | None) -> HeatRateStats:
+    def from_storage(cls, data: dict | None, heat_pump_rooms: Iterable[str] = ()) -> HeatRateStats:
+        """Read a store; one from before 0.7.0 holds a single list per room, of both sources.
+
+        Those go to the boiler in a room the heat pump does not serve, which has no other source.
+        In a room it serves they are dropped: which source each came from is not known, and the
+        heat pump's were mostly quick heat-ups. The defaults bridge the days until new ones come.
+        """
         hs = cls()
         data = as_dict(data)
+        served = set(heat_pump_rooms)
         rates = as_dict(data.get("rates"))
-        hs.rates = {str(k): as_floats(v)[-HEAT_RATE_KEEP:] for k, v in rates.items() if isinstance(v, list)}
         gradients = as_dict(data.get("gradients"))
-        hs.gradients = {str(k): [as_float(x) for x in v][-HEAT_RATE_KEEP:] for k, v in gradients.items() if isinstance(v, list)}
-        for room, rates in hs.rates.items():  # older stores have no gradients: pad them
-            grads = hs.gradients.setdefault(room, [])
-            hs.gradients[room] = ([None] * max(0, len(rates) - len(grads)) + grads)[-HEAT_RATE_KEEP:]
+        for room, stored in rates.items():
+            room = str(room)
+            if isinstance(stored, list):  # the old store
+                if room in served:
+                    continue
+                by_source, grads_by_source = {HEAT_BY_BOILER: stored}, {HEAT_BY_BOILER: gradients.get(room)}
+            else:
+                by_source, grads_by_source = as_dict(stored), as_dict(gradients.get(room))
+            for source, values in by_source.items():
+                if source not in HEAT_SOURCES or not isinstance(values, list):
+                    continue
+                kept = as_floats(values)[-HEAT_RATE_KEEP:]
+                if not kept:
+                    continue
+                grads = grads_by_source.get(source)
+                grads = [as_float(x) for x in grads] if isinstance(grads, list) else []
+                # older stores have no gradients: pad them
+                hs.rates.setdefault(room, {})[source] = kept
+                hs.gradients.setdefault(room, {})[source] = ([None] * max(0, len(kept) - len(grads)) + grads)[-HEAT_RATE_KEEP:]
         return hs

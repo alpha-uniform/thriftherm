@@ -137,3 +137,42 @@ def test_a_fan_turning_below_the_calibrated_range_between_two_starts_does_not_sp
         res = sample(tracker, minute * 60.0, on=on, outlet=outlet, fan_rpm=600.0 if on else 200.0)
     assert res.cycle_cop is not None and res.value == res.cycle_cop
     assert 2.0 < res.cycle_cop < 6.0
+
+
+def settled(tracker: HeatPumpTracker, ts: float, running_s: float, params=PARAMS, above_minimum: str | None = None):
+    """A sample of a unit its control counts as heating steadily."""
+    unit = heat_pump_state(running_s=running_s)
+    stable = HeatPumpResult("heating_stable", 800.0, "plug", True)
+    return tracker.cop(SimpleNamespace(heat_pump=unit), stable, NO_DEFROST, params, ts, above_minimum=above_minimum)
+
+
+def test_a_cop_sample_counts_only_once_the_compressor_has_run_ten_minutes_however_short_the_warm_up_is_set():
+    # A start from off boosts to 60-79 Hz within 1-3 minutes (seen 2026-10-20 to 30): not the speed it is held at.
+    tracker = HeatPumpTracker()
+    short_warm_up = replace(PARAMS, cop_warmup_s=120.0)
+    res = settled(tracker, 0.0, running_s=300.0, params=short_warm_up)
+    assert tracker.cop_samples == [] and "warming_up" in res.gate_reasons
+    settled(tracker, 60.0, running_s=600.0, params=short_warm_up)
+    assert len(tracker.cop_samples) == 1
+
+
+@pytest.mark.parametrize("why", ["quick_heat_up", "bathroom_drying"])
+def test_a_quick_heat_up_or_a_drying_gives_no_cop_sample(why: str):
+    tracker = HeatPumpTracker()
+    res = settled(tracker, 0.0, running_s=900.0, above_minimum=why)
+    assert tracker.cop_samples == [] and why in res.gate_reasons
+
+
+def test_a_cycle_with_a_quick_heat_up_is_not_measured():
+    tracker = HeatPumpTracker()
+    res = None
+    for minute in range(21):
+        on = (minute % 20) < 10
+        unit = heat_pump_state(
+            compressor_hz=24.0 if on else 0.0, running_s=300.0 if on else None, plug_power=ON_W if on else OFF_W,
+            intake=(22.0, 45.0), outlet=(34.0 if on else 22.0, None),
+        )
+        run = HeatPumpResult("heating_warming_up" if on else "heating_idle", ON_W if on else OFF_W, "plug", True)
+        res = tracker.cop(SimpleNamespace(heat_pump=unit), run, NO_DEFROST, PARAMS, minute * 60.0,
+                          above_minimum="quick_heat_up" if minute == 5 else None)
+    assert res.cycle_cop is None and tracker.take_cycle_cop() is None

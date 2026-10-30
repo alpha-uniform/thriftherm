@@ -45,6 +45,7 @@ Select **Operating mode**:
 - **Away until a point in time**, e.g. today 22:00 or 3 October 12:00: set *Planned return*. That switches to away until then, and the rooms are pre-heated in time for the return. In Home Assistant's fields (the entity's dialog, the entities card) pick the **date** first, then the **time**.
 - **A date alone is a placeholder:** without a time the return stands at 23:59 of that day for the moment. Away then ends at 23:59, but nothing is pre-heated yet. The attribute *Provisional (23:59 placeholder)* (`provisional`) of *Planned return* is `true` for as long.
 - **Back home:** the action *Clear away* (`thriftherm.clear_away`) ends the absence and the return. Once the return time is reached, Thriftherm goes back to Auto by itself.
+- **Return by presence:** in the options under *Control parameters* choose one or more people (*Away ends when one of these people comes home*). When one of them comes home, away ends as at a planned return: back to Auto, the rooms heat up. Whoever is still home when *Away* is switched on does not end it; only after leaving and coming back. Leaving never switches to away. Rules: [return by presence](HOW_IT_WORKS.md#return-by-presence).
 - **From automations:** use `thriftherm.set_away`, with `return_time` or with `clear_return_time: true` for no end. Unlike `datetime.set_value` it reports an error when something fails.
 
 After each entry check *Planned return* and *Provisional*, above all when your browser runs in another time zone than Home Assistant: the fields work in browser time. What is refused, how to be really back at 23:59 and what happens with other time zones: [How Thriftherm works: away and planned return](HOW_IT_WORKS.md#away-and-planned-return).
@@ -95,7 +96,7 @@ This even suits the heating curve learning, which learns from long, even heating
 
 ### Pre-heating
 
-Thriftherm starts early enough for the room to be warm when a comfort block begins. For that it takes the gap to the target, the room's learned heat-up rate and a margin (20 minutes by default). The room target sensor shows the planned start in *Pre-heating starts*. Formula and starting values: [How Thriftherm works: pre-heating](HOW_IT_WORKS.md#pre-heating).
+Thriftherm starts early enough for the room to be warm when a comfort block begins. For that it takes the gap to the target, the room's learned heat-up rate for the heat source that will heat it, and a margin (20 minutes by default). The room target sensor shows the planned start in *Pre-heating starts*. Formula and starting values: [How Thriftherm works: pre-heating](HOW_IT_WORKS.md#pre-heating).
 
 ## 4. Services
 
@@ -123,7 +124,7 @@ data:
 A boiler without eBUS can be controlled, as a preview, through a number entity (flow setpoint) and a switch (central heating on/off), see [SETUP.md](SETUP.md) section 4.3a. Everything below holds for both ways; where SetMode is mentioned, Thriftherm writes the number and the switch there.
 
 - **Flow temperature:** from a two-point heating curve (default 55 °C at −10 °C, 30 °C at +15 °C). On top comes what the room that needs the most asks for: its learned correction ([section 6](#6-learning)), up to 8 degrees more while it is far below target, and its extra for the [heat-up speed](#heat-up-speed). The flow never leaves the configured minimum and maximum, and it does not jump ([flow in detail](HOW_IT_WORKS.md#flow)).
-- **Calling the boiler:** a room calls the boiler when it is noticeably below target, until it is almost there; not in the last half hour of its comfort period. The attribute *Boiler call* on the room's *Heat demand* sensor shows the state ([thresholds](HOW_IT_WORKS.md#when-a-room-calls-the-boiler)).
+- **Calling the boiler:** a room calls the boiler when it is noticeably below target, until it is almost there; not in the last half hour of its comfort period, unless the boiler helps the heat pump. The attribute *Boiler call* on the room's *Heat demand* sensor shows the state ([thresholds](HOW_IT_WORKS.md#when-a-room-calls-the-boiler)).
 - **Heating along:** while the boiler runs anyway, other rooms heat along (reason *Heating along* / *Pre-heating early*). That means longer burner runs and fewer starts ([details](HOW_IT_WORKS.md#heating-along)).
 - **Heating is blocked** (`disablehc`) when no room needs heat. Hot water is not touched: the hot water setpoint always goes out as "no value", so the boiler keeps following its own knob. The one exception is yours to choose: with *Keep hot water ready* switched off in the boiler options, the boiler no longer heats for hot water without a tap open (the hourly keep-warm of a combi boiler). Leave it on with a hot water cylinder.
 - **Thermostat off or silent:** a thermostat switched off by hand does not call the boiler; its valve is shut. One that is merely unavailable still counts, because its valve keeps regulating on its own. A radiator thermostat silent for over two and a half hours does not call the boiler and takes no new setpoints; a repair entry appears. With Better Thermostat the real thermostat behind it is watched. If Thriftherm takes a healthy thermostat for silent, enable its *Last seen* entity in Zigbee2MQTT; with ZHA there is nothing to do ([why](HOW_IT_WORKS.md#outages-and-resending)).
@@ -178,10 +179,10 @@ A room needs a temperature sensor, not a smart thermostat. Everything above stil
 | Area | What is learned | From |
 |---|---|---|
 | Boiler | heating curve correction, per room and per load class (one room, a few or the majority call) | flow/return spread, how fast rooms warm up, and short cycling |
-| Rooms | heat-up rate per room (degrees an hour) | real heating periods with the window closed |
+| Rooms | heat-up rate per room and heat source (degrees an hour) | real heating periods with the window closed |
 | Rooms | cool-down coefficient per room (1/h) | stretches without heating with the window closed |
 | Rooms | heating power per room (degrees an hour without losses) | heat-up rate plus the losses during that period; unlike the raw rate it holds in winter too |
-| Heat pump | COP over outdoor temperature, setpoint correction | measured COP runs |
+| Heat pump | COP over outdoor temperature | measured COP runs |
 
 Details on every area: [How Thriftherm works: learning](HOW_IT_WORKS.md#learning).
 
@@ -215,7 +216,7 @@ After a change to the installation old values no longer fit.
 | Change | Forgotten |
 |---|---|
 | heating curve | boiler correction |
-| heat pump entity, intake/outlet sensor, airflow curve, duct factor, installation room, served rooms | COP map and heat pump correction |
+| heat pump entity, intake/outlet sensor, airflow curve, duct factor, installation room, served rooms | COP map and learning runs |
 | a room's temperature sensor or thermostat | that room's heat-up rate |
 
 Run state, lockout times and manual holds are never reset, so a reset cannot make a unit cycle.
@@ -230,24 +231,17 @@ It has been tried on a Midea PortaSplit, icing and defrosting included; other un
 - **Locked out** is the heat pump below its minimum outdoor temperature (default −10 °C), for icing or frequent defrosts, when somebody cools with it, and when its measured COP stays below the *Break-even COP* for a while, so that it heats dearer than the central heating. How long the lockouts for icing and inefficiency last is set with *Lockout after icing / inefficiency* (two hours by default). In the mode *Heat pump only* there is no lockout for inefficiency ([lockouts](HOW_IT_WORKS.md#lockouts)).
 - **Cooling and heating never overlap:** while it cools, the rooms it serves keep their radiators at the setback temperature and call no boiler heat. Frost protection still applies.
 - **Quick heat-up** (button per room or `thriftherm.boost`) runs it at full power for a limited time.
-- **Fan:** Thriftherm sets it only on a start (to *auto*), for a drying or a quick heat-up, and back afterwards. A stage you choose by hand otherwise stays. From heating it never goes straight to off: the fan runs alone for 15 minutes first (parameter, 0 = off at once). A mode set by hand during that time ends the run-on.
+- **Fan:** Thriftherm sets it only on a start, for a drying or a quick heat-up, and back afterwards, to the *Fan stage in normal operation* from the fine tuning (default *Auto*). A higher stage carries more heat into the rooms but is louder. A newly chosen stage reaches the heat pump also in the middle of a run, if it still has the old one. A stage you choose by hand stays. From heating it never goes straight to off: the fan runs alone for 15 minutes first (parameter, 0 = off at once). A mode set by hand during that time ends the run-on.
 
 **Bathroom drying** needs the heat pump: only in a room it heats and that has a humidity sensor. The room form offers it only once a heat pump is set up.
 
 - Drying comes **after** the shower: when the humidity rises, Thriftherm waits until it stops rising. Then the heat pump blows with its strongest fan stage and the drying target temperature, at most 60 minutes (default) and only while it is actively controlled and can heat and run efficiently. Afterwards the fan gets back the stage it had before.
 - The button *Dry now* starts at once and for the full time, for laundry or a wet floor; *Back to automatic* ends the drying. If you want the button only, switch off *Start the drying by itself after a shower* in the room form.
-- The moisture does not leave the home that way: the warm air dries walls and mirror and spreads the moisture; it only leaves when you air. The quickest way is a window opened briefly after the shower. If it stays open long without the humidity falling, the drying ends. The radiator always follows the normal window logic.
+- The moisture only leaves through the window. With a window contact in the bathroom the heat pump therefore blows only while the window is open: open it wide after the shower, and the warm air dries walls and mirror while the moisture leaves. With the window shut the drying waits (*Waiting: open the window*). Without a window contact it blows as before, also with the window shut. The radiator always follows the normal window logic.
 
 When it starts and ends: [bathroom drying](HOW_IT_WORKS.md#bathroom-drying).
 
-**Setpoint follows the rooms** (switch in the heat pump form): the heat pump gets the highest target of the rooms it serves plus the setpoint offset (1 degree by default) and regulates by itself. Comfort 21 °C gives 22 °C on the unit, the night setback of 17 °C gives 18 °C.
-
-- It stays on, day and night, for as long as it is the cheaper source, and goes off only while nobody wants the rooms it serves warm (away, off, a window open in each of them). So while no room needs heat, the *Decision reason* reads "heat pump runs through, setpoint 22.0 °C" and not "no room needs heat".
-- *Quick heat-up* then only raises the fan.
-- While drying, the unit is set at least 1 degree above its own reading, at most 2 degrees above the drying target, so that it runs, fan and all ([details](HOW_IT_WORKS.md#bathroom-drying)).
-- When a served room falls behind, Thriftherm sets the unit higher in small steps (attribute `eco_offset_k`) and back again later. The boiler helps only once that is not enough (attribute `boiler_helps`), and only until the room is warm ([details](HOW_IT_WORKS.md#setpoint-follows-the-rooms)).
-
-Without the switch Thriftherm uses the setpoint as a power lever (intake air plus a learned offset) and switches by the rooms' demand ([details](HOW_IT_WORKS.md#without-setpoint-follows-the-rooms)).
+**Setpoint:** the heat pump runs at its least power, where its COP is best. Its setpoint sits a degree below its own reading and is set anew only rarely, so it beeps little. The coldest served room decides: half a degree above its target the compressor rests (setpoint 17 °C, the unit stays in heating), at its target it heats again. If a room lags, the central heating helps, boiler or district heating (attribute `boiler_helps`); without central heating, or in the mode *Heat pump only*, its setpoint goes up slowly. *When the heat pump alone is not enough* in the fine tuning changes that: *Heat pump runs higher* (no boiler, its COP drops) or *Warm up slower* (its least power only; the central heating helps only once a room is half a degree below its target). Without central heating it always runs higher, whatever is chosen. *Quick heat-up* gives more power. While it runs with no room needing heat right now, the *Decision reason* says "heat pump runs through" rather than "no room needs heat" ([details](HOW_IT_WORKS.md#held-at-its-minimum)).
 
 ## 8. Dashboard sensors worth knowing
 

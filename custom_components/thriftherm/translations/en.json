@@ -40,6 +40,7 @@
           "gas_volume": "Gas meter volume (m³, total)",
           "gas_flow": "Gas meter instantaneous flow (m³/h)",
           "boiler_nominal_input_kw": "Without a gas meter: nominal heat input of the boiler (type plate, kW)",
+          "boiler_pump_power_w": "Power of the heating pump (W, optional)",
           "boiler_ebus_circuit": "ebusd circuit of the boiler (usually bai)",
           "boiler_curve_flow_at_minus10": "Heating curve: flow temperature at -10 °C outdoor",
           "boiler_curve_flow_at_plus15": "Heating curve: flow temperature at +15 °C outdoor",
@@ -53,6 +54,7 @@
         },
         "data_description": {
           "boiler_nominal_input_kw": "Only for the two sensors “Gas for heating” and “Gas for hot water”, and only read when no gas meter is set above. A Vaillant boiler adds up its burner output itself (ebusd PrEnergySumHc1-3 and PrEnergySumHwc1-3); with the nominal heat input from the type plate (Q or Qn, the larger value of a range, e.g. 22.2) that becomes kWh as on the gas bill. Leave empty if you have a gas meter or another boiler.",
+          "boiler_pump_power_w": "Its electricity joins the price of boiler heat: Thriftherm counts how long the pump runs and how much heat the boiler gives, and adds the pump's electricity per kWh of heat. A heat pump that takes over then also saves the pump's electricity. Leave empty to compare gas alone. A pump in permanent mode often draws 20 to 50 W.",
           "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation.",
           "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms. The heating curve per load class counts more rooms than this share as the majority (0.5: three of four rooms).",
           "boiler_load_model": "The flow a flat needs depends on how many radiators take heat, and on each radiator: a small one in a cold room needs a hotter flow than a large one. On: Thriftherm keeps a correction of the heating curve for each room in each of three cases (one room calls, a few, the majority). Of the rooms that want heat, the one that needs the most sets the flow; the others' valves take less. A room that does not get there raises only its own value, so what the bathroom alone taught does not shift the flow for the whole flat. A room without a value starts from its own in the nearest case. A value that has served for some hours counts as found and only moves again on evidence that lasts. Off: one common correction for all rooms and cases, as before; it keeps what it had learned.",
@@ -73,7 +75,6 @@
           "midea_airflow_curve": "Airflow curve (rpm:m³/h, ...)",
           "midea_duct_factor": "Duct factor (real airflow / free-blowing, 1.0 without hoses)",
           "heat_pump_cop_profile": "COP values of this model (without sensors at the unit)",
-          "midea_follow_rooms": "Setpoint follows the served rooms' target (plus the setpoint offset from “Heat pump: fine tuning”); the unit regulates by itself",
           "midea_room": "Room the heat pump stands in"
         },
         "data_description": {
@@ -182,6 +183,7 @@
           "gas_volume": "Gas meter volume (m³, total)",
           "gas_flow": "Gas meter instantaneous flow (m³/h)",
           "boiler_nominal_input_kw": "Without a gas meter: nominal heat input of the boiler (type plate, kW)",
+          "boiler_pump_power_w": "Power of the heating pump (W, optional)",
           "boiler_ebus_circuit": "ebusd circuit of the boiler (usually bai)",
           "boiler_curve_flow_at_minus10": "Heating curve: flow temperature at -10 °C outdoor",
           "boiler_curve_flow_at_plus15": "Heating curve: flow temperature at +15 °C outdoor",
@@ -195,6 +197,7 @@
         },
         "data_description": {
           "boiler_nominal_input_kw": "Only for the two sensors “Gas for heating” and “Gas for hot water”, and only read when no gas meter is set above. A Vaillant boiler adds up its burner output itself (ebusd PrEnergySumHc1-3 and PrEnergySumHwc1-3); with the nominal heat input from the type plate (Q or Qn, the larger value of a range, e.g. 22.2) that becomes kWh as on the gas bill. Leave empty if you have a gas meter or another boiler.",
+          "boiler_pump_power_w": "Its electricity joins the price of boiler heat: Thriftherm counts how long the pump runs and how much heat the boiler gives, and adds the pump's electricity per kWh of heat. A heat pump that takes over then also saves the pump's electricity. Leave empty to compare gas alone. A pump in permanent mode often draws 20 to 50 W.",
           "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation.",
           "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms. The heating curve per load class counts more rooms than this share as the majority (0.5: three of four rooms).",
           "boiler_load_model": "The flow a flat needs depends on how many radiators take heat, and on each radiator: a small one in a cold room needs a hotter flow than a large one. On: Thriftherm keeps a correction of the heating curve for each room in each of three cases (one room calls, a few, the majority). Of the rooms that want heat, the one that needs the most sets the flow; the others' valves take less. A room that does not get there raises only its own value, so what the bathroom alone taught does not shift the flow for the whole flat. A room without a value starts from its own in the nearest case. A value that has served for some hours counts as found and only moves again on evidence that lasts. Off: one common correction for all rooms and cases, as before; it keeps what it had learned.",
@@ -214,7 +217,6 @@
           "midea_airflow_curve": "Airflow curve (rpm:m³/h, ...)",
           "midea_duct_factor": "Duct factor (real airflow / free-blowing, 1.0 without hoses)",
           "heat_pump_cop_profile": "COP values of this model (without sensors at the unit)",
-          "midea_follow_rooms": "Setpoint follows the served rooms' target (plus the setpoint offset from “Heat pump: fine tuning”); the unit regulates by itself",
           "midea_room": "Room the heat pump stands in"
         },
         "data_description": {
@@ -226,9 +228,14 @@
         "description": "How the heat pump is run. The entities and the airflow are set under *Heat pump*.",
         "data": {
           "midea_allow_active_control": "Release active control (otherwise plan only)",
-          "midea_setpoint_offset_k": "Setpoint above the rooms' target, or above intake air as a learned start value",
           "midea_min_outdoor_temp": "Minimum outdoor temperature for heating (data sheet)",
-          "default_heat_rate_midea_k_h": "Default heat-up rate heat pump rooms"
+          "default_heat_rate_midea_k_h": "Default heat-up rate heat pump rooms",
+          "heat_pump_shortfall": "When the heat pump alone is not enough",
+          "heat_pump_fan_stage": "Fan stage in normal operation"
+        },
+        "data_description": {
+          "heat_pump_shortfall": "Boiler or district heating helps: warm fastest, a few cents dearer. Heat pump runs higher: no boiler, its COP drops. Warm up slower: the heat pump stays at its least power; boiler or district heating helps only from half a degree below target, then until every room is there. Without central heating it always runs higher.",
+          "heat_pump_fan_stage": "Auto lets the unit choose. A higher stage carries more of the heat into the rooms (measured: full about 7 % more than auto at the same power), but is louder. Drying and quick heat-up use their own stage and give this one back afterwards. A stage the unit does not offer counts as auto. A stage chosen by hand stays."
         },
         "sections": {
           "switching": {
@@ -286,6 +293,7 @@
           "override_default_min": "How long a change by hand is respected (thermostat and heat pump)",
           "boost_duration_min": "Quick heat-up duration",
           "away_temp": "Away temperature",
+          "away_return_persons": "Away ends when one of these people comes home",
           "frost_protection_temp": "Frost protection temperature"
         },
         "sections": {
@@ -394,7 +402,7 @@
     "learning_scope": {
       "options": {
         "boiler": "Boiler: heating curve correction",
-        "heat_pump": "Heat pump: COP map, setpoint correction (an icing lockout stays)",
+        "heat_pump": "Heat pump: COP map and learning runs (an icing lockout stays)",
         "rooms": "Rooms: heat-up rates, cool-down coefficients"
       }
     },
@@ -407,6 +415,22 @@
       "options": {
         "none": "None (general starting curve)",
         "midea_portasplit": "Midea PortaSplit (measured on one unit, 2 to 16 °C outside)"
+      }
+    },
+    "heat_pump_shortfall": {
+      "options": {
+        "boiler_helps": "Boiler or district heating helps",
+        "lift": "Heat pump runs higher",
+        "slower": "Warm up slower"
+      }
+    },
+    "heat_pump_fan_stage": {
+      "options": {
+        "auto": "Auto",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High",
+        "full": "Full (strongest)"
       }
     }
   },
@@ -677,7 +701,7 @@
               "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
-              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out",
               "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
@@ -713,6 +737,14 @@
               "manual_takeover": "Changed by hand",
               "midea_unavailable": "Heat pump unavailable",
               "target_reached": "Target reached",
+              "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+              "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+              "resumed_at_minimum": "A room at its target: heats again at its least power",
+              "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+              "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+              "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
@@ -805,7 +837,8 @@
               "idle": "Warm enough",
               "stalled": "Close to target, barely rising: counts as reached",
               "comfort_ending": "Comfort ends soon: no new heat",
-              "not_allowed": "Heating not allowed"
+              "not_allowed": "Heating not allowed",
+              "thermostat_idle": "The thermostat does not heat: no boiler call"
             }
           },
           "calls_again_below": {
@@ -886,7 +919,7 @@
               "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
-              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out",
               "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
@@ -922,6 +955,14 @@
               "manual_takeover": "Changed by hand",
               "midea_unavailable": "Heat pump unavailable",
               "target_reached": "Target reached",
+              "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+              "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+              "resumed_at_minimum": "A room at its target: heats again at its least power",
+              "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+              "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+              "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
@@ -992,7 +1033,7 @@
               "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
-              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out",
               "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
@@ -1028,6 +1069,14 @@
               "manual_takeover": "Changed by hand",
               "midea_unavailable": "Heat pump unavailable",
               "target_reached": "Target reached",
+              "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+              "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+              "resumed_at_minimum": "A room at its target: heats again at its least power",
+              "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+              "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+              "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
@@ -1075,8 +1124,11 @@
               "rooms_heating_up": "a room heats up on an extra"
             }
           },
-          "eco_offset_k": {
-            "name": "Setpoint correction (degrees)"
+          "resting": {
+            "name": "Compressor rests"
+          },
+          "latched_setpoint_c": {
+            "name": "Setpoint held °C"
           },
           "boiler_helps": {
             "name": "Boiler helps a heat pump room"
@@ -1169,7 +1221,7 @@
               "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
-              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out",
               "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
@@ -1205,6 +1257,14 @@
               "manual_takeover": "Changed by hand",
               "midea_unavailable": "Heat pump unavailable",
               "target_reached": "Target reached",
+              "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+              "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+              "resumed_at_minimum": "A room at its target: heats again at its least power",
+              "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+              "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+              "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
@@ -1275,7 +1335,7 @@
               "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
-              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out",
               "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
@@ -1311,6 +1371,14 @@
               "manual_takeover": "Changed by hand",
               "midea_unavailable": "Heat pump unavailable",
               "target_reached": "Target reached",
+              "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+              "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+              "resumed_at_minimum": "A room at its target: heats again at its least power",
+              "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+              "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+              "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
@@ -1432,7 +1500,7 @@
               "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
-              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out",
               "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
@@ -1468,6 +1536,14 @@
               "manual_takeover": "Changed by hand",
               "midea_unavailable": "Heat pump unavailable",
               "target_reached": "Target reached",
+              "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+              "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+              "resumed_at_minimum": "A room at its target: heats again at its least power",
+              "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+              "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+              "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
@@ -1569,7 +1645,7 @@
               "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
-              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out",
               "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
@@ -1605,6 +1681,14 @@
               "manual_takeover": "Changed by hand",
               "midea_unavailable": "Heat pump unavailable",
               "target_reached": "Target reached",
+              "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+              "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+              "resumed_at_minimum": "A room at its target: heats again at its least power",
+              "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+              "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+              "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
@@ -1672,7 +1756,7 @@
               "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
-              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out",
               "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
@@ -1708,6 +1792,14 @@
               "manual_takeover": "Changed by hand",
               "midea_unavailable": "Heat pump unavailable",
               "target_reached": "Target reached",
+              "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+              "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+              "resumed_at_minimum": "A room at its target: heats again at its least power",
+              "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+              "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+              "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
@@ -1822,9 +1914,6 @@
               "profile": "Measured on the same model"
             }
           },
-          "midea_eco_offset_k": {
-            "name": "Heat pump setpoint correction (degrees)"
-          },
           "last_reset": {
             "name": "Last reset"
           }
@@ -1874,7 +1963,7 @@
               "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
-              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out",
               "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
@@ -1910,6 +1999,14 @@
               "manual_takeover": "Changed by hand",
               "midea_unavailable": "Heat pump unavailable",
               "target_reached": "Target reached",
+              "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+              "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+              "resumed_at_minimum": "A room at its target: heats again at its least power",
+              "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+              "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+              "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
@@ -2015,7 +2112,7 @@
               "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
-              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out",
               "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
@@ -2051,6 +2148,14 @@
               "manual_takeover": "Changed by hand",
               "midea_unavailable": "Heat pump unavailable",
               "target_reached": "Target reached",
+              "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+              "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+              "resumed_at_minimum": "A room at its target: heats again at its least power",
+              "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+              "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+              "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",
@@ -2137,7 +2242,7 @@
               "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
               "drying_ended_humidity_normal": "Ended: humidity back to normal",
               "drying_ended_timeout": "Ended: time limit",
-              "drying_ended_window_ineffective": "Ended: window open without effect",
+              "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out",
               "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
               "room_demand": "Rooms need heat",
               "no_room_needs_boiler": "No room needs the boiler",
@@ -2173,6 +2278,14 @@
               "manual_takeover": "Changed by hand",
               "midea_unavailable": "Heat pump unavailable",
               "target_reached": "Target reached",
+              "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+              "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+              "resumed_at_minimum": "A room at its target: heats again at its least power",
+              "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+              "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+              "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
               "no_demand": "No demand",
               "blocked": "Blocked",
               "intake_temperature_unknown": "Intake temperature unknown",

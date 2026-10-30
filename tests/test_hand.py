@@ -514,22 +514,27 @@ async def test_a_thermostat_in_whole_degrees_is_not_overridden_by_its_own_answer
     assert coordinator.data["room_commands"]["badezimmer"].reason == "in_sync"
 
 
-async def test_a_change_made_while_the_cycle_runs_is_not_overwritten(hass: HomeAssistant, freezer, hass_admin_user) -> None:
-    coordinator, bath, _ = await _setup(hass, freezer)
-    await _cycle(hass, coordinator, freezer, 600)
-    coordinator.room_temps["badezimmer"] = {"comfort": 22.0}  # 22 is due in the next cycle
+async def _cycle_with_a_person_setting(hass, coordinator, freezer, entity, target: float, user_id: str) -> None:
+    """One cycle: the states are read, the commands decided, and before they go out a person sets `target` at `entity`."""
     evaluate = coordinator._evaluate
 
     def evaluate_then_a_person_acts(snapshot):
-        result = evaluate(snapshot)  # the states are read, the commands decided ...
-        bath._attr_target_temperature = 24.0  # ... and before they go out somebody sets 24
-        bath.async_set_context(Context(user_id=hass_admin_user.id))
-        bath.async_write_ha_state()
+        result = evaluate(snapshot)
+        entity._attr_target_temperature = target
+        entity.async_set_context(Context(user_id=user_id))
+        entity.async_write_ha_state()
         return result
 
     coordinator._evaluate = evaluate_then_a_person_acts
     await _cycle(hass, coordinator, freezer)
     coordinator._evaluate = evaluate
+
+
+async def test_a_change_made_while_the_cycle_runs_is_not_overwritten(hass: HomeAssistant, freezer, hass_admin_user) -> None:
+    coordinator, bath, _ = await _setup(hass, freezer)
+    await _cycle(hass, coordinator, freezer, 600)
+    coordinator.room_temps["badezimmer"] = {"comfort": 22.0}  # 22 is due in the next cycle
+    await _cycle_with_a_person_setting(hass, coordinator, freezer, bath, 24.0, hass_admin_user.id)
     assert bath.target_temperature == 24.0 and ("set_temperature", 22.0) not in bath.calls
     await _cycle(hass, coordinator, freezer)
     override = coordinator.overrides["badezimmer"]
@@ -555,19 +560,8 @@ async def test_a_change_at_the_heat_pump_while_the_cycle_runs_is_not_overwritten
     coordinator, _, midea = await _setup(hass, freezer, heat_pump_active=True)
     await _cycle(hass, coordinator, freezer, 600)
     coordinator.boosts["badezimmer"] = dt_util.utcnow().timestamp() + 3600  # quick heat-up: a fan command is due
-    evaluate = coordinator._evaluate
-
-    def evaluate_then_a_person_acts(snapshot):
-        result = evaluate(snapshot)
-        midea._attr_target_temperature = 26.0
-        midea.async_set_context(Context(user_id=hass_admin_user.id))
-        midea.async_write_ha_state()
-        return result
-
-    coordinator._evaluate = evaluate_then_a_person_acts
     calls = len(midea.calls)
-    await _cycle(hass, coordinator, freezer)
-    coordinator._evaluate = evaluate
+    await _cycle_with_a_person_setting(hass, coordinator, freezer, midea, 26.0, hass_admin_user.id)
     assert len(midea.calls) == calls and midea.target_temperature == 26.0  # the planned command stayed unsent
     await _cycle(hass, coordinator, freezer)
     assert _command(hass) == ("hands_off", "manual_takeover", "person")

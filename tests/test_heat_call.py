@@ -10,21 +10,19 @@ import pytest
 from custom_components.thriftherm.engines import advisor, heat_call
 from custom_components.thriftherm.engines.heat_call import CallMemory
 from custom_components.thriftherm.engines.room import comfort_end, evaluate_room, parse_schedule
-from custom_components.thriftherm.models import RoomResult, ScheduleState
+from custom_components.thriftherm.models import ScheduleState
 
-from .conftest import PARAMS, room_config, room_state, snapshot
+from .conftest import PARAMS, room_config, room_result, room_state, snapshot
 
 NOW = 2_000_000.0
 HOUR = 3600.0
 
 
 def rr(key="badezimmer", temp=20.0, target=21.0, reason="schedule_comfort", trend=None, allowed=True, demand=None, preheat=None):
-    return RoomResult(
-        key=key, target=target, target_reason=reason, temperature=temp,
-        deviation_k=None if temp is None else round(temp - target, 2),
+    return room_result(
+        key, target, temp, target_reason=reason, deviation_k=None if temp is None else round(temp - target, 2),
         demand=demand if demand is not None else (0.0 if temp is None else max(0.0, (target - temp) / 2.0)),
-        trend_k_per_h=trend, dew_point_c=None, abs_humidity_g_m3=None, window_open=not allowed, window_unknown=False,
-        heating_allowed=allowed, internal_gain_w=None, preheat_start_ts=preheat,
+        trend_k_per_h=trend, window_open=not allowed, heating_allowed=allowed, preheat_start_ts=preheat,
     )
 
 
@@ -196,6 +194,8 @@ def test_stored_call_memory_that_is_not_valid_is_empty(stored):
 def test_call_memory_round_trip():
     mem = CallMemory(calling=True, since_ts=NOW, stalled_target=None, target=21.5)
     assert CallMemory.from_storage(mem.to_storage()) == mem
+    stalled = CallMemory(stalled_target=21.0, stalled_helped=True)
+    assert CallMemory.from_storage(stalled.to_storage()) == stalled
 
 
 # ------------------------------------------------------------------ heat along
@@ -229,6 +229,14 @@ def test_rooms_that_may_not_heat_do_not_join():
 def test_an_override_does_not_join():
     rooms = {"wohnzimmer": rr("wohnzimmer", temp=18.0, target=18.5, reason="override")}
     assert heat_call.join(rooms, {}, {"wohnzimmer": 18.5}, NOW) == rooms
+
+
+def test_a_room_whose_thermostat_holds_its_valve_shut_does_not_heat_along():
+    """Review 2026-10-30: raised by half a degree, the thermostat opened the valve that issue #3 keeps shut, and the
+    next cycle the room called the boiler itself and lengthened the run."""
+    rooms = {"wohnzimmer": replace(rr("wohnzimmer", temp=18.0, target=18.5), thermostat_heating=False)}
+    states = {"wohnzimmer": heat_call.CALL_THERMOSTAT_IDLE}
+    assert heat_call.join(rooms, states, {"wohnzimmer": 18.5}, NOW) == rooms
 
 
 # ------------------------------------------------------------------ advisor
@@ -290,3 +298,97 @@ def test_an_unknown_trend_after_a_restart_is_no_stall():
     assert state == "calling"
     state, _ = step(rr(temp=20.8, trend=0.05), mem, NOW + 2 * HOUR)
     assert state == "stalled"
+
+
+# ---- the thermostat's own word (issue #3, 2026-10-28) ----------------------------------------------------------
+def test_a_room_whose_thermostat_reports_idle_does_not_call_the_boiler():
+    """Thriftherm's call alone could start the boiler for a room whose valve its thermostat holds shut."""
+    shut = replace(rr(temp=20.6), thermostat_heating=False)  # 0.4 K below: Thriftherm would call
+    state, mem = step(shut, CallMemory())
+    assert state == heat_call.CALL_THERMOSTAT_IDLE
+    state, _ = step(replace(shut, thermostat_heating=True), mem, now=NOW + 60)
+    assert state == heat_call.CALL_CALLING
+
+
+def test_the_thermostat_heating_does_not_make_a_room_call_by_itself():
+    """Thriftherm's own call stays in charge: a thermostat reporting heating inside the band calls nothing."""
+    state, _ = step(replace(rr(temp=20.9), thermostat_heating=True), CallMemory())  # 0.1 K below: no call
+    assert state == heat_call.CALL_IDLE
+
+
+def test_a_thermostat_without_a_usable_hvac_action_changes_nothing():
+    state, _ = step(replace(rr(temp=20.6), thermostat_heating=None), CallMemory())
+    assert state == heat_call.CALL_CALLING
+
+
+def test_the_hysteresis_runs_on_while_the_thermostat_holds_its_valve_shut():
+    """Called from 0.3 K below, the call holds to 0.1 K below; an idle report in between pauses it, it does not end it."""
+    state, mem = step(rr(temp=20.7), CallMemory())
+    assert state == heat_call.CALL_CALLING
+    state, mem = step(replace(rr(temp=20.8), thermostat_heating=False), mem, now=NOW + 60)
+    assert state == heat_call.CALL_THERMOSTAT_IDLE
+    state, _ = step(replace(rr(temp=20.8), thermostat_heating=True), mem, now=NOW + 120)
+    assert state == heat_call.CALL_CALLING  # 0.2 K below, inside the band: the call that began goes on
+
+
+# ---- the boiler adds the peak for a heat pump room that lags (2026-10-30) --------------------------------------
+def test_a_room_the_boiler_helps_calls_from_two_tenths_below_until_its_target():
+    """In the simulation of 2026-10-20 to 30 the rooms waited for the call at 0.3 below: 249 comfort minutes missed."""
+    state, mem = heat_call.update(rr(temp=20.8), CallMemory(), NOW, None, helping=True)
+    assert state == "calling"
+    state, mem = heat_call.update(rr(temp=20.95), mem, NOW + 60, None, helping=True)
+    assert state == "calling"  # within the tenth that ends a call otherwise
+    state, mem = heat_call.update(rr(temp=21.0), mem, NOW + 120, None, helping=True)
+    assert state == "idle" and not mem.calling
+    state, _ = heat_call.update(rr(temp=21.0), CallMemory(), NOW + 180, None, helping=True)
+    assert state == "idle"  # at its target a room does not begin to call either
+    state, _ = step(rr(temp=20.8), CallMemory())  # without the help: not yet, as before
+    assert state == "idle"
+
+
+def test_a_heat_pump_room_the_boiler_helps_is_judged_stalled_only_after_two_hours():
+    """Replayed 2026-10-30, 8 degrees colder: the bath, helped for an hour, was judged stalled 0.13 below its target,
+    while the unit stayed at its least speed for it. Neither source added the peak. Never judged stalled, a room that
+    hangs below its target (a sensor placed apart from the valve) had the boiler fire for one radiator all comfort
+    long, the pattern of 2026-09 (review 2026-10-30)."""
+    old = CallMemory(calling=True, since_ts=NOW - 2 * HOUR + 60, target=21.0)
+    state, mem = heat_call.update(rr(temp=20.9, trend=0.05), old, NOW, None, helping=True)
+    assert state == "calling" and mem.stalled_target is None
+    state, mem = heat_call.update(rr(temp=20.9, trend=0.05), old, NOW + 60, None, helping=True)
+    assert (state, mem.stalled_target) == ("stalled", 21.0)
+    state, mem = heat_call.update(rr(temp=20.8, trend=0.05), mem, NOW + 120, None, helping=True)
+    assert state == "stalled"  # the help it was judged under does not end it
+    state, mem = heat_call.update(rr(temp=20.7, trend=0.05), mem, NOW + 180, None, helping=True)
+    assert state == "calling"  # three tenths below, where a room the boiler does not help calls
+    state, _ = heat_call.update(rr(temp=20.9, trend=0.2), old, NOW + 60, None, helping=True)
+    assert state == "calling"  # still rising
+    state, _ = heat_call.update(rr(temp=20.7, trend=0.05), old, NOW + 60, None, helping=True)
+    assert state == "calling"  # three tenths below is no stall while helped
+    state, mem = heat_call.update(rr(temp=20.75, trend=0.05), CallMemory(stalled_target=21.0), NOW, None, helping=True)
+    assert state == "calling" and mem.stalled_target is None  # a stall from before the help ends with it
+
+
+def test_a_helped_room_flickering_at_its_target_does_not_call_again_until_two_tenths_below():
+    """Review 2026-10-30: a helped call from any shortfall switched the boiler with every 20.9/21.0 reading."""
+    state, mem = heat_call.update(rr(temp=20.9), CallMemory(), NOW, None, helping=True)
+    assert state == "idle"
+    state, mem = heat_call.update(rr(temp=20.8), mem, NOW + 60, None, helping=True)
+    assert state == "calling"
+    state, mem = heat_call.update(rr(temp=20.95), mem, NOW + 120, None, helping=True)
+    assert state == "calling"  # within the tenth that ends a call otherwise
+    state, mem = heat_call.update(rr(temp=21.0), mem, NOW + 180, None, helping=True)
+    assert state == "idle"
+    state, mem = heat_call.update(rr(temp=20.9), mem, NOW + 240, None, helping=True)
+    assert state == "idle"
+
+
+def test_a_helped_room_calls_the_boiler_in_the_last_half_hour_of_comfort_too():
+    """Replayed 2026-10-30, five degrees colder: with the unit held at its least speed for it, the bath fell to 0.5 K
+    below its target from 07:01 to 07:29 while no call could go out. Let through, the comfort minutes missed fell
+    from 71 to 53 in ten days at the same cost."""
+    state, _ = heat_call.update(rr(temp=20.7), CallMemory(), NOW, NOW + 25 * 60, helping=True)
+    assert state == "calling"
+    state, _ = heat_call.update(rr(temp=20.7), CallMemory(), NOW, NOW + 25 * 60, helping=False)
+    assert state == "comfort_ending"
+    state, _ = heat_call.update(rr(temp=20.7), CallMemory(), NOW, NOW - 60, helping=True)
+    assert state == "comfort_ending"  # its end just passed, the schedule helper not switched yet

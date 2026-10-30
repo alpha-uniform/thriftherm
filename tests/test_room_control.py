@@ -5,15 +5,13 @@ from dataclasses import replace
 from custom_components.thriftherm.engines.room_control import RoomCtrlMemory, decide, manual_change, thermostat_setpoint
 from custom_components.thriftherm.models import RoomResult
 
+from .conftest import room_result
+
 NOW = 3_000_000.0
 
 
 def rr(target=21.0, reason="schedule_comfort") -> RoomResult:
-    return RoomResult(
-        key="badezimmer", target=target, target_reason=reason, temperature=20.0, deviation_k=-1.0, demand=0.5,
-        trend_k_per_h=None, dew_point_c=None, abs_humidity_g_m3=None, window_open=False, window_unknown=False,
-        heating_allowed=True, internal_gain_w=None,
-    )
+    return room_result(target=target, temperature=20.0, target_reason=reason, deviation_k=-1.0)
 
 
 def run(mode="active", target=21.0, hvac="heat", thermostat=20.0, now=NOW, mem=RoomCtrlMemory(), has=True):

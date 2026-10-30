@@ -41,11 +41,12 @@ LABELS: dict[str, dict[str, str]] = {
         # whether a room calls the boiler
         "calling": "Calls for heat", "idle": "Warm enough", "stalled": "Close to target, barely rising: counts as reached",
         "comfort_ending": "Comfort ends soon: no new heat", "not_allowed": "Heating not allowed",
+        "thermostat_idle": "The thermostat does not heat: no boiler call",
         # drying mode
         "drying_active": "Drying", "drying_started_humidity_load": "Started: humidity after a shower",
         "drying_waiting_for_the_shower_to_end": "Waiting: the humidity is still rising (shower running)",
         "drying_ended_humidity_normal": "Ended: humidity back to normal", "drying_ended_timeout": "Ended: time limit",
-        "drying_ended_window_ineffective": "Ended: window open without effect", "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
+        "drying_waiting_for_open_window": "Waiting: open the window, the moisture needs a way out", "drying_waiting_for_the_heat_pump": "Waiting: heat pump not available",
         # boiler
         "room_demand": "Rooms need heat", "no_room_needs_boiler": "No room needs the boiler", "frost_protection": "Frost protection",
         "summer_mode": "Summer mode", "safety_fallback": "Safety fallback", "boiler_data_unavailable": "Boiler data unavailable", "waiting_for_room_data": "Waiting for room data",
@@ -68,6 +69,14 @@ LABELS: dict[str, dict[str, str]] = {
         "cheaper_than_gas": "Cheaper than central heating", "gas_cheaper": "Central heating cheaper", "learning_run": "Learning run",
         "quick_heat_up": "Quick heat-up", "mode_midea_only": "Mode: heat pump only", "mode_boiler_only": "Mode: boiler only",
         "manual_takeover": "Changed by hand", "midea_unavailable": "Heat pump unavailable", "target_reached": "Target reached",
+        "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
+        "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
+        "resumed_at_minimum": "A room at its target: heats again at its least power",
+        "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+        "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+        "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
+        "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
+        "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
         "no_demand": "No demand", "blocked": "Blocked", "intake_temperature_unknown": "Intake temperature unknown",
         "comfort_time_over": "No served room is to be heated (away, off or window open)",
         "outdoor_temperature_unknown": "Outdoor temperature unknown", "outdoor_too_cold": "Too cold outside",
@@ -116,10 +125,11 @@ LABELS: dict[str, dict[str, str]] = {
         "calling": "Fordert Wärme an", "idle": "Warm genug",
         "stalled": "Knapp unter Soll, steigt kaum: gilt als erreicht",
         "comfort_ending": "Komfortzeit endet bald: keine neue Wärme", "not_allowed": "Heizen nicht erlaubt",
+        "thermostat_idle": "Thermostat heizt nicht: kein Ruf an die Therme",
         "drying_active": "Trocknet", "drying_started_humidity_load": "Gestartet: Feuchte nach dem Duschen",
         "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
         "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal", "drying_ended_timeout": "Beendet: Zeitlimit",
-        "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung", "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
+        "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen", "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
         "room_demand": "Räume brauchen Wärme", "no_room_needs_boiler": "Kein Raum braucht die Therme", "frost_protection": "Frostschutz",
         "summer_mode": "Sommerbetrieb", "safety_fallback": "Sicherheits-Fallback", "boiler_data_unavailable": "Thermendaten fehlen", "waiting_for_room_data": "Warte auf Raumdaten",
         "hands_off": "Keine Vorgabe", "control_off": "Steuerung aus", "not_configured": "Nicht eingerichtet",
@@ -138,6 +148,14 @@ LABELS: dict[str, dict[str, str]] = {
         "cheaper_than_gas": "Günstiger als die Heizung", "gas_cheaper": "Heizung günstiger", "learning_run": "Lernlauf",
         "quick_heat_up": "Schnell aufheizen", "mode_midea_only": "Modus: nur Wärmepumpe", "mode_boiler_only": "Modus: nur Therme",
         "manual_takeover": "Von Hand geändert", "midea_unavailable": "Wärmepumpe nicht verfügbar", "target_reached": "Ziel erreicht",
+        "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+        "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+        "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+        "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+        "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+        "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+        "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+        "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
         "no_demand": "Kein Bedarf", "blocked": "Gesperrt", "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
         "comfort_time_over": "Kein versorgter Raum soll geheizt werden (abwesend, aus oder Fenster offen)",
         "outdoor_temperature_unknown": "Außentemperatur unbekannt", "outdoor_too_cold": "Draußen zu kalt",
@@ -180,7 +198,7 @@ DEFROST_KINDS = ("none", "persistent", "cycle")
 COP_BASES = ("measured", "learned", "prior", "prior_calibrated", "profile")
 POWER_SOURCES = ("plug", "midea_internal")
 OUTDOOR_SOURCES = ("last_known",)  # otherwise the entity the value comes from
-CALL_STATES = ("calling", "idle", "stalled", "comfort_ending", "not_allowed")
+CALL_STATES = ("calling", "idle", "stalled", "comfort_ending", "not_allowed", "thermostat_idle")
 LOAD_CLASSES = ("single", "few", "majority")
 CHANGED_BY = ("person", "automation", "device", "action")  # who changed something by hand (engines/hand.py)
 SPREAD_RULES = ("active", "blocked_few_rooms")

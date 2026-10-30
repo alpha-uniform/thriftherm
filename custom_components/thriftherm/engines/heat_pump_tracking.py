@@ -14,6 +14,7 @@ from ..models import CopResult, DefrostResult, HeatingSnapshot, HeatPumpResult, 
 from . import cop as cop_engine
 from . import defrost as defrost_engine
 from .heat_pump import HEATING_STATES as _HEATING
+from .heat_pump_control import SETTLED_RUN_S
 
 COP_SAMPLE_RETENTION_S = 1800.0
 COP_MAP_MIN_SAMPLES_FOR_ENTRY = 12  # only feed the map with a settled, filtered COP
@@ -99,7 +100,7 @@ class HeatPumpTracker:
         self.cycle_last = None
 
     def _cycle(
-        self, snapshot: HeatingSnapshot, heat_pump_res: HeatPumpResult, defrost_suspected: bool, params: Parameters, now_ts: float
+        self, snapshot: HeatingSnapshot, heat_pump_res: HeatPumpResult, spoiled: bool, params: Parameters, now_ts: float
     ) -> None:
         """Add this sample to the on/off cycle in progress; a compressor start closes one and begins the next."""
         if heat_pump_res.run_state not in _HEATING:
@@ -117,7 +118,7 @@ class HeatPumpTracker:
             else:  # trapezoid between the two samples
                 self.cycle_heat_wh += (last[1] + heat) / 2.0 * dt / 3600.0
                 self.cycle_electricity_wh += (last[2] + electricity) / 2.0 * dt / 3600.0
-        if defrost_suspected:
+        if spoiled:
             self.cycle_spoiled = True
         if not (on and (last is None or not last[3])):
             return
@@ -139,12 +140,28 @@ class HeatPumpTracker:
         value, self.cycle_cop_new = self.cycle_cop_new, None
         return value
 
-    def cop(self, snapshot: HeatingSnapshot, heat_pump_res: HeatPumpResult, defrost_res: DefrostResult, params: Parameters, now_ts: float) -> CopResult:
-        instant = cop_engine.instant(snapshot.heat_pump, heat_pump_res.run_state, heat_pump_res.electrical_power_w, params)
+    def cop(
+        self, snapshot: HeatingSnapshot, heat_pump_res: HeatPumpResult, defrost_res: DefrostResult, params: Parameters,
+        now_ts: float, above_minimum: str | None = None,
+    ) -> CopResult:
+        """The COP of the moment, from samples at the least speed the unit is held at.
+
+        The map it feeds decides between heat pump and boiler for the speed the unit actually runs at
+        (24 Hz, about 340 W, seen 2026-10-20 to 30). A start from off boosts to 60-79 Hz in its first
+        minutes, and a quick heat-up or a drying (`above_minimum`, why_above_minimum) runs it at
+        650-930 W: none of that enters, also with a warm-up time set shorter than ten minutes.
+        """
+        unit = snapshot.heat_pump
+        instant = cop_engine.instant(unit, heat_pump_res.run_state, heat_pump_res.electrical_power_w, params)
         gates = list(instant.gate_reasons)
         if defrost_res.suspected:
             gates.append(f"defrost_{defrost_res.kind}")
-        if instant.raw is not None and not defrost_res.suspected:
+        settled = unit.compressor_running_s is not None and unit.compressor_running_s >= SETTLED_RUN_S
+        if instant.raw is not None and not settled and "warming_up" not in gates:
+            gates.append("warming_up")
+        if above_minimum is not None:
+            gates.append(above_minimum)
+        if instant.raw is not None and settled and above_minimum is None and not defrost_res.suspected:
             self.cop_samples.append((now_ts, instant.raw))
         if heat_pump_res.run_state not in (HEAT_PUMP_HEATING_STABLE, HEAT_PUMP_HEATING_WARMING_UP):
             # samples from a finished run must not blend into the next one
@@ -154,7 +171,7 @@ class HeatPumpTracker:
         self.cop_settled = value is not None
         if value is None and not gates:
             gates.append(f"insufficient_samples:{n}/{params.cop_min_samples}")
-        self._cycle(snapshot, heat_pump_res, defrost_res.suspected, params, now_ts)
+        self._cycle(snapshot, heat_pump_res, defrost_res.suspected or above_minimum is not None, params, now_ts)
         cycle_cop = None
         if self.cycle_cop is not None and heat_pump_res.run_state in _HEATING:
             cycle_cop = self.cycle_cop[1] if now_ts - self.cycle_cop[0] <= CYCLE_COP_FRESH_S else None

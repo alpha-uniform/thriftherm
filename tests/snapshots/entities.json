@@ -901,11 +901,11 @@
     "decision_cop": 3.344,
     "decision_cop_basis": "prior",
     "device_class": "enum",
-    "eco_offset_k": 1.0,
     "fan_mode": null,
     "friendly_name": "Thriftherm Heat pump command",
     "icon": "mdi:heat-pump-outline",
     "installed_in_room": null,
+    "latched_setpoint_c": null,
     "load": null,
     "manual_by": null,
     "manual_until_ts": null,
@@ -918,6 +918,7 @@
     "quick_heat_up_until": {},
     "reason": "manual_mode_fan_only",
     "recent_commands": [],
+    "resting": false,
     "served_rooms": [
      "badezimmer"
     ],
@@ -1127,7 +1128,6 @@
     "last_adjustment_reason": null,
     "last_reset": null,
     "load_class": "majority",
-    "midea_eco_offset_k": 1.0,
     "moved_last_24h_k": 0.0,
     "options": [
      "learning",
@@ -2685,11 +2685,11 @@
     "decision_cop": 3.344,
     "decision_cop_basis": "prior",
     "device_class": "enum",
-    "eco_offset_k": 1.0,
     "fan_mode": null,
     "friendly_name": "Thriftherm Heat pump command",
     "icon": "mdi:heat-pump-outline",
     "installed_in_room": null,
+    "latched_setpoint_c": null,
     "load": null,
     "manual_by": null,
     "manual_until_ts": null,
@@ -2702,6 +2702,7 @@
     "quick_heat_up_until": {},
     "reason": "manual_mode_fan_only",
     "recent_commands": [],
+    "resting": false,
     "served_rooms": [
      "badezimmer"
     ],
@@ -2911,7 +2912,6 @@
     "last_adjustment_reason": null,
     "last_reset": null,
     "load_class": "majority",
-    "midea_eco_offset_k": 1.0,
     "moved_last_24h_k": 0.0,
     "options": [
      "learning",
@@ -4475,11 +4475,11 @@
     "decision_cop": 3.344,
     "decision_cop_basis": "prior",
     "device_class": "enum",
-    "eco_offset_k": 1.0,
     "fan_mode": null,
     "friendly_name": "Thriftherm Heat pump command",
     "icon": "mdi:heat-pump-outline",
     "installed_in_room": null,
+    "latched_setpoint_c": null,
     "load": null,
     "manual_by": null,
     "manual_until_ts": null,
@@ -4492,6 +4492,7 @@
     "quick_heat_up_until": {},
     "reason": "manual_mode_fan_only",
     "recent_commands": [],
+    "resting": false,
     "served_rooms": [
      "badezimmer"
     ],
@@ -4701,7 +4702,6 @@
     "last_adjustment_reason": null,
     "last_reset": null,
     "load_class": "majority",
-    "midea_eco_offset_k": 1.0,
     "moved_last_24h_k": 0.0,
     "options": [
      "learning",
@@ -5964,7 +5964,6 @@
     "last_adjustment_reason": null,
     "last_reset": null,
     "load_class": "majority",
-    "midea_eco_offset_k": 1.0,
     "moved_last_24h_k": 0.0,
     "options": [
      "learning",
@@ -7046,11 +7045,11 @@
     "decision_cop": 3.344,
     "decision_cop_basis": "prior",
     "device_class": "enum",
-    "eco_offset_k": 1.0,
     "fan_mode": null,
     "friendly_name": "Thriftherm Heat pump command",
     "icon": "mdi:heat-pump-outline",
     "installed_in_room": null,
+    "latched_setpoint_c": null,
     "load": null,
     "manual_by": null,
     "manual_until_ts": null,
@@ -7063,6 +7062,7 @@
     "quick_heat_up_until": {},
     "reason": "manual_mode_fan_only",
     "recent_commands": [],
+    "resting": false,
     "served_rooms": [
      "badezimmer"
     ],
@@ -7272,7 +7272,6 @@
     "last_adjustment_reason": null,
     "last_reset": null,
     "load_class": "majority",
-    "midea_eco_offset_k": 1.0,
     "moved_last_24h_k": 0.0,
     "options": [
      "learning",

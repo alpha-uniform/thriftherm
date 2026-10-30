@@ -12,18 +12,15 @@ from custom_components.thriftherm.engines import boiler_control as bc
 from custom_components.thriftherm.engines import boiler_learning as learning
 from custom_components.thriftherm.engines import room as room_engine
 from custom_components.thriftherm.engines.room_control import RoomCtrlMemory, manual_change
-from custom_components.thriftherm.models import DryingState, RoomResult, ScheduleState
+from custom_components.thriftherm.models import RoomResult, ScheduleState
 
-from .conftest import PARAMS, room_config, room_state
+from .conftest import PARAMS, room_config, room_result, room_state
 
 P = replace(PARAMS, boiler_flow_max=60.0, boiler_flow_min=30.0)
 
 
 def _room(demand: float = 1.0, trend: float = 0.0) -> RoomResult:
-    return RoomResult(key="bad", target=21.0, target_reason="schedule_comfort", temperature=15.0, deviation_k=-6.0,
-                      demand=demand, trend_k_per_h=trend, dew_point_c=None, abs_humidity_g_m3=None, window_open=False,
-                      window_unknown=False, heating_allowed=True, internal_gain_w=None, drying=DryingState(),
-                      heat_pump_allowed=False, boost_active=False)
+    return room_result("bad", 21.0, 15.0, demand=demand, trend_k_per_h=trend, heat_pump_allowed=False)
 
 
 def _boiler(t: float, advice: str, frost: tuple[str, ...] = (), outdoor: float = -10.0) -> bc.BoilerInputs:

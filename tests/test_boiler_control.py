@@ -11,17 +11,13 @@ from custom_components.thriftherm.engines.boiler_load import LoadLine
 from custom_components.thriftherm.engines.boiler_memory import BoilerInputs, BoilerMemory, correction, curve_flow
 from custom_components.thriftherm.models import RoomResult
 
-from .conftest import PARAMS
+from .conftest import PARAMS, room_result
 
 NOW = 2_000_000.0
 
 
 def rr(key="wohnzimmer", temp=19.0, target=20.0, demand=0.5, trend=None, allowed=True) -> RoomResult:
-    return RoomResult(
-        key=key, target=target, target_reason="schedule_comfort", temperature=temp, deviation_k=None if temp is None else temp - target,
-        demand=demand, trend_k_per_h=trend, dew_point_c=None, abs_humidity_g_m3=None, window_open=not allowed,
-        window_unknown=False, heating_allowed=allowed, internal_gain_w=None,
-    )
+    return room_result(key, target, temp, demand=demand, trend_k_per_h=trend, window_open=not allowed, heating_allowed=allowed)
 
 
 def corr(mem, outdoor=5.0):

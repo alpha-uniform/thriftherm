@@ -2,7 +2,21 @@
 
 [English](../en/CHANGELOG.md) | **Deutsch**
 
-Seit 0.5.0 bleibt die Konfiguration bei Version 3: Jedes Update seitdem behält alles Gelernte.
+Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
+
+## 0.7.0 – 30.10.2026
+
+Im Normalbetrieb läuft die Wärmepumpe nur noch mit kleinster Leistung, dort ist ihr COP am besten. Konfiguration Version 4, die ältere Versionen nicht laden: Vor dem Update ein Backup machen, falls du zurückwillst.
+
+- Ein halbes Grad über dem Soll des kältesten Raums ruht die Wärmepumpe, sie piept seltener; kommt ein Raum nicht hinterher, hilft die Therme oder Fernwärme. Ihr COP wird nur noch bei kleinster Leistung gemessen. Die Optionen *Sollwert folgt den Räumen* und *Sollwert-Abstand* entfallen.
+- Neue Optionen *Wenn die Wärmepumpe allein nicht reicht* (Therme oder Fernwärme hilft, Wärmepumpe dreht höher, langsamer warm werden) und *Lüfterstufe im Normalbetrieb* (Standard Auto).
+- Aufheizraten getrennt für Therme und Wärmepumpe, in Wärmepumpen-Räumen ab 0,5 Grad je Stunde neu gelernt; mit der Wärmepumpe beginnt das Vorheizen höchstens 4 Stunden vorher.
+- Ein Raum ruft die Therme nur, wenn auch sein Thermostat heizen will ([#3](https://github.com/alpha-uniform/thriftherm/issues/3)).
+- Abwesend endet auf Wunsch, sobald eine gewählte Person heimkommt (Regelparameter).
+- Optional der Strom der Heizungspumpe im Kostenvergleich (Leistung in den Thermen-Optionen).
+- Trocknen im Bad mit Fensterkontakt nur bei offenem Fenster: Hinaus geht die Feuchte nur dort.
+- Standard-COP-Werte aktualisiert.
+- Behoben: Stand die Wärmepumpe in einem wärmeren Raum, blieb ihr Verdichter stehen; das Trocknen blies dann nur Luft.
 
 ## 0.6.8 – 27.10.2026
 

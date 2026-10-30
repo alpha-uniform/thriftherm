@@ -45,6 +45,7 @@ Auswahl **Betriebsmodus**:
 - **Abwesend bis zu einem Zeitpunkt**, z. B. heute 22:00 oder 3. Oktober 12:00: *Geplante Rückkehr* einstellen. Das schaltet auf Abwesend bis dahin, und zur Rückkehr wird rechtzeitig vorgeheizt. In den Feldern von Home Assistant (Dialog der Entität, Entitäten-Karte) erst das **Datum**, dann die **Uhrzeit** wählen.
 - **Nur ein Datum ist ein Platzhalter:** Ohne Uhrzeit steht die Rückkehr vorläufig auf 23:59 des Tages. Abwesend endet dann um 23:59, vorgeheizt wird aber noch nicht. Das Attribut *Vorläufig (23:59 als Platzhalter)* (`provisional`) an *Geplante Rückkehr* steht so lange auf `true`.
 - **Wieder da:** Die Aktion *Abwesend beenden* (`thriftherm.clear_away`) beendet Abwesenheit und Rückkehr. Ist die Rückkehrzeit erreicht, geht es von selbst zurück auf Automatik.
+- **Rückkehr über Anwesenheit:** In den Optionen unter *Regelparameter* eine oder mehrere Personen wählen (*Abwesend endet, wenn eine dieser Personen heimkommt*). Kommt eine davon heim, endet Abwesend wie zur geplanten Rückkehr: zurück auf Automatik, die Räume heizen auf. Wer beim Einschalten von *Abwesend* noch zu Hause ist, beendet es nicht; erst wenn er geht und wiederkommt. Weggehen schaltet nie auf Abwesend. Regeln: [Rückkehr über Anwesenheit](FUNKTIONSWEISE.md#rückkehr-über-anwesenheit).
 - **Aus Automationen:** `thriftherm.set_away` nehmen, mit `return_time` oder mit `clear_return_time: true` ohne Ende. Anders als `datetime.set_value` meldet es einen Fehler, wenn es nicht klappt.
 
 Nach jeder Eingabe *Geplante Rückkehr* und *Vorläufig* prüfen, besonders wenn dein Browser in einer anderen Zeitzone läuft als Home Assistant: Die Felder rechnen in Browser-Zeit. Was abgelehnt wird, wie du wirklich um 23:59 zurückkommst und was bei anderen Zeitzonen passiert: [Wie Thriftherm rechnet: Abwesend und geplante Rückkehr](FUNKTIONSWEISE.md#abwesend-und-geplante-rückkehr).
@@ -95,7 +96,7 @@ Für das Lernen der Heizkurve ist das sogar günstig, sie lernt aus langen, glei
 
 ### Vorheizen
 
-Thriftherm beginnt so früh, dass der Raum zu Beginn eines Komfort-Blocks warm ist. Dafür nimmt es den Abstand zum Soll, die gelernte Aufheizrate des Raums und einen Sicherheitszuschlag (Standard 20 Minuten). Den geplanten Beginn zeigt der Solltemperatur-Sensor unter *Vorheizen beginnt*. Formel und Startwerte: [Wie Thriftherm rechnet: Vorheizen](FUNKTIONSWEISE.md#vorheizen).
+Thriftherm beginnt so früh, dass der Raum zu Beginn eines Komfort-Blocks warm ist. Dafür nimmt es den Abstand zum Soll, die gelernte Aufheizrate des Raums für die Wärmequelle, die heizen wird, und einen Sicherheitszuschlag (Standard 20 Minuten). Den geplanten Beginn zeigt der Solltemperatur-Sensor unter *Vorheizen beginnt*. Formel und Startwerte: [Wie Thriftherm rechnet: Vorheizen](FUNKTIONSWEISE.md#vorheizen).
 
 ## 4. Dienste
 
@@ -123,7 +124,7 @@ data:
 Eine Therme ohne eBUS lässt sich als Vorschau über eine Zahl-Entität (Vorlauf-Sollwert) und einen Schalter (Heizung an/aus) steuern, siehe [EINRICHTUNG.md](EINRICHTUNG.md) Abschnitt 4.3a. Alles Folgende gilt für beide Wege; wo von SetMode die Rede ist, schreibt Thriftherm dort Zahl und Schalter.
 
 - **Vorlauftemperatur:** aus einer Zwei-Punkt-Heizkurve (Standard 55 °C bei −10 °C, 30 °C bei +15 °C). Dazu kommt, was der Raum verlangt, der am meisten braucht: seine gelernte Korrektur ([Abschnitt 6](#6-lernen)), bis zu 8 Grad mehr, solange er weit unter Soll ist, und sein Zuschlag fürs [Aufheiztempo](#aufheiztempo). Der Vorlauf bleibt immer zwischen eingestelltem Minimum und Maximum und steigt nicht sprunghaft ([Vorlauf im Detail](FUNKTIONSWEISE.md#vorlauf)).
-- **Anforderung:** Ein Raum fordert die Therme an, wenn er spürbar unter Soll liegt, bis er fast dort ist; in der letzten halben Stunde seiner Komfortzeit nicht mehr. Den Zustand zeigt das Attribut *Anforderung an die Therme* am Sensor *Heizbedarf* des Raums ([Schwellen](FUNKTIONSWEISE.md#wann-ein-raum-die-therme-anfordert)).
+- **Anforderung:** Ein Raum fordert die Therme an, wenn er spürbar unter Soll liegt, bis er fast dort ist; in der letzten halben Stunde seiner Komfortzeit nicht mehr, außer die Therme hilft der Wärmepumpe. Den Zustand zeigt das Attribut *Anforderung an die Therme* am Sensor *Heizbedarf* des Raums ([Schwellen](FUNKTIONSWEISE.md#wann-ein-raum-die-therme-anfordert)).
 - **Mitheizen:** Läuft die Therme ohnehin, heizen andere Räume mit (Grund *Heizt mit* bzw. *Heizt früher vor*). Das gibt längere Brennerläufe und weniger Starts ([Einzelheiten](FUNKTIONSWEISE.md#mitheizen)).
 - **Heizbetrieb gesperrt** (`disablehc`), wenn kein Raum Wärme braucht. Warmwasser wird nicht angefasst: Der Warmwasser-Sollwert geht immer als „kein Wert“ hinaus, die Therme folgt weiter ihrem Drehknopf. Die einzige Ausnahme wählst du selbst: Ist *Warmwasser bereithalten* in den Thermen-Optionen aus, heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist (das stündliche Warmhalten einer Kombitherme). Mit Warmwasserspeicher eingeschaltet lassen.
 - **Thermostat aus oder stumm:** Ein von Hand ausgeschaltetes Thermostat fordert keine Therme an, sein Ventil ist zu. Ein nur nicht erreichbares zählt weiter, denn sein Ventil regelt selbst. Ein Heizkörperthermostat, das über zweieinhalb Stunden schweigt, fordert keine Therme an und nimmt keine neuen Sollwerte an; dazu erscheint eine Reparaturmeldung. Bei Better Thermostat wird das echte Thermostat dahinter überwacht. Hält Thriftherm ein gesundes Thermostat für stumm, in Zigbee2MQTT dessen Entität *Last seen* einschalten; mit ZHA ist nichts zu tun ([warum](FUNKTIONSWEISE.md#ausfälle-und-wiederholung)).
@@ -178,10 +179,10 @@ Jeder Raum benötigt einen Temperaturfühler, kein smartes Thermostat. Alles obe
 | Bereich | Was gelernt wird | Woraus |
 |---|---|---|
 | Therme | Korrektur der Heizkurve, je Raum und je Lastfall (ein Raum, wenige oder die Mehrheit fordern an) | Spreizung Vorlauf/Rücklauf, wie schnell die Räume warm werden, und Taktbetrieb |
-| Räume | Aufheizrate je Raum (Grad je Stunde) | echte Heizphasen bei geschlossenem Fenster |
+| Räume | Aufheizrate je Raum und Wärmequelle (Grad je Stunde) | echte Heizphasen bei geschlossenem Fenster |
 | Räume | Auskühlkoeffizient je Raum (1/h) | Phasen ohne Heizen bei geschlossenem Fenster |
 | Räume | Heizleistung je Raum (Grad je Stunde ohne Verluste) | Aufheizrate plus die Verluste in der Phase; anders als die reine Rate gilt sie auch im Winter |
-| Wärmepumpe | COP über der Außentemperatur, Sollwert-Korrektur | gemessene COP-Läufe |
+| Wärmepumpe | COP über der Außentemperatur | gemessene COP-Läufe |
 
 Einzelheiten zu allen Bereichen: [Wie Thriftherm rechnet: Lernen](FUNKTIONSWEISE.md#lernen).
 
@@ -215,7 +216,7 @@ Nach einer Änderung an der Anlage passen alte Werte nicht mehr.
 | Änderung | Vergessen wird |
 |---|---|
 | Heizkurve | Thermen-Korrektur |
-| Wärmepumpen-Entität, Ansaug-/Ausblassensor, Luftmengen-Kennlinie, Schlauchfaktor, Aufstellraum, beheizte Räume | COP-Kennfeld und Wärmepumpen-Korrektur |
+| Wärmepumpen-Entität, Ansaug-/Ausblassensor, Luftmengen-Kennlinie, Schlauchfaktor, Aufstellraum, beheizte Räume | COP-Kennfeld und Lernläufe |
 | Temperatursensor oder Thermostat eines Raums | Aufheizrate dieses Raums |
 
 Laufzustand, Sperrzeiten und Handbedienung werden nie zurückgesetzt – ein Zurücksetzen kann also kein Takten auslösen.
@@ -230,24 +231,17 @@ Erprobt ist sie an einer Midea PortaSplit, auch mit Vereisung und Abtauen; ander
 - **Gesperrt** ist die Wärmepumpe unter ihrer Mindest-Außentemperatur (Standard −10 °C), bei Vereisung oder häufigem Abtauen, wenn jemand mit ihr kühlt, und wenn ihr gemessener COP länger unter dem *Break-even-COP* liegt, sie also teurer heizt als die Heizung. Wie lange die Sperren wegen Vereisung und Ineffizienz dauern, stellt *Sperre nach Vereisung / Ineffizienz* ein (Standard zwei Stunden). Im Modus *Nur Wärmepumpe* gibt es die Sperre wegen Ineffizienz nicht ([Sperren](FUNKTIONSWEISE.md#sperren)).
 - **Kühlen und Heizen überschneiden sich nie:** Solange sie kühlt, bleiben die Heizkörper der Räume, die sie bedient, auf Absenktemperatur und fordern keine Wärme von der Therme an. Der Frostschutz gilt weiter.
 - **Schnell aufheizen** (Button je Raum oder `thriftherm.boost`) lässt sie für begrenzte Zeit mit voller Leistung laufen.
-- **Lüfter:** Thriftherm stellt ihn nur beim Einschalten (auf *auto*), für eine Trocknung oder ein Schnell-Aufheizen und danach zurück. Eine Stufe, die du sonst von Hand wählst, bleibt. Vom Heizen geht es nie direkt auf Aus: Erst läuft 15 Minuten nur der Lüfter (Parameter, 0 = sofort aus). Stellt in dieser Zeit jemand von Hand einen anderen Modus ein, endet der Nachlauf.
+- **Lüfter:** Thriftherm stellt ihn nur beim Einschalten, für eine Trocknung oder ein Schnell-Aufheizen und danach zurück, auf die *Lüfterstufe im Normalbetrieb* aus der Feineinstellung (Standard *Auto*). Eine höhere Stufe bringt mehr Wärme in die Räume, ist aber lauter. Eine neu gewählte Stufe bekommt die Wärmepumpe auch mitten im Lauf, sofern sie noch die alte hat. Eine Stufe, die du von Hand wählst, bleibt. Vom Heizen geht es nie direkt auf Aus: Erst läuft 15 Minuten nur der Lüfter (Parameter, 0 = sofort aus). Stellt in dieser Zeit jemand von Hand einen anderen Modus ein, endet der Nachlauf.
 
 **Bad-Trocknung** braucht die Wärmepumpe: nur in einem Raum, den sie beheizt und der einen Feuchtesensor hat. Das Raumformular bietet sie erst an, wenn eine Wärmepumpe eingerichtet ist.
 
 - Getrocknet wird **nach** dem Duschen: Steigt die Feuchte, wartet Thriftherm, bis sie nicht mehr steigt. Dann bläst die Wärmepumpe mit höchster Lüfterstufe und der Trocknungs-Solltemperatur, höchstens 60 Minuten (Standard) und nur, solange sie aktiv gesteuert wird, heizen und effizient laufen kann. Danach bekommt der Lüfter seine Stufe von vorher zurück.
 - Der Knopf *Jetzt trocknen* startet sofort und für die volle Dauer, etwa für Wäsche oder einen nassen Boden; *Zurück zur Automatik* beendet die Trocknung. Wer nur den Knopf will, schaltet im Raumformular *Trocknung nach dem Duschen von selbst starten* aus.
-- Die Feuchte verlässt die Wohnung dabei nicht: Die warme Luft trocknet Wände und Spiegel und verteilt die Feuchte; hinaus geht sie erst beim Lüften. Am schnellsten geht es mit kurz geöffnetem Fenster nach dem Duschen. Bleibt es lange offen, ohne dass die Feuchte sinkt, endet die Trocknung. Der Heizkörper folgt immer der normalen Fensterlogik.
+- Hinaus geht die Feuchte nur durchs Fenster. Hat das Bad einen Fensterkontakt, bläst die Wärmepumpe deshalb nur, solange das Fenster offen ist: Fenster nach dem Duschen weit öffnen, dann trocknet die warme Luft Wände und Spiegel, und die Feuchte zieht ab. Bei geschlossenem Fenster wartet die Trocknung (*Wartet: Fenster öffnen*). Ohne Fensterkontakt bläst sie wie bisher auch bei geschlossenem Fenster. Der Heizkörper folgt immer der normalen Fensterlogik.
 
 Wann sie startet und endet: [Bad-Trocknung](FUNKTIONSWEISE.md#bad-trocknung).
 
-**Sollwert folgt den Räumen** (Schalter im Wärmepumpen-Formular): Die Wärmepumpe bekommt die höchste Solltemperatur der versorgten Räume plus den Sollwert-Abstand (Standard 1 Grad) und regelt selbst. Komfort 21 °C ergibt 22 °C am Gerät, die Nachtabsenkung auf 17 °C ergibt 18 °C.
-
-- Sie bleibt Tag und Nacht an, solange sie die günstigere Wärmequelle ist, und geht nur aus, solange niemand die versorgten Räume warm haben will (abwesend, aus, in jedem ein Fenster offen). Braucht gerade kein Raum Wärme, steht im *Entscheidungsgrund* deshalb „Wärmepumpe läuft durch, Sollwert 22,0 °C“ und nicht „Kein Raum braucht Wärme“.
-- *Schnell aufheizen* stellt dann nur den Lüfter hoch.
-- Beim Trocknen bekommt das Gerät mindestens 1 Grad über seinem eigenen Messwert, höchstens 2 Grad über dem Trocknungsziel, damit es samt Lüfter läuft ([Einzelheiten](FUNKTIONSWEISE.md#bad-trocknung)).
-- Bleibt ein versorgter Raum zurück, stellt Thriftherm das Gerät in kleinen Schritten höher (Attribut `eco_offset_k`) und später wieder zurück. Die Therme hilft erst, wenn das nicht reicht (Attribut `boiler_helps`), und nur, bis der Raum warm ist ([Einzelheiten](FUNKTIONSWEISE.md#sollwert-folgt-den-räumen)).
-
-Ohne den Schalter nutzt Thriftherm den Sollwert als Leistungshebel (Ansaugluft plus gelernter Abstand) und schaltet nach dem Bedarf der Räume ([Einzelheiten](FUNKTIONSWEISE.md#ohne-sollwert-folgt-den-räumen)).
+**Sollwert:** Die Wärmepumpe läuft mit kleinster Leistung, dort ist ihr COP am besten. Ihr Sollwert liegt ein Grad unter ihrer eigenen Messung und wird nur selten neu gesetzt, damit sie wenig piept. Der kälteste versorgte Raum entscheidet: Ein halbes Grad über Soll ruht der Verdichter (Sollwert 17 °C, das Gerät bleibt im Heizbetrieb), am Soll heizt sie wieder. Kommt ein Raum nicht hinterher, hilft die Heizung, also Therme oder Fernwärme (Attribut `boiler_helps`); ohne zentrale Heizung oder im Modus *Nur Wärmepumpe* geht ihr Sollwert langsam höher. Das lässt sich unter *Wenn die Wärmepumpe allein nicht reicht* in der Feineinstellung ändern: *Wärmepumpe dreht höher* (ohne Therme, ihr COP sinkt) oder *Langsamer warm werden* (nur kleinste Leistung; die Heizung hilft erst, wenn ein Raum ein halbes Grad unter Soll liegt). Ohne zentrale Heizung dreht sie immer höher, was auch gewählt ist. Mehr Leistung gibt es mit *Schnell aufheizen*. Läuft sie, ohne dass ein Raum gerade Wärme braucht, steht im *Entscheidungsgrund* „Wärmepumpe läuft durch“ und nicht „Kein Raum braucht Wärme“ ([Einzelheiten](FUNKTIONSWEISE.md#am-minimum-halten)).
 
 ## 8. Wichtige Anzeigen
 

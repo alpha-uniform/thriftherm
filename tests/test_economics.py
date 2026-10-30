@@ -59,3 +59,17 @@ def test_a_gas_price_of_0_without_a_central_source_is_no_division_by_zero():
     assert res.cheaper_source == "midea"
     assert res.gas_cost_per_kwh_thermal == 0.0
     assert res.saving_pct is None
+
+
+def test_the_boiler_pump_electricity_is_part_of_the_price_of_boiler_heat():
+    """Measured 2026-10-17 to 26: a pump in permanent mode, 33 W, used 0.5 kWh a day for 16 kWh of heat; the heat pump
+    saved it on its days, and the comparison did not know it."""
+    from dataclasses import replace
+
+    with_pump = replace(PRICES, boiler_pump_kwh_per_kwh=0.03)
+    gas_only = eco.heat_cost_per_kwh_thermal(PRICES)
+    assert eco.heat_cost_per_kwh_thermal(with_pump) == pytest.approx(gas_only + 0.03 * PRICES.electricity_eur_kwh)
+    assert eco.break_even_cop(with_pump) < eco.break_even_cop(PRICES)
+    district = replace(PRICES, system_type="district", boiler_pump_kwh_per_kwh=0.03)
+    no_pump = replace(district, boiler_pump_kwh_per_kwh=0.0)
+    assert eco.heat_cost_per_kwh_thermal(district) == eco.heat_cost_per_kwh_thermal(no_pump)

@@ -75,9 +75,9 @@ def test_new_room_sensor_invalidates_that_room_and_serving_change_the_heat_pump(
 
 
 def test_heat_rates_forget_single_room() -> None:
-    stats = HeatRateStats(rates={"a": [1.0], "b": [2.0]})
+    stats = HeatRateStats(rates={"a": {"boiler": [1.0]}, "b": {"heat_pump": [2.0]}})
     stats.forget(["a"])
-    assert stats.rates == {"b": [2.0]}
+    assert stats.rates == {"b": {"heat_pump": [2.0]}}
     stats.forget()
     assert stats.rates == {}
 
@@ -85,8 +85,10 @@ def test_heat_rates_forget_single_room() -> None:
 # ---------------------------------------------------------------- integration
 def _learned(coordinator) -> None:
     coordinator.boiler_memory = replace(BoilerMemory(), offset_k=3.0, adjustments=(1.0, 2.0), last_flow=40.0)
-    coordinator.control_memory = ControlMemory(running_since_ts=5.0, last_hvac_mode="heat", offset_k=2.5, learning_bins=((0, 1.0),), manual_until_ts=9e9)
-    coordinator.heat_rates = HeatRateStats(rates={"badezimmer": [1.5], "wohnzimmer": [0.8]})
+    coordinator.control_memory = ControlMemory(
+        running_since_ts=5.0, last_hvac_mode="heat", learning_bins=((0, 1.0),), manual_until_ts=9e9
+    )
+    coordinator.heat_rates = HeatRateStats(rates={"badezimmer": {"heat_pump": [1.5]}, "wohnzimmer": {"boiler": [0.8]}})
     coordinator.cop_map.add(4.0, 3.5)
 
 
@@ -97,12 +99,11 @@ async def test_service_resets_only_the_chosen_area_and_keeps_run_state(hass: Hom
 
     await hass.services.async_call(DOMAIN, SERVICE_RESET_LEARNING, {"scope": ["heat_pump"]}, blocking=True)
 
-    assert coordinator.control_memory.offset_k is None
     assert coordinator.control_memory.learning_bins == ()
     assert coordinator.control_memory.manual_until_ts == 9e9
     assert coordinator.cop_map.to_dict() == {}
     assert coordinator.boiler_memory.offset_k == 3.0
-    assert coordinator.heat_rates.rates["badezimmer"] == [1.5]
+    assert coordinator.heat_rates.rates["badezimmer"] == {"heat_pump": [1.5]}
     assert coordinator.last_learning_reset["scopes"] == ["heat_pump"]
     assert hass.states.get("sensor.thriftherm_learning_state").attributes["last_reset"]["reason"] == "user"
 
@@ -128,8 +129,8 @@ async def test_service_resets_boiler_and_one_room(hass: HomeAssistant) -> None:
     await hass.services.async_call(DOMAIN, SERVICE_RESET_LEARNING, {"scope": ["boiler", "rooms"], "rooms": ["wohnzimmer"]}, blocking=True)
     assert coordinator.boiler_memory.offset_k == 0.0
     assert coordinator.boiler_memory.adjustments == ()
-    assert coordinator.heat_rates.rates == {"badezimmer": [1.5]}
-    assert coordinator.control_memory.offset_k == 2.5
+    assert coordinator.heat_rates.rates == {"badezimmer": {"heat_pump": [1.5]}}
+    assert coordinator.control_memory.learning_bins == ((0, 1.0),)
 
     with pytest.raises(ServiceValidationError):
         await hass.services.async_call(DOMAIN, SERVICE_RESET_LEARNING, {"scope": ["rooms"], "rooms": ["keller"]}, blocking=True)
@@ -163,17 +164,17 @@ async def test_changing_the_duct_factor_forgets_the_heat_pump_on_reload(hass: Ho
     await hass.async_block_till_done()
 
     coordinator = entry.runtime_data  # reloaded
-    assert coordinator.control_memory.offset_k is None
+    assert coordinator.control_memory.learning_bins == ()
     assert coordinator.cop_map.to_dict() == {}
     assert coordinator.boiler_memory.offset_k == 3.0
-    assert coordinator.heat_rates.rates == {"badezimmer": [1.5], "wohnzimmer": [0.8]}
+    assert coordinator.heat_rates.rates == {"badezimmer": {"heat_pump": [1.5]}, "wohnzimmer": {"boiler": [0.8]}}
     assert coordinator.last_learning_reset["reason"] == "configuration_changed"
 
     # a plain restart with unchanged settings forgets nothing more
-    coordinator.control_memory = replace(coordinator.control_memory, offset_k=1.0)
+    coordinator.control_memory = replace(coordinator.control_memory, learning_bins=((1, 2.0),))
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
-    assert entry.runtime_data.control_memory.offset_k == 1.0
+    assert entry.runtime_data.control_memory.learning_bins == ((1, 2.0),)
 
 
 def test_forgetting_the_heat_pump_learning_keeps_an_icing_lockout():

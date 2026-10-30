@@ -654,7 +654,6 @@ class SnapshotBuilder:
         now: datetime,
         override: Override | None = None,
         drying: DryingState | None = None,
-        heat_rate: float | None = None,
         boost_until: float | None = None,
         temps: Mapping[str, float] | None = None,
     ) -> RoomState:
@@ -709,7 +708,6 @@ class SnapshotBuilder:
             abs_humidity_history=() if abs_hist is None else tuple(abs_hist),
             override=override,
             drying=drying or DryingState(),
-            heat_rate_k_h=heat_rate,
             boost_until_ts=boost_until,
             trv_hvac_mode=trv_mode,
             thermostat_heating=heating,
@@ -885,7 +883,6 @@ class SnapshotBuilder:
         mode: str,
         overrides: Mapping[str, Override],
         drying_states: Mapping[str, DryingState],
-        heat_rates: Mapping[str, float],
         away_return_ts: float | None,
         boosts: Mapping[str, float],
         room_temps: Mapping[str, Mapping[str, float]],
@@ -902,7 +899,7 @@ class SnapshotBuilder:
         rooms = {
             cfg.key: replace(
                 self._room_state(
-                    cfg, now, overrides.get(cfg.key), drying_states.get(cfg.key), heat_rates.get(cfg.key), boosts.get(cfg.key),
+                    cfg, now, overrides.get(cfg.key), drying_states.get(cfg.key), boosts.get(cfg.key),
                     room_temps.get(cfg.key),
                 ),
                 thermostat_change=changes.get(cfg.climate_entity) if cfg.climate_entity else None,
