@@ -7,7 +7,7 @@ from custom_components.thriftherm.engines import psychrometrics as psy
 from custom_components.thriftherm.engines import room as room_engine
 from custom_components.thriftherm.models import Parameters, TimeWindow
 
-from .conftest import PARAMS, reading, room_config, room_state
+from .conftest import PARAMS, reading, room_config, room_result, room_state
 
 
 def test_parse_schedule():
@@ -231,3 +231,64 @@ def test_the_next_schedule_change_and_the_target_after_it():
     assert change(all_week, monday_evening, "auto") == (None, None)
     result = room_engine.evaluate_room(st, monday_evening, "auto", PARAMS)
     assert result.next_change_ts == datetime(2026, 1, 12, 22, 0).timestamp()
+
+
+def test_a_preheat_keeps_the_time_it_began_until_its_comfort_start_changes():
+    """Its planned start moves towards now while the room climbs; the heat pump judges it from when it really began."""
+    start, later = 1_000_000.0, 1_090_000.0
+
+    def preheating(for_ts):
+        return {"bath": room_result("bath", preheat_for_ts=for_ts), "living": room_result("living")}
+
+    rooms, began = room_engine.preheat_began(preheating(start), {}, {}, 100.0)
+    assert began == {"bath": 100.0} and rooms["bath"].preheat_began_ts == 100.0 and rooms["living"].preheat_began_ts is None
+    rooms, began = room_engine.preheat_began(preheating(start), {"bath": start}, began, 700.0)
+    assert began == {"bath": 100.0} and rooms["bath"].preheat_began_ts == 100.0
+    rooms, began = room_engine.preheat_began(preheating(later), {"bath": start}, began, 1300.0)
+    assert began == {"bath": 1300.0}  # a new comfort start is a new preheat
+    rooms, began = room_engine.preheat_began(preheating(None), {"bath": later}, began, 1900.0)
+    assert began == {}
+    # latched by a store from before this was kept: from now on
+    rooms, began = room_engine.preheat_began(preheating(start), {"bath": start}, {}, 2500.0)
+    assert began == {"bath": 2500.0}
+
+
+def climbing(began: float, now: float, rate: float, since: float | None = None) -> tuple[tuple[float, float], ...]:
+    """A room sensor's history in tenths, a sample every half minute: flat at 20 °C until `began`, then `rate` K/h."""
+    first = now - 7200.0 if since is None else since
+    stamps = (first + 30.0 * i for i in range(int((now - first) // 30.0) + 1))
+    return tuple((ts, round(20.0 + max(ts - began, 0.0) / 3600.0 * rate, 1)) for ts in stamps)
+
+
+def test_a_preheat_measures_its_pace_since_it_began_not_over_the_flat_hour_before():
+    """Review 2026-10-30: half an hour into a preheat climbing the planned 0.5 K/h, the 90-minute trend still held an
+    hour of the flat time before it and read 0.12 K/h, and nearly every heat pump preheat counted as behind."""
+    began, for_ts = 1_000_000.0, 1_008_400.0
+    now = began + 1800.0
+    history = climbing(began, now, 0.5)
+    assert room_engine.trend_k_per_h(history, now) < 0.2
+    rooms, _ = room_engine.preheat_began(
+        {"bath": room_result("bath", preheat_for_ts=for_ts)}, {"bath": for_ts}, {"bath": began}, now, {"bath": history}
+    )
+    assert rooms["bath"].preheat_pace_k_per_h == pytest.approx(0.5, abs=0.1)
+    # an hour and a half on, it is the room's trend
+    later = began + 5400.0
+    rooms, _ = room_engine.preheat_began(
+        {"bath": room_result("bath", preheat_for_ts=for_ts)}, {"bath": for_ts}, {"bath": began}, later,
+        {"bath": climbing(began, later, 0.5)},
+    )
+    assert rooms["bath"].preheat_pace_k_per_h == round(room_engine.trend_k_per_h(climbing(began, later, 0.5), later), 3)
+
+
+def test_a_preheat_has_no_pace_until_it_has_risen_for_most_of_half_an_hour():
+    """After a restart its history begins anew while the time it began is restored: no pace from a few minutes."""
+    began, for_ts = 1_000_000.0, 1_020_000.0
+    now = began + 7200.0
+    rooms = {"bath": room_result("bath", preheat_for_ts=for_ts)}
+    restarted = climbing(began, now, 0.5, since=now - 600.0)
+    out, _ = room_engine.preheat_began(rooms, {"bath": for_ts}, {"bath": began}, now, {"bath": restarted})
+    assert out["bath"].preheat_pace_k_per_h is None
+    out, _ = room_engine.preheat_began(rooms, {"bath": for_ts}, {"bath": began}, now)
+    assert out["bath"].preheat_pace_k_per_h is None  # no history given
+    out, _ = room_engine.preheat_began(rooms, {}, {}, now, {"bath": climbing(began, now, 0.5)})
+    assert out["bath"].preheat_pace_k_per_h is None  # it begins only now

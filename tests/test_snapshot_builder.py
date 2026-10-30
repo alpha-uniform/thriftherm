@@ -38,7 +38,7 @@ def _builder(hass: HomeAssistant) -> SnapshotBuilder:
 
 
 def _build(builder: SnapshotBuilder):
-    return builder.build("auto", overrides={}, drying_states={}, heat_rates={}, away_return_ts=None, boosts={}, room_temps={})
+    return builder.build("auto", overrides={}, drying_states={}, away_return_ts=None, boosts={}, room_temps={})
 
 
 async def test_histories_keep_their_windows(hass: HomeAssistant, freezer) -> None:
@@ -215,7 +215,7 @@ async def test_an_unchanged_flow_temperature_holds_while_the_ebus_signal_is_conf
     assert boiler.flow_temp.valid and boiler.flow_temp.value == 22.25 and boiler.return_temp.valid
 
     config = {**_entry_data(), "boiler_signal": None}  # no signal sensor: the age bound stays
-    assert not SnapshotBuilder(hass, config).build("auto", {}, {}, {}, None, {}, {}).boiler.flow_temp.valid
+    assert not SnapshotBuilder(hass, config).build("auto", {}, {}, None, {}, {}).boiler.flow_temp.valid
 
 
 async def test_a_gas_flow_left_hanging_is_no_reading(hass: HomeAssistant, freezer) -> None:

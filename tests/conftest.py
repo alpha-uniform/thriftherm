@@ -13,6 +13,7 @@ from custom_components.thriftherm.models import (
     Parameters,
     Prices,
     RoomConfig,
+    RoomResult,
     RoomState,
     SensorReading,
     TimeWindow,
@@ -75,6 +76,14 @@ def room_state(
         internal_gain_w=gain_w,
         temperature_history=tuple(history),
     )
+
+
+def room_result(key: str = "badezimmer", target: float = 21.0, temperature: float | None = 19.0, **fields) -> RoomResult:
+    """A room as the room engine hands it on to the controls; what a test does not name is neutral."""
+    neutral = {"target_reason": "schedule_comfort", "deviation_k": None if temperature is None else temperature - target,
+               "demand": 0.5, "trend_k_per_h": None, "dew_point_c": None, "abs_humidity_g_m3": None, "window_open": False,
+               "window_unknown": False, "heating_allowed": True, "internal_gain_w": None}
+    return RoomResult(key=key, target=target, temperature=temperature, **{**neutral, **fields})
 
 
 def heat_pump_state(

@@ -43,6 +43,15 @@ Deshalb nach jeder Eingabe *Geplante Rückkehr* und das Attribut *Vorläufig* pr
 
 `datetime.set_value` auf *Geplante Rückkehr* liest Werte dagegen wie die Felder: Mitternacht ohne geplante Rückkehr wird zum Platzhalter 23:59, auch an einem späteren Tag. Und solange *Geplante Rückkehr* nicht verfügbar ist (Thriftherm nicht geladen), verwirft Home Assistant `datetime.set_value` ohne Fehlermeldung. `set_away` meldet dagegen einen Fehler. Automationen nehmen deshalb `set_away`.
 
+### Rückkehr über Anwesenheit
+
+Sind in den Optionen Personen gewählt, beendet Thriftherm *Abwesend*, sobald eine davon heimkommt. Das geht denselben Weg wie eine erreichte geplante Rückkehr: zurück auf Automatik, die Rückkehr wird gelöscht.
+
+- **Nur Heimkommen zählt:** ein Wechsel der Person auf *Zuhause* (`home`) von einem bekannten Ort, also *Abwesend* (`not_home`) oder einer Zone. Wer beim Einschalten von *Abwesend* zu Hause ist, beendet es nicht, denn man schaltet *Abwesend* meist beim Gehen ein. Eine Person reicht.
+- **Unbekannt ist keine Nachricht:** `unknown` und `unavailable` ändern nichts, es zählt der letzte bekannte Ort. Wer erst unterwegs, dann eine Weile nicht verfügbar und dann zu Hause ist, ist heimgekommen.
+- **Nach einem Neustart** gilt der Ort, den eine Person dann hat, so wie er ist. Eine Person, die erst danach erscheint, gilt nicht als heimgekommen: Ob sie gerade kam oder schon da war, lässt sich nicht sagen.
+- **Weggehen** schaltet nie auf *Abwesend*. Die geplante Rückkehr gilt daneben weiter, und gelesen wird nur der Zustand der Personen in Home Assistant.
+
 ### Feuchteschutz
 
 Kommt die Luft im Raum während *Abwesend* ihrem Taupunkt näher als 3 Grad (Standard, *Abwesend: Taupunktabstand für Feuchteschutz*), hebt Thriftherm den Sollwert an. Er steht dann 1 Grad über der Raumtemperatur, höchstens auf der Komforttemperatur. Grund: *Abwesend, gegen Feuchte angehoben*. Die Obergrenze verhindert, dass ein Feuchtesensor, der bei fast 100 % hängt, den Sollwert Grad für Grad mitzieht.
@@ -87,7 +96,10 @@ Thriftherm beginnt so früh, dass der Raum zu Beginn eines Komfort-Blocks warm i
 
 Beginn = Blockbeginn − (Soll − Ist) / Aufheizrate − Sicherheitszuschlag
 
-- Die Aufheizrate lernt Thriftherm je Raum ([Was gelernt wird](#was-gelernt-wird)). Bis dahin gelten 0,8 Grad je Stunde für Heizkörperräume und 1,2 Grad je Stunde für Wärmepumpen-Räume (Standard, *Start-Aufheizrate*).
+- Die Aufheizrate lernt Thriftherm je Raum, getrennt für Therme und Wärmepumpe ([Was gelernt wird](#was-gelernt-wird)). Gerechnet wird mit der Quelle, die den Raum heizen wird: In einem Raum der Wärmepumpe ist das die Wärmepumpe, wenn sie heizen darf und zuletzt günstiger war, oder im Modus *Nur Wärmepumpe*. Sonst ist es die Therme.
+- Bis etwas gelernt ist, gelten 0,8 Grad je Stunde für die Therme und 0,5 Grad je Stunde für die Wärmepumpe (Standard, *Start-Aufheizrate*): So viel schafft die Wärmepumpe bei kleinster Leistung.
+- Ist auch der Auskühlkoeffizient des Raums bekannt, gilt die Rate fürs Wetter von jetzt: die Heizleistung, abzüglich dessen, was der Raum beim jetzigen Abstand nach draußen verliert, mindestens 0,1 Grad je Stunde. Bei 3 °C draußen hält die Wärmepumpe am Minimum das Bad gerade, bei 8 °C wärmt sie es um rund ein halbes Grad je Stunde.
+- Mit der Wärmepumpe beginnt das Vorheizen höchstens 4 Stunden vorher, auch wenn keine Therme hilft. Wird es so nicht rechtzeitig fertig, hilft die Therme oder die Wärmepumpe dreht höher, je nach Option; bei *Langsamer warm werden* hilft die Therme erst, wenn voraussichtlich ein halbes Grad fehlt ([Am Minimum halten](#am-minimum-halten)). Früher anfangen bringt wenig: In der Simulation lief sie mit 12 Stunden die ganze Nacht am Minimum, die Räume blieben trotzdem unter 21 °C, und die Absenkung war weg.
 - Der Sicherheitszuschlag ist 20 Minuten (Standard).
 - Vorgeheizt wird für Blöcke, die in den nächsten 12 Stunden beginnen.
 - Vor einer Rückkehr aus *Abwesend* gilt dieselbe Rechnung. Ziel ist die Temperatur, die zur Rückkehr gilt. Mit Zeitplan-Helfer ist das die Komforttemperatur, denn ein Wochenplan-Helfer lässt sich für eine spätere Zeit nicht auswerten. Mit Zeitfenstern aus den Raum-Optionen ist es die Temperatur, die das Zeitfenster dann vorsieht.
@@ -111,11 +123,12 @@ Die Bedienung steht in der [Anleitung, Abschnitt 5](ANLEITUNG.md#5-thermensteuer
 
 ### Wann ein Raum die Therme anfordert
 
-- Ein Raum fordert ab 0,3 Grad unter Soll an und hört auf, wenn er weniger als 0,1 Grad darunter liegt.
+- Ein Raum fordert ab 0,3 Grad unter Soll an und hört auf, wenn er weniger als 0,1 Grad darunter liegt. Hilft die Therme der Wärmepumpe ([Am Minimum halten](#am-minimum-halten)), fordern deren Räume ab 0,2 Grad unter Soll an, bis sie am Soll sind.
+- **Das Thermostat hat ein Wort mit:** Meldet es, dass es nicht heizt (`hvac_action` *idle* oder *off*, sein Ventil zu), ruft der Raum die Therme nicht, auch wenn Thriftherm ihn anfordern würde (*Thermostat heizt nicht: kein Ruf an die Therme*). Wärme für ein geschlossenes Ventil hilft keinem Raum. Die Hysterese läuft dabei weiter, ein Thermostat, das heizt, ruft nie von sich aus, und eines ohne diese Angabe ändert nichts ([#3](https://github.com/alpha-uniform/thriftherm/issues/3)).
 - **Stillstand:** Läuft die Anforderung seit einer Stunde, liegt der Raum höchstens 0,3 Grad unter Soll und steigt langsamer als 0,15 Grad je Stunde, gilt er als erreicht. Er fordert erst wieder an, wenn er 0,5 Grad unter Soll fällt oder sich der Sollwert ändert. Ein unbekannter Trend, etwa kurz nach einem Neustart, gilt nicht als Stillstand.
 - **Sinkt der Sollwert** (z. B. eine Übersteuerung endet), wird eine laufende Anforderung neu mit der Startschwelle bewertet.
 - **Ende der Komfortzeit:** In der letzten halben Stunde einer Komfortzeit fordert kein Raum mehr an. Die Wärme käme zu spät. Das gilt auch kurz nach dem Ende, solange der Zeitplan noch nicht umgeschaltet hat (bis zu 2 Minuten).
-- *Schnell aufheizen* ist von Stillstand und Komfortende ausgenommen.
+- *Schnell aufheizen* ist von Stillstand und Komfortende ausgenommen. Ein Raum, dem die Therme für die Wärmepumpe hilft, fordert auch in der letzten halben Stunde an: Die Wärmepumpe bleibt für ihn am Minimum, sonst gäbe niemand die Spitze dazu. Als Stillstand gilt bei ihm erst, wenn er zwei Stunden lang höchstens 0,2 Grad unter Soll hängt und kaum steigt; er fordert dann wieder an, sobald er 0,3 Grad unter Soll fällt. Sonst würde ein Raum, dessen Fühler nie ganz das Soll erreicht, die Therme die ganze Komfortzeit für einen Heizkörper takten lassen.
 
 ### Mitheizen
 
@@ -123,6 +136,7 @@ Die Bedienung steht in der [Anleitung, Abschnitt 5](ANLEITUNG.md#5-thermensteuer
 - Ein Raum, dessen Vorheizen in der nächsten Stunde begänne, fängt jetzt an (Grund *Heizt früher vor*).
 - Warum: Ein einzelner Heizkörper nimmt nur etwa 1 kW ab, die Therme brennt aber mit mindestens 8 kW. Mehr offene Heizkörper bedeuten längere Brennerläufe und weniger Starts.
 - Mitheizende Räume fordern selbst nichts an und halten die Therme nicht am Laufen.
+- Ein Raum, dessen Thermostat nicht heizen will, heizt nicht mit: Mit 0,5 Grad mehr öffnete es sein Ventil und riefe beim nächsten Mal selbst die Therme.
 
 ### Ausfälle und Wiederholung
 
@@ -209,10 +223,10 @@ Was gelernt wird und wo du es siehst, steht in der [Anleitung, Abschnitt 6](ANLE
 | Bereich | Was gelernt wird | Woraus |
 |---|---|---|
 | Therme | Heizkurven-Korrektur je Lastfall und Raum, in zwei Teilen, je ±10 Grad: **Höhe** (gilt bei jeder Außentemperatur) und **Steigung** (voll bei −10 °C, gar nicht bei +15 °C) | Spreizung Vorlauf/Rücklauf, wie schnell die Räume warm werden, und Taktbetrieb |
-| Räume | Aufheizrate je Raum (Grad je Stunde) | Heizphasen bei geschlossenem Fenster, in denen eine Wärmequelle den Raum erreicht, mindestens 30 Minuten lang und mindestens 0,5 Grad Anstieg. Es gilt der Median der letzten 10 |
+| Räume | Aufheizrate je Raum und Wärmequelle (Grad je Stunde) | Heizphasen bei geschlossenem Fenster, in denen genau eine Wärmequelle den Raum erreicht, mindestens 30 Minuten lang und mindestens 0,5 Grad Anstieg. Die Wärmepumpe zählt nur bei kleinster Leistung: ab 10 Minuten nach dem Start des Verdichters, nicht beim Ruhen, Schnell-Aufheizen, Trocknen oder höher gedreht. Wechselt die Quelle, zählt die Phase bis dahin nicht. Es gilt der Median der letzten 10 |
 | Räume | Auskühlkoeffizient je Raum (1/h): Temperaturabfall je Stunde = Koeffizient × (drinnen − draußen) | Phasen ohne Heizen, Fenster zu, drinnen mindestens 5 Grad wärmer als draußen, mindestens eine Stunde lang und mindestens 0,3 Grad Abfall. Es gilt der Median der letzten 10 |
-| Räume | Heizleistung je Raum (Grad je Stunde ohne Verluste) | Aufheizrate plus die Verluste während der Phase. Anders als die reine Rate gilt sie auch im Winter |
-| Wärmepumpe | COP-Kennfeld über der Außentemperatur, Sollwert-Korrektur | gemessene COP-Läufe, siehe [Wärmepumpe](#wärmepumpe) |
+| Räume | Heizleistung je Raum und Wärmequelle (Grad je Stunde ohne Verluste) | Aufheizrate plus die Verluste während der Phase. Anders als die reine Rate gilt sie auch im Winter |
+| Wärmepumpe | COP-Kennfeld über der Außentemperatur | gemessene COP-Läufe, siehe [Wärmepumpe](#wärmepumpe) |
 
 **Am Vorlauf-Minimum lernt die Kurve nicht nach oben.** An einem milden Tag liegt die Kurve unter dem Minimum, und gesendet wird das Minimum. Kommt ein Raum dann nicht hin, braucht er mehr als das Minimum; über die Kurve an einem kalten Tag sagt das nichts. Früher hob ein Schritt den Wert um die ganze Lücke bis zum Minimum: Im Test vom 15.10.2026 stieg bei 16 °C draußen ein Wert mit einem Schritt um 4,4 Grad, nach drei Schritten stand das Schlafzimmer bei 9,3 Grad mehr. Jetzt bleibt das Lernen dort stehen, und der Lernstatus zeigt *Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum*. Hält das an, ist das Minimum für diesen Raum zu niedrig, und du hebst es in den Thermen-Optionen an.
 
@@ -347,7 +361,8 @@ Der COP ist die Wärme, die die Wärmepumpe in die Luft bringt, geteilt durch de
 
 Ein Messwert zählt erst, wenn das Gerät eingeschwungen ist:
 
-- der Verdichter läuft seit mindestens 10 Minuten (Standard);
+- der Verdichter läuft seit mindestens 10 Minuten, auch bei kürzer eingestellter Warmlaufzeit: Nach dem Start dreht er kurz hoch;
+- kein Schnellaufheizen und kein Trocknen: Der COP gilt für die kleinste Leistung, mit der die Wärmepumpe läuft;
 - die Leistung liegt bei mindestens 150 W (Standard);
 - die Ausblasluft ist mindestens 3 Grad wärmer als die Ansaugluft (Standard) und ändert sich um höchstens 0,5 Grad je Minute (Standard);
 - der Wert liegt nicht über 60 % des physikalisch Möglichen (Carnot, aus den Temperaturen der beiden Wärmetauscher).
@@ -386,27 +401,28 @@ Die Midea meldet kein Abtauen. Thriftherm schließt es aus Mustern: aus den Temp
 
 - **Auslöser:** Die absolute Feuchte liegt mehr als 2,5 g/m³ über ihrem Grundwert (Standard, *Auslöser: Anstieg der absoluten Feuchte*). Der Grundwert ist der Median der letzten drei Stunden ohne die letzten 20 Minuten. Liegt die relative Feuchte schon über 70 %, reichen 60 % dieses Anstiegs.
 - **Start nach dem Duschen:** Der Anstieg merkt die Dusche nur vor. Die Trocknung beginnt, sobald die Feuchte drei Minuten lang keinen neuen Höchstwert erreicht (mehr als 0,2 g/m³ darüber), spätestens 20 Minuten nach dem Anstieg.
-- **Während der Trocknung** bläst die Wärmepumpe mit ihrer höchsten Lüfterstufe und der Trocknungs-Solltemperatur (Standard 22 °C), nie über Soll plus 1,5 Grad. Folgt ihr Sollwert den Räumen, bekommt sie dabei ihren eigenen Messwert plus 1 Grad, wenn das mehr ist als der Sollwert der Räume; dieser Vorsprung reicht höchstens bis 2 Grad über das Trocknungsziel. Mit dem Sollwert der Räume allein bliebe sie samt Lüfter stehen, wenn es an ihrem Platz schon so warm ist (gesehen am 18.10.2026). Kann sie gerade nicht heizen, wartet die Trocknung mit ihrer restlichen Zeit.
-- **Ende:** wenn der Taupunkt wieder mindestens 4 Grad unter der Raumtemperatur liegt und die absolute Feuchte höchstens 1 g/m³ über dem Grundwert; spätestens nach der längsten Dauer (Standard 60 Minuten). Bei offenem Fenster bläst die Wärmepumpe weiter. Bleibt es länger als 20 Minuten offen und liegt die Feuchte dann noch mehr als 1 g/m³ über dem Grundwert, endet die Trocknung ebenfalls.
-- **Pause danach:** Endete eine Trocknung wegen ihrer längsten Dauer oder wegen eines wirkungslos offenen Fensters, startet drei Stunden lang keine neue von selbst. Der Grundwert enthält in dieser Zeit noch die Luft von vor dem Duschen (gemessen am 25.09.2026).
+- **Während der Trocknung** bläst die Wärmepumpe mit ihrer höchsten Lüfterstufe und der Trocknungs-Solltemperatur (Standard 22 °C), nie über Soll plus 1,5 Grad. Ihr Verdichter bleibt dabei bei kleinster Leistung, und sie ruht nicht. Kann sie gerade nicht heizen, wartet die Trocknung mit ihrer restlichen Zeit.
+- **Ende:** wenn der Taupunkt wieder mindestens 4 Grad unter der Raumtemperatur liegt und die absolute Feuchte höchstens 1 g/m³ über dem Grundwert; spätestens nach der längsten Dauer (Standard 60 Minuten). Mit Fensterkontakt bläst die Wärmepumpe nur bei offenem Fenster, bei geschlossenem wartet die Trocknung, und ihre Zeit läuft weiter. Ohne Fensterkontakt bläst sie auch bei geschlossenem Fenster.
+- **Pause danach:** Endete eine Trocknung wegen ihrer längsten Dauer, startet drei Stunden lang keine neue von selbst. Der Grundwert enthält in dieser Zeit noch die Luft von vor dem Duschen (gemessen am 25.09.2026).
 - **Der Knopf *Jetzt trocknen*** startet sofort und läuft die volle Dauer, egal wie Feuchte und Fenster stehen.
 
-### Sollwert folgt den Räumen
+### Am Minimum halten
 
-Mit dem Schalter bekommt die Wärmepumpe die höchste Solltemperatur der versorgten Räume plus den Sollwert-Abstand (Standard 1 Grad).
+Die Wärmepumpe regelt auf die Luft an ihrem Platz, nicht auf die versorgten Räume. Thriftherm nutzt ihren Sollwert deshalb nur für eines: Er hält den Verdichter bei kleinster Leistung, denn dort ist ihr COP am besten. Gemessen an einer PortaSplit vom 20. bis 30.10.2026:
 
-**Anheben:** Das Gerät regelt auf die Luft in dem Raum, in dem es steht. Ist der wärmer als ein versorgter Raum, drosselt es, bevor dieser warm ist. Gesehen am 13.10.2026: auf die 21 °C des Bads gestellt, 22 °C an der eigenen Ansaugung, das Bad bei 19,8 °C, und die Therme wurde dafür angefordert.
+- Ein Grad unter ihrer eigenen Messung läuft sie mit 24 Hz und rund 340 W, bei einem COP von 3,4 bis 3,6. Bei 8 °C draußen wärmt das die Räume um rund ein halbes Grad je Stunde, bei 3 °C hält es sie gerade.
+- Ein Grad darüber regelt sie sich selbst auf 600 bis 700 W hoch, und die Räume werden um ein Grad je Stunde wärmer. So lief es bis 0.6.8: Die Räume wurden zu warm, und in einer Nacht gingen 20 neue Sollwerte hinaus.
 
-- Ein versorgter Raum hängt, wenn er unter Soll liegt und langsamer als 0,3 Grad je Stunde steigt. Ein unbekannter Trend zählt nicht, ein Raum in der Trocknung auch nicht.
-- Hängt er 20 Minuten, hebt Thriftherm den Sollwert um ein halbes Grad (oder die gröbere Stufe des Geräts), höchstens 2 Grad über den Sollwert-Abstand (Attribut `eco_offset_k`).
-- Das geschieht nur, solange das Gerät drosselt, also sein eigener Messwert bis auf 1 Grad an seinem Sollwert liegt (ohne eigenen Messwert: der Verdichter steht, zuletzt die Ansaugluft). Läuft es schon mit voller Kraft oder ist das Anheben ausgeschöpft, hilft die Therme (Attribut `boiler_helps`), bis die Räume warm sind.
+So läuft es:
 
-**Zurücknehmen:** Sind alle versorgten Räume warm, geht der Sollwert in denselben Schritten zurück, frühestens zwei Stunden nach dem letzten Schritt. Liegen alle mindestens 0,5 Grad über Soll, alle 20 Minuten. Jeder Schritt lässt das Gerät piepen, deshalb gibt es wenige. Gesehen am 13.10.2026: Nach einem Neustart begannen die zwei Stunden neu, und das Gerät lief 1,7 Stunden mit angehobenem Sollwert, obwohl alle Räume 1 bis 2 Grad über Soll lagen.
-
-### Ohne „Sollwert folgt den Räumen“
-
-Dann nutzt Thriftherm den Sollwert als Leistungshebel: Ansaugluft plus ein gelernter Abstand. Ein kleiner Abstand heißt wenig Verdichterlast und hoher COP, 30 °C heißt volle Leistung (nur für *Schnell aufheizen*).
-
-- Die Wärmepumpe startet, wenn ein versorgter Raum 0,3 Grad unter Soll liegt, und hört auf, wenn keiner mehr unter Soll plus 0,2 Grad liegt.
+- **Start:** Ist der kälteste versorgte Raum an seinem Soll, geht der Sollwert ein halbes Grad über die eigene Messung des Geräts. So läuft es sanft an; weiter darüber startet die PortaSplit gleich mit 60 bis 79 Hz. War das Gerät lange aus, steht seine eigene Messung still, dann zählt der Ansaugfühler.
+- **Halten:** Läuft der Verdichter, steigt die eigene Messung um rund 1,5 Grad, und der Sollwert liegt dann etwa ein Grad darunter. Dort bleibt er: Ein neues Soll der Räume schickt nichts, das Gerät piept selten. Neu gesetzt wird er nur, wenn das Gerät selbst abschaltet, obwohl ein Raum unter Soll ist, oder wenn seine Messung 10 Minuten lang mehr als ein halbes Grad unter dem Sollwert liegt. Beim Abtauen und 15 Minuten danach nie.
+- **Ruhen:** Ist der kälteste versorgte Raum ein halbes Grad über Soll, geht der Sollwert auf 17 °C (*Räume warm: Verdichter ruht*), frühestens nach der Mindestlaufzeit. Das Gerät bleibt im Heizbetrieb, nur der Lüfter läuft: Aus dem Heizbetrieb läuft es sanft wieder an, aus Aus oder Lüften startet es mit 60 bis 79 Hz. Am Soll heizt es wieder, frühestens nach der Mindestpause. Misst das Gerät bei laufendem Verdichter weniger als 19 °C (stehend 1,5 Grad weniger), oder läuft der Verdichter 15 Minuten nach dem Ruhe-Sollwert noch, wird es ausgeschaltet.
+- **Kommt ein Raum nicht hinterher** (10 Minuten lang 0,2 Grad unter Soll und langsamer als 0,3 Grad je Stunde, oder sein Vorheizen wird nicht rechtzeitig fertig; ein vorheizender Raum wird erst eine halbe Stunde nach dessen Beginn geprüft, mit dem Tempo seither), hilft die Heizung (Therme oder Fernwärme), bis alle Räume am Soll sind (Attribut `boiler_helps`). Dabei zählen nur Räume, deren Heizkörper heizen darf, also nicht einer mit von Hand ausgeschaltetem Thermostat; der bekommt keine Hilfe und ist später am Soll. Die Wärmepumpen-Räume rufen sie dann ab 0,2 Grad unter Soll. Die Wärmepumpe bleibt am Minimum, denn darüber kostet ihre Wärme mehr als die der Therme. Das ist der Standard der Option *Wenn die Wärmepumpe allein nicht reicht*. Mit *Wärmepumpe dreht höher* oder im Modus *Nur Wärmepumpe* geht stattdessen ihr Sollwert alle 10 Minuten um ein halbes Grad hoch, höchstens 1,5 Grad über ihre eigene Messung, und bleibt dort, bis alle Räume am Soll sind; ihr COP sinkt dabei. Dann geht der Sollwert gleich zurück auf ein Grad unter ihre Messung. Mit *Langsamer warm werden* bleibt sie am Minimum, dreht nie höher, und die Räume brauchen länger; die Heizung hilft erst, wenn ein Raum ein halbes Grad unter Soll liegt (auch in der Absenkung) oder ein Vorheizen voraussichtlich ein halbes Grad zu kurz kommt, und dann, bis alle Räume am Soll sind. In der Simulation über zehn aufgezeichnete Tage lagen die Räume so im Mittel 0,13 bis 0,18 Grad unter Soll statt 0,3 bis 0,6 ohne diese Hilfe (bei Frost bis 1,7), für rund 7 Cent am Tag weniger als mit *Therme oder Fernwärme hilft*, mit 2 bis 4 Thermenläufen von rund 40 Minuten am Tag statt 5 bis 9 kurzen. Im Modus *Nur Wärmepumpe* hilft dann nichts. Ohne zentrale Heizung (eingerichtet mit *Keine – nur Wärmepumpe und Raumsteuerung*) dreht sie immer höher, was auch eingestellt ist. Ein Raum knapp unter Soll, der nicht hinterherhängt, hebt ihn nicht.
+- **Mehr Leistung** gibt es nur mit *Schnell aufheizen* (30 °C, Lüfter hoch).
+- **Lüfter:** Sonst läuft er auf der *Lüfterstufe im Normalbetrieb* (Standard *Auto*; *Voll* ist die stärkste Stufe des Geräts, eine Stufe, die es nicht hat, gilt als *Auto*). Gemessen am 13.10.2026 brachte *Voll* bei gleichem Strom rund 7 % mehr Wärme als *Auto*, und *Auto* dreht bei wenig Last langsamer als *Silent*; mehr Luft trägt auch mehr Wärme durch die Schläuche in die Räume. Lauter ist es dafür. Trocknen und Schnell aufheizen geben die Stufe danach zurück. Hat das Gerät noch die zuletzt gegebene Stufe, bekommt es eine neu gewählte einmal; eine Stufe von Hand bleibt.
+- **Ausgeschaltet** wird sie, wenn niemand einen versorgten Raum warm haben will oder die Heizung günstiger ist. Nach langem Ruhen geschieht das ohne Lüfternachlauf, der Lüfter lief ja die ganze Zeit.
 - Sie läuft mindestens 20 Minuten und pausiert mindestens 10 Minuten (Standard, *Mindestlaufzeit*, *Mindestpause*). Eine Sperre beendet einen Lauf sofort.
-- Alle 30 Minuten eines Laufs prüft Thriftherm den langsamsten Raum: unter 0,3 Grad je Stunde wird der Abstand um 0,5 Grad größer, über 1,5 Grad je Stunde um 0,5 Grad kleiner, zwischen 0,5 und 5 Grad.
+- **Geräte ohne Verdichterfrequenz** (eine Klima-Entität ohne das Attribut `compressor_frequency`) gelten im Heizbetrieb als laufend. Ob sie selbst abgeschaltet haben, sieht Thriftherm dann nicht; ihr eigenes Thermostat startet sie wieder.
+
+Die Attribute `latched_setpoint_c` (der gehaltene Sollwert) und `resting` (Verdichter ruht) zeigen, wo das Gerät gerade steht.

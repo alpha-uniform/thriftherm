@@ -128,7 +128,7 @@ async def test_a_stale_room_sensor_falls_back_to_the_valve_not_to_better_thermos
     freezer.move_to(START + timedelta(hours=7))  # the room sensor's device has been silent since
     hass.states.async_set("climate.bath_bt", "heat", {"temperature": 21.0, "current_temperature": 20.5})
     hass.states.async_set("climate.bath_trv", "heat", {"temperature": 23.0, "current_temperature": 22.4})
-    snap = builder.build("auto", {}, {}, {}, None, {}, {})
+    snap = builder.build("auto", {}, {}, None, {}, {})
     bath = snap.rooms["badezimmer"]
     assert not bath.temperature.valid and bath.trv_local_temp == 22.4
     result = room_engine.evaluate_room(bath, snap.now, snap.mode, PARAMS)
@@ -154,7 +154,7 @@ async def test_a_replaced_valve_is_watched_without_a_reload(hass: HomeAssistant,
     hass.states.async_remove("climate.bath_trv")
     freezer.move_to(START + timedelta(hours=4))
     hass.states.async_set("climate.bath_trv_new", "heat", {"temperature": 21.0})
-    snap = builder.build("auto", {}, {}, {}, None, {}, {})
+    snap = builder.build("auto", {}, {}, None, {}, {})
     assert builder.valves_behind("climate.bath_bt") == ("climate.bath_trv_new",)
     bath = snap.rooms["badezimmer"]
     assert bath.thermostat_silent_s == pytest.approx(0.0, abs=1)

@@ -34,6 +34,29 @@ def signal_with_grace(signal_ok: bool | None, lost_since: float | None, now_ts: 
     return (True if now_ts - started < EBUS_SIGNAL_GRACE_S else False), started
 
 
+def _hot_water(boiler: BoilerState) -> bool | None:
+    """Whether the boiler makes hot water: Status01 says hwc, or the hot water sign is on; None without either."""
+    if boiler.pump_state is None and boiler.hwc_mode is None:
+        return None
+    return boiler.pump_state == PUMP_STATE_HWC or boiler.hwc_mode == "on"
+
+
+def circulating(boiler: BoilerState) -> bool:
+    """Whether the pump moves water: the pump itself where it is configured, else Status01 (on, overrun, hot water)."""
+    if boiler.pump_running is not None:
+        return boiler.pump_running
+    return boiler.pump_state in (PUMP_STATE_ON, PUMP_STATE_OVERRUN, PUMP_STATE_HWC)
+
+
+def pump_heating(boiler: BoilerState) -> bool:
+    """Whether the pump runs for the heating, its overrun included: the time a heat pump that heats can save.
+
+    Its hot water time is not: the boiler makes the hot water whoever heats, and the pump share is taken per kWh
+    of heating gas only (engines/pump_share.py).
+    """
+    return circulating(boiler) and not _hot_water(boiler)
+
+
 def evaluate(boiler: BoilerState, prices: Prices) -> BoilerResult:
     issues: list[str] = []
     available = boiler.signal_ok is not False and boiler.flow_temp.valid
@@ -44,11 +67,7 @@ def evaluate(boiler: BoilerState, prices: Prices) -> BoilerResult:
     ret = boiler.return_temp.value_or_none
     delta = None if flow is None or ret is None else round(flow - ret, 2)
 
-    hwc_active: bool | None
-    if boiler.pump_state is None and boiler.hwc_mode is None:
-        hwc_active = None
-    else:
-        hwc_active = boiler.pump_state == PUMP_STATE_HWC or boiler.hwc_mode == "on"
+    hwc_active = _hot_water(boiler)
 
     hc_active: bool | None
     if boiler.pump_state is None:
@@ -61,12 +80,8 @@ def evaluate(boiler: BoilerState, prices: Prices) -> BoilerResult:
             and delta >= MIN_DELTA_T_FOR_HEATING_K
         )
 
-    if boiler.pump_running is not None:
-        circulating = boiler.pump_running
-    else:
-        circulating = boiler.pump_state in (PUMP_STATE_ON, PUMP_STATE_OVERRUN, PUMP_STATE_HWC)
     thermal = None
-    if delta is not None and delta > 0 and circulating:
+    if delta is not None and delta > 0 and circulating(boiler):
         mass_flow = boiler.circulation_l_h / 3600.0  # kg/s (1 l ≈ 1 kg)
         thermal = round(mass_flow * CP_WATER_J_KG_K * delta, 0)
 

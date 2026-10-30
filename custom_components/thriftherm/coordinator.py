@@ -24,17 +24,20 @@ from . import boiler_profiles, executors, issues, learning_reset, persistence
 from .adapters.config import system_type_from_config
 from .adapters.inputs import SnapshotBuilder
 from .const import (
+    CONF_AWAY_RETURN_PERSONS,
     CONF_BOILER_ALLOW_ACTIVE,
     CONF_BOILER_EBUS_CIRCUIT,
     CONF_BOILER_FLOW_SETPOINT_ENTITY,
     CONF_BOILER_HEATING_ENABLE_ENTITY,
     CONF_BOILER_NOMINAL_INPUT_KW,
+    CONF_BOILER_PUMP_POWER_W,
     CONF_BOILER_PROFILE,
     CONF_BOOST_DURATION_MIN,
     CONF_GAS_VOLUME,
     CONF_HEAT_PUMP_ALLOW_ACTIVE,
     CONF_HEAT_PUMP_CLIMATE,
     CONF_HEAT_PUMP_ROOM,
+    CONF_HEAT_PUMP_SHORTFALL,
     CONF_OVERRIDE_DEFAULT_MIN,
     CONF_ROOM_ALLOW_ACTIVE,
     CONF_ROOM_ECHO_FILTER,
@@ -47,6 +50,7 @@ from .const import (
     DEFAULT_BOILER_EBUS_CIRCUIT,
     DEFAULT_BOOST_DURATION_MIN,
     DEFAULT_HEAT_PUMP_ALLOW_ACTIVE,
+    DEFAULT_HEAT_PUMP_SHORTFALL,
     DEFAULT_OVERRIDE_DEFAULT_MIN,
     DEFAULT_ROOM_ALLOW_ACTIVE,
     DEFAULT_ROOM_ECHO_FILTER,
@@ -63,6 +67,8 @@ from .const import (
     PUMP_STATE_ON,
     SAFETY_FALLBACK,
     SAFETY_OK,
+    SHORTFALL_BOILER_HELPS,
+    SHORTFALL_SLOWER,
     SOURCE_BOILER,
     SOURCE_BOTH,
     SOURCE_HEAT_PUMP,
@@ -74,6 +80,7 @@ from .const import (
 )
 from .engines import (
     hand,
+    presence,
     advisor,
     boiler as boiler_engine,
     boiler_control,
@@ -83,6 +90,7 @@ from .engines import (
     heat_call,
     heat_pump as heat_pump_engine,
     heat_pump_control,
+    pump_share,
     room as room_engine,
     room_control,
     safety,
@@ -90,7 +98,7 @@ from .engines import (
 from .engines.heat_pump_tracking import HeatPumpTracker
 from .engines.safety import HEAT_PUMP_ISSUE_PREFIX
 from .engines import cop_profiles
-from .engines.learning import CoolRateStats, CopMap, HeatRateStats
+from .engines.learning import HEAT_BY_BOILER, HEAT_BY_BOTH, HEAT_BY_HEAT_PUMP, HEAT_SOURCES, CoolRateStats, CopMap, HeatRateStats
 from .engines.boiler_memory import BoilerInputs, BoilerMemory, curve_flow
 from .engines.common import round_half
 from .models import SettingChange
@@ -108,6 +116,7 @@ from .models import (
     Override,
     RoomCommand,
     RoomResult,
+    RoomState,
     SafetyResult,
     reason,
 )
@@ -150,10 +159,11 @@ def _is_climate_call(data: Any) -> bool:
 
 
 def _runs_through(advice: Advice, setpoint: float | None) -> Advice:
-    """The advice of a cycle in which a unit that follows the rooms heats on with no room calling.
+    """The advice of a cycle in which the heat pump heats on with no room calling.
 
-    It does so by design and regulates by itself. "No room needs heat" next to it was taken for a
-    fault three times on the test day of 2026-10-13: the reason says that it runs through instead.
+    Held at its least speed it does so by design, until the rooms are warm enough to rest. "No room
+    needs heat" next to it was taken for a fault three times on the test day of 2026-10-13: the reason
+    says that it runs through instead.
     """
     runs = reason("heat_pump_runs_through", target_c=setpoint)
     return replace(advice, reasons=tuple(runs if item.code == "no_demand" else item for item in advice.reasons))
@@ -187,6 +197,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.away_return_provisional = False
         # entities that show away mode and its return straight from here, written the moment either changes
         self._away_listeners: list[CALLBACK_TYPE] = []
+        # the people whose arrival home ends away mode: each one's last known place (engines/presence.py)
+        self._whereabouts: dict[str, str | None] = {}
         # learning
         self._store: Store = Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}")
         self.cop_map = CopMap()
@@ -207,6 +219,9 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.last_learning_reset: dict[str, Any] | None = None
         # gas for heating and gas for hot water, counted apart (engines/gas_split.py)
         self.gas_split = gas_split.GasSplit()
+        # the boiler pump's electricity per kWh of boiler heat, while its power is set (engines/pump_share.py)
+        self.pump_share = pump_share.PumpShare()
+        self._pump_last: tuple[float, float] | None = None  # (when, gas for heating then) at the last cycle
         # room control via the room thermostats
         self.room_control_mode: str = CTRL_SHADOW
         self.room_ctrl_memory: dict[str, RoomCtrlMemory] = {}
@@ -234,6 +249,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._setpoints_unsub: CALLBACK_TYPE | None = None
         self.echoes_ignored: dict[str, tuple[float, float]] = {}  # room -> (ts, value) of the last one
         self._preheat_latch: dict[str, float] = {}
+        self._preheat_began: dict[str, float] = {}  # room -> when its preheat really began (engines/room.preheat_began)
         self.expected_unique_ids: set[str] = set()  # filled by the entities; the rest is stale
         self.issue_since: dict[str, float] = {}
         self._ebus_priority_ts: float | None = None
@@ -281,6 +297,20 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     def has_heat_source(self) -> bool:
         """True when there is a central heat source to compare the heat pump against."""
         return self.system_type != SYSTEM_NONE
+
+    def shortfall(self, mode: str) -> tuple[bool, bool, bool]:
+        """When a heat pump room lags or its preheat runs late: whether the boiler adds the peak, whether the
+        unit may be set higher instead, and whether the boiler helps only at the comfort floor of "warm up slower"
+        (the option "when the heat pump alone is not enough").
+
+        Without a central heat source, or in the mode "heat pump only", there is no boiler to help; without one
+        at all the unit is set higher whatever is chosen, else it would never catch up.
+        """
+        chosen = str(self.config.get(CONF_HEAT_PUMP_SHORTFALL) or DEFAULT_HEAT_PUMP_SHORTFALL)
+        boiler_there = self.has_heat_source and mode != MODE_HEAT_PUMP_ONLY
+        at_floor = boiler_there and chosen == SHORTFALL_SLOWER
+        boiler_can_help = boiler_there and (chosen == SHORTFALL_BOILER_HELPS or at_floor)
+        return boiler_can_help, not self.has_heat_source or chosen != SHORTFALL_SLOWER, at_floor
 
     @property
     def boiler_allow_active(self) -> bool:
@@ -362,6 +392,29 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.entry.async_on_unload(self._untrack_setpoints)
         self.entry.async_on_unload(self._cancel_knob_timer)
         self._track_settings()
+        self._track_persons()
+
+    def _track_persons(self) -> None:
+        """Follow the people chosen for the return from away; where they are at the start is taken as it is."""
+        persons = [str(p) for p in self.config.get(CONF_AWAY_RETURN_PERSONS) or []]
+        if not persons:
+            return
+        for entity_id in persons:
+            state = self.hass.states.get(entity_id)
+            self._whereabouts[entity_id], _ = presence.follow(None, state.state if state is not None else None)
+        self.entry.async_on_unload(async_track_state_change_event(self.hass, persons, self._on_person_change))
+
+    @callback
+    def _on_person_change(self, event: Event[EventStateChangedData]) -> None:
+        """One of the chosen people came home while away: away ends as at a planned return, at once."""
+        entity_id, new = event.data["entity_id"], event.data.get("new_state")
+        # A person that just appeared (Home Assistant starting) has no place before it: no arrival.
+        before = self._whereabouts.get(entity_id) if event.data.get("old_state") is not None else None
+        self._whereabouts[entity_id], arrived = presence.follow(before, new.state if new is not None else None)
+        if arrived and self.mode == MODE_AWAY:
+            _LOGGER.info("thriftherm: %s came home, leaving away mode", entity_id)
+            self._leave_away()
+            self.hass.async_create_task(self.async_request_refresh())
 
     def _track_settings(self) -> None:
         """Record who changes the mode or the setpoint of what the control commands."""
@@ -765,6 +818,15 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._async_show_away()
         await self._async_changed()
 
+    @callback
+    def _leave_away(self) -> None:
+        """Back to Auto from away mode, at the planned return or when somebody comes home, and shown at once."""
+        self.mode = MODE_AUTO
+        self.away_return_ts = None
+        self.away_return_provisional = False
+        self._store_dirty = True
+        self._async_show_away()
+
     async def async_clear_away(self) -> None:
         if self.mode == MODE_AWAY:
             self.mode = MODE_AUTO
@@ -797,7 +859,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if learning_reset.SCOPE_HEAT_PUMP in scopes:
             self.cop_map = CopMap()
             self.heat_pump_tracker.reset()
-            forgotten = {"offset_k": None, "learning_bins": (), "last_offset_review_ts": None, "learning_until_ts": None}
+            forgotten = {"learning_bins": (), "learning_until_ts": None}
             self.control_memory = replace(self.control_memory, **forgotten)
             # A cycle that waits for the unit's answer puts the memory from before its plan back when
             # the command fails: the learned values must not come back with it.
@@ -821,16 +883,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.boosts = {k: t for k, t in self.boosts.items() if t > now}
             if self.mode == MODE_AWAY and self.away_return_ts is not None and self.away_return_ts <= now:
                 _LOGGER.info("thriftherm: return time reached, leaving away mode")
-                self.mode = MODE_AUTO
-                self.away_return_ts = None
-                self.away_return_provisional = False
-                self._store_dirty = True
-                self._async_show_away()  # before the slow part of this cycle
+                self._leave_away()  # before the slow part of this cycle
             snapshot = self.builder.build(
                 self.mode,
                 overrides=self.overrides,
                 drying_states=self.drying_states,
-                heat_rates={r.key: v for r in self.builder.rooms if (v := self.heat_rates.rate(r.key)) is not None},
                 # the return the rooms pre-heat for: none while it is provisional
                 away_return_ts=None if self.away_return_provisional else self.away_return_ts,
                 boosts=self.boosts,
@@ -1061,6 +1118,48 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.gas_split, dict(boiler.energy_sums_heating), dict(boiler.energy_sums_hot_water), nominal_kw, now_ts
             )
 
+    def _pump_power_w(self) -> float:
+        try:
+            return max(float(self.config.get(CONF_BOILER_PUMP_POWER_W) or 0.0), 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _count_pump(self, snapshot: HeatingSnapshot, now_ts: float) -> None:
+        """Add the boiler pump's running time and the boiler heat since the last cycle, while its power is set."""
+        power = self._pump_power_w()
+        if not self.has_boiler or power <= 0.0:
+            self._pump_last = None
+            return
+        heating_gas = self.gas_split.heating_kwh
+        last, self._pump_last = self._pump_last, (now_ts, heating_gas)
+        if last is None:
+            return
+        heat = max(heating_gas - last[1], 0.0) * snapshot.prices.boiler_efficiency
+        running = boiler_engine.pump_heating(snapshot.boiler)
+        self.pump_share = pump_share.count(self.pump_share, now_ts - last[0], running, power, heat)
+
+    def _with_preheat_rate(self, state: RoomState, mode: str, heat_pump_heat_possible: bool, outdoor: float | None) -> RoomState:
+        """The room with the heat-up rate its preheat is planned with: that of the source expected to heat it.
+
+        That is the heat pump in a room it serves where it may heat now, and where it was the cheaper
+        source last cycle or the only one; otherwise the boiler. A heat pump that only plans heats nothing.
+        """
+        by_heat_pump = (
+            state.config.served_by_heat_pump
+            and heat_pump_heat_possible
+            and (mode == MODE_HEAT_PUMP_ONLY or not self.has_heat_source or self._last_cheaper == SOURCE_HEAT_PUMP)
+        )
+        key = state.config.key
+        if by_heat_pump:
+            rate = self.heat_rates.planning_rate(
+                key, HEAT_BY_HEAT_PUMP, self.cool_rates.rate(key), state.temperature.value_or_none, outdoor
+            )
+        else:
+            # Projected onto the weather only at the heat pump's fixed least speed: a boiler's heating curve raises
+            # the flow in frost, and a leaky radiator room fell to the floor of 0.1 an hour (review 2026-10-30).
+            rate = self.heat_rates.rate(key, HEAT_BY_BOILER)
+        return replace(state, heat_rate_k_h=rate, preheat_by_heat_pump=by_heat_pump)
+
     def _evaluate(self, snapshot: HeatingSnapshot) -> dict[str, Any]:
         params = snapshot.params
         now_ts = snapshot.now.timestamp()
@@ -1106,6 +1205,13 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             and outdoor_for_limit is not None
             and outdoor_for_limit >= params.heat_pump_min_outdoor_temp
         )
+        snapshot = replace(
+            snapshot,
+            rooms={
+                key: self._with_preheat_rate(state, snapshot.mode, heat_pump_heat_possible, outdoor)
+                for key, state in snapshot.rooms.items()
+            },
+        )
         rooms: dict[str, RoomResult] = {
             key: room_engine.evaluate_room(
                 state,
@@ -1118,6 +1224,10 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             )
             for key, state in snapshot.rooms.items()
         }
+        rooms, self._preheat_began = room_engine.preheat_began(
+            rooms, self._preheat_latch, self._preheat_began, now_ts,
+            {key: state.temperature_history for key, state in snapshot.rooms.items()},
+        )
         self._preheat_latch = {key: res.preheat_for_ts for key, res in rooms.items() if res.preheat_for_ts is not None}
         for key, res in rooms.items():
             self.drying_states[key] = res.drying
@@ -1131,7 +1241,12 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         boiler_res: BoilerResult = boiler_engine.evaluate(snapshot.boiler, snapshot.prices)
 
         # --- COP ---------------------------------------------------------------
-        cop_res = self.heat_pump_tracker.cop(snapshot, heat_pump_res, defrost_res, params, now_ts)
+        heat_pump_room_keys = [r.key for r in self.builder.rooms if r.served_by_heat_pump]
+        served = tuple(rooms[k] for k in heat_pump_room_keys if k in rooms)
+        cop_res = self.heat_pump_tracker.cop(
+            snapshot, heat_pump_res, defrost_res, params, now_ts,
+            above_minimum=heat_pump_control.why_above_minimum(snapshot.heat_pump, served, self.control_memory),
+        )
 
         # --- economics: measured COP while running, else learned / prior estimate --------
         if outdoor is not None:
@@ -1141,8 +1256,12 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         decision_cop = cop_res.value if cop_res.value is not None else estimate
         decision_basis = "measured" if cop_res.value is not None else estimate_basis
         try:
+            prices = snapshot.prices
+            pump_kwh = pump_share.kwh_per_kwh(self.pump_share) if self._pump_power_w() > 0.0 else None
+            if pump_kwh is not None:
+                prices = replace(prices, boiler_pump_kwh_per_kwh=pump_kwh)
             econ: EconomicsResult = economics.evaluate(
-                snapshot.prices, decision_cop, params.break_even_margin_on, params.break_even_margin_off, self._last_cheaper
+                prices, decision_cop, params.break_even_margin_on, params.break_even_margin_off, self._last_cheaper
             )
             self._prices_unusable = False
         except (ValueError, ZeroDivisionError) as err:
@@ -1174,8 +1293,15 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # --- boiler calls: hysteresis, stalled rooms, end of the comfort window ------------
         call_states: dict[str, str] = {}
+        # A served room the boiler helps calls from two tenths below: the heat pump control's word of the last cycle,
+        # a minute old at most. Called only at 0.3 K below, the boiler stood idle while it was said to help. A help
+        # on record from before the option or the mode changed counts no more.
+        boiler_can_help, may_lift, help_at_floor = self.shortfall(snapshot.mode)
+        helped = set(heat_pump_room_keys) if self.control_memory.boiler_helps and boiler_can_help else set()
         for key, res in rooms.items():
-            state, memory = heat_call.update(res, self.call_memory.get(key, heat_call.CallMemory()), now_ts, res.comfort_end_ts)
+            state, memory = heat_call.update(
+                res, self.call_memory.get(key, heat_call.CallMemory()), now_ts, res.comfort_end_ts, helping=key in helped
+            )
             if memory != self.call_memory.get(key):
                 self._store_dirty = True
             self.call_memory[key] = memory
@@ -1205,7 +1331,6 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         # --- midea control (phase 7): shadow or active --------------------------------------
-        heat_pump_room_keys = [r.key for r in self.builder.rooms if r.served_by_heat_pump]
         blocked = advice.blocked.get("midea")
         command, self.control_memory = heat_pump_control.decide(
             ControlInputs(
@@ -1226,12 +1351,18 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 params=params,
                 cheaper=econ.cheaper_source == SOURCE_HEAT_PUMP,
                 started_ts=self._started_ts,
+                defrosting=defrost_res.suspected,
+                # the radiators add the peak for a lagging room; without them the unit itself is set higher, or not
+                boiler_can_help=boiler_can_help,
+                may_lift=may_lift,
+                help_at_floor=help_at_floor,  # "warm up slower": the boiler helps from half a degree below only
             ),
             self.control_memory,
         )
         if self.plan_log.heat_pump(command, now_ts, self.control_mode == CTRL_ACTIVE):
             self._store_dirty = True
-        if params.heat_pump_follow_rooms and command.plan == HEAT_PUMP_PLAN_HEAT and heat_pump_acts:
+        if command.plan == HEAT_PUMP_PLAN_HEAT and heat_pump_acts and not self.control_memory.resting:
+            # resting at the floor no room needs heat, as it says (review 2026-10-30: "runs through, setpoint 17 °C")
             advice = _runs_through(advice, command.target_temp)
 
         # --- learning guard: never learn while setpoints move or special modes run ---------------
@@ -1325,6 +1456,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             learning_blocked.append("hot_water_recent")  # shown as what the paused learning waits for
         self.plan_log.boiler(boiler_cmd, now_ts, self.boiler_control_mode == CTRL_ACTIVE)
         self._count_gas(snapshot, boiler_res, now_ts, boiler_cmd.warm_start)
+        self._count_pump(snapshot, now_ts)
         if self.has_boiler:
             flow_c, return_c = snapshot.boiler.flow_temp.value_or_none, snapshot.boiler.return_temp.value_or_none
             self.load_log.append([
@@ -1395,19 +1527,40 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             boiler_heats = advice.source in (SOURCE_BOILER, SOURCE_BOTH)
         heat_pump_heats = advice.source in (SOURCE_HEAT_PUMP, SOURCE_BOTH)
+        # Each source's rates apart: the heat pump's only at the least speed a preheat plans with, the
+        # boiler's only where the unit's compressor does not run in the room as well (a unit that shows
+        # no frequency counts as running in heat mode, unless it rests at the lowest setpoint).
+        unit = snapshot.heat_pump
+        compressor_heats = self.has_heat_pump and heat_pump_control.compressor_heats(
+            unit, self.control_memory, heat_pump_mode == CTRL_ACTIVE
+        )
+        at_minimum = heat_pump_mode == CTRL_ACTIVE and heat_pump_control.heats_at_minimum(
+            command, self.control_memory, unit, tuple(rooms[k] for k in heat_pump_room_keys if k in rooms), now_ts
+        )
         for key, res in rooms.items():
-            reached = (boiler_heats and res.heating_allowed) or (heat_pump_heats and key in heat_pump_room_keys)
+            by_boiler = boiler_heats and res.heating_allowed
+            reached = by_boiler or (heat_pump_heats and key in heat_pump_room_keys)
             # a shower warms the bathroom by itself within minutes; that is not a heat-up rate
-            heating = reached and (res.demand or 0.0) > 0.0 and not res.drying.active
+            wants = (res.demand or 0.0) > 0.0 and not res.drying.active
+            heating = reached and wants
+            by_heat_pump = compressor_heats and key in heat_pump_room_keys
+            source = None
+            if wants and by_boiler:
+                source = HEAT_BY_BOTH if by_heat_pump else HEAT_BY_BOILER
+            elif wants and by_heat_pump and at_minimum:
+                source = HEAT_BY_HEAT_PUMP
             # the valve's own reading stands in for a failed room sensor, but it sits at the
             # radiator: rates learned from it would not be the room's
             measured = None if any(i.startswith("using_trv_local_temperature") for i in res.issues) else res.temperature
-            learned = self.heat_rates.observe(key, now_ts, measured, heating, bool(res.window_open), outdoor)
-            if learned is not None:
-                _LOGGER.info("thriftherm learned heat-up rate %s: %.2f K/h", key, learned)
+            episode = self.heat_rates.episodes.get(key)
+            learned = self.heat_rates.observe(key, now_ts, measured, source, bool(res.window_open), outdoor)
+            if learned is not None and episode is not None:
+                _LOGGER.info("thriftherm learned heat-up rate %s from the %s: %.2f K/h", key, episode.source, learned)
                 self._store_dirty = True
             # how fast the room loses heat: the basis for a setback that really saves
-            cooled = self.cool_rates.observe(key, now_ts, measured, outdoor, heating, bool(res.window_open))
+            # Held at its least speed the compressor runs for hours with no room calling (2026-10-30): its rooms
+            # drift slowly then, and that is no cool-down.
+            cooled = self.cool_rates.observe(key, now_ts, measured, outdoor, heating or by_heat_pump, bool(res.window_open))
             if cooled is not None:
                 _LOGGER.info("thriftherm learned cool-down coefficient %s: %.4f per h", key, cooled)
                 self._store_dirty = True
@@ -1440,9 +1593,15 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "heat_rates": self.heat_rates.to_dict(),
             "cool_rates": self.cool_rates.to_dict(),
             "heating_power": {
-                r.key: value
+                r.key: by_source
                 for r in self.builder.rooms
-                if (value := self.heat_rates.heating_power_k_h(r.key, self.cool_rates.rate(r.key))) is not None
+                if (
+                    by_source := {
+                        source: value
+                        for source in HEAT_SOURCES
+                        if (value := self.heat_rates.heating_power_k_h(r.key, source, self.cool_rates.rate(r.key))) is not None
+                    }
+                )
             },
             "expected_cop_basis": estimate_basis,
             "decision_cop": decision_cop,
@@ -1450,10 +1609,9 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "prior_calibration_factor": self.cop_map.calibration_factor(),
             "midea_command": command,
             "control_mode": heat_pump_mode,
-            # a unit that follows the rooms: the configured offset plus what the rooms asked for on top
-            "eco_offset_k": heat_pump_control.follow_offset(params, self.control_memory)
-            if params.heat_pump_follow_rooms or self.control_memory.offset_k is None
-            else self.control_memory.offset_k,
+            # the hold at its least speed: whether it rests, the setpoint held
+            "resting": self.control_memory.resting,
+            "latched_setpoint_c": heat_pump_control.latched_setpoint(self.control_memory),
             "command_log": list(self.plan_log.command_log),
             "boosts": dict(self.boosts),
             "boiler_command": boiler_cmd,

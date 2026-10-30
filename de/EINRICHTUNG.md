@@ -208,6 +208,7 @@ Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme un
 | Nenn-Umlaufwassermenge der Pumpe | den Standardwert lassen, außer die Anleitung deiner Therme sagt etwas anderes |
 | Gaszähler Volumen (m³, Gesamt), Gaszähler Momentanfluss (m³/h) | deine Gaszähler-Entitäten, falls vorhanden; sonst leer lassen. Die Steuerung braucht keinen Gaszähler: Brennerlauf und Warmwasser erkennt sie an Pumpe und Statuscode. Ohne Zähler gibt es die Sensoren *Gasleistung* und *Gasenergie* nicht |
 | Ohne Gaszähler: Nennwärmebelastung der Therme (Typenschild, kW) | nur ohne Gaszähler und nur bei einer Vaillant-Therme: der Wert **Q** oder **Qn** vom Typenschild, bei einem Bereich der größere (atmoTEC plus VCW 194/4-5: 22,2). Damit schätzt Thriftherm *Gas für Heizung* und *Gas für Warmwasser* aus den Zählern der Therme. Dafür müssen die sechs ebusd-Nachrichten PrEnergySumHc1 bis 3 und PrEnergySumHwc1 bis 3 in Home Assistant ankommen, schließ sie also nicht aus ([Weniger ebusd-Werte abfragen](EBUSD.md#was-thriftherm-braucht)); Thriftherm findet sie selbst. Auf der Testanlage lag die Schätzung in 32 Tagen (95,8 kWh am Gaszähler) insgesamt 1 % über dem Zähler und an keinem Tag mehr als 0,3 kWh daneben. Mit Gaszähler leer lassen |
+| Leistung der Heizungspumpe (W, optional) | dann kommt der Strom der Heizungspumpe zum Preis der Thermenwärme dazu: Thriftherm zählt die Laufzeit der Pumpe und die Wärme der Therme und rechnet den Pumpenstrom je kWh Wärme hinzu (höchstens 0,06 kWh), sodass eine Wärmepumpe, die übernimmt, auch ihn spart. Lohnt nur mit Wärmepumpe; eine Pumpe im Dauerbetrieb braucht oft 20 bis 50 W (Typenschild oder Zwischenstecker). Leer lassen, um nur das Gas zu vergleichen |
 | Warmwasser bereithalten (Warmhalten der Kombitherme, Speicherladung) | eingeschaltet lassen. Ausschalten nur bei einer Kombitherme ohne Speicher, die dich nachts mit ihrem Warmhalten stört (etwa ein Brennerstart pro Stunde ohne Heizbedarf); wirkt nur bei aktiver Thermensteuerung |
 | ebusd-Kreis der Therme (meist bai) | `bai` lassen, außer dein ebusd-Gerät nutzt einen anderen Kreisnamen |
 | Heizkurve: Vorlauf bei -10 °C außen | mit dem Standardwert 55 °C beginnen |
@@ -248,7 +249,7 @@ Erprobt ist diese Erweiterung an einer Midea PortaSplit. Ohne Wärmepumpe: **All
 
 Hast du keinen Zwischenstecker und keine Fühler an Ansaugung und Ausblas, kann Thriftherm den COP nicht messen. Wähle dann unter **COP-Werte dieses Modells** dein Gerät, falls es dort steht (bisher die Midea PortaSplit). Thriftherm rechnet dann mit Werten, die am gleichen Modell gemessen wurden, statt mit einer allgemeinen Kurve.
 
-Ist eine Wärmepumpe eingerichtet, gibt es unter *Konfigurieren* den zusätzlichen Punkt **Wärmepumpe: Feineinstellung**. Dort stehen die Freigabe der aktiven Steuerung, der Sollwert-Abstand, Mindestlaufzeit und Mindestpause und, in eingeklappten Abschnitten, Bad-Trocknung, COP-Messung und Abtauen. Ohne Wärmepumpe erscheint der Punkt nicht.
+Ist eine Wärmepumpe eingerichtet, gibt es unter *Konfigurieren* den zusätzlichen Punkt **Wärmepumpe: Feineinstellung**. Dort stehen die Freigabe der aktiven Steuerung, die Start-Aufheizrate der Wärmepumpen-Räume, was geschieht, wenn die Wärmepumpe allein nicht reicht, die Lüfterstufe im Normalbetrieb, Mindestlaufzeit und Mindestpause und, in eingeklappten Abschnitten, Bad-Trocknung, COP-Messung und Abtauen. Ohne Wärmepumpe erscheint der Punkt nicht.
 
 ### 4.5 Außenbedingungen
 
@@ -348,6 +349,8 @@ Sieht etwas falsch aus, in den Optionen anpassen, bevor du aktiv schaltest.
 | *Therme-Steuerbefehl* | Attribut *Befehle werden gesendet* ist an |
 | Better-Thermostat-Entitäten | zeigen die neuen Sollwerte aus dem *Thermostat-Plan* |
 | *Sicherheitsstatus* | OK |
+
+**Optional:** Soll *Abwesend* enden, wenn jemand heimkommt, unter Thriftherm → *Konfigurieren* → **Regelparameter** bei *Abwesend endet, wenn eine dieser Personen heimkommt* die Personen (`person.*`) wählen. Ihr Standort muss in Home Assistant stimmen, etwa über die Companion App.
 
 Alles zum Alltag – Modi, Zeitpläne, Abwesenheit, Lernen – steht in der [Anleitung](ANLEITUNG.md).
 

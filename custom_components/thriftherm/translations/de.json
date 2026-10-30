@@ -40,6 +40,7 @@
           "gas_volume": "Gaszähler Volumen (m³, Gesamt)",
           "gas_flow": "Gaszähler Momentanfluss (m³/h)",
           "boiler_nominal_input_kw": "Ohne Gaszähler: Nennwärmebelastung der Therme (Typenschild, kW)",
+          "boiler_pump_power_w": "Leistung der Heizungspumpe (W, optional)",
           "boiler_ebus_circuit": "ebusd-Kreis der Therme (meist bai)",
           "boiler_curve_flow_at_minus10": "Heizkurve: Vorlauf bei -10 °C außen",
           "boiler_curve_flow_at_plus15": "Heizkurve: Vorlauf bei +15 °C außen",
@@ -53,6 +54,7 @@
         },
         "data_description": {
           "boiler_nominal_input_kw": "Nur für die beiden Sensoren „Gas für Heizung“ und „Gas für Warmwasser“, und nur gelesen, wenn oben kein Gaszähler eingetragen ist. Eine Vaillant-Therme summiert ihre Brennerleistung selbst auf (ebusd PrEnergySumHc1-3 und PrEnergySumHwc1-3); mit der Nennwärmebelastung vom Typenschild (Q oder Qn, bei einem Bereich der größere Wert, z. B. 22,2) werden daraus kWh wie auf der Gasrechnung. Leer lassen, wenn du einen Gaszähler oder eine andere Therme hast.",
+          "boiler_pump_power_w": "Ihr Strom kommt zum Preis der Thermenwärme dazu: Thriftherm zählt, wie lange die Pumpe läuft und wie viel Wärme die Therme liefert, und rechnet den Pumpenstrom je kWh Wärme hinzu. Übernimmt die Wärmepumpe, spart sie auch diesen Strom. Leer lassen, um nur das Gas zu vergleichen. Eine Pumpe im Dauerbetrieb braucht oft 20 bis 50 W.",
           "boiler_hot_water_standby": "Aus: Bei aktiver Thermensteuerung heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist. Sie springt dann nicht mehr etwa einmal pro Stunde an, um ihren Wärmetauscher warm zu halten. Am Hahn kommt weiter warmes Wasser, nur etwas später. Eingeschaltet lassen, wenn ein Warmwasserspeicher angeschlossen ist: Er würde nicht mehr geladen. Von einem Nutzer gemeldet, an der Testanlage noch nicht gemessen.",
           "boiler_spread_min_room_share": "Die Spreizung zwischen Vorlauf und Rücklauf sagt nur etwas über die Heizkurve, wenn genug Heizkörper Wärme abnehmen: Ein einzelner offener Heizkörper schickt das Wasser fast so warm zurück, wie es kam, und eine kleine Spreizung hat die Kurve dann fälschlich gesenkt. Fordern weniger Räume an als dieser Anteil der Räume, die gerade Wärme abnehmen können (aufgerundet, mindestens einer), zählt nur, ob die anfordernden Räume vorankommen. Räume, die nur mitheizen, werden nicht gezählt. 0,5 = die Hälfte der Räume. Für die Heizkurve je Lastfall sind mehr Räume als dieser Anteil die Mehrheit (0,5: drei von vier Räumen).",
           "boiler_load_model": "Welchen Vorlauf die Wohnung braucht, hängt davon ab, wie viele Heizkörper Wärme abnehmen, und von jedem Heizkörper: Ein kleiner in einem kalten Raum braucht mehr als ein großer. An: Thriftherm führt für jeden Raum in drei Fällen (ein Raum fordert an, wenige, die Mehrheit) eine eigene Korrektur der Heizkurve. Von den Räumen, die Wärme wollen, bestimmt der den Vorlauf, der am meisten braucht; bei den anderen nehmen die Ventile weniger. Kommt ein Raum nicht hinterher, hebt er nur seinen eigenen Wert an. Was das Bad allein gelehrt hat, verstellt so nicht den Vorlauf für die ganze Wohnung. Ein Raum ohne eigenen Wert startet mit seinem Wert aus dem nächstgelegenen Fall. Ein Wert, der einige Stunden gepasst hat, gilt als gefunden und bewegt sich erst wieder, wenn die Räume länger etwas anderes zeigen. Aus: eine gemeinsame Korrektur für alle Räume und Fälle, wie bisher; sie behält, was sie gelernt hatte.",
@@ -73,7 +75,6 @@
           "midea_airflow_curve": "Luftmengenkennlinie (rpm:m³/h, ...)",
           "midea_duct_factor": "Schlauchfaktor (reale Luftmenge / frei ausblasend, 1,0 ohne Schläuche)",
           "heat_pump_cop_profile": "COP-Werte dieses Modells (ohne Sensoren am Gerät)",
-          "midea_follow_rooms": "Sollwert folgt der Solltemperatur der versorgten Räume (plus Sollwert-Abstand aus „Wärmepumpe: Feineinstellung“); das Gerät regelt selbst",
           "midea_room": "Raum, in dem die Wärmepumpe steht"
         },
         "data_description": {
@@ -182,6 +183,7 @@
           "gas_volume": "Gaszähler Volumen (m³, Gesamt)",
           "gas_flow": "Gaszähler Momentanfluss (m³/h)",
           "boiler_nominal_input_kw": "Ohne Gaszähler: Nennwärmebelastung der Therme (Typenschild, kW)",
+          "boiler_pump_power_w": "Leistung der Heizungspumpe (W, optional)",
           "boiler_ebus_circuit": "ebusd-Kreis der Therme (meist bai)",
           "boiler_curve_flow_at_minus10": "Heizkurve: Vorlauf bei -10 °C außen",
           "boiler_curve_flow_at_plus15": "Heizkurve: Vorlauf bei +15 °C außen",
@@ -195,6 +197,7 @@
         },
         "data_description": {
           "boiler_nominal_input_kw": "Nur für die beiden Sensoren „Gas für Heizung“ und „Gas für Warmwasser“, und nur gelesen, wenn oben kein Gaszähler eingetragen ist. Eine Vaillant-Therme summiert ihre Brennerleistung selbst auf (ebusd PrEnergySumHc1-3 und PrEnergySumHwc1-3); mit der Nennwärmebelastung vom Typenschild (Q oder Qn, bei einem Bereich der größere Wert, z. B. 22,2) werden daraus kWh wie auf der Gasrechnung. Leer lassen, wenn du einen Gaszähler oder eine andere Therme hast.",
+          "boiler_pump_power_w": "Ihr Strom kommt zum Preis der Thermenwärme dazu: Thriftherm zählt, wie lange die Pumpe läuft und wie viel Wärme die Therme liefert, und rechnet den Pumpenstrom je kWh Wärme hinzu. Übernimmt die Wärmepumpe, spart sie auch diesen Strom. Leer lassen, um nur das Gas zu vergleichen. Eine Pumpe im Dauerbetrieb braucht oft 20 bis 50 W.",
           "boiler_hot_water_standby": "Aus: Bei aktiver Thermensteuerung heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist. Sie springt dann nicht mehr etwa einmal pro Stunde an, um ihren Wärmetauscher warm zu halten. Am Hahn kommt weiter warmes Wasser, nur etwas später. Eingeschaltet lassen, wenn ein Warmwasserspeicher angeschlossen ist: Er würde nicht mehr geladen. Von einem Nutzer gemeldet, an der Testanlage noch nicht gemessen.",
           "boiler_spread_min_room_share": "Die Spreizung zwischen Vorlauf und Rücklauf sagt nur etwas über die Heizkurve, wenn genug Heizkörper Wärme abnehmen: Ein einzelner offener Heizkörper schickt das Wasser fast so warm zurück, wie es kam, und eine kleine Spreizung hat die Kurve dann fälschlich gesenkt. Fordern weniger Räume an als dieser Anteil der Räume, die gerade Wärme abnehmen können (aufgerundet, mindestens einer), zählt nur, ob die anfordernden Räume vorankommen. Räume, die nur mitheizen, werden nicht gezählt. 0,5 = die Hälfte der Räume. Für die Heizkurve je Lastfall sind mehr Räume als dieser Anteil die Mehrheit (0,5: drei von vier Räumen).",
           "boiler_load_model": "Welchen Vorlauf die Wohnung braucht, hängt davon ab, wie viele Heizkörper Wärme abnehmen, und von jedem Heizkörper: Ein kleiner in einem kalten Raum braucht mehr als ein großer. An: Thriftherm führt für jeden Raum in drei Fällen (ein Raum fordert an, wenige, die Mehrheit) eine eigene Korrektur der Heizkurve. Von den Räumen, die Wärme wollen, bestimmt der den Vorlauf, der am meisten braucht; bei den anderen nehmen die Ventile weniger. Kommt ein Raum nicht hinterher, hebt er nur seinen eigenen Wert an. Was das Bad allein gelehrt hat, verstellt so nicht den Vorlauf für die ganze Wohnung. Ein Raum ohne eigenen Wert startet mit seinem Wert aus dem nächstgelegenen Fall. Ein Wert, der einige Stunden gepasst hat, gilt als gefunden und bewegt sich erst wieder, wenn die Räume länger etwas anderes zeigen. Aus: eine gemeinsame Korrektur für alle Räume und Fälle, wie bisher; sie behält, was sie gelernt hatte.",
@@ -214,7 +217,6 @@
           "midea_airflow_curve": "Luftmengenkennlinie (rpm:m³/h, ...)",
           "midea_duct_factor": "Schlauchfaktor (reale Luftmenge / frei ausblasend, 1,0 ohne Schläuche)",
           "heat_pump_cop_profile": "COP-Werte dieses Modells (ohne Sensoren am Gerät)",
-          "midea_follow_rooms": "Sollwert folgt der Solltemperatur der versorgten Räume (plus Sollwert-Abstand aus „Wärmepumpe: Feineinstellung“); das Gerät regelt selbst",
           "midea_room": "Raum, in dem die Wärmepumpe steht"
         },
         "data_description": {
@@ -226,9 +228,14 @@
         "description": "Wie die Wärmepumpe betrieben wird. Entitäten und Luftmenge stehen unter *Wärmepumpe*.",
         "data": {
           "midea_allow_active_control": "Aktive Steuerung freigeben (sonst nur planen)",
-          "midea_setpoint_offset_k": "Sollwert über der Solltemperatur der Räume, sonst über der Ansaugluft als gelernter Startwert",
           "midea_min_outdoor_temp": "Minimale Außentemperatur für das Heizen (Datenblatt)",
-          "default_heat_rate_midea_k_h": "Start-Aufheizrate Wärmepumpen-Räume"
+          "default_heat_rate_midea_k_h": "Start-Aufheizrate Wärmepumpen-Räume",
+          "heat_pump_shortfall": "Wenn die Wärmepumpe allein nicht reicht",
+          "heat_pump_fan_stage": "Lüfterstufe im Normalbetrieb"
+        },
+        "data_description": {
+          "heat_pump_shortfall": "Therme oder Fernwärme hilft: am schnellsten warm, ein paar Cent teurer. Wärmepumpe dreht höher: ohne Therme, ihr COP sinkt. Langsamer warm werden: die Wärmepumpe bleibt auf kleinster Leistung; erst ab einem halben Grad unter Soll hilft Therme oder Fernwärme, bis alle Räume am Soll sind. Ohne zentrale Heizung dreht sie immer höher.",
+          "heat_pump_fan_stage": "Auto: Das Gerät wählt selbst. Eine höhere Stufe bringt mehr Wärme in die Räume (gemessen: Voll rund 7 % mehr als Auto bei gleichem Strom), ist aber lauter. Trocknen und Schnell aufheizen nutzen ihre eigene Stufe und geben danach diese zurück. Eine Stufe, die das Gerät nicht hat, gilt als Auto. Eine Stufe von Hand bleibt."
         },
         "sections": {
           "switching": {
@@ -286,6 +293,7 @@
           "override_default_min": "Wie lange eine Änderung von Hand gilt (Thermostat und Wärmepumpe)",
           "boost_duration_min": "Dauer „Schnell aufheizen“",
           "away_temp": "Abwesenheitstemperatur",
+          "away_return_persons": "Abwesend endet, wenn eine dieser Personen heimkommt",
           "frost_protection_temp": "Frostschutztemperatur"
         },
         "sections": {
@@ -394,7 +402,7 @@
     "learning_scope": {
       "options": {
         "boiler": "Therme: Heizkurven-Korrektur",
-        "heat_pump": "Wärmepumpe: COP-Kennfeld, Sollwert-Korrektur (eine Vereisungssperre bleibt)",
+        "heat_pump": "Wärmepumpe: COP-Kennfeld und Lernläufe (eine Vereisungssperre bleibt)",
         "rooms": "Räume: Aufheizraten, Auskühlkoeffizienten"
       }
     },
@@ -407,6 +415,22 @@
       "options": {
         "none": "Keine (allgemeine Startkurve)",
         "midea_portasplit": "Midea PortaSplit (an einem Gerät gemessen, 2 bis 16 °C draußen)"
+      }
+    },
+    "heat_pump_shortfall": {
+      "options": {
+        "boiler_helps": "Therme oder Fernwärme hilft",
+        "lift": "Wärmepumpe dreht höher",
+        "slower": "Langsamer warm werden"
+      }
+    },
+    "heat_pump_fan_stage": {
+      "options": {
+        "auto": "Auto",
+        "low": "Niedrig",
+        "medium": "Mittel",
+        "high": "Hoch",
+        "full": "Voll (stärkste)"
       }
     }
   },
@@ -677,7 +701,7 @@
               "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
-              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen",
               "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
@@ -713,6 +737,14 @@
               "manual_takeover": "Von Hand geändert",
               "midea_unavailable": "Wärmepumpe nicht verfügbar",
               "target_reached": "Ziel erreicht",
+              "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+              "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+              "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+              "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+              "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+              "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
@@ -805,7 +837,8 @@
               "idle": "Warm genug",
               "stalled": "Knapp unter Soll, steigt kaum: gilt als erreicht",
               "comfort_ending": "Komfortzeit endet bald: keine neue Wärme",
-              "not_allowed": "Heizen nicht erlaubt"
+              "not_allowed": "Heizen nicht erlaubt",
+              "thermostat_idle": "Thermostat heizt nicht: kein Ruf an die Therme"
             }
           },
           "calls_again_below": {
@@ -886,7 +919,7 @@
               "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
-              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen",
               "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
@@ -922,6 +955,14 @@
               "manual_takeover": "Von Hand geändert",
               "midea_unavailable": "Wärmepumpe nicht verfügbar",
               "target_reached": "Ziel erreicht",
+              "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+              "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+              "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+              "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+              "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+              "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
@@ -992,7 +1033,7 @@
               "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
-              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen",
               "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
@@ -1028,6 +1069,14 @@
               "manual_takeover": "Von Hand geändert",
               "midea_unavailable": "Wärmepumpe nicht verfügbar",
               "target_reached": "Ziel erreicht",
+              "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+              "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+              "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+              "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+              "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+              "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
@@ -1075,8 +1124,11 @@
               "rooms_heating_up": "ein Raum heizt mit Zuschlag auf"
             }
           },
-          "eco_offset_k": {
-            "name": "Sollwert-Korrektur (Grad)"
+          "resting": {
+            "name": "Verdichter ruht"
+          },
+          "latched_setpoint_c": {
+            "name": "Gehaltener Sollwert °C"
           },
           "boiler_helps": {
             "name": "Therme hilft einem Wärmepumpen-Raum"
@@ -1169,7 +1221,7 @@
               "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
-              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen",
               "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
@@ -1205,6 +1257,14 @@
               "manual_takeover": "Von Hand geändert",
               "midea_unavailable": "Wärmepumpe nicht verfügbar",
               "target_reached": "Ziel erreicht",
+              "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+              "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+              "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+              "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+              "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+              "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
@@ -1275,7 +1335,7 @@
               "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
-              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen",
               "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
@@ -1311,6 +1371,14 @@
               "manual_takeover": "Von Hand geändert",
               "midea_unavailable": "Wärmepumpe nicht verfügbar",
               "target_reached": "Ziel erreicht",
+              "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+              "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+              "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+              "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+              "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+              "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
@@ -1432,7 +1500,7 @@
               "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
-              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen",
               "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
@@ -1468,6 +1536,14 @@
               "manual_takeover": "Von Hand geändert",
               "midea_unavailable": "Wärmepumpe nicht verfügbar",
               "target_reached": "Ziel erreicht",
+              "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+              "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+              "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+              "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+              "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+              "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
@@ -1569,7 +1645,7 @@
               "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
-              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen",
               "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
@@ -1605,6 +1681,14 @@
               "manual_takeover": "Von Hand geändert",
               "midea_unavailable": "Wärmepumpe nicht verfügbar",
               "target_reached": "Ziel erreicht",
+              "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+              "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+              "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+              "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+              "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+              "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
@@ -1672,7 +1756,7 @@
               "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
-              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen",
               "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
@@ -1708,6 +1792,14 @@
               "manual_takeover": "Von Hand geändert",
               "midea_unavailable": "Wärmepumpe nicht verfügbar",
               "target_reached": "Ziel erreicht",
+              "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+              "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+              "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+              "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+              "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+              "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
@@ -1822,9 +1914,6 @@
               "profile": "Gemessen am gleichen Modell"
             }
           },
-          "midea_eco_offset_k": {
-            "name": "Sollwert-Korrektur Wärmepumpe (Grad)"
-          },
           "last_reset": {
             "name": "Zuletzt zurückgesetzt"
           }
@@ -1874,7 +1963,7 @@
               "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
-              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen",
               "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
@@ -1910,6 +1999,14 @@
               "manual_takeover": "Von Hand geändert",
               "midea_unavailable": "Wärmepumpe nicht verfügbar",
               "target_reached": "Ziel erreicht",
+              "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+              "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+              "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+              "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+              "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+              "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
@@ -2015,7 +2112,7 @@
               "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
-              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen",
               "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
@@ -2051,6 +2148,14 @@
               "manual_takeover": "Von Hand geändert",
               "midea_unavailable": "Wärmepumpe nicht verfügbar",
               "target_reached": "Ziel erreicht",
+              "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+              "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+              "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+              "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+              "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+              "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",
@@ -2137,7 +2242,7 @@
               "drying_waiting_for_the_shower_to_end": "Wartet: die Feuchte steigt noch (es wird geduscht)",
               "drying_ended_humidity_normal": "Beendet: Feuchte wieder normal",
               "drying_ended_timeout": "Beendet: Zeitlimit",
-              "drying_ended_window_ineffective": "Beendet: Fenster offen ohne Wirkung",
+              "drying_waiting_for_open_window": "Wartet: Fenster öffnen, die Feuchte braucht einen Weg nach draußen",
               "drying_waiting_for_the_heat_pump": "Wartet: Wärmepumpe nicht verfügbar",
               "room_demand": "Räume brauchen Wärme",
               "no_room_needs_boiler": "Kein Raum braucht die Therme",
@@ -2173,6 +2278,14 @@
               "manual_takeover": "Von Hand geändert",
               "midea_unavailable": "Wärmepumpe nicht verfügbar",
               "target_reached": "Ziel erreicht",
+              "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
+              "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
+              "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
+              "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
+              "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
+              "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
               "no_demand": "Kein Bedarf",
               "blocked": "Gesperrt",
               "intake_temperature_unknown": "Ansaugtemperatur unbekannt",

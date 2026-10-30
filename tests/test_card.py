@@ -421,6 +421,38 @@ def test_a_heat_pump_that_cannot_heat_is_one_warning_not_two() -> None:
     assert result["warnings"] == ["Heat pump blocked: Fan only"]
 
 
+def _decision(*items) -> dict:
+    return {"codes": [r.code for r in items], "texts": texts.render_reasons(items, "en", {})}
+
+
+def _warnings_through(stages: list) -> list[list[str]]:
+    """The card's warnings at each (operating mode, heat pump blocked, decision) in turn."""
+    result = _run_card(f"""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({{}});
+      const hass = makeHass();
+      let decision, stamp;
+      const system = (entity_id, tk, state, attributes) => {{
+        hass.entities[entity_id] = {{ entity_id, platform: "thriftherm", translation_key: tk }};
+        hass.states[entity_id] = {{ entity_id, state, attributes, last_updated: stamp }};
+      }};
+      const ask = hass.callWS;
+      hass.callWS = async (msg) => (msg.type.endsWith("decision_reasons") ? decision : ask(msg));
+      const seen = [];
+      for (const [i, [mode, blocked, d]] of {json.dumps(stages)}.entries()) {{
+        [decision, stamp] = [d, `t${{i}}`];
+        system("select.thriftherm_operating_mode", "mode", mode, {{ options: ["auto", "boiler_only", "midea_only", "off"] }});
+        system("binary_sensor.thriftherm_heat_pump_blocked_for_heating", "midea_blocked", blocked, {{ reason: "unavailable" }});
+        system("sensor.thriftherm_decision_reason", "decision_reason", "-", {{ reason_codes: d.codes }});
+        await shown(main, hass);
+        main.hass = {{ ...hass, states: {{ ...hass.states }} }};
+        seen.push([...main.shadowRoot.innerHTML.matchAll(/warn-text">([^<]*)</g)].map((m) => m[1]));
+      }}
+      console.log(JSON.stringify({{ seen }}));
+    """)
+    return result["seen"]
+
+
 def test_a_heat_pump_the_mode_does_not_use_is_no_warning_until_a_mode_uses_it() -> None:
     """Unplugged since 2026-10-21 in "boiler only", the card warned about the heat pump all along.
 
@@ -428,41 +460,14 @@ def test_a_heat_pump_the_mode_does_not_use_is_no_warning_until_a_mode_uses_it() 
     not the reason behind it. Switched to a mode that uses it, the warning is there with the new mode."""
     from custom_components.thriftherm.models import reason
 
-    def decision(*items):
-        return {"codes": [r.code for r in items], "texts": texts.render_reasons(items, "en", {})}
-
     unreachable = reason("heat_pump_unavailable", state="unavailable")
     stages = [
-        ("boiler_only", "on", decision(unreachable, reason("mode_boiler_only"))),  # the sensor as it was, or a moment old
-        ("boiler_only", "off", decision(unreachable, reason("mode_boiler_only"))),
-        ("off", "off", decision(unreachable, reason("mode_off"))),
-        ("auto", "on", decision(unreachable, reason("no_demand"))),
+        ("boiler_only", "on", _decision(unreachable, reason("mode_boiler_only"))),  # the sensor as it was, or a moment old
+        ("boiler_only", "off", _decision(unreachable, reason("mode_boiler_only"))),
+        ("off", "off", _decision(unreachable, reason("mode_off"))),
+        ("auto", "on", _decision(unreachable, reason("no_demand"))),
     ]
-    result = _run_card(f"""
-      const main = new (customElements.get("thriftherm-card"))();
-      main.setConfig({{}});
-      const hass = makeHass();
-      let decision, stamp;
-      const system = (entity_id, tk, state, attributes) => {{
-        hass.entities[entity_id] = {{ entity_id, platform: "thriftherm", translation_key: tk }};
-        hass.states[entity_id] = {{ entity_id, state, attributes, last_updated: stamp }};
-      }};
-      const ask = hass.callWS;
-      hass.callWS = async (msg) => (msg.type.endsWith("decision_reasons") ? decision : ask(msg));
-      const seen = [];
-      for (const [i, [mode, blocked, d]] of {json.dumps(stages)}.entries()) {{
-        [decision, stamp] = [d, `t${{i}}`];
-        system("select.thriftherm_operating_mode", "mode", mode, {{ options: ["auto", "boiler_only", "midea_only", "off"] }});
-        system("binary_sensor.thriftherm_heat_pump_blocked_for_heating", "midea_blocked", blocked, {{ reason: "unavailable" }});
-        system("sensor.thriftherm_decision_reason", "decision_reason", "-", {{ reason_codes: d.codes }});
-        await shown(main, hass);
-        main.hass = {{ ...hass, states: {{ ...hass.states }} }};
-        seen.push([...main.shadowRoot.innerHTML.matchAll(/warn-text">([^<]*)</g)].map((m) => m[1]));
-      }}
-      console.log(JSON.stringify({{ seen }}));
-    """)
-
-    assert result["seen"] == [[], [], [], ["Heat pump blocked: Unavailable"]]
+    assert _warnings_through(stages) == [[], [], [], ["Heat pump blocked: Unavailable"]]
 
 
 def test_heat_pump_rooms_waiting_for_a_blocked_heat_pump_are_said_by_the_block_alone() -> None:
@@ -470,36 +475,9 @@ def test_heat_pump_rooms_waiting_for_a_blocked_heat_pump_are_said_by_the_block_a
     and in off with a room below frost protection the second line stayed although the heat pump does not heat there."""
     from custom_components.thriftherm.models import reason
 
-    def decision(*items):
-        return {"codes": [r.code for r in items], "texts": texts.render_reasons(items, "en", {})}
-
     unreachable = reason("heat_pump_unavailable", state="unavailable")
     stages = [
-        ("auto", "on", decision(unreachable, reason("heat_pump_rooms_blocked"))),
-        ("off", "off", decision(unreachable, reason("heat_pump_rooms_blocked"))),
+        ("auto", "on", _decision(unreachable, reason("heat_pump_rooms_blocked"))),
+        ("off", "off", _decision(unreachable, reason("heat_pump_rooms_blocked"))),
     ]
-    result = _run_card(f"""
-      const main = new (customElements.get("thriftherm-card"))();
-      main.setConfig({{}});
-      const hass = makeHass();
-      let decision, stamp;
-      const system = (entity_id, tk, state, attributes) => {{
-        hass.entities[entity_id] = {{ entity_id, platform: "thriftherm", translation_key: tk }};
-        hass.states[entity_id] = {{ entity_id, state, attributes, last_updated: stamp }};
-      }};
-      const ask = hass.callWS;
-      hass.callWS = async (msg) => (msg.type.endsWith("decision_reasons") ? decision : ask(msg));
-      const seen = [];
-      for (const [i, [mode, blocked, d]] of {json.dumps(stages)}.entries()) {{
-        [decision, stamp] = [d, `t${{i}}`];
-        system("select.thriftherm_operating_mode", "mode", mode, {{ options: ["auto", "boiler_only", "midea_only", "off"] }});
-        system("binary_sensor.thriftherm_heat_pump_blocked_for_heating", "midea_blocked", blocked, {{ reason: "unavailable" }});
-        system("sensor.thriftherm_decision_reason", "decision_reason", "-", {{ reason_codes: d.codes }});
-        await shown(main, hass);
-        main.hass = {{ ...hass, states: {{ ...hass.states }} }};
-        seen.push([...main.shadowRoot.innerHTML.matchAll(/warn-text">([^<]*)</g)].map((m) => m[1]));
-      }}
-      console.log(JSON.stringify({{ seen }}));
-    """)
-
-    assert result["seen"] == [["Heat pump blocked: Unavailable"], []]
+    assert _warnings_through(stages) == [["Heat pump blocked: Unavailable"], []]

@@ -110,7 +110,7 @@ def _builder(hass: HomeAssistant) -> SnapshotBuilder:
 
 
 def _bath(builder: SnapshotBuilder):
-    return builder.build("auto", {}, {}, {}, None, {}, {}).rooms["badezimmer"]
+    return builder.build("auto", {}, {}, None, {}, {}).rooms["badezimmer"]
 
 
 def _ago(delta: timedelta) -> float:
@@ -128,7 +128,7 @@ async def test_a_zha_valve_seen_two_minutes_ago_is_not_silent_although_its_value
     zha.devices[valve] = (_ago(timedelta(minutes=2)), True)
     assert builder.thermostat_silent_s("climate.bath_bt", dt_util.utcnow()) == pytest.approx(120.0, abs=1)
 
-    snap = builder.build("auto", {}, {}, {}, None, {}, {})
+    snap = builder.build("auto", {}, {}, None, {}, {})
     bath = snap.rooms["badezimmer"]
     assert bath.thermostat_silent_s == pytest.approx(120.0, abs=1)
     result = room_engine.evaluate_room(bath, snap.now, snap.mode, PARAMS)
@@ -170,54 +170,41 @@ async def test_a_zha_valve_that_zha_stops_seeing_goes_silent_again_in_the_next_b
 
 
 # ------------------------------------------------------------------ the room thermometer
-async def test_a_zha_thermometer_seen_recently_stays_valid_after_six_and_a_half_hours_without_a_change(
-    hass: HomeAssistant, freezer, zha: FakeZha
-) -> None:
-    thermometer = _register_thermometer(hass, "zha")
-    freezer.move_to(START)
-    builder = _builder(hass)
-    freezer.move_to(START + timedelta(hours=6, minutes=30))
-    zha.devices[thermometer] = (_ago(timedelta(seconds=42)), True)
-    reading = _bath(builder).temperature
-    assert reading.valid and reading.value == 18.5 and reading.reason is None
-    assert reading.age_s == pytest.approx(6.5 * 3600.0, abs=1)  # the measurement keeps its own age
-
-
 @pytest.mark.parametrize(
-    ("seen_ago", "available"),
+    ("hours", "seen_ago", "available", "valid"),
     [
-        pytest.param(timedelta(seconds=42), False, id="zha calls it unavailable"),
-        pytest.param(timedelta(hours=7), True, id="seen 7 h ago"),
+        pytest.param(6.5, timedelta(seconds=42), True, True, id="seen recently, unchanged for 6.5 h"),
+        pytest.param(6.5, timedelta(seconds=42), False, False, id="zha calls it unavailable"),
+        pytest.param(6.5, timedelta(hours=7), True, False, id="seen 7 h ago"),
+        pytest.param(25, timedelta(seconds=42), True, False, id="unchanged for more than a day, however recently seen"),
     ],
 )
-async def test_a_zha_thermometer_that_zha_calls_unavailable_or_last_saw_seven_hours_ago_is_stale_as_before(
-    hass: HomeAssistant, freezer, zha: FakeZha, seen_ago: timedelta, available: bool
+async def test_a_zha_thermometer_stays_valid_while_zha_saw_it_recently_and_its_value_is_less_than_a_day_old(
+    hass: HomeAssistant, freezer, zha: FakeZha, hours: float, seen_ago: timedelta, available: bool, valid: bool
 ) -> None:
     thermometer = _register_thermometer(hass, "zha")
     freezer.move_to(START)
     builder = _builder(hass)
-    freezer.move_to(START + timedelta(hours=6, minutes=30))
+    freezer.move_to(START + timedelta(hours=hours))
     zha.devices[thermometer] = (_ago(seen_ago), available)
     reading = _bath(builder).temperature
-    assert not reading.valid and reading.reason == "stale"
-
-
-async def test_a_zha_thermometer_unchanged_for_more_than_a_day_is_stale_however_recently_zha_saw_it(
-    hass: HomeAssistant, freezer, zha: FakeZha
-) -> None:
-    thermometer = _register_thermometer(hass, "zha")
-    freezer.move_to(START)
-    builder = _builder(hass)
-    freezer.move_to(START + timedelta(hours=25))
-    zha.devices[thermometer] = (_ago(timedelta(seconds=42)), True)
-    reading = _bath(builder).temperature
-    assert not reading.valid and reading.reason == "stale"
+    assert (reading.valid, reading.reason) == (valid, None if valid else "stale")
+    if valid:  # the measurement keeps its own age
+        assert reading.value == 18.5 and reading.age_s == pytest.approx(hours * 3600.0, abs=1)
 
 
 # ------------------------------------------------------------------ everything else as before
-async def test_the_devices_of_another_integration_are_never_looked_up_in_zha(hass: HomeAssistant, freezer, zha: FakeZha) -> None:
-    valve = _register_valve(hass, "mqtt")
-    thermometer = _register_thermometer(hass, "mqtt")
+@pytest.mark.parametrize(
+    ("integration", "zha_loaded"),
+    [pytest.param("mqtt", True, id="another integration"), pytest.param("zha", False, id="zha not loaded")],
+)
+async def test_devices_are_looked_up_in_zha_only_when_they_are_zha_devices_and_zha_is_loaded(
+    hass: HomeAssistant, freezer, zha: FakeZha, integration: str, zha_loaded: bool
+) -> None:
+    valve = _register_valve(hass, integration)
+    thermometer = _register_thermometer(hass, integration)
+    if not zha_loaded:
+        hass.config.components.remove("zha")
     freezer.move_to(START)
     builder = _builder(hass)
     freezer.move_to(START + timedelta(hours=6, minutes=30))
@@ -226,19 +213,6 @@ async def test_the_devices_of_another_integration_are_never_looked_up_in_zha(has
     assert bath.thermostat_silent_s == pytest.approx(6.5 * 3600.0, abs=1)
     assert not bath.temperature.valid and bath.temperature.reason == "stale"
     assert zha.calls == 0
-
-
-async def test_zha_devices_are_not_asked_about_while_zha_is_not_loaded(hass: HomeAssistant, freezer, zha: FakeZha) -> None:
-    valve = _register_valve(hass, "zha")
-    thermometer = _register_thermometer(hass, "zha")
-    hass.config.components.remove("zha")
-    freezer.move_to(START)
-    builder = _builder(hass)
-    freezer.move_to(START + timedelta(hours=6, minutes=30))
-    zha.devices[valve] = zha.devices[thermometer] = (_ago(timedelta(seconds=42)), True)
-    bath = _bath(builder)
-    assert bath.thermostat_silent_s == pytest.approx(6.5 * 3600.0, abs=1)
-    assert not bath.temperature.valid and zha.calls == 0
 
 
 async def test_a_zha_device_is_looked_up_once_per_build(hass: HomeAssistant, freezer, zha: FakeZha) -> None:

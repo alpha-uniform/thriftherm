@@ -30,7 +30,7 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 BOILER_FIELDS = [
     "boiler_flow_temp", "boiler_return_temp", "boiler_pump_state", "boiler_pump_running", "boiler_state_number",
     "boiler_hwc_mode", "boiler_flame", "boiler_signal", "boiler_circulation_l_h", "gas_volume", "gas_flow",
-    "boiler_nominal_input_kw", "boiler_ebus_circuit",
+    "boiler_nominal_input_kw", "boiler_pump_power_w", "boiler_ebus_circuit",
     "boiler_flow_setpoint_entity", "boiler_heating_enable_entity",
     "boiler_curve_flow_at_minus10", "boiler_curve_flow_at_plus15", "boiler_flow_min", "boiler_flow_max",
     "boiler_heat_up_rate_k_h", "boiler_hot_water_standby", "boiler_spread_min_room_share", "boiler_load_model",
@@ -39,7 +39,8 @@ BOILER_FIELDS = [
 OUTDOOR_FIELDS = ["outdoor_temp_sensors", "outdoor_rh_sensor", "weather_entity"]
 # in the order of the form; the sections' fields follow where their heading stands
 PARAMETER_DEFAULTS = {
-    "override_default_min": 120.0, "boost_duration_min": 45.0, "away_temp": 15.0, "frost_protection_temp": 7.0,
+    "override_default_min": 120.0, "boost_duration_min": 45.0, "away_temp": 15.0, "away_return_persons": None,
+    "frost_protection_temp": 7.0,
     "window_grace_s": 90.0, "preheat_margin_min": 20.0, "default_heat_rate_radiator_k_h": 0.8,
     "room_allow_active_control": False, "room_echo_filter": True,
     "demand_full_delta_k": 2.0, "trend_weight_h": 0.5, "internal_gain_threshold_w": 150.0,
@@ -54,8 +55,8 @@ PARAMETER_SECTIONS = {
     ],
 }
 TUNING_DEFAULTS = {
-    "midea_allow_active_control": False, "midea_setpoint_offset_k": 1.0, "midea_min_outdoor_temp": -10.0,
-    "default_heat_rate_midea_k_h": 1.2,
+    "midea_allow_active_control": False, "midea_min_outdoor_temp": -10.0, "default_heat_rate_midea_k_h": 0.5,
+    "heat_pump_shortfall": "boiler_helps", "heat_pump_fan_stage": "auto",
     "break_even_margin_on": 0.1, "break_even_margin_off": 0.05, "midea_min_run_min": 20.0, "midea_min_off_min": 10.0,
     "midea_fan_run_on_min": 15.0, "midea_learning_runs": True,
     "drying_target_temp": 22.0, "drying_abs_humidity_rise_g_m3": 2.5, "drying_max_min": 60.0,
@@ -104,7 +105,7 @@ def test_step_keys_are_exactly_the_fields_they_clear():
     assert config_schema.BOILER_KEYS == tuple(BOILER_FIELDS)
     assert config_schema.HEAT_PUMP_KEYS == (
         "midea_climate", "midea_power", "midea_intake_temp", "midea_intake_rh", "midea_outlet_temp",
-        "midea_airflow_curve", "midea_duct_factor", "heat_pump_cop_profile", "midea_follow_rooms", "midea_room",
+        "midea_airflow_curve", "midea_duct_factor", "heat_pump_cop_profile", "midea_room",
     )
     assert config_schema.OUTDOOR_KEYS == tuple(OUTDOOR_FIELDS)
     assert config_schema.PARAMETER_KEYS == tuple(PARAMETER_DEFAULTS)
@@ -221,6 +222,7 @@ async def test_options_boiler_step_clears_what_was_left_empty(hass: HomeAssistan
         "boiler_pump_running": None, "boiler_state_number": None, "boiler_hwc_mode": None, "boiler_flame": None,
         "boiler_signal": None,
         "boiler_circulation_l_h": 860.0, "gas_volume": None, "gas_flow": None, "boiler_nominal_input_kw": None,
+        "boiler_pump_power_w": None,
         "boiler_ebus_circuit": "bai",
         "boiler_flow_setpoint_entity": None, "boiler_heating_enable_entity": None,
         "boiler_curve_flow_at_minus10": 55.0, "boiler_curve_flow_at_plus15": 30.0, "boiler_flow_min": 30.0,
@@ -399,6 +401,29 @@ async def test_options_parameters_step_fills_defaults(hass: HomeAssistant) -> No
     assert {k: entry.options[k] for k in PARAMETER_DEFAULTS} == {**PARAMETER_DEFAULTS, **changed}
     assert not set(PARAMETER_SECTIONS) & set(entry.options)  # a heading is no setting
     assert not set(TUNING_DEFAULTS) & set(entry.options)  # the heat pump's values are not this form's to clear
+
+
+async def test_options_parameters_take_the_persons_whose_arrival_ends_away(hass: HomeAssistant) -> None:
+    """Next to the away temperature: any number of people, and none clears it again."""
+    entry = await _setup(hass)
+    result = await _open(hass, entry, "parameters")
+    marker = next(m for m in result["data_schema"].schema if str(m) == "away_return_persons")
+    config = result["data_schema"].schema[marker].config
+    assert config["domain"] == ["person"] and config["multiple"] is True
+    answer = {"away_return_persons": ["person.alex", "person.sam"], "windows_preheat": {}, "release": {}, "expert": {}}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], answer)
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+    assert entry.options["away_return_persons"] == ["person.alex", "person.sam"]
+
+    result = await _open(hass, entry, "parameters")
+    shown = next(m for m in result["data_schema"].schema if str(m) == "away_return_persons")
+    assert shown.description == {"suggested_value": ["person.alex", "person.sam"]}
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"windows_preheat": {}, "release": {}, "expert": {}}
+    )
+    await hass.async_block_till_done()
+    assert entry.options["away_return_persons"] is None
 
 
 async def test_options_heat_pump_tuning_has_its_own_form(hass: HomeAssistant) -> None:
@@ -739,3 +764,25 @@ async def test_a_found_value_the_user_emptied_is_not_offered_again(hass: HomeAss
     await hass.async_block_till_done()
     assert entry.options["gas_volume"] == "sensor.gas_meter_volume" and entry.options["boiler_fill_declined"] == []
 
+
+
+def test_every_choice_of_the_heat_pump_tuning_has_its_wording():
+    """A choice without its wording shows its key in the form."""
+    import json
+    from pathlib import Path
+
+    from homeassistant.helpers.selector import SelectSelector
+
+    component = Path(config_schema.__file__).parent
+    selects = {
+        str(marker): value.config for marker, value in config_schema.schema_heat_pump_tuning({}).schema.items()
+        if isinstance(value, SelectSelector)
+    }
+    assert list(selects) == ["heat_pump_shortfall", "heat_pump_fan_stage"]
+    for name in ("strings.json", "translations/en.json", "translations/de.json"):
+        data = json.loads((component / name).read_text(encoding="utf-8"))
+        for config in selects.values():
+            worded = data["selector"][config["translation_key"]]["options"]
+            assert list(worded) == list(config["options"]) and all(worded.values()), name
+        described = data["options"]["step"]["midea_tuning"]["data_description"]
+        assert set(selects) <= set(described) and all(described[k] for k in selects), name

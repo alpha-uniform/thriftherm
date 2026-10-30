@@ -71,7 +71,7 @@ SYSTEM_NONE: Final = "none"  # no central heat source: heat pump and room contro
 SYSTEM_TYPES: Final = (SYSTEM_GAS, SYSTEM_DISTRICT, SYSTEM_NONE)
 DEFAULT_SYSTEM_TYPE: Final = SYSTEM_GAS
 
-CONFIG_VERSION: Final = 3  # 3: everything in the options, data empty
+CONFIG_VERSION: Final = 4  # 3: everything in the options, data empty; 4: no setpoint offset, no "follows the rooms"
 
 CONF_ELECTRICITY_PRICE: Final = "electricity_price"
 CONF_GAS_PRICE: Final = "gas_price"
@@ -125,6 +125,7 @@ CONF_BOILER_CIRCULATION_L_H: Final = "boiler_circulation_l_h"
 CONF_GAS_VOLUME: Final = "gas_volume"
 CONF_GAS_FLOW: Final = "gas_flow"
 CONF_BOILER_NOMINAL_INPUT_KW: Final = "boiler_nominal_input_kw"
+CONF_BOILER_PUMP_POWER_W: Final = "boiler_pump_power_w"  # the heating pump: its electricity joins the price of boiler heat
 # boiler fields the search had a value for and the user emptied all the same: not suggested again
 CONF_BOILER_FILL_DECLINED: Final = "boiler_fill_declined"
 
@@ -205,6 +206,7 @@ CONF_SENSOR_MAX_AGE_MIN: Final = "sensor_max_age_min"
 CONF_WINDOW_GRACE_S: Final = "window_grace_s"
 CONF_FROST_TEMP: Final = "frost_protection_temp"
 CONF_AWAY_TEMP: Final = "away_temp"
+CONF_AWAY_RETURN_PERSONS: Final = "away_return_persons"  # person.* whose arrival home ends away mode
 CONF_DEMAND_FULL_DELTA: Final = "demand_full_delta_k"
 CONF_TREND_WEIGHT_H: Final = "trend_weight_h"
 CONF_GAIN_THRESHOLD_W: Final = "internal_gain_threshold_w"
@@ -212,8 +214,6 @@ CONF_GAIN_FACTOR: Final = "internal_gain_factor_per_w"
 CONF_BREAK_EVEN_MARGIN_ON: Final = "break_even_margin_on"
 CONF_BREAK_EVEN_MARGIN_OFF: Final = "break_even_margin_off"
 CONF_HEAT_PUMP_MIN_OUTDOOR_TEMP: Final = "midea_min_outdoor_temp"
-CONF_HEAT_PUMP_SETPOINT_OFFSET: Final = "midea_setpoint_offset_k"
-CONF_HEAT_PUMP_FOLLOW_ROOMS: Final = "midea_follow_rooms"  # the unit gets the served rooms' target plus the offset
 CONF_COP_WARMUP_S: Final = "cop_warmup_s"
 CONF_COP_MIN_POWER_W: Final = "cop_min_power_w"
 CONF_COP_MIN_DELTA_T: Final = "cop_min_delta_t_k"
@@ -240,6 +240,8 @@ CONF_HEAT_PUMP_FAN_RUN_ON_MIN: Final = "midea_fan_run_on_min"  # fan only before
 CONF_BOOST_DURATION_MIN: Final = "boost_duration_min"
 CONF_HEAT_PUMP_LEARNING_RUNS: Final = "midea_learning_runs"
 CONF_HEAT_PUMP_ALLOW_ACTIVE: Final = "midea_allow_active_control"
+CONF_HEAT_PUMP_SHORTFALL: Final = "heat_pump_shortfall"  # when the heat pump alone is not enough
+CONF_HEAT_PUMP_FAN_STAGE: Final = "heat_pump_fan_stage"  # its fan stage in normal operation
 CONF_ROOM_ALLOW_ACTIVE: Final = "room_allow_active_control"
 CONF_ROOM_ECHO_FILTER: Final = "room_echo_filter"  # ignore late radio echoes of Better Thermostat
 
@@ -258,7 +260,6 @@ DEFAULT_GAIN_FACTOR: Final = 0.001
 DEFAULT_BREAK_EVEN_MARGIN_ON: Final = 0.10
 DEFAULT_BREAK_EVEN_MARGIN_OFF: Final = 0.05
 DEFAULT_HEAT_PUMP_MIN_OUTDOOR_TEMP: Final = -10.0  # manufacturer heating limit (midea.com)
-DEFAULT_HEAT_PUMP_SETPOINT_OFFSET: Final = 1.0
 DEFAULT_COP_WARMUP_S: Final = 600
 DEFAULT_COP_MIN_POWER_W: Final = 150.0
 DEFAULT_COP_MIN_DELTA_T: Final = 3.0
@@ -276,7 +277,7 @@ DEFAULT_DRYING_MAX_MIN: Final = 60
 DEFAULT_AWAY_DEWPOINT_MARGIN: Final = 3.0
 DEFAULT_PREHEAT_MARGIN_MIN: Final = 20
 DEFAULT_DEFAULT_HEAT_RATE_RADIATOR: Final = 0.8
-DEFAULT_DEFAULT_HEAT_RATE_HEAT_PUMP: Final = 1.2
+DEFAULT_DEFAULT_HEAT_RATE_HEAT_PUMP: Final = 0.5  # held at its minimum: 0.46-0.66 °C/h measured 2026-10-29/30
 DEFAULT_OVERRIDE_DEFAULT_MIN: Final = 120
 DEFAULT_HEAT_PUMP_MIN_RUN_MIN: Final = 20
 DEFAULT_HEAT_PUMP_MIN_OFF_MIN: Final = 10
@@ -284,6 +285,16 @@ DEFAULT_HEAT_PUMP_FAN_RUN_ON_MIN: Final = 15
 DEFAULT_BOOST_DURATION_MIN: Final = 45
 DEFAULT_HEAT_PUMP_LEARNING_RUNS: Final = True
 DEFAULT_HEAT_PUMP_ALLOW_ACTIVE: Final = False
+# When a heat pump room lags or its preheat runs late: the boiler adds the peak, the unit is set higher
+# (without a central heat source always), or it stays at its least speed and the rooms take longer.
+SHORTFALL_BOILER_HELPS: Final = "boiler_helps"
+SHORTFALL_LIFT: Final = "lift"
+SHORTFALL_SLOWER: Final = "slower"
+SHORTFALL_CHOICES: Final = (SHORTFALL_BOILER_HELPS, SHORTFALL_LIFT, SHORTFALL_SLOWER)
+DEFAULT_HEAT_PUMP_SHORTFALL: Final = SHORTFALL_BOILER_HELPS
+# The heat pump's fan stage in normal operation; "full" is its strongest, however the unit names it.
+FAN_STAGE_CHOICES: Final = ("auto", "low", "medium", "high", "full")
+DEFAULT_HEAT_PUMP_FAN_STAGE: Final = "auto"
 DEFAULT_ROOM_ALLOW_ACTIVE: Final = False
 DEFAULT_ROOM_ECHO_FILTER: Final = True
 

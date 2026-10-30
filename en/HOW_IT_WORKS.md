@@ -43,6 +43,15 @@ So after each entry check *Planned return* and its attribute *Provisional*, set 
 
 `datetime.set_value` on *Planned return* reads values the way the fields send them instead: midnight while nothing is planned becomes the 23:59 placeholder, on a later day too. And while *Planned return* is unavailable (Thriftherm not loaded), Home Assistant drops `datetime.set_value` without an error. `set_away` reports one. So automations should use `set_away`.
 
+### Return by presence
+
+With people chosen in the options, Thriftherm ends *Away* as soon as one of them comes home. It takes the same path as a planned return that is reached: back to Auto, and the return is cleared.
+
+- **Only coming home counts:** a change of the person to *Home* (`home`) from a known place, that is *Away* (`not_home`) or a zone. Whoever is home when *Away* is switched on does not end it, since away is usually switched on when leaving. One person is enough.
+- **Unknown is no news:** `unknown` and `unavailable` change nothing, the last known place counts. Someone who was out, then unavailable for a while and then home has come home.
+- **After a restart** the place a person has then is taken as it is. A person who only shows up afterwards does not count as coming home: whether they just came or were there all along cannot be told.
+- **Leaving** never switches to *Away*. The planned return still works next to it, and only the people's state in Home Assistant is read.
+
 ### Damp guard
 
 If the air in a room gets closer to its dew point than 3 degrees while you are away (default, *Away: dew-point margin for humidity guard*), Thriftherm raises the target. It then stands 1 degree above the room temperature, at most at the comfort temperature. Reason: *Away, raised against damp*. The upper limit keeps a humidity sensor stuck near 100 % from pulling the target up degree by degree.
@@ -87,7 +96,10 @@ Thriftherm starts early enough for the room to be warm when a comfort block begi
 
 start = block start − (target − current) / heat-up rate − margin
 
-- The heat-up rate is learned per room ([What is learned](#what-is-learned)). Until then 0.8 degrees an hour is assumed for radiator rooms and 1.2 degrees an hour for heat pump rooms (default, *Default heat-up rate*).
+- The heat-up rate is learned per room, apart for boiler and heat pump ([What is learned](#what-is-learned)). The plan uses the source that will heat the room: in a room of the heat pump that is the heat pump if it may heat and was the cheaper one last, or in the mode *Heat pump only*. Otherwise it is the boiler.
+- Until something is learned, 0.8 degrees an hour is assumed for the boiler and 0.5 degrees an hour for the heat pump (default, *Default heat-up rate*): that is what the heat pump gives at its least power.
+- Once the room's cool-down coefficient is known too, the rate holds for the weather of now: the heating power, less what the room loses at the present gap to outdoors, at least 0.1 degrees an hour. At 3 °C outside the heat pump at its minimum just holds the bathroom, at 8 °C it warms it by about half a degree an hour.
+- With the heat pump, pre-heating starts at most 4 hours ahead, also where no boiler helps. If that is not in time, the boiler helps or the heat pump runs higher, depending on the option; with *Warm up slower* the boiler helps only once it is projected half a degree short ([Held at its minimum](#held-at-its-minimum)). Starting earlier gains little: in the simulation, 12 hours ahead had it run at its minimum all night, the rooms still stayed below 21 °C, and the night setback was gone.
 - The margin is 20 minutes (default).
 - Rooms are pre-heated for blocks that begin within the next 12 hours.
 - Before a return from *Away* the same sum applies. The aim is the temperature that holds at the return. With a schedule helper that is the comfort temperature, because a weekly schedule helper cannot be evaluated for a later time. With time ranges from the room options it is the temperature the time range has then.
@@ -111,11 +123,12 @@ How to use it is in the [user guide, section 5](GUIDE.md#5-boiler-control-own-bo
 
 ### When a room calls the boiler
 
-- A room calls from 0.3 degrees below target and stops once it is less than 0.1 degrees below.
+- A room calls from 0.3 degrees below target and stops once it is less than 0.1 degrees below. While the boiler helps the heat pump ([Held at its minimum](#held-at-its-minimum)), the heat pump's rooms call from 0.2 degrees below target until they are there.
+- **The thermostat has a say:** if it reports that it does not heat (`hvac_action` *idle* or *off*, its valve shut), the room does not call the boiler, even where Thriftherm would (*The thermostat does not heat: no boiler call*). Heat for a shut valve helps no room. The hysteresis runs on meanwhile, a thermostat that heats never calls by itself, and one without this report changes nothing ([#3](https://github.com/alpha-uniform/thriftherm/issues/3)).
 - **Stall:** if the call has run for an hour, the room is at most 0.3 degrees below target and rises more slowly than 0.15 degrees an hour, it counts as reached. It calls again only when it falls 0.5 degrees below target or its target changes. An unknown trend, say right after a restart, is no stall.
 - **When the target goes down** (an override ends, say), a running call is judged again by the start threshold.
 - **End of comfort:** no room calls in the last half hour of a comfort period. The heat would arrive too late. This also holds just after the end while the schedule has not switched yet (up to 2 minutes).
-- *Quick heat-up* is exempt from the stall and end-of-comfort rules.
+- *Quick heat-up* is exempt from the stall and end-of-comfort rules. A room the boiler helps for the heat pump calls in the last half hour too: the heat pump stays at its minimum for it, so nothing else would add the peak. For such a room a stall needs two hours at most 0.2 degrees below target, barely rising; it calls again once it falls 0.3 degrees below. Otherwise a room whose sensor never quite reaches the target would have the boiler cycle for one radiator all comfort long.
 
 ### Heating along
 
@@ -123,6 +136,7 @@ How to use it is in the [user guide, section 5](GUIDE.md#5-boiler-control-own-bo
 - A room whose pre-heat would start within the hour starts now (reason *Pre-heating early*).
 - Why: one radiator takes about 1 kW, while the boiler burns at 8 kW or more. More open radiators mean longer burner runs and fewer starts.
 - Rooms that heat along never call by themselves and cannot keep the boiler running.
+- A room whose thermostat does not want to heat does not heat along: 0.5 degrees more would open its valve, and next time the room would call the boiler itself.
 
 ### Outages and resending
 
@@ -209,10 +223,10 @@ What is learned and where you see it is in the [user guide, section 6](GUIDE.md#
 | Area | What is learned | From |
 |---|---|---|
 | Boiler | heating curve correction per load class and room, in two parts, ±10 degrees each: **level** (at every outdoor temperature) and **slope** (in full at −10 °C, not at all at +15 °C) | flow/return spread, how fast rooms warm up, and short cycling |
-| Rooms | heat-up rate per room (degrees an hour) | heating periods with the window closed, in which a heat source reaches the room, at least 30 minutes long and at least 0.5 degrees of rise. The median of the last 10 counts |
+| Rooms | heat-up rate per room and heat source (degrees an hour) | heating periods with the window closed, in which exactly one heat source reaches the room, at least 30 minutes long and at least 0.5 degrees of rise. The heat pump counts only at its least power: from 10 minutes after its compressor started, not while it rests, heats up quickly, dries or runs higher. When the source changes, the period up to then does not count. The median of the last 10 counts |
 | Rooms | cool-down coefficient per room (1/h): drop per hour = coefficient × (inside − outside) | stretches without heating, window closed, at least 5 degrees warmer inside than out, at least an hour long and at least 0.3 degrees of drop. The median of the last 10 counts |
-| Rooms | heating power per room (degrees an hour without losses) | heat-up rate plus the losses during that period. Unlike the raw rate it holds in winter too |
-| Heat pump | COP map over outdoor temperature, setpoint correction | measured COP runs, see [Heat pump](#heat-pump) |
+| Rooms | heating power per room and heat source (degrees an hour without losses) | heat-up rate plus the losses during that period. Unlike the raw rate it holds in winter too |
+| Heat pump | COP map over outdoor temperature | measured COP runs, see [Heat pump](#heat-pump) |
 
 **At the flow minimum the curve does not learn upwards.** On a mild day the curve lies below the minimum, and the minimum is sent. A room that does not get there then needs more than the minimum; that says nothing about the curve on a cold day. A step used to raise the value by the whole gap up to the minimum: in the test of 2026-10-15 one step at 16 °C outside moved a value by 4.4 degrees, and after three steps the bedroom stood at 9.3 degrees more. Now the learning holds still there, and the learning state shows *A room does not get there, but the flow stands at its minimum*. If that lasts, the minimum is too low for this room, and you raise it in the boiler options.
 
@@ -347,7 +361,8 @@ The COP is the heat the heat pump puts into the air, divided by the electricity 
 
 A reading only counts once the unit has settled:
 
-- the compressor has run for at least 10 minutes (default);
+- the compressor has run for at least 10 minutes, also with a shorter warm-up time set: right after a start it speeds up for a while;
+- no quick heat-up and no drying: the COP stands for the least power the heat pump runs at;
 - the power is at least 150 W (default);
 - the outlet air is at least 3 degrees warmer than the intake air (default) and changes by at most 0.5 degrees a minute (default);
 - the value is not above 60 % of what physics allows (Carnot, from the temperatures of the two coils).
@@ -386,27 +401,28 @@ The Midea reports no defrost. Thriftherm infers it from patterns: in the tempera
 
 - **Trigger:** the absolute humidity is more than 2.5 g/m³ above its baseline (default, *Trigger: rise in absolute humidity*). The baseline is the median of the last three hours without the last 20 minutes. With the relative humidity above 70 % already, 60 % of that rise is enough.
 - **Start after the shower:** the rise only gives notice. The drying starts once the humidity has reached no new high (more than 0.2 g/m³ above) for three minutes, 20 minutes after the rise at the latest.
-- **While drying** the heat pump blows with its strongest fan stage and the drying target temperature (22 °C by default), never above target plus 1.5 degrees. With its setpoint following the rooms, the unit gets its own reading plus 1 degree then, if that is more than the rooms' setpoint; this lead reaches at most 2 degrees above the drying target. With the rooms' setpoint alone it would stop, fan and all, once its own spot is that warm already (seen 2026-10-18). If it cannot heat right now, the drying waits with the time it has left.
-- **End:** once the dew point is at least 4 degrees below the room temperature again and the absolute humidity at most 1 g/m³ above the baseline; at the latest after the longest duration (60 minutes by default). With a window open the heat pump keeps blowing. If the window stays open for more than 20 minutes and the humidity is then still more than 1 g/m³ above the baseline, the drying ends as well.
-- **Pause afterwards:** if a drying ended because of its longest duration or a window open without effect, none starts by itself for three hours. The baseline still holds the air from before the shower in that time (measured 2026-09-25).
+- **While drying** the heat pump blows with its strongest fan stage and the drying target temperature (22 °C by default), never above target plus 1.5 degrees. Its compressor stays at its least power meanwhile, and it does not rest. If it cannot heat right now, the drying waits with the time it has left.
+- **End:** once the dew point is at least 4 degrees below the room temperature again and the absolute humidity at most 1 g/m³ above the baseline; at the latest after the longest duration (60 minutes by default). With a window contact the heat pump blows only while the window is open; with it shut the drying waits, and its time runs on. Without a window contact it blows with the window shut too.
+- **Pause afterwards:** if a drying ended because of its longest duration, none starts by itself for three hours. The baseline still holds the air from before the shower in that time (measured 2026-09-25).
 - **The button *Dry now*** starts at once and runs the full time, whatever the humidity and the window.
 
-### Setpoint follows the rooms
+### Held at its minimum
 
-With the switch the heat pump gets the highest target of the rooms it serves plus the setpoint offset (1 degree by default).
+The heat pump regulates on the air where it stands, not on the rooms it serves. Thriftherm therefore uses its setpoint for one thing only: it holds the compressor at its least power, where its COP is best. Measured on a PortaSplit from 2026-10-20 to 2026-10-30:
 
-**Raising:** the unit regulates on the air of the room it stands in. If that room is warmer than a served one, the unit throttles before the served room is warm. Seen 2026-10-13: set to the bathroom's 21 °C, 22 °C at its own intake, the bathroom at 19.8 °C, and the boiler was called for it.
+- A degree below its own reading it runs at 24 Hz and about 340 W, at a COP of 3.4 to 3.6. At 8 °C outside that warms the rooms by about half a degree an hour, at 3 °C it just holds them.
+- A degree above it, it drives itself up to 600 to 700 W, and the rooms rise by a degree an hour. That is how it ran up to 0.6.8: the rooms got too warm, and one night saw 20 new setpoints.
 
-- A served room lags when it is below its target and rises more slowly than 0.3 degrees an hour. An unknown trend does not count, nor does a room being dried.
-- After it has lagged for 20 minutes, Thriftherm raises the setpoint by half a degree (or the unit's coarser step), 2 degrees above the setpoint offset at most (attribute `eco_offset_k`).
-- That happens only while the unit throttles, i.e. while its own reading is within 1 degree of its setpoint (without an own reading: the compressor stands, last the intake air). If it works flat out already, or the raising is used up, the boiler helps (attribute `boiler_helps`) until the rooms are warm.
+How it runs:
 
-**Bringing it back:** with all served rooms warm, the setpoint comes back in the same steps, two hours after the last step at the earliest. With every served room at least 0.5 degrees above its target, every 20 minutes. Every step makes the unit beep, so there are few. Seen 2026-10-13: after a restart the two hours began anew, and the unit ran for 1.7 hours at the raised setpoint although every room was 1 to 2 degrees above its target.
-
-### Without "setpoint follows the rooms"
-
-Thriftherm then uses the setpoint as a power lever: intake air plus a learned offset. A small offset means a low compressor load and a high COP; 30 °C means full power (only for *Quick heat-up*).
-
-- The heat pump starts when a served room is 0.3 degrees below its target, and stops once no room is below its target plus 0.2 degrees.
+- **Start:** when the coldest served room is at its target, the setpoint goes half a degree above the unit's own reading. That starts it gently; further above it, the PortaSplit starts at 60 to 79 Hz right away. After a long time off its own reading stands still, so the intake sensor counts then.
+- **Holding:** once the compressor runs, its own reading rises by about 1.5 degrees, and the setpoint then sits about a degree below it. There it stays: a new target of the rooms sends nothing, so the unit rarely beeps. It is set anew only when the unit stops by itself while a room is below its target, or when its reading stays more than half a degree below the setpoint for 10 minutes. Never during a defrost and for 15 minutes after it.
+- **Resting:** with the coldest served room half a degree above its target, the setpoint goes to 17 °C (*Rooms warm: the compressor rests*), after the minimum run time at the earliest. The unit stays in heating and only its fan runs: out of heating it starts gently again, out of off or fan only it starts at 60 to 79 Hz. At the target it heats again, after the minimum pause at the earliest. Where the unit reads below 19 °C with its compressor running (1.5 degrees less standing), or when the compressor still runs 15 minutes after the resting setpoint, it is switched off.
+- **If a room lags** (0.2 degrees below its target and rising more slowly than 0.3 degrees an hour for 10 minutes, or not making its preheat in time; a preheating room is judged only from half an hour after its preheat began, at its pace since), the central heating (boiler or district heating) helps until every room is at its target (attribute `boiler_helps`). Only rooms whose radiator may heat count, so not one whose thermostat is switched off by hand; that one gets no help and reaches its target later. The heat pump's rooms call it from 0.2 degrees below target. The heat pump stays at its minimum, as above it its heat costs more than the boiler's. That is the default of the option *When the heat pump alone is not enough*. With *Heat pump runs higher*, or in the mode *Heat pump only*, its setpoint goes up half a degree every 10 minutes instead, 1.5 degrees above its own reading at most, and stays there until every room is at its target; its COP drops meanwhile. Then the setpoint goes straight back to a degree below its reading. With *Warm up slower* it stays at its minimum, never runs higher, and the rooms take longer; the central heating helps only once a room is half a degree below its target (also in the setback), or a preheat is projected to be half a degree short of its comfort start, and then until every room is there. In the simulation of ten recorded days the rooms sat 0.13-0.18 degrees below target on average that way instead of 0.3-0.6 without that help (up to 1.7 in frost), for about 7 cents a day less than *Boiler or district heating helps*, with 2-4 boiler runs of about 40 minutes a day instead of 5-9 short ones. In the mode *Heat pump only* nothing helps then. Without central heating (set up with *None – heat pump and room control only*) it always runs higher, whatever is set. A room a little short that does not lag does not raise it.
+- **More power** comes only from *Quick heat-up* (30 °C, fan high).
+- **Fan:** otherwise it runs at the *Fan stage in normal operation* (default *Auto*; *Full* is the unit's strongest stage, a stage it does not have counts as *Auto*). Measured on 2026-10-13, *Full* gave about 7 % more heat than *Auto* at the same power, and *Auto* turns slower than *Silent* at low load; more air also carries more heat through the ducts into the rooms. It is louder for that. Drying and quick heat-up give the stage back afterwards. If the unit still has the stage it was given last, it gets a newly chosen one once; a stage chosen by hand stays.
+- **It is switched off** when nobody wants a served room warm or the central heating is cheaper. After a long rest that happens without a fan run-on: the fan ran all along.
 - It runs for at least 20 minutes and pauses for at least 10 minutes (default, *Minimum run time*, *Minimum pause*). A lockout ends a run at once.
-- Every 30 minutes of a run Thriftherm looks at the slowest room: below 0.3 degrees an hour the offset grows by 0.5 degrees, above 1.5 degrees an hour it shrinks by 0.5 degrees, between 0.5 and 5 degrees.
+- **Units that show no compressor frequency** (a climate entity without the attribute `compressor_frequency`) count as running while they heat. Thriftherm cannot tell then whether they stopped by themselves; their own thermostat starts them again.
+
+The attributes `latched_setpoint_c` (the setpoint held) and `resting` (the compressor rests) show where the unit stands.

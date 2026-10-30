@@ -23,8 +23,10 @@ from homeassistant.loader import async_get_integration
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_DEFAULT_HEAT_RATE_HEAT_PUMP,
     CONF_SYSTEM_TYPE,
     CONFIG_VERSION,
+    DEFAULT_DEFAULT_HEAT_RATE_HEAT_PUMP,
     DEFAULT_SYSTEM_TYPE,
     DOMAIN,
     PLATFORMS,
@@ -128,6 +130,10 @@ def _register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_BOOST, boost, schema=BOOST_SCHEMA)
 
 
+# the default heat-up rate of heat pump rooms up to config version 3, see async_migrate_entry
+OLD_DEFAULT_HEAT_RATE_HEAT_PUMP = 1.2
+
+
 async def async_migrate_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> bool:
     """Bring an older config entry up to the current schema.
 
@@ -139,6 +145,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry)
     options, so the data kept the values of the first setup and the keys of
     fields removed since. Both are merged the way they were read (the options
     win), leftovers dropped, and the data emptied.
+
+    Version 4 holds the heat pump at its minimum. "Setpoint follows the rooms" and the setpoint
+    offset are gone with the keys they were stored under; a configured offset is not carried over,
+    since a setpoint above the rooms is what overheated them (seen 2026-10-29).
+    The old default heat-up rate of heat pump rooms, 1.2 °C/h, becomes the new one, 0.5: that is
+    what the unit gives at its minimum (0.46-0.66 measured 2026-10-29/30). Any other value was set
+    on purpose and stays.
     """
     if entry.version > CONFIG_VERSION:
         # written by a newer version: running on data we do not understand is worse than not starting
@@ -150,6 +163,8 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry)
         data.setdefault(CONF_SYSTEM_TYPE, DEFAULT_SYSTEM_TYPE)
     merged = {**data, **entry.options}
     options = known_keys(merged)
+    if entry.version < 4 and options.get(CONF_DEFAULT_HEAT_RATE_HEAT_PUMP) == OLD_DEFAULT_HEAT_RATE_HEAT_PUMP:
+        options[CONF_DEFAULT_HEAT_RATE_HEAT_PUMP] = DEFAULT_DEFAULT_HEAT_RATE_HEAT_PUMP
     hass.config_entries.async_update_entry(entry, data={}, options=options, version=CONFIG_VERSION)
     _LOGGER.info("Thriftherm config entry migrated to version %s, dropped %s", CONFIG_VERSION, sorted(set(merged) - set(options)))
     return True

@@ -141,7 +141,9 @@ class RoomState:
     abs_humidity_history: tuple[tuple[float, float], ...] = ()  # (timestamp_s, g/m³), up to 3 h
     override: Override | None = None
     drying: DryingState = DryingState()
-    heat_rate_k_h: float | None = None  # learned heat-up rate for preheat planning
+    heat_rate_k_h: float | None = None  # learned heat-up rate for preheat planning, of the source below
+    # the heat pump is expected to preheat the room, not the boiler; None: the room's own heat source
+    preheat_by_heat_pump: bool | None = None
     boost_until_ts: float | None = None  # "quick heat-up" requested until
     trv_hvac_mode: str | None = None  # state of the room thermostat, None if unavailable
     # the room thermostat says it heats now (its valve open), or that it does not; None if it does not say
@@ -230,6 +232,8 @@ class Prices:
     heat_eur_kwh: float = 0.12
     heat_consumption_share_pct: float = 70.0
     heat_ownership_share_pct: float = 0.0
+    # the boiler pump's electricity per kWh of boiler heat, learned while its power is set (`pump_share`)
+    boiler_pump_kwh_per_kwh: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -245,8 +249,6 @@ class Parameters:
     break_even_margin_on: float = 0.10
     break_even_margin_off: float = 0.05
     heat_pump_min_outdoor_temp: float = -10.0
-    heat_pump_setpoint_offset_k: float = 1.0
-    heat_pump_follow_rooms: bool = False  # the unit gets the served rooms' target plus the offset; False: intake air plus offset
     cop_warmup_s: float = 600.0
     cop_min_power_w: float = 150.0
     cop_min_delta_t_k: float = 3.0
@@ -269,12 +271,13 @@ class Parameters:
     away_dewpoint_margin_k: float = 3.0
     preheat_margin_s: float = 1200.0
     default_heat_rate_radiator_k_h: float = 0.8
-    default_heat_rate_heat_pump_k_h: float = 1.2
+    default_heat_rate_heat_pump_k_h: float = 0.5  # at its minimum; 1.2 held only well above it
     heat_pump_min_run_s: float = 1200.0
     heat_pump_min_off_s: float = 600.0
     manual_hold_s: float = 7200.0  # how long a change by hand is respected, on a thermostat and on the heat pump alike
     heat_pump_fan_run_on_s: float = 900.0  # fan only for this long before the unit is switched off; 0: off at once
     heat_pump_learning_runs: bool = True
+    heat_pump_fan_stage: str = "auto"  # the fan stage in normal operation (const.FAN_STAGE_CHOICES)
     boiler_curve_flow_cold: float = 55.0  # flow temperature at -10 °C outdoor
     boiler_curve_flow_warm: float = 30.0  # flow temperature at +15 °C outdoor
     boiler_flow_min: float = 30.0
@@ -329,6 +332,10 @@ class RoomResult:
     heat_pump_allowed: bool = True  # Midea may heat (window closed, or drying mode via Midea)
     boost_active: bool = False
     preheat_for_ts: float | None = None  # comfort start / away return this room is preheating for
+    # when this preheat really began; `preheat_start_ts` is recomputed every cycle and moves towards now while it climbs
+    preheat_began_ts: float | None = None
+    # how fast it has risen since then, over the trend window but never before it began (engines/room.preheat_began)
+    preheat_pace_k_per_h: float | None = None
     comfort_end_ts: float | None = None  # end of the running comfort window (schedule only)
     boiler_call: str | None = None  # engines/heat_call.py: calling, idle, stalled, comfort_ending, not_allowed
     # the room's own target its stall was accepted at: heating along raises `target`, the stall is still held against this
@@ -416,7 +423,7 @@ class HeatPumpCommand:
     reason: str
     blockers: tuple[str, ...] = ()
     waiting: str | None = None  # min_run_time / min_off_time / rate_limit
-    delivers: bool = True  # False once a unit that follows the rooms, set as high as it may be, does not get a room warm
+    delivers: bool = True  # False while a served room lags and the boiler adds the peak (the unit stays at its least speed)
     manual_until_ts: float | None = None  # a change by hand is respected until then
     manual_by: str | None = None  # and who made it (engines/hand.py)
     not_carried_out: int = 0  # commands in a row the unit did not carry out, though nobody touched it

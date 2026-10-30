@@ -70,3 +70,14 @@ def test_translation_files_match_the_catalogue() -> None:
     assert target_en["away_preheat"] == texts.LABELS["en"]["away_preheat"]
     assert target_de["away_preheat"] == texts.LABELS["de"]["away_preheat"]
     assert en.get("exceptions", {}).keys() == de.get("exceptions", {}).keys() != set()
+
+
+def test_the_shortfall_option_says_warming_up_slower_lets_the_boiler_help_until_every_room_is_there() -> None:
+    # 2026-10-30: the text called "warm up slower" heat pump only, then had the boiler help "until the room is there",
+    # while the help ends only once every served room is at its target.
+    for language, every_room, heat_pump_only in (("en", "every room", "heat pump only"), ("de", "alle Räume", "nur die")):
+        catalogue = json.loads((COMPONENT / "translations" / f"{language}.json").read_text())
+        slower = catalogue["options"]["step"]["midea_tuning"]["data_description"]["heat_pump_shortfall"]
+        slower = slower[slower.index(catalogue["selector"]["heat_pump_shortfall"]["options"]["slower"]):]
+        assert every_room in slower
+        assert heat_pump_only not in slower.lower()

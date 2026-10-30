@@ -124,8 +124,9 @@ def _command_attrs(d: Data) -> dict[str, Any]:
         "manual_until_ts": c.manual_until_ts,
         "manual_by": c.manual_by,
         "commands_not_carried_out": c.not_carried_out,
-        "eco_offset_k": d.get("eco_offset_k"),
-        "boiler_helps": not c.delivers,  # set as high as it may be, the unit still does not get a served room warm
+        "resting": d.get("resting"),
+        "latched_setpoint_c": d.get("latched_setpoint_c"),
+        "boiler_helps": not c.delivers,  # a served room lags: the boiler adds the peak, the unit stays at its least speed
         "decision_cop": d.get("decision_cop"),
         "decision_cop_basis": d.get("decision_cop_basis"),
         "break_even_cop": d["econ"].break_even_cop,
@@ -168,7 +169,6 @@ def _learning_attrs(d: Data) -> dict[str, Any]:
         "room_heating_power_k_h": d.get("heating_power"),
         "cop_bins": len(d.get("cop_map") or {}),
         "cop_basis": d.get("expected_cop_basis"),
-        "midea_eco_offset_k": d.get("eco_offset_k"),
         "last_reset": d.get("learning_reset"),
     }
 

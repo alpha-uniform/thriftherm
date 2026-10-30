@@ -16,6 +16,7 @@ from . import learning_reset
 from .engines import hand
 from .engines.boiler_memory import BoilerMemory
 from .engines.gas_split import GasSplit
+from .engines.pump_share import PumpShare
 from .engines.common import as_dict, as_float
 from .engines.heat_call import CallMemory
 from .engines.heat_pump_control import ControlMemory
@@ -37,7 +38,9 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
     # only rooms still configured: a room created again under a deleted one's name starts fresh
     rooms = {r.key for r in coord.builder.rooms}
     coord.cop_map = CopMap.from_storage(data.get("cop_map"))
-    coord.heat_rates = HeatRateStats.from_storage(data.get("heat_rates"))
+    coord.heat_rates = HeatRateStats.from_storage(
+        data.get("heat_rates"), heat_pump_rooms=[r.key for r in coord.builder.rooms if r.served_by_heat_pump]
+    )
     coord.heat_rates.forget([r for r in {*coord.heat_rates.rates, *coord.heat_rates.gradients} if r not in rooms])
     coord.cool_rates = CoolRateStats.from_storage(data.get("cool_rates"))
     coord.cool_rates.forget([r for r in coord.cool_rates.rates if r not in rooms])
@@ -70,6 +73,7 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
     coord.control_memory = ControlMemory.from_storage(data.get("control_memory"))
     coord.boiler_memory = BoilerMemory.from_storage(data.get("boiler_memory"))
     coord.gas_split = GasSplit.from_storage(data.get("gas_split"))
+    coord.pump_share = PumpShare.from_storage(data.get("boiler_pump_share"))
     if data.get("boiler_entities_held") is True:
         coord._boiler_entities_released = False  # handed back by the first cycle that does not command
     # a boiler handed back before the restart keeps following the curve
@@ -102,6 +106,12 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
         k: v
         for k, raw in as_dict(data.get("preheat_latch")).items()
         if k in rooms and (v := as_float(raw)) is not None and v > now
+    }
+    # when a preheat still latched began: a restart mid-preheat must not put off its judgement by another half hour
+    coord._preheat_began = {
+        k: v
+        for k, raw in as_dict(data.get("preheat_began")).items()
+        if k in coord._preheat_latch and (v := as_float(raw)) is not None
     }
     # A drying under way keeps its start (and so its time limit), a finished one its guard time,
     # a shower noticed its wait: a restart used to forget all three.
@@ -149,6 +159,7 @@ def to_store(coord: ThrifthermCoordinator) -> dict[str, Any]:
         "boiler_control_mode": coord.boiler_control_mode,
         "boiler_memory": coord.boiler_memory.to_storage(),
         "gas_split": coord.gas_split.to_storage(),
+        "boiler_pump_share": coord.pump_share.to_storage(),
         "boiler_load_log": list(coord.load_log)[-LOAD_LOG_STORED_ROWS:],
         "room_control_mode": coord.room_control_mode,
         "room_temps": coord.room_temps,
@@ -158,6 +169,7 @@ def to_store(coord: ThrifthermCoordinator) -> dict[str, Any]:
         "heat_pump_watch": coord.heat_pump_watch(),
         "drying_states": {room: asdict(state) for room, state in coord.drying_states.items() if state != DryingState()},
         "preheat_latch": dict(coord._preheat_latch),
+        "preheat_began": dict(coord._preheat_began),
         "learning_basis": learning_reset.basis(coord.config),
         "last_learning_reset": coord.last_learning_reset,
     }

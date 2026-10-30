@@ -208,6 +208,7 @@ The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fill
 | Nominal circulation flow of the pump | keep the default unless your boiler's manual says otherwise |
 | Gas meter volume (m³, total), Gas meter instantaneous flow (m³/h) | your gas meter entities, if you have them; otherwise leave empty. The control needs no gas meter: it tells burner runs and hot water from the pump and the status code. Without a meter, the *Gas power* and *Gas energy* sensors are not created |
 | Without a gas meter: nominal heat input of the boiler (type plate, kW) | only without a gas meter and only for a Vaillant boiler: the value **Q** or **Qn** from the type plate, the larger one of a range (atmoTEC plus VCW 194/4-5: 22.2). With it Thriftherm estimates *Gas for heating* and *Gas for hot water* from the boiler's counters. For that the six ebusd messages PrEnergySumHc1 to 3 and PrEnergySumHwc1 to 3 must reach Home Assistant, so do not exclude them ([Poll fewer ebusd values](EBUSD.md#what-thriftherm-needs)); Thriftherm finds them by itself. On the test installation the estimate was 1 % above the gas meter over 32 days (95.8 kWh on the meter) and off by no more than 0.3 kWh on any day. Leave empty with a gas meter |
+| Power of the heating pump (W, optional) | the electricity of the boiler's heating pump then joins the price of boiler heat: Thriftherm counts the pump's running time and the boiler's heat and adds the pump's electricity per kWh of heat (at most 0.06 kWh), so a heat pump that takes over also saves it. Only worth it with a heat pump; a pump in permanent mode often draws 20 to 50 W (type plate or a smart plug). Leave empty to compare gas alone |
 | Keep hot water ready (keep-warm of a combi boiler, cylinder loading) | leave it on. Switch it off only on a combi boiler without a cylinder whose keep-warm bothers you at night (about one burner start an hour with no heating demand); it only acts with active boiler control |
 | ebusd circuit of the boiler (usually bai) | keep `bai` unless your ebusd device uses another circuit name |
 | Heating curve: flow temperature at -10 °C outdoor | start with the default 55 °C |
@@ -248,7 +249,7 @@ This add-on has been tried on a Midea PortaSplit. Without a heat pump: **leave e
 
 Without a smart plug and sensors at the intake and outlet, Thriftherm cannot measure the COP. Then pick your unit under **COP values of this model** if it is listed (so far the Midea PortaSplit). Thriftherm then decides on values measured on the same model instead of a general curve.
 
-Once a heat pump is set up, *Configure* has the further entry **Heat pump: fine tuning**. It holds the release of the active control, the setpoint offset, minimum run time and minimum pause and, in sections that are folded at first, bathroom drying, COP measurement and defrost. Without a heat pump the entry does not show.
+Once a heat pump is set up, *Configure* has the further entry **Heat pump: fine tuning**. It holds the release of the active control, the default heat-up rate of heat pump rooms, what happens when the heat pump alone is not enough, the fan stage in normal operation, minimum run time and minimum pause and, in sections that are folded at first, bathroom drying, COP measurement and defrost. Without a heat pump the entry does not show.
 
 ### 4.5 Outdoor conditions
 
@@ -348,6 +349,8 @@ If something looks wrong, adjust it in the options before going active.
 | *Boiler command* | attribute *Commands sent* is on |
 | Better Thermostat entities | show the new targets from *Thermostat plan* |
 | *Safety state* | OK |
+
+**Optional:** for *Away* to end when somebody comes home, choose the people (`person.*`) under Thriftherm → *Configure* → **Control parameters** at *Away ends when one of these people comes home*. Their location in Home Assistant has to be right, for instance through the Companion App.
 
 Everything about daily use – modes, schedules, away mode, learning – is in the [user guide](GUIDE.md).
 

@@ -1,6 +1,7 @@
 """Cost comparison between the central heat source and the heat pump.
 
     c_heat  = p_gas / eta_boiler          [€/kWh thermal]   own gas or oil boiler
+              + pump kWh per kWh * p_el                     plus its pump, where its power is set
             = p_heat * allocation_factor  [€/kWh thermal]   district heating
     c_midea = p_el  / COP                 [€/kWh thermal]
     Midea cheaper  <=>  COP > p_el / c_heat  =: COP_break_even
@@ -51,7 +52,9 @@ def heat_cost_per_kwh_thermal(prices: Prices) -> float:
         return prices.heat_eur_kwh * factor
     if prices.boiler_efficiency <= 0:
         raise ValueError("boiler efficiency must be > 0")
-    return prices.gas_eur_kwh / prices.boiler_efficiency
+    # The pump runs for the boiler's heat, and its electricity is part of that heat's price: in permanent
+    # mode about 0.5 kWh a day here, which the heat pump saved on its days (measured 2026-10-17 to 26).
+    return prices.gas_eur_kwh / prices.boiler_efficiency + max(prices.boiler_pump_kwh_per_kwh, 0.0) * prices.electricity_eur_kwh
 
 
 def heat_pump_cost_per_kwh_thermal(prices: Prices, cop: float | None) -> float | None:

@@ -83,26 +83,26 @@ def test_storage_round_trip_and_forget():
 
 # ------------------------------------------------------------------ heating power
 def test_the_heat_up_rate_carries_its_gradient_and_yields_a_heating_power():
-    from custom_components.thriftherm.engines.learning import HeatRateStats
+    from custom_components.thriftherm.engines.learning import HEAT_BY_BOILER, HeatRateStats
 
     stats = HeatRateStats()
     # 19 -> 21 °C in two hours at 5 °C outside: net 1.0 K/h at a mean gradient of 15 K
     for i, temp in enumerate([19.0, 19.5, 20.0, 20.5, 21.0]):
-        stats.observe("wohnzimmer", i * 1800.0, temp, heating=True, window_open=False, outdoor=5.0)
-    learned = stats.observe("wohnzimmer", 5 * 1800.0, 21.0, heating=False, window_open=False, outdoor=5.0)
+        stats.observe("wohnzimmer", i * 1800.0, temp, source=HEAT_BY_BOILER, window_open=False, outdoor=5.0)
+    learned = stats.observe("wohnzimmer", 5 * 1800.0, 21.0, source=None, window_open=False, outdoor=5.0)
     assert learned == pytest.approx(1.0, abs=0.05)
-    assert stats.to_dict()["wohnzimmer"]["mean_gradient_k"] == pytest.approx(15.0, abs=0.5)
+    assert stats.to_dict()["wohnzimmer"][HEAT_BY_BOILER]["mean_gradient_k"] == pytest.approx(15.0, abs=0.5)
 
     # with the room's cool-down coefficient the loss can be added back in
-    assert stats.heating_power_k_h("wohnzimmer", 0.02) == pytest.approx(1.3, abs=0.05)
-    assert stats.heating_power_k_h("wohnzimmer", None) is None  # unknown before winter
-    assert stats.heating_power_k_h("kuche", 0.02) is None
+    assert stats.heating_power_k_h("wohnzimmer", HEAT_BY_BOILER, 0.02) == pytest.approx(1.3, abs=0.05)
+    assert stats.heating_power_k_h("wohnzimmer", HEAT_BY_BOILER, None) is None  # unknown before winter
+    assert stats.heating_power_k_h("kuche", HEAT_BY_BOILER, 0.02) is None
 
 
 def test_heat_up_rates_from_an_older_store_still_load():
-    from custom_components.thriftherm.engines.learning import HeatRateStats
+    from custom_components.thriftherm.engines.learning import HEAT_BY_BOILER, HeatRateStats
 
     old = HeatRateStats.from_storage({"rates": {"bad": [0.8, 0.9]}})  # written before gradients existed
-    assert old.rate("bad") == 0.85
-    assert old.gradients["bad"] == [None, None]
-    assert old.heating_power_k_h("bad", 0.02) is None  # nothing to correct with
+    assert old.rate("bad", HEAT_BY_BOILER) == 0.85
+    assert old.gradients["bad"][HEAT_BY_BOILER] == [None, None]
+    assert old.heating_power_k_h("bad", HEAT_BY_BOILER, 0.02) is None  # nothing to correct with

@@ -57,12 +57,12 @@ def test_a_drying_under_way_waits_for_the_heat_pump_and_goes_on_with_the_time_it
 
 def test_schedule_preheat_reaches_comfort_at_window_start():
     cfg = room_config("badezimmer", heat_pump=True, comfort=21.0, setback=17.0)  # weekday window starts 05:15
-    st = room_state(cfg, temp=18.0)
-    # deficit 3 K at 1.2 K/h (Midea default) = 2.5 h + 20 min margin -> start 02:25
+    st = room_state(cfg, temp=19.5)
+    # deficit 1.5 K at 0.5 K/h (heat pump default: what it gives at its minimum) = 3 h + 20 min margin -> start 01:55
     early = room_engine.evaluate_room(st, datetime(2026, 1, 12, 1, 0), "auto", PARAMS)
     assert early.target == 17.0 and early.target_reason == "schedule_setback"
-    assert early.preheat_start_ts == pytest.approx(datetime(2026, 1, 12, 2, 25).timestamp(), abs=1)
-    later = room_engine.evaluate_room(st, datetime(2026, 1, 12, 3, 0), "auto", PARAMS)
+    assert early.preheat_start_ts == pytest.approx(datetime(2026, 1, 12, 1, 55).timestamp(), abs=1)
+    later = room_engine.evaluate_room(st, datetime(2026, 1, 12, 2, 0), "auto", PARAMS)
     assert later.target == 21.0 and later.target_reason == "schedule_preheat"
 
 
@@ -76,7 +76,8 @@ def test_schedule_preheat_uses_learned_rate():
 def test_quick_heat_up_raises_target_to_comfort():
     cfg = room_config("badezimmer", heat_pump=True, comfort=21.0, setback=17.0)
     noon = datetime(2026, 1, 12, 12, 0)
-    st = _with(room_state(cfg, temp=18.0), boost_until_ts=noon.timestamp() + 1800)
+    # 19.5: at the heat pump's 0.5 °C/h a colder room would already preheat for the evening at noon
+    st = _with(room_state(cfg, temp=19.5), boost_until_ts=noon.timestamp() + 1800)
     res = room_engine.evaluate_room(st, noon, "auto", PARAMS)
     assert res.target == 21.0 and res.target_reason == "boost" and res.boost_active is True
     expired = _with(st, boost_until_ts=noon.timestamp() - 1)

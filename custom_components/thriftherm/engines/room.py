@@ -32,7 +32,6 @@ DRYING_RH_TRIGGER_PCT = 70.0
 DRYING_RH_RISE_WINDOW_S = 20 * 60.0
 DRYING_END_DEWPOINT_MARGIN_K = 4.0
 DRYING_END_ABS_MARGIN_G_M3 = 1.0
-DRYING_WINDOW_NO_EFFECT_S = 20 * 60.0
 # The humidity climbs for as long as the shower runs. Drying means the strongest fan and more
 # heat: after the shower, not on wet skin. So the load only gives notice, and the drying starts
 # once the climb is over: no new highest value for three minutes, or after twenty at the latest.
@@ -40,6 +39,20 @@ DRYING_AFTER_PEAK_S = 180.0
 DRYING_PEAK_STEP_G_M3 = 0.2  # less than this above the highest value is no climb, the sensors flicker
 DRYING_WAIT_MAX_S = 20 * 60.0
 SCHEDULE_PREHEAT_HORIZON_S = 12 * 3600.0
+# The heat pump preheats at its least speed, about half a degree an hour: from 5 degrees below, ten hours
+# ahead. It starts at most four hours ahead, and the boiler adds the peak once a preheat runs late
+# (heat_pump_control.behind). In the simulation of 2026-10-20 to 30 that missed no comfort minute.
+# The same where no boiler adds that peak (the option "heat pump runs higher", the mode "heat pump only", no central
+# heat source), and with "warm up slower", where it helps only half a degree short (2026-10-30: since then the boiler
+# helps there too, at that floor or for a preheat projected that far short). Planned up to 12 hours ahead there,
+# the simulation of 2026-10-30 preheated from 23:00 for 05:15 with a setback of 19: the rooms stood at 20.2-20.4
+# at its least speed all night, never got to 21, and the setback was gone. Four hours cost 0.07-0.30 EUR a day
+# less, at a few more minutes below target.
+PREHEAT_LEAD_MAX_HEAT_PUMP_S = 4 * 3600.0
+TREND_WINDOW_S = 5400.0  # trend_k_per_h
+# A preheat's pace needs readings over this long since it began: half an hour less a few samples, when
+# heat_pump_control.behind first judges it.
+PACE_MIN_SPAN_S = 1500.0
 # A valve that has not reported for this long takes no commands either: its room must
 # not call the boiler. Valves here report at least every 15 minutes, but a Zigbee valve left
 # at its default reports about hourly, and an unchanged value leaves no trace in Home Assistant:
@@ -138,10 +151,18 @@ def comfort_end(cfg: RoomConfig, now: datetime, schedule: ScheduleState | None =
     return None  # comfort all week
 
 
+def _preheats_with_heat_pump(state: RoomState) -> bool:
+    return state.config.served_by_heat_pump if state.preheat_by_heat_pump is None else state.preheat_by_heat_pump
+
+
 def _default_rate(state: RoomState, params: Parameters) -> float:
     return state.heat_rate_k_h or (
-        params.default_heat_rate_heat_pump_k_h if state.config.served_by_heat_pump else params.default_heat_rate_radiator_k_h
+        params.default_heat_rate_heat_pump_k_h if _preheats_with_heat_pump(state) else params.default_heat_rate_radiator_k_h
     )
+
+
+def _lead_max_s(state: RoomState) -> float | None:
+    return PREHEAT_LEAD_MAX_HEAT_PUMP_S if _preheats_with_heat_pump(state) else None
 
 
 def _latched(state: RoomState, for_ts: float) -> bool:
@@ -154,18 +175,53 @@ def _latched(state: RoomState, for_ts: float) -> bool:
     return state.preheat_latch_ts is not None and abs(state.preheat_latch_ts - for_ts) < 1.0
 
 
+def preheat_began(
+    rooms: dict[str, RoomResult],
+    latch: dict[str, float],
+    began: dict[str, float],
+    now_ts: float,
+    history: dict[str, tuple[tuple[float, float], ...]] | None = None,
+) -> tuple[dict[str, RoomResult], dict[str, float]]:
+    """The rooms with the time their preheat really began and their pace since, and that time per preheating room.
+
+    `latch` holds the comfort start each room was preheating for in the last cycle, `began` when that
+    preheat began. The planned start moves towards now while a room climbs (it is recomputed from the
+    temperature every cycle), so a preheat judged from it after half an hour was judged two hours late
+    at 0.4 K/h (review 2026-10-30). A new comfort start is a new preheat.
+
+    Its pace is the trend over the readings since it began. The room's own trend reaches back 90 minutes:
+    half an hour into a preheat climbing the planned 0.5 K/h it still held an hour of the flat time before
+    and read 0.12 K/h (review 2026-10-30). With less than PACE_MIN_SPAN_S of readings since it began, as
+    after a restart that kept the time it began but not the readings, its pace is unknown.
+    """
+    out_rooms, out = dict(rooms), {}
+    for key, res in rooms.items():
+        if res.preheat_for_ts is None:
+            continue
+        same = key in began and key in latch and abs(latch[key] - res.preheat_for_ts) < 1.0
+        out[key] = began[key] if same else now_ts
+        window = min(TREND_WINDOW_S, now_ts - out[key])
+        samples = (history or {}).get(key, ())
+        pace = trend_k_per_h(samples, now_ts, window, PACE_MIN_SPAN_S) if window >= PACE_MIN_SPAN_S else None
+        out_rooms[key] = replace(
+            res, preheat_began_ts=out[key], preheat_pace_k_per_h=None if pace is None else round(pace, 3)
+        )
+    return out_rooms, out
+
+
 def preheat_start(
     return_ts: float,
     target_at_return: float,
     current_temp: float | None,
     heat_rate_k_h: float,
     margin_s: float,
+    lead_max_s: float | None = None,
 ) -> float:
-    """Timestamp at which heating must start to reach the target at return time."""
-    if current_temp is None or heat_rate_k_h <= 0:
-        return return_ts - margin_s
-    deficit = max(target_at_return - current_temp, 0.0)
-    return return_ts - deficit / heat_rate_k_h * 3600.0 - margin_s
+    """Timestamp at which heating must start to reach the target at return time, at most `lead_max_s` before it."""
+    lead = margin_s
+    if current_temp is not None and heat_rate_k_h > 0:
+        lead += max(target_at_return - current_temp, 0.0) / heat_rate_k_h * 3600.0
+    return return_ts - (lead if lead_max_s is None else min(lead, lead_max_s))
 
 
 def target_temperature(
@@ -199,7 +255,9 @@ def target_temperature(
             else:
                 target_at_return, _ = scheduled_target(cfg, return_dt)
             rate = _default_rate(state, params)
-            preheat_ts = preheat_start(away_return_ts, target_at_return, temperature, rate, params.preheat_margin_s)
+            preheat_ts = preheat_start(
+                away_return_ts, target_at_return, temperature, rate, params.preheat_margin_s, _lead_max_s(state)
+            )
             if now_ts >= preheat_ts or _latched(state, away_return_ts):
                 return target_at_return, "away_preheat", preheat_ts
         if temperature is not None and dew_point is not None and temperature - dew_point < params.away_dewpoint_margin_k:
@@ -225,7 +283,7 @@ def target_temperature(
                     return ahead, "schedule_preheat", None
                 return target, reason, None
             rate = _default_rate(state, params)
-            preheat_ts = preheat_start(start.timestamp(), ahead, temperature, rate, params.preheat_margin_s)
+            preheat_ts = preheat_start(start.timestamp(), ahead, temperature, rate, params.preheat_margin_s, _lead_max_s(state))
             if now_ts >= preheat_ts or _latched(state, start.timestamp()):
                 return ahead, "schedule_preheat", preheat_ts
             return target, reason, preheat_ts
@@ -235,7 +293,7 @@ def target_temperature(
 def trend_k_per_h(
     history: tuple[tuple[float, float], ...],
     now_ts: float,
-    window_s: float = 5400.0,
+    window_s: float = TREND_WINDOW_S,
     min_span_s: float = 1800.0,
 ) -> float | None:
     """Least-squares slope of temperature over the recent window, in K/h.
@@ -371,34 +429,37 @@ def evaluate_drying(
         # Only with the button: no shower starts a drying, and one that was started by a shower
         # before the automatic was switched off ends here. The guard time of the last one stays.
         return DryingState(ended_ts=prev.ended_ts), None
+    # With a window contact the drying blows warm air only while the window is open: shut, the moisture has
+    # nowhere to go, and the bathroom is dried with the window wide open (the owner, 2026-10-29). Without a
+    # contact nobody can tell, and the warm air runs as before.
+    ventilated = not cfg.window_sensors or window_open_since_s is not None
     if temperature is None or rh is None or abs_humidity is None:
         # A missing reading says nothing about the air. A running drying goes on with its start
-        # time: ended and started anew with the next reading, its time limit never applied.
-        return (prev, "drying_active") if running else (DryingState(ended_ts=prev.ended_ts), None)
+        # time: ended and started anew with the next reading, its time limit never applied. The window
+        # rule holds meanwhile (review 2026-10-30: such a cycle blew warm air into the shut bathroom).
+        if not running:
+            return DryingState(ended_ts=prev.ended_ts), None
+        if not ventilated:
+            return replace(prev, active=False), "drying_waiting_for_open_window"
+        return prev, "drying_active"
 
     baseline = humidity_baseline(state.abs_humidity_history, now_ts)
-    window_open_long = window_open_since_s is not None and window_open_since_s > DRYING_WINDOW_NO_EFFECT_S
 
     if running:
         base = prev.baseline_abs_humidity if prev.baseline_abs_humidity is not None else baseline
-        if window_open_long and base is not None and abs_humidity > base + DRYING_END_ABS_MARGIN_G_M3:
-            # with the guard time of a drying that ran out: the air that ended it would start it again
-            return DryingState(ended_ts=now_ts), "drying_ended_window_ineffective"
         dew_margin_ok = dew_point is not None and temperature - dew_point >= DRYING_END_DEWPOINT_MARGIN_K
         abs_ok = base is None or abs_humidity <= base + DRYING_END_ABS_MARGIN_G_M3
         if dew_margin_ok and abs_ok:
             return DryingState(), "drying_ended_humidity_normal"
-        return prev, "drying_active"
+        if not ventilated:
+            # under way, its time running, waiting for the window
+            return replace(prev, active=False), "drying_waiting_for_open_window"
+        return replace(prev, active=True), "drying_active"
 
     if prev.ended_ts is not None and now_ts - prev.ended_ts < DRYING_BASELINE_WINDOW_S:
         # the baseline still holds the air from before the shower: the same humidity would
         # start the drying again a minute after its time limit (measured 2026-09-25)
         return DryingState(ended_ts=prev.ended_ts), None
-    if window_open_long:
-        # No start that the next cycle ends as "window ineffective": that went on and off every
-        # cycle. The drying may start once the window is shut.
-        return DryingState(), None
-
     # not active: check triggers
     if baseline is None and prev.wet_since_ts is not None:
         # The humidity history lives in memory only and starts empty after a restart, while the store
@@ -416,6 +477,8 @@ def evaluate_drying(
     climbing = prev.peak_abs_humidity is None or abs_humidity > prev.peak_abs_humidity + DRYING_PEAK_STEP_G_M3
     peak, peak_ts = (abs_humidity, now_ts) if climbing or prev.peak_ts is None else (prev.peak_abs_humidity, prev.peak_ts)
     if now_ts - peak_ts >= DRYING_AFTER_PEAK_S or now_ts - wet_since >= DRYING_WAIT_MAX_S:
+        if not ventilated:
+            return DryingState(False, now_ts, before), "drying_waiting_for_open_window"
         return DryingState(True, now_ts, before), "drying_started_humidity_load"
     waiting = DryingState(baseline_abs_humidity=before, wet_since_ts=wet_since, peak_abs_humidity=peak, peak_ts=peak_ts)
     return waiting, "drying_waiting_for_the_shower_to_end"

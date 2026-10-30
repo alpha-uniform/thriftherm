@@ -239,8 +239,8 @@ async def test_only_a_date_is_the_same_placeholder_whichever_way_it_is_picked(ha
 async def test_only_a_date_for_tomorrow_does_not_preheat_tonight(hass: HomeAssistant, freezer) -> None:
     """Taken as midnight, tomorrow would have pre-heated at once at 22:30.
 
-    Rooms with a schedule helper assume comfort at the return: the bathroom from 21:35 (2.5 K at
-    1.2 K/h plus 20 minutes before midnight), the living room from 21:47. Their comfort targets would
+    Rooms with a schedule helper assume comfort at the return: the bathroom from 20:32 (2.5 K at
+    0.8 K/h plus 20 minutes before midnight), the living room from 21:47. Their comfort targets would
     have gone out at once, for a time nobody had picked yet.
     """
     coordinator = await _start_with_schedule_helpers(hass, freezer, "2026-09-28 22:30:00+02:00")
@@ -253,7 +253,7 @@ async def test_only_a_date_for_tomorrow_does_not_preheat_tonight(hass: HomeAssis
 
     await _pick(hass, _time_step(state, 7))
     assert coordinator.away_return_ts == _local(TOMORROW, 7).timestamp() and _provisional(hass) is False
-    assert _preheat_start(hass, "badezimmer") == pytest.approx(_local(TOMORROW, 7).timestamp() - 2.5 / 1.2 * 3600 - 20 * 60)
+    assert _preheat_start(hass, "badezimmer") == pytest.approx(_local(TOMORROW, 7).timestamp() - 2.5 / 0.8 * 3600 - 20 * 60)
 
 
 async def test_only_a_date_for_today_after_23_59_is_refused(hass: HomeAssistant, freezer) -> None:
@@ -294,7 +294,7 @@ async def test_a_real_return_at_23_59_takes_another_minute_first(hass: HomeAssis
     state = await _pick(hass, _time_step(state, 23, 59))
     assert state == _state_of(_local(TODAY, 23, 59)) and _provisional(hass) is False
     assert coordinator.away_return_ts == _local(TODAY, 23, 59).timestamp()
-    assert _preheat_start(hass, "badezimmer") == pytest.approx(_local(TODAY, 23, 59).timestamp() - 2.5 / 1.2 * 3600 - 20 * 60)
+    assert _preheat_start(hass, "badezimmer") == pytest.approx(_local(TODAY, 23, 59).timestamp() - 2.5 / 0.8 * 3600 - 20 * 60)
 
 
 async def test_a_reached_return_is_no_plan_for_a_past_value(hass: HomeAssistant, freezer) -> None:
@@ -349,7 +349,7 @@ async def test_a_date_step_right_after_a_provisional_return_is_reached_stays_pro
     """Until the next cycle the reached 23:59 is still shown, and the date field keeps it.
 
     Read as no plan, the 23:59 moved to tomorrow would be a real return: the bathroom would pre-heat
-    from 21:34 (2.5 K at 1.2 K/h plus 20 minutes), for a time nobody picked.
+    from 20:31 (2.5 K at 0.8 K/h plus 20 minutes), for a time nobody picked.
     """
     coordinator = await _start_with_schedule_helpers(hass, freezer, "2026-09-28 20:00:00+02:00")
     state = await _pick(hass, _date_step("unknown", TODAY))
@@ -436,7 +436,7 @@ async def test_an_automation_setting_a_past_time_today_gets_an_error(hass: HomeA
 async def test_a_provisional_return_does_not_preheat_rooms_with_a_schedule_helper(hass: HomeAssistant, freezer) -> None:
     """A schedule helper cannot be read ahead, so its rooms assume comfort at the return.
 
-    For the provisional 23:59 that would mean heating from 21:34 (bathroom: 2.5 K at 1.2 K/h plus
+    For the provisional 23:59 that would mean heating from 20:31 (bathroom: 2.5 K at 0.8 K/h plus
     20 minutes) for a time nobody chose. Away mode still ends at 23:59 if no time is ever picked.
     """
     coordinator = await _start_with_schedule_helpers(hass, freezer)
@@ -461,9 +461,9 @@ async def test_rooms_with_a_schedule_helper_preheat_once_the_time_is_picked(hass
     await _pick(hass, _time_step(state, 22))
     assert _provisional(hass) is False
 
-    # comfort is assumed at 22:00: bathroom 2.5 K at 1.2 K/h, living room 1.5 K at 0.8 K/h, each plus 20 minutes
+    # comfort is assumed at 22:00: bathroom 2.5 K, living room 1.5 K, both by radiator at 0.8 K/h, each plus 20 minutes
     back = _local(TODAY, 22).timestamp()
-    assert _preheat_start(hass, "badezimmer") == pytest.approx(back - 2.5 / 1.2 * 3600 - 20 * 60)
+    assert _preheat_start(hass, "badezimmer") == pytest.approx(back - 2.5 / 0.8 * 3600 - 20 * 60)
     assert _preheat_start(hass, "wohnzimmer") == pytest.approx(back - 1.5 / 0.8 * 3600 - 20 * 60)
     assert {_target(hass, room).attributes["reason"] for room in ROOMS} == {"mode_away"}
 
@@ -728,7 +728,7 @@ async def test_a_second_date_step_sent_before_the_first_one_shows(hass: HomeAssi
 
     The browser still showed "unknown" and sends midnight for tomorrow, but the first date step has made
     today's 23:59 the state by then. Against that provisional plan midnight is a real return, and the rooms
-    pre-heat for it tonight: the bathroom from 21:35 (2.5 K at 1.2 K/h plus 20 minutes). The value would give
+    pre-heat for it tonight: the bathroom from 20:32 (2.5 K at 0.8 K/h plus 20 minutes). The value would give
     this case away, but a rule for it would break the rules for set_value from automations, so none is made.
     """
     await _start_with_schedule_helpers(hass, freezer, "2026-09-28 20:00:00+02:00")
@@ -737,14 +737,14 @@ async def test_a_second_date_step_sent_before_the_first_one_shows(hass: HomeAssi
 
     state = await _pick(hass, second)
     assert state == _state_of(_local(TOMORROW, 0)) and _provisional(hass) is False
-    assert _preheat_start(hass, "badezimmer") == pytest.approx(_local(TOMORROW, 0).timestamp() - 2.5 / 1.2 * 3600 - 20 * 60)
+    assert _preheat_start(hass, "badezimmer") == pytest.approx(_local(TOMORROW, 0).timestamp() - 2.5 / 0.8 * 3600 - 20 * 60)
 
 
 async def test_a_date_step_sent_just_as_the_cycle_ends_a_reached_return(hass: HomeAssistant, freezer) -> None:
     """A documented limit, the push latency: one date step at that moment is enough.
 
     The cycle has ended the reached provisional 23:59 and shown "unknown", but the browser still showed
-    23:59 and sends 23:59 tomorrow. Read as no plan, that is a real return, pre-heated tomorrow from 21:34.
+    23:59 and sends 23:59 tomorrow. Read as no plan, that is a real return, pre-heated tomorrow from 20:31.
     """
     coordinator = await _start_with_schedule_helpers(hass, freezer, "2026-09-28 20:00:00+02:00")
     shown = await _pick(hass, _date_step("unknown", TODAY))
@@ -754,7 +754,7 @@ async def test_a_date_step_sent_just_as_the_cycle_ends_a_reached_return(hass: Ho
     state = await _pick(hass, _date_step(shown, TOMORROW))  # computed from the 23:59 the browser still showed
     assert state == _state_of(_local(TOMORROW, 23, 59)) and _provisional(hass) is False
     back = _local(TOMORROW, 23, 59).timestamp()
-    assert _preheat_start(hass, "badezimmer") == pytest.approx(back - 2.5 / 1.2 * 3600 - 20 * 60)
+    assert _preheat_start(hass, "badezimmer") == pytest.approx(back - 2.5 / 0.8 * 3600 - 20 * 60)
 
 
 async def test_the_return_can_be_set_while_the_cycle_fails(hass: HomeAssistant, freezer, monkeypatch) -> None:

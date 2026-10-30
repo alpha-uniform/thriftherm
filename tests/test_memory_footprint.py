@@ -24,7 +24,7 @@ def _humidity_kept(hass: HomeAssistant, **bath) -> dict[str, int]:
     data["rooms"][0].update(bath)
     data["rooms"][1][CONF_ROOM_HUMIDITY] = "sensor.bath_rh"  # the living room has a humidity sensor too
     builder = SnapshotBuilder(hass, data)
-    rooms = builder.build("auto", {}, {}, {}, None, {}, {}).rooms
+    rooms = builder.build("auto", {}, {}, None, {}, {}).rooms
     return {key: len(room.abs_humidity_history) for key, room in rooms.items()}
 
 

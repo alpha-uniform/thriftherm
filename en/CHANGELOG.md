@@ -2,7 +2,21 @@
 
 **English** | [Deutsch](../de/AENDERUNGEN.md)
 
-Since 0.5.0 the configuration stays at version 3: every update since keeps everything learned.
+Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
+
+## 0.7.0 — 2026-10-30
+
+In normal operation the heat pump now runs at its least power only, where its COP is best. Configuration version 4, which older versions do not load: make a backup before the update in case you want to go back.
+
+- Half a degree above the coldest room's target the heat pump rests, and it beeps less; if a room lags, the boiler or district heating helps. Its COP is measured at its least power only. The options *Setpoint follows the rooms* and *setpoint offset* are gone.
+- New options *When the heat pump alone is not enough* (boiler or district heating helps, heat pump runs higher, warm up slower) and *Fan stage in normal operation* (default Auto).
+- Heat-up rates kept apart for boiler and heat pump, learned anew in heat pump rooms from 0.5 degrees an hour; with the heat pump, pre-heating starts at most 4 hours ahead.
+- A room calls the boiler only when its thermostat wants to heat too ([#3](https://github.com/alpha-uniform/thriftherm/issues/3)).
+- Away can end as soon as a chosen person comes home (control parameters).
+- Optionally the heating pump's electricity in the cost comparison (its power in the boiler options).
+- Bathroom drying with a window contact only while the window is open: that is the only way the moisture leaves.
+- Default COP values updated.
+- Fixed: standing in a warmer room, the heat pump's compressor stood still; a drying then only blew air.
 
 ## 0.6.8 — 2026-10-27
 
