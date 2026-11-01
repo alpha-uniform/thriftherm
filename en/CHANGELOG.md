@@ -4,6 +4,10 @@
 
 Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
 
+## Unreleased
+
+- New boiler in the list: Vaillant atmoTEC pro VUW PL 240/3-3M ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)).
+
 ## 0.7.0 — 2026-10-30
 
 In normal operation the heat pump now runs at its least power only, where its COP is best. Configuration version 4, which older versions do not load: make a backup before the update in case you want to go back.

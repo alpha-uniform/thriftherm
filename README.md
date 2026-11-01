@@ -95,6 +95,7 @@ Damit lief die getestete Installation. Andere Geräte gehen genauso, solange sie
 | Therme | ebusd-Circuit / Definition | Status | Daten von |
 |--------|----------------------------|--------|-----------|
 | Vaillant atmoTEC plus VCW 194/4-5 | `bai` / `bai.308523` | geprüft, Schreibtest bestanden | Entwickler |
+| Vaillant atmoTEC pro VUW PL 240/3-3M | `bai` / `bai.308523` | vom Besitzer geprüft, Schreibtest bestanden, Rückfall zum Drehknopf nach rund 15 min | Nutzer ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)) |
 
 Jede Therme kommt als Profil dazu: welche ebusd-Nachrichten ihre Werte liefern und welche Nachricht den Sollwert annimmt. Ich kann nur die Therme bei mir zu Hause testen. Jede weitere Therme kommt über Daten dazu, die ihre Besitzer teilen – **deine Therme kann die nächste sein**: Öffne ein [Issue mit Thermendaten](https://github.com/alpha-uniform/thriftherm/issues/new?template=boiler_data.yml) und nenne Modell, ebusd-Definition und was dir aufgefallen ist. Wer Daten beisteuert, wird auf Wunsch in der Tabelle oben genannt; ohne Angabe bleibt der Eintrag anonym.
 

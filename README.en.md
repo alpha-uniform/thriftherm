@@ -96,6 +96,7 @@ This is what the tested installation runs on. Other devices work the same way as
 | Boiler | ebusd circuit / definition | Status | Data from |
 |--------|----------------------------|--------|-----------|
 | Vaillant atmoTEC plus VCW 194/4-5 | `bai` / `bai.308523` | verified, write test passed | maintainer |
+| Vaillant atmoTEC pro VUW PL 240/3-3M | `bai` / `bai.308523` | verified by its owner, write test passed, back to the knob after about 15 min | user ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)) |
 
 Each boiler is added as a profile: which ebusd messages carry its values and which message takes the setpoint. I can only test the boiler in my own home. Every other boiler is added from data its owners share, so **your boiler can be next**: open a [boiler data issue](https://github.com/alpha-uniform/thriftherm/issues/new?template=boiler_data.yml) with the model, the ebusd definition and what you observed. Whoever contributes data is credited in the table above if they wish; without a name the entry stays anonymous.
 

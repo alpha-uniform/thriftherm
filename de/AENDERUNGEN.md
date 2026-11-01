@@ -4,6 +4,10 @@
 
 Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
 
+## Noch nicht veröffentlicht
+
+- Neue Therme in der Liste: Vaillant atmoTEC pro VUW PL 240/3-3M ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)).
+
 ## 0.7.0 – 30.10.2026
 
 Im Normalbetrieb läuft die Wärmepumpe nur noch mit kleinster Leistung, dort ist ihr COP am besten. Konfiguration Version 4, die ältere Versionen nicht laden: Vor dem Update ein Backup machen, falls du zurückwillst.
