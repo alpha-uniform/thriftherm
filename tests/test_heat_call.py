@@ -392,3 +392,29 @@ def test_a_helped_room_calls_the_boiler_in_the_last_half_hour_of_comfort_too():
     assert state == "comfort_ending"
     state, _ = heat_call.update(rr(temp=20.7), CallMemory(), NOW, NOW - 60, helping=True)
     assert state == "comfort_ending"  # its end just passed, the schedule helper not switched yet
+
+
+def test_a_room_with_a_limited_preheat_calls_to_the_end_of_its_comfort_block():
+    """Issue #6: a block of 30 minutes never called the boiler, and with the preheat cut short it stayed cold."""
+    state, _ = step(rr(temp=20.0), CallMemory(), NOW, NOW + 1200.0)
+    assert state == "comfort_ending"
+    state, _ = step(replace(rr(temp=20.0), short_preheat=True), CallMemory(), NOW, NOW + 1200.0)
+    assert state == "calling"
+
+
+def test_a_room_with_a_limited_preheat_begins_no_new_call_in_the_last_minutes_of_its_block():
+    """The burner lit once for nothing, the room back at its setback (review 2026-11-03). A running call goes on."""
+    short = replace(rr(temp=20.0), short_preheat=True)
+    state, _ = step(short, CallMemory(), NOW, NOW + 200.0)
+    assert state == "comfort_ending"
+    state, _ = step(short, CallMemory(calling=True, since_ts=NOW - 600.0, target=21.0), NOW, NOW + 200.0)
+    assert state == "calling"
+
+
+def test_a_room_with_a_limited_preheat_does_not_begin_early_with_another_rooms_run():
+    """Limit 0 is "not at all": joining a run an hour ahead of its block heated it after all (review 2026-11-03)."""
+    start = NOW + 1800.0
+    setback = rr(temp=18.0, target=17.0, reason="schedule_setback", preheat=start)
+    assert heat_call.join({"bad": setback}, {"bad": "idle"}, {"bad": 21.0}, NOW)["bad"].target == 21.0
+    limited = replace(setback, short_preheat=True)
+    assert heat_call.join({"bad": limited}, {"bad": "idle"}, {"bad": 21.0}, NOW)["bad"].target == 17.0

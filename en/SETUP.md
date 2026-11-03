@@ -275,6 +275,7 @@ You add one room per page. Tick **Add another room** to get the next page; submi
 | Thermostat (TRV or Better Thermostat) | the room's **Better Thermostat** entity. No Better Thermostat yet? Leave it empty and add it later (options → *Rooms* → room → *Edit*) |
 | Power sensors of internal heat sources | optional, leave empty |
 | Weekly schedule helper (optional; replaces the comfort windows below) | a Home Assistant schedule helper whose blocks are the comfort times |
+| Longest preheat | optional, for a room wanted only briefly ([details](GUIDE.md#pre-heating)) |
 | Comfort temperature | temperature while the room is in use, for example 20 °C |
 | Setback temperature | temperature outside the comfort times, for example 17 °C; never above comfort |
 | Comfort windows Mon–Fri / Sat–Sun | times as `HH:MM-HH:MM`, several separated by commas, for example `06:00-08:00,17:00-22:00` |

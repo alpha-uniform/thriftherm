@@ -157,6 +157,7 @@ class BoilerInputs:
     # before they did locks the heating (and the pump) off for the minimum state time.
     room_data_pending: bool = False
     day_start_ts: float | None = None  # local midnight of today: the day's starts are counted from it
+    no_new_release: bool = False  # signs of a fault of the boiler: a block stays (engines/boiler.py)
 
 
 def cold_weight(outdoor_c: float | None) -> float:

@@ -320,13 +320,13 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
         "last_command_ts": None, "last_hvac_mode": "heat", "last_target": 21.0, "learning_until_ts": None,
         "fan_until_ts": None, "manual_by": None, "fan_turned_up_from": None, "fan_turned_up_to": None,
         "lagging_since_ts": None, "boiler_helps": False, "resting": False, "lifted": False, "phase_since_ts": None,
-        "fan_normal": None,
+        "fan_normal": None, "drying_held": False,
     }
     assert list(control.to_storage()) == [
         "learning_bins", "manual_until_ts", "manual_by", "running_since_ts", "stopped_since_ts",
         "last_command_ts", "last_hvac_mode", "last_target", "learning_until_ts",
         "fan_until_ts", "fan_turned_up_from", "fan_turned_up_to", "lagging_since_ts", "boiler_helps",
-        "resting", "lifted", "phase_since_ts", "fan_normal",
+        "resting", "lifted", "phase_since_ts", "fan_normal", "drying_held",
     ]
     assert ControlMemory.from_storage({"last_target": "21.5", "learning_bins": [[1], ["x", 2], [3, "4"]]}) == ControlMemory(
         last_target=21.5, learning_bins=((3, 4.0),)

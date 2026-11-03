@@ -22,6 +22,8 @@ from datetime import date, datetime, time, timedelta
 from ..const import MODE_AWAY, MODE_OFF
 from ..models import DryingState, Parameters, RoomConfig, RoomResult, RoomState, ScheduleState, TimeWindow
 from . import psychrometrics as psy
+from .heat_call import COMFORT_END_GUARD_S
+from .schedule_week import level_at, next_block_start
 
 _LAST_MINUTE = time(23, 59)  # how the form says "to the end of the day" (models.TimeWindow)
 WINDOW_OPEN_STATES = ("on", "open", "true")
@@ -162,7 +164,10 @@ def _default_rate(state: RoomState, params: Parameters) -> float:
 
 
 def _lead_max_s(state: RoomState) -> float | None:
-    return PREHEAT_LEAD_MAX_HEAT_PUMP_S if _preheats_with_heat_pump(state) else None
+    limit = state.config.preheat_max_s
+    if not _preheats_with_heat_pump(state):
+        return limit
+    return PREHEAT_LEAD_MAX_HEAT_PUMP_S if limit is None else min(limit, PREHEAT_LEAD_MAX_HEAT_PUMP_S)
 
 
 def _latched(state: RoomState, for_ts: float) -> bool:
@@ -224,6 +229,86 @@ def preheat_start(
     return return_ts - (lead if lead_max_s is None else min(lead, lead_max_s))
 
 
+def _target_at_return(state: RoomState, return_dt: datetime) -> float:
+    """The target the schedule gives at the return from away, which the preheat aims at.
+
+    Seen 2026-11-01: back at 22:00, when the weekend comfort ended. Comfort was assumed at the return, the
+    rooms preheated from 18:00 for a comfort that was over when they were reached (13 burner starts, 6.7 kWh
+    gas). As the heat call does (heat_call.COMFORT_END_GUARD_S), a return in the last half hour of a comfort
+    block aims at what follows it, not at comfort for those few minutes; with exactly half an hour left it is
+    still comfort, as there. In real time, as there (review 2026-11-02: across the clock change the clock was an
+    hour off).
+    """
+    cfg, schedule = state.config, state.schedule
+
+    def within_guard(at: datetime) -> bool:
+        # a room with a limited preheat calls up to the end of its block (heat_call.update)
+        return cfg.preheat_max_s is None and at.timestamp() - return_dt.timestamp() < COMFORT_END_GUARD_S
+
+    if schedule is None:
+        target, reason = scheduled_target(cfg, return_dt)
+        end = comfort_end(cfg, return_dt) if reason == "schedule_comfort" else None
+        if end is not None and within_guard(end):
+            return cfg.setback_temp  # windows that follow each other are one (comfort_end): the setback follows
+        return target
+    if schedule.week is not None:
+        # Review 2026-11-02: from the next change alone, a block 17:00-22:00 still preheated for a return at
+        # 22:00, and blocks 09:00-12:00 and 14:00-22:00 aimed at the setback at 10:00 for a return at 18:00.
+        # A radiator room preheats up to eight hours ahead and more: any number of changes fit in between.
+        level, change = level_at(schedule.week, return_dt, cfg.comfort_temp, cfg.setback_temp)
+        if change is not None and within_guard(change[0]):
+            return change[1]
+        return level
+    # A helper that does not tell its blocks tells only its next change: at most one is assumed before the return.
+    if schedule.active:
+        change = schedule.next_change or schedule.next_end
+        if change is not None and within_guard(change):
+            after = schedule.next_change_target if schedule.next_change is not None else None
+            return cfg.setback_temp if after is None else after
+        return cfg.comfort_temp if schedule.temperature is None else schedule.temperature
+    if schedule.next_start is not None and schedule.next_start <= return_dt:
+        return cfg.comfort_temp if state.schedule_next_temp is None else state.schedule_next_temp
+    return cfg.setback_temp
+
+
+def _comfort_after_return(state: RoomState, return_dt: datetime) -> tuple[datetime, float] | None:
+    """The next comfort start after the return from away and the target it brings; None where none is known."""
+    cfg, schedule = state.config, state.schedule
+    if schedule is None:
+        start = next_comfort_start(cfg, return_dt)
+        return None if start is None else (start, cfg.comfort_temp)
+    if schedule.week is not None:
+        return next_block_start(schedule.week, return_dt, cfg.comfort_temp)
+    if not schedule.active and schedule.next_start is not None and schedule.next_start > return_dt:
+        return schedule.next_start, cfg.comfort_temp if state.schedule_next_temp is None else state.schedule_next_temp
+    return None
+
+
+def away_aim(
+    state: RoomState, return_ts: float, now: datetime, temperature: float | None, params: Parameters
+) -> tuple[float, float, float]:
+    """What a room preheats to before the return from away: (target, preheat start, the time it is to be reached).
+
+    The target the schedule gives at the return, never below the away temperature. Review 2026-11-02: back at 16:45
+    for a block from 17:00, that was the setback, the preheat for 17:00 began only at the return, and a radiator room
+    reached comfort at 21:41. Where the return finds no comfort and the preheat for the next comfort start must begin
+    before the return (or began already), that start is aimed at, as without away: within its horizon of 12 hours.
+    """
+    # from the timestamp, not by adding seconds to the clock: across a clock change that is an hour off
+    return_dt = datetime.fromtimestamp(return_ts, now.tzinfo)
+    at_return = _target_at_return(state, return_dt)
+    # never lower than away before the return: a setback below the away temperature waits for the return
+    target = max(at_return, params.away_temp)
+    rate, margin, lead_max = _default_rate(state, params), params.preheat_margin_s, _lead_max_s(state)
+    ahead = _comfort_after_return(state, return_dt) if at_return <= state.config.setback_temp else None
+    if ahead is not None and ahead[1] > target and ahead[0].timestamp() - return_ts <= SCHEDULE_PREHEAT_HORIZON_S:
+        start_ts = ahead[0].timestamp()
+        begins = preheat_start(start_ts, ahead[1], temperature, rate, margin, lead_max)
+        if begins <= return_ts or _latched(state, start_ts):
+            return ahead[1], begins, start_ts
+    return target, preheat_start(return_ts, target, temperature, rate, margin, lead_max), return_ts
+
+
 def target_temperature(
     state: RoomState,
     now: datetime,
@@ -247,18 +332,8 @@ def target_temperature(
         target, reason = params.away_temp, "mode_away"
         preheat_ts = None
         if away_return_ts is not None and away_return_ts > now_ts:
-            # from the timestamp, not by adding seconds to the clock: across a clock change that is an hour off
-            return_dt = datetime.fromtimestamp(away_return_ts, now.tzinfo)
-            if state.schedule is not None:
-                # a weekly schedule helper cannot be evaluated for a future time: assume comfort on return
-                target_at_return = cfg.comfort_temp
-            else:
-                target_at_return, _ = scheduled_target(cfg, return_dt)
-            rate = _default_rate(state, params)
-            preheat_ts = preheat_start(
-                away_return_ts, target_at_return, temperature, rate, params.preheat_margin_s, _lead_max_s(state)
-            )
-            if now_ts >= preheat_ts or _latched(state, away_return_ts):
+            target_at_return, preheat_ts, for_ts = away_aim(state, away_return_ts, now, temperature, params)
+            if now_ts >= preheat_ts or _latched(state, for_ts):
                 return target_at_return, "away_preheat", preheat_ts
         if temperature is not None and dew_point is not None and temperature - dew_point < params.away_dewpoint_margin_k:
             # One degree above the room, but never above its comfort temperature: a humidity sensor
@@ -546,8 +621,8 @@ def evaluate_room(
     if target_reason == "schedule_preheat":
         start = next_comfort_start(cfg, now, state.schedule)
         preheat_for_ts = None if start is None else start.timestamp()
-    elif target_reason == "away_preheat":
-        preheat_for_ts = away_return_ts
+    elif target_reason == "away_preheat" and away_return_ts is not None:
+        preheat_for_ts = away_aim(state, away_return_ts, now, temp, params)[2]  # the return, or a comfort start after it
     boost_active = state.boost_until_ts is not None and state.boost_until_ts > now_ts
     if boost_active and target < cfg.comfort_temp:
         target, target_reason = cfg.comfort_temp, "boost"
@@ -614,6 +689,7 @@ def evaluate_room(
         boost_active=boost_active,
         preheat_for_ts=preheat_for_ts,
         comfort_end_ts=None if end is None else end.timestamp(),
+        short_preheat=cfg.preheat_max_s is not None,
         thermostat_heating=state.thermostat_heating,
         temperature_entity=temp_entity,
         schedule_entity=cfg.schedule_entity,

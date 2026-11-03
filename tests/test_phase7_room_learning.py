@@ -88,17 +88,16 @@ def test_prior_curve_and_default_estimate():
     assert prior_cop(-10.0) == pytest.approx(2.2)
     assert prior_cop(-20.0) == pytest.approx(2.2)
     assert prior_cop(0.0) == pytest.approx(3.7 - 2 / 9 * 1.2)
-    value, basis = CopMap().estimate(7.0)
+    value, basis = CopMap().estimate(7.0, 1.0)
     assert basis == "prior" and value == pytest.approx(4.9 * PRIOR_CALIBRATION_DEFAULT)
 
 
 def test_prior_is_calibrated_by_measured_bins():
     cm = CopMap()
-    for _ in range(6):
-        cm.add(17.0, 3.3)  # bin 16..18, prior at 17 °C = 6.0
-    assert cm.calibration_factor() == pytest.approx(0.55, abs=0.001)
-    value, basis = cm.estimate(5.0)
+    cm.add_interval(17.0, 3300.0 * 3.1, 1000.0 * 3.1, 3.1 * 3600.0, 0.0)  # bin 16..18, prior at 17 °C = 6.0
+    assert cm.calibration_factor(1.0) == pytest.approx(0.55, abs=0.001)
+    value, basis = cm.estimate(5.0, 1.0)
     assert basis == "prior_calibrated"
     assert value == pytest.approx(prior_cop(5.0) * 0.55, abs=0.01)
-    assert cm.estimate(17.0) == (3.3, "learned")
-    assert cm.bin_count(17.0) == 6 and cm.bin_count(5.0) == 0
+    assert cm.estimate(17.0, 1.0) == (3.3, "learned")
+    assert cm.learned(17.0, 1.0) and not cm.learned(5.0, 1.0)

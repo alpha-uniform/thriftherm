@@ -36,6 +36,7 @@ from ..const import (
     BOILER_PLAN_DISABLED,
     BOILER_PLAN_HANDS_OFF,
     BOILER_PLAN_HEAT,
+    BOILER_REPORTS_FAULT,
     BOILER_REPORTS_HEATING,
     BOILER_REPORTS_HEATING_AFTER,
     BOILER_REPORTS_HOT_WATER,
@@ -139,7 +140,7 @@ def hot_water_suspected(
     """
     if reported_mode == BOILER_REPORTS_HOT_WATER:
         return True
-    if reported_mode == BOILER_REPORTS_HEATING:
+    if reported_mode in (BOILER_REPORTS_HEATING, BOILER_REPORTS_FAULT):
         return False
     burning = gas_w is not None and gas_w > HOT_WATER_GAS_W
     if reported_mode == BOILER_REPORTS_HEATING_AFTER and not burning:
@@ -416,6 +417,9 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
     waiting = None
     # the state held against toggling is the plan itself: heat or block
     wanted_state = BOILER_PLAN_HEAT if need else BOILER_PLAN_BLOCK
+    if inp.no_new_release and need and mem.state != BOILER_PLAN_HEAT and not frost:
+        # Only no new release (issue #5): a release in force stays, a block cannot stop what is under way.
+        wanted_state, waiting, reason = BOILER_PLAN_BLOCK, "boiler_fault_hold", "boiler_fault_hold"
     if mem.state is not None and wanted_state != mem.state and not frost:
         if mem.state_since_ts is not None and now - mem.state_since_ts < MIN_STATE_S:
             wanted_state, waiting = mem.state, "min_state_time"
@@ -432,8 +436,9 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
     )
     if wanted_state == BOILER_PLAN_HEAT:
         heating_up = tuple(heat_up.in_force(mem.heat_up, inp.rooms))
-        if heating_up:
-            # a boiler cycling on the higher flow would teach the curve to go down
+        if heating_up or any(r.short_preheat for r in load.wanting_rooms(inp.rooms)):
+            # a boiler cycling on the higher flow would teach the curve to go down, and a room cold at the start of
+            # its block by choice, or brisk in it, says nothing about the flow in either direction (issue #6)
             taught = replace(inp, learning_allowed=False)
         boosts = _boosts(mem, heating_rooms)
         # The learning moves the line of the room that sets the flow: a step on another's would not

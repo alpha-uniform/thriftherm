@@ -109,7 +109,8 @@
           "add_another": "Add another room",
           "bathroom_drying_mode": "Bathroom drying with the heat pump",
           "bathroom_drying_automatic": "Start the drying by itself after a shower (off: only with the button “Dry now”)",
-          "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows below)"
+          "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows below)",
+          "preheat_max_min": "Longest preheat (optional; empty: as long as it takes. Set, the room also calls the boiler up to the end of its block, for a short block)"
         }
       }
     },
@@ -234,7 +235,7 @@
           "heat_pump_fan_stage": "Fan stage in normal operation"
         },
         "data_description": {
-          "heat_pump_shortfall": "Boiler or district heating helps: warm fastest, a few cents dearer. Heat pump runs higher: no boiler, its COP drops. Warm up slower: the heat pump stays at its least power; boiler or district heating helps only from half a degree below target, then until every room is there. Without central heating it always runs higher.",
+          "heat_pump_shortfall": "Boiler or district heating helps: warm fastest, a few cents dearer. Heat pump runs higher: no boiler, its COP drops. Warm up slower: the heat pump stays at its least power; boiler or district heating helps only from half a degree below target, then until every room is there. Heat pump alone: it stays at its least power, and while it is the cheaper source its rooms do not call the boiler. The boiler goes on heating the other rooms, and all rooms if the heat pump is dearer or blocked. With district heating this means least power only. Without central heating it always runs higher.",
           "heat_pump_fan_stage": "Auto lets the unit choose. A higher stage carries more of the heat into the rooms (measured: full about 7 % more than auto at the same power), but is louder. Drying and quick heat-up use their own stage and give this one back afterwards. A stage the unit does not offer counts as auto. A stage chosen by hand stays."
         },
         "sections": {
@@ -264,7 +265,9 @@
               "cop_min_power_w": "Minimum electrical power",
               "cop_min_delta_t_k": "Minimum air temperature rise",
               "cop_min_samples": "Minimum valid samples",
-              "cop_settle_max_k_per_min": "Max. outlet temperature slope (settled)"
+              "cop_settle_max_k_per_min": "Max. outlet temperature slope (settled)",
+              "cop_outlet_max_age_min": "Outlet air temperature: longest time without a report",
+              "cop_intake_max_age_min": "Intake air temperature: longest time without a report from it and its device"
             }
           },
           "icing": {
@@ -353,7 +356,8 @@
           "schedule_weekend": "Comfort windows Sat–Sun",
           "bathroom_drying_mode": "Bathroom drying with the heat pump",
           "bathroom_drying_automatic": "Start the drying by itself after a shower (off: only with the button “Dry now”)",
-          "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows below)"
+          "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows below)",
+          "preheat_max_min": "Longest preheat (optional; empty: as long as it takes. Set, the room also calls the boiler up to the end of its block, for a short block)"
         }
       },
       "reset_learning": {
@@ -421,7 +425,8 @@
       "options": {
         "boiler_helps": "Boiler or district heating helps",
         "lift": "Heat pump runs higher",
-        "slower": "Warm up slower"
+        "slower": "Warm up slower",
+        "alone": "Heat pump alone"
       }
     },
     "heat_pump_fan_stage": {
@@ -465,6 +470,7 @@
             "state": {
               "measured": "Measured",
               "learned": "Learned",
+              "legacy": "Old table",
               "prior": "Starting curve",
               "prior_calibrated": "Starting curve (calibrated)",
               "profile": "Measured on the same model"
@@ -741,7 +747,10 @@
               "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
               "resumed_at_minimum": "A room at its target: heats again at its least power",
               "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+              "boiler_fault_hold": "Boiler fault: no new release for now",
               "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
               "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
               "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
               "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -959,7 +968,10 @@
               "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
               "resumed_at_minimum": "A room at its target: heats again at its least power",
               "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+              "boiler_fault_hold": "Boiler fault: no new release for now",
               "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
               "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
               "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
               "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -1073,7 +1085,10 @@
               "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
               "resumed_at_minimum": "A room at its target: heats again at its least power",
               "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+              "boiler_fault_hold": "Boiler fault: no new release for now",
               "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
               "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
               "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
               "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -1141,6 +1156,7 @@
             "state": {
               "measured": "Measured",
               "learned": "Learned",
+              "legacy": "Old table",
               "prior": "Starting curve",
               "prior_calibrated": "Starting curve (calibrated)",
               "profile": "Measured on the same model"
@@ -1261,7 +1277,10 @@
               "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
               "resumed_at_minimum": "A room at its target: heats again at its least power",
               "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+              "boiler_fault_hold": "Boiler fault: no new release for now",
               "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
               "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
               "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
               "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -1375,7 +1394,10 @@
               "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
               "resumed_at_minimum": "A room at its target: heats again at its least power",
               "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+              "boiler_fault_hold": "Boiler fault: no new release for now",
               "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
               "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
               "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
               "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -1540,7 +1562,10 @@
               "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
               "resumed_at_minimum": "A room at its target: heats again at its least power",
               "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+              "boiler_fault_hold": "Boiler fault: no new release for now",
               "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
               "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
               "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
               "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -1685,7 +1710,10 @@
               "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
               "resumed_at_minimum": "A room at its target: heats again at its least power",
               "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+              "boiler_fault_hold": "Boiler fault: no new release for now",
               "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
               "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
               "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
               "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -1796,7 +1824,10 @@
               "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
               "resumed_at_minimum": "A room at its target: heats again at its least power",
               "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+              "boiler_fault_hold": "Boiler fault: no new release for now",
               "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
               "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
               "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
               "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -1909,6 +1940,7 @@
             "state": {
               "measured": "Measured",
               "learned": "Learned",
+              "legacy": "Old table",
               "prior": "Starting curve",
               "prior_calibrated": "Starting curve (calibrated)",
               "profile": "Measured on the same model"
@@ -2003,7 +2035,10 @@
               "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
               "resumed_at_minimum": "A room at its target: heats again at its least power",
               "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+              "boiler_fault_hold": "Boiler fault: no new release for now",
               "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
               "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
               "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
               "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -2152,7 +2187,10 @@
               "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
               "resumed_at_minimum": "A room at its target: heats again at its least power",
               "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+              "boiler_fault_hold": "Boiler fault: no new release for now",
               "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
               "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
               "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
               "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -2282,7 +2320,10 @@
               "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
               "resumed_at_minimum": "A room at its target: heats again at its least power",
               "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+              "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+              "boiler_fault_hold": "Boiler fault: no new release for now",
               "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+              "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
               "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
               "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
               "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -2521,6 +2562,10 @@
     "airflow_not_calibrated": {
       "title": "Heat pump airflow not calibrated",
       "description": "Without the rpm → m³/h curve there is no thermal power and therefore no COP. The cost comparison falls back to the data sheet until then. The curve lives in the heat pump options."
+    },
+    "boiler_overheated": {
+      "title": "Boiler flow above 100 °C",
+      "description": "The boiler reported a flow of up to {flow} °C, the highest at {time}. That is far beyond anything it should reach, whether the reading is real or the sensor is faulty, and no software can fix it. Have a heating engineer check the boiler soon (pump, air, pressure, bypass, flow and return sensors, fault memory). If it happens again, turn the boiler off and leave it off until it has been checked. Thriftherm cannot stop it; for half an hour after such a reading it only releases no new heating. This notice ends a day after the last reading."
     },
     "boiler_data_unavailable": {
       "title": "No data from the boiler",

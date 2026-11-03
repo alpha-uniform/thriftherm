@@ -73,7 +73,10 @@ LABELS: dict[str, dict[str, str]] = {
         "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
         "resumed_at_minimum": "A room at its target: heats again at its least power",
         "relatched_unit_stopped": "The unit stopped by itself while a room is short: setpoint set anew",
+        "woken_unit_stands": "The unit stands on while a room is short: setpoint half a degree higher",
+        "boiler_fault_hold": "Boiler fault: no new release for now",
         "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
+        "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
         "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
         "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
         "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -89,7 +92,8 @@ LABELS: dict[str, dict[str, str]] = {
         "unavailable": "Unavailable", "cooling_user": "Cooling (user)", "fan_only": "Fan only", "auto": "Auto",
         "heating_idle": "Heating idle", "heating_warming_up": "Heating warming up", "heating_stable": "Heating",
         # COP basis and power source
-        "measured": "Measured", "learned": "Learned", "prior": "Starting curve", "prior_calibrated": "Starting curve (calibrated)",
+        "measured": "Measured", "learned": "Learned", "legacy": "Old table",
+        "prior": "Starting curve", "prior_calibrated": "Starting curve (calibrated)",
         "profile": "Measured on the same model",
         "plug": "Smart plug", "midea_internal": "Heat pump's own value", "nominal_circulation_estimate": "Estimate from nominal circulation (±30 %)",
         "last_known": "Last known value (held up to 6 h)",
@@ -108,6 +112,8 @@ LABELS: dict[str, dict[str, str]] = {
         "airflow_curve_not_calibrated": "airflow not calibrated", "warming_up": "warming up", "electrical_power_missing": "no power reading",
         "electrical_power_below_minimum": "power too low", "delta_t_below_minimum": "temperature rise too small",
         "outlet_temp_not_settled": "outlet not settled", "fan_rpm_outside_curve": "fan speed outside the curve",
+        "outlet_temp_invalid:stale": "outlet sensor silent too long",
+        "intake_temp_invalid:stale": "intake sensor silent too long",
         "raw_cop_out_of_range": "COP implausible", "exceeds_carnot_limit": "above the physical limit",
         "setpoint_recently_changed": "setpoint changed recently", "boiler_control_not_active": "boiler control not active",
         "hot_water_recent": "hot water recently", "no_heating_run": "boiler not heating right now",
@@ -152,7 +158,10 @@ LABELS: dict[str, dict[str, str]] = {
         "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
         "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
         "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+        "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+        "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
         "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+        "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
         "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
         "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
         "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -167,7 +176,7 @@ LABELS: dict[str, dict[str, str]] = {
         "none": "Keine", "start": "Start", "stop": "Stopp", "adjust": "Anpassen",
         "unavailable": "Nicht verfügbar", "cooling_user": "Kühlen (Nutzer)", "fan_only": "Nur Lüfter", "auto": "Auto",
         "heating_idle": "Heizen bereit", "heating_warming_up": "Heizen (Warmlauf)", "heating_stable": "Heizen",
-        "measured": "Gemessen", "learned": "Gelernt", "prior": "Startkurve", "prior_calibrated": "Startkurve (kalibriert)",
+        "measured": "Gemessen", "learned": "Gelernt", "legacy": "Alte Tabelle", "prior": "Startkurve", "prior_calibrated": "Startkurve (kalibriert)",
         "profile": "Gemessen am gleichen Modell",
         "plug": "Zwischenstecker", "midea_internal": "Eigener Wert der Wärmepumpe", "nominal_circulation_estimate": "Schätzung aus Nenn-Umlaufmenge (±30 %)",
         "last_known": "Letzter bekannter Wert (bis 6 h gehalten)",
@@ -183,6 +192,8 @@ LABELS: dict[str, dict[str, str]] = {
         "airflow_curve_not_calibrated": "Luftmenge nicht kalibriert", "warming_up": "Warmlauf", "electrical_power_missing": "keine Leistungsmessung",
         "electrical_power_below_minimum": "Leistung zu gering", "delta_t_below_minimum": "Temperaturhub zu klein",
         "outlet_temp_not_settled": "Ausblas nicht eingeschwungen", "fan_rpm_outside_curve": "Lüfterdrehzahl außerhalb der Kennlinie",
+        "outlet_temp_invalid:stale": "Ausblasfühler zu lange still",
+        "intake_temp_invalid:stale": "Ansaugfühler zu lange still",
         "raw_cop_out_of_range": "COP unplausibel", "exceeds_carnot_limit": "über der physikalischen Grenze",
         "setpoint_recently_changed": "Sollwert kürzlich geändert", "boiler_control_not_active": "Thermensteuerung nicht aktiv",
         "hot_water_recent": "Warmwasser kürzlich", "no_heating_run": "Therme heizt gerade nicht",
@@ -195,7 +206,7 @@ CONTROL_MODES = ("off", "shadow", "active")
 LEARNING_PHASES = ("learning", "refining", "paused")
 ACTIONS = ("none", "start", "stop", "adjust")
 DEFROST_KINDS = ("none", "persistent", "cycle")
-COP_BASES = ("measured", "learned", "prior", "prior_calibrated", "profile")
+COP_BASES = ("measured", "learned", "legacy", "prior", "prior_calibrated", "profile")
 POWER_SOURCES = ("plug", "midea_internal")
 OUTDOOR_SOURCES = ("last_known",)  # otherwise the entity the value comes from
 CALL_STATES = ("calling", "idle", "stalled", "comfort_ending", "not_allowed", "thermostat_idle")
@@ -208,13 +219,37 @@ _NOT_REASONS = (
     + CHANGED_BY + GAS_SPLIT_SOURCES
     + ("persistent", "cycle")
 )
-REASON_CODES = tuple(k for k in LABELS["en"] if k not in _NOT_REASONS)
+# A gate past its limit (`outlet_temp_invalid:stale`) has a label for the wording but is no state of an attribute: a
+# colon in a translation key fails hassfest.
+REASON_CODES = tuple(k for k in LABELS["en"] if k not in _NOT_REASONS and ":" not in k)
 
 
 def label(code: str | None, lang: str) -> str:
     if code is None:
         return "–"
     return LABELS[lang].get(code) or code.replace("_", " ")
+
+
+# The gates of a COP that have no label of their own. Not in LABELS: they are no states of an attribute either, and the
+# part after a colon (`insufficient_samples:3/12`) only says more about the same thing.
+_GATE_LABELS = {
+    "en": {
+        "not_heating": "not heating right now", "insufficient_samples": "too few readings yet",
+        "defrost_cycle": "probably defrosting", "defrost_persistent": "probably icing", "lift": "running above its least power",
+        "intake_temp_invalid": "no valid reading from the intake sensor", "intake_rh_invalid": "no valid intake humidity",
+        "outlet_temp_invalid": "no valid reading from the outlet sensor",
+    },
+    "de": {
+        "not_heating": "heizt gerade nicht", "insufficient_samples": "noch zu wenige Messwerte",
+        "defrost_cycle": "Abtauen vermutet", "defrost_persistent": "Vereisung vermutet", "lift": "läuft über der kleinsten Leistung",
+        "intake_temp_invalid": "Ansaugfühler ohne gültigen Wert", "intake_rh_invalid": "Ansaugfeuchte ohne gültigen Wert",
+        "outlet_temp_invalid": "Ausblasfühler ohne gültigen Wert",
+    },
+}
+
+
+def gate_label(code: str, lang: str) -> str:
+    return LABELS[lang].get(code) or _GATE_LABELS[lang].get(code.partition(":")[0]) or label(code, lang)
 
 
 # ---------------------------------------------------------------- decision reasons
@@ -240,6 +275,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "boiler_data_unavailable": "boiler data unavailable (ebusd), boiler state unknown",
         "no_demand": "no room needs heat",
         "heat_pump_runs_through": "heat pump runs through, setpoint {target_c} °C",
+        "heat_pump_gas_cheaper": "central heating cheaper, the heat pump pauses",
         "heat_pump_plan_only": "heat pump only plans, the boiler heats",
     },
     "de": {
@@ -263,12 +299,13 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "boiler_data_unavailable": "Thermendaten fehlen (ebusd), Zustand der Therme unbekannt",
         "no_demand": "Kein Raum braucht Wärme",
         "heat_pump_runs_through": "Wärmepumpe läuft durch, Sollwert {target_c} °C",
+        "heat_pump_gas_cheaper": "Heizung günstiger, die Wärmepumpe pausiert",
         "heat_pump_plan_only": "Wärmepumpe plant nur, es heizt die Therme",
     },
 }
 _COP_LABEL = {
-    "en": {"measured": "COP", "learned": "expected COP (learned)"},
-    "de": {"measured": "COP", "learned": "erwarteter COP (gelernt)"},
+    "en": {"measured": "COP", "learned": "expected COP (learned)", "legacy": "expected COP (old table)", "profile": "expected COP (measured on the same model)"},
+    "de": {"measured": "COP", "learned": "erwarteter COP (gelernt)", "legacy": "erwarteter COP (alte Tabelle)", "profile": "erwarteter COP (gemessen am gleichen Modell)"},
 }
 _COP_LABEL_PRIOR = {"en": "expected COP (starting curve)", "de": "erwarteter COP (Startkurve)"}
 _DIGITS = {"cop": 2, "break_even": 2, "heat_pump_eur": 3, "central_eur": 3}
@@ -293,7 +330,7 @@ def render_reason(item: Reason, lang: str, room_names: Mapping[str, str]) -> str
         elif key == "rooms":
             values[key] = ", ".join(room_names.get(r, r) for r in value)
         elif key == "gates":
-            values[key] = ", ".join(label(g, lang) for g in value)
+            values[key] = ", ".join(gate_label(g, lang) for g in value)
         elif key in ("reason", "state"):
             values[key] = label(value, lang)
         elif key == "basis":
@@ -409,12 +446,14 @@ CARD: dict[str, dict[str, str]] = {
 # as the end of a sentence "paused, because …"; every safety_* code reads as "safety"
 PAUSED_BECAUSE: dict[str, dict[str, str]] = {
     "en": {
+        "boiler_fault": "the boiler shows signs of a fault",
         "no_heating_run": "the boiler is not heating right now", "rooms_heating_up": "a room heats up with an extra",
         "setpoint_recently_changed": "a setpoint was just changed", "quick_heat_up": "a room is in quick heat-up",
         "drying_mode": "the bathroom is drying", "boiler_control_not_active": "boiler control is not active",
         "hot_water_recent": "hot water just ran", "safety": "safety is restricted",
     },
     "de": {
+        "boiler_fault": "die Therme zeigt Anzeichen einer Störung",
         "no_heating_run": "die Therme gerade nicht heizt", "rooms_heating_up": "ein Raum mit Zuschlag aufheizt",
         "setpoint_recently_changed": "ein Sollwert gerade geändert wurde", "quick_heat_up": "ein Raum schnell aufheizt",
         "drying_mode": "das Bad getrocknet wird", "boiler_control_not_active": "die Thermensteuerung nicht aktiv ist",
@@ -431,7 +470,7 @@ SAFETY_ISSUES: dict[str, dict[str, str]] = {
         "room_using_trv_fallback": "{room}: uses the thermostat's own temperature",
         "room_thermostat_silent": "{room}: thermostat does not report",
         "outdoor_temperature_missing": "Outdoor temperature missing", "ebusd_signal_lost": "No connection to the boiler (eBUS)",
-        "boiler_flow_temp_invalid": "Boiler flow temperature missing", "midea_unavailable": "Heat pump not reachable",
+        "boiler_flow_temp_invalid": "Boiler flow temperature missing", "boiler_overheated": "Boiler flow above 100 °C: have the boiler checked", "midea_unavailable": "Heat pump not reachable",
         "midea_error_code": "Heat pump reports error {code}", "midea_power_sensor_invalid": "Heat pump power reading missing",
     },
     "de": {
@@ -440,7 +479,7 @@ SAFETY_ISSUES: dict[str, dict[str, str]] = {
         "room_using_trv_fallback": "{room}: nutzt die Temperatur am Thermostat",
         "room_thermostat_silent": "{room}: Thermostat meldet sich nicht",
         "outdoor_temperature_missing": "Außentemperatur fehlt", "ebusd_signal_lost": "Keine Verbindung zur Therme (eBUS)",
-        "boiler_flow_temp_invalid": "Vorlauftemperatur der Therme fehlt", "midea_unavailable": "Wärmepumpe nicht erreichbar",
+        "boiler_flow_temp_invalid": "Vorlauftemperatur der Therme fehlt", "boiler_overheated": "Vorlauf der Therme über 100 °C: bitte prüfen lassen", "midea_unavailable": "Wärmepumpe nicht erreichbar",
         "midea_error_code": "Wärmepumpe meldet Fehler {code}", "midea_power_sensor_invalid": "Strommessung der Wärmepumpe fehlt",
     },
 }

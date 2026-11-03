@@ -61,7 +61,7 @@ TUNING_DEFAULTS = {
     "midea_fan_run_on_min": 15.0, "midea_learning_runs": True,
     "drying_target_temp": 22.0, "drying_abs_humidity_rise_g_m3": 2.5, "drying_max_min": 60.0,
     "cop_warmup_s": 600.0, "cop_min_power_w": 150.0, "cop_min_delta_t_k": 3.0, "cop_min_samples": 12.0,
-    "cop_settle_max_k_per_min": 0.5,
+    "cop_settle_max_k_per_min": 0.5, "cop_outlet_max_age_min": 60.0, "cop_intake_max_age_min": 180.0,
     "icing_block_min": 120.0, "defrost_coil_rise_k": 5.0, "defrost_max_cycles_90min": 3.0, "icing_coil_depression_k": 8.0,
 }
 TUNING_SECTIONS = ["switching", "drying", "cop", "icing"]
@@ -786,3 +786,10 @@ def test_every_choice_of_the_heat_pump_tuning_has_its_wording():
             assert list(worded) == list(config["options"]) and all(worded.values()), name
         described = data["options"]["step"]["midea_tuning"]["data_description"]
         assert set(selects) <= set(described) and all(described[k] for k in selects), name
+
+
+def test_the_room_form_offers_the_longest_preheat_and_leaves_it_empty():
+    keys = {str(k): k for k in config_schema.schema_room({}, False).schema}
+    assert "preheat_max_min" in keys and keys["preheat_max_min"].default is vol.UNDEFINED
+    filled = {str(k): k for k in config_schema.schema_room({"preheat_max_min": 45}, False).schema}
+    assert filled["preheat_max_min"].description == {"suggested_value": 45}

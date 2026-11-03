@@ -49,8 +49,8 @@ class RoomCtrlMemory:
     answered_with: float | None = None
 
     def to_storage(self) -> dict:
-        # Kept over a restart so the rate limit still holds and a setpoint that
-        # changed meanwhile is still recognised as a manual change.
+        # Kept over a restart so the rate limit still holds. A setpoint that differs after a restart
+        # is no manual change by itself: the coordinator asks for a change it saw.
         return {
             "last_sent_target": self.last_sent_target,
             "last_sent_ts": self.last_sent_ts,

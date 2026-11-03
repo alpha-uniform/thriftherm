@@ -76,6 +76,12 @@ How to switch it off:
 - **At the boiler:** turn the hot water knob fully to the left, then back to your usual value. The C disappears (confirmed by a user on a Vaillant).
 - **In Thriftherm:** switch off *Keep hot water ready* in the options under *Gas boiler (ebusd) and gas meter* ([step 4.3](SETUP.md#43-gas-boiler-ebusd-and-gas-meter)). This suits only a combi boiler without a cylinder, and it only acts with active boiler control.
 
+### Repair notice “Boiler flow above 100 °C”
+
+A boiler must never reach this, whether the reading is real or the sensor is faulty. Thriftherm can neither ask for it nor stop it: it sends 75 °C at most, and in one reported case the flow rose despite a block that was sent. Have a heating engineer check the boiler soon (pump, air, pressure, bypass, flow and return sensors, fault memory, d.60). If it happens again, turn it off and leave it off until it has been checked.
+
+From 90 °C and with the codes S.53 and S.54 (too little water) Thriftherm releases no new heating for half an hour, four hours in a row at most, so that a stuck sensor does not block for good. A release in force stays, frost protection goes first, and with boiler control active the heat pump heats its rooms meanwhile even if the central heating would be cheaper, past a lockout for dear heat too. The notice ends a day after the last reading above 100 °C; until then *Safety state* shows degraded and the heating curve does not learn.
+
 ### Does Thriftherm change my hot water temperature?
 
 No. Thriftherm sends "no value" for the hot water setpoint, and the boiler's knob decides. The only exception is your own choice: with *Keep hot water ready* off, the boiler no longer heats for hot water while no tap is open.

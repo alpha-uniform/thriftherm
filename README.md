@@ -95,7 +95,7 @@ Damit lief die getestete Installation. Andere Geräte gehen genauso, solange sie
 | Therme | ebusd-Circuit / Definition | Status | Daten von |
 |--------|----------------------------|--------|-----------|
 | Vaillant atmoTEC plus VCW 194/4-5 | `bai` / `bai.308523` | geprüft, Schreibtest bestanden | Entwickler |
-| Vaillant atmoTEC pro VUW PL 240/3-3M | `bai` / `bai.308523` | vom Besitzer geprüft, Schreibtest bestanden, Rückfall zum Drehknopf nach rund 15 min | Nutzer ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)) |
+| Vaillant atmoTEC pro VUW PL 240/3-3M | `bai` / `bai.308523` | vom Besitzer geprüft, Schreibtest bestanden, Rückfall zum Drehknopf nach rund 15 min | [jwarzecha](https://github.com/jwarzecha) ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)) |
 
 Jede Therme kommt als Profil dazu: welche ebusd-Nachrichten ihre Werte liefern und welche Nachricht den Sollwert annimmt. Ich kann nur die Therme bei mir zu Hause testen. Jede weitere Therme kommt über Daten dazu, die ihre Besitzer teilen – **deine Therme kann die nächste sein**: Öffne ein [Issue mit Thermendaten](https://github.com/alpha-uniform/thriftherm/issues/new?template=boiler_data.yml) und nenne Modell, ebusd-Definition und was dir aufgefallen ist. Wer Daten beisteuert, wird auf Wunsch in der Tabelle oben genannt; ohne Angabe bleibt der Eintrag anonym.
 
@@ -133,6 +133,7 @@ Thriftherm entsteht in meiner Freizeit. Wenn es dir Energie oder Geld spart, kan
 Die **Heating Heroes** stehen hier:
 
 - **David** – der erste Kaffee, und zwei Ideen, die jetzt drin sind: das Gas getrennt nach Heizung und Warmwasser zu zählen, auch ohne Gaszähler, und die Abfrageliste von ebusd zu kürzen, damit die wichtigen Werte öfter kommen. Danke!
+- **[jwarzecha](https://github.com/jwarzecha)** – ein Kaffee, die Idee, dass die Therme nur kommt, wenn auch das Thermostat heizen will ([#3](https://github.com/alpha-uniform/thriftherm/issues/3)), und die Daten einer Vaillant atmoTEC pro ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)). Danke!
 
 ## Lizenz
 

@@ -1,7 +1,7 @@
 """Adaptive statistics. Deterministic, inspectable, resettable.
 
-* CopMap      – mean COP per outdoor-temperature bin ; falls back to a
-                prior curve scaled by a factor learned from the measured bins
+* CopMap      – heat and electricity added up per outdoor-temperature band; falls back
+                to a prior curve scaled by a factor learned from the measured bands
 * HeatRateStats – heat-up rate per room and heat source in K/h from observed
                   episodes, used for the away-return and schedule preheat planning.
 
@@ -17,7 +17,24 @@ from statistics import median
 from .common import as_dict, as_float, as_floats
 
 BIN_WIDTH_K = 2.0
-MAX_ALPHA = 0.2  # running mean becomes an EMA once the bin has 1/MAX_ALPHA samples
+
+# A band forgets by the hours run in it, not by entries or by the calendar. Until 2026-11-02 it was a mean with
+# an alpha of at least 0.2 and remembered about 45 minutes of running: 4.53 against 3.56 in energy on 2026-11-01 at
+# +8..+10. A band saw 14-23 hours in the 30 days to 2026-11-02: this half-life spans a heating season and still
+# follows a unit that changes, and a band that does not run for months keeps what it knows.
+COP_BAND_HALF_LIFE_S = 100 * 3600.0
+COP_BAND_LEARNED_S = 3 * 3600.0  # run time from which a band counts as known: estimate, calibration and learning runs
+# Outside this the sum says more about the sensors than about the unit: an outlet reading frozen cold shows
+# no heat under a running compressor, a wrong airflow curve an impossible COP. Such a band decides nothing.
+COP_BAND_PLAUSIBLE = (1.0, 7.0)
+# The table from before 2026-11-02 cannot be turned into sums: it holds a mean of the last entries, no energy.
+# Its values bridge the hours until a band is learned, as worth this much run time of it.
+LEGACY_WORTH_S = 3600.0
+LEGACY_WORTH_WH = 340.0  # that hour in electricity, at the least speed (24 Hz, about 340 W, seen 2026-10-20 to 30)
+
+BASIS_LEARNED = "learned"
+BASIS_LEGACY = "legacy"
+BASIS_LEARNING = "learning"  # a band on its way: shown, it decides nothing yet
 
 EPISODE_MIN_S = 30 * 60.0
 EPISODE_MIN_RISE_K = 0.5
@@ -32,7 +49,7 @@ PRIOR_COP_POINTS: tuple[tuple[float, float], ...] = ((-10.0, 2.2), (-7.0, 2.5), 
 # Duct losses and real operation keep a portable split below its fiche: start at 80 %.
 PRIOR_CALIBRATION_DEFAULT = 0.8
 PRIOR_CALIBRATION_RANGE = (0.3, 1.5)
-MIN_BIN_COUNT = 5  # samples from which a bin counts as known: for the estimate, the calibration and the learning runs
+MIN_SAMPLES = 5  # entries from which a bin of a shipped map, or of the old table, counts as known
 
 
 def prior_cop(outdoor_c: float) -> float:
@@ -45,15 +62,13 @@ def prior_cop(outdoor_c: float) -> float:
     return pts[-1][1]
 
 
-def _calibration(bins: Iterable[tuple[int, float, int]], min_count: int) -> float | None:
-    """Measured / prior, weighted by samples over the bins with at least `min_count` of them."""
+def _calibration(bins: Iterable[tuple[int, float, float]]) -> float | None:
+    """Measured / prior over the bins given, each with its weight."""
     num = den = 0.0
-    for idx, mean, count in bins:
-        if count < min_count:
-            continue
+    for idx, mean, weight in bins:
         centre = idx * BIN_WIDTH_K + BIN_WIDTH_K / 2.0
-        num += count * mean / prior_cop(centre)
-        den += count
+        num += weight * mean / prior_cop(centre)
+        den += weight
     if den == 0:
         return None
     lo, hi = PRIOR_CALIBRATION_RANGE
@@ -61,33 +76,77 @@ def _calibration(bins: Iterable[tuple[int, float, int]], min_count: int) -> floa
 
 
 @dataclass
-class CopBin:
+class CopBand:
+    """What a band of outdoor temperature cost and gave, over all of its heating time.
+
+    The heat is stored without the duct factor, which is applied when it is read: a change of the factor scales
+    the band and takes nothing from it. Starts, run-on and defrosts are in the sums: a start is expensive
+    (2.4-2.8 in its first ten minutes, 5-7.5 % of the electricity of an evening, seen 2026-10-30 and 11-01),
+    a long run dilutes it by itself, and a unit that cycles shows what that truly costs.
+    """
+
+    heat_wh: float = 0.0
+    electricity_wh: float = 0.0
+    run_s: float = 0.0
+    last_ts: float | None = None
+
+    def add(self, heat_wh: float, electricity_wh: float, seconds: float, ts: float) -> None:
+        keep = 0.5 ** (seconds / COP_BAND_HALF_LIFE_S)
+        self.heat_wh = self.heat_wh * keep + heat_wh
+        self.electricity_wh = self.electricity_wh * keep + electricity_wh
+        self.run_s = self.run_s * keep + seconds
+        self.last_ts = ts
+
+    def cop(self, duct_factor: float) -> float | None:
+        return None if self.electricity_wh <= 0.0 else self.heat_wh * duct_factor / self.electricity_wh
+
+    def learned_cop(self, duct_factor: float) -> float | None:
+        """Its COP once it counts as known, else None."""
+        cop = self.cop(duct_factor)
+        lo, hi = COP_BAND_PLAUSIBLE
+        return cop if self.run_s >= COP_BAND_LEARNED_S and cop is not None and lo <= cop <= hi else None
+
+    def to_storage(self) -> dict[str, float | None]:
+        return {
+            "heat_wh": round(self.heat_wh, 1),
+            "electricity_wh": round(self.electricity_wh, 1),
+            "run_s": round(self.run_s),
+            "last_ts": None if self.last_ts is None else round(self.last_ts),
+        }
+
+    @classmethod
+    def from_storage(cls, data: object) -> CopBand | None:
+        stored = as_dict(data)
+        values = [as_float(stored.get(key)) for key in ("heat_wh", "electricity_wh", "run_s")]
+        if any(v is None or v < 0.0 for v in values):
+            return None
+        return cls(*values, as_float(stored.get("last_ts")))
+
+
+@dataclass
+class LegacyBin:
+    """A bin of the table from before 2026-11-02. Frozen, and kept in the shape it had, for older versions to read."""
+
     count: int = 0
     mean: float = 0.0
     min: float = 0.0
     max: float = 0.0
 
-    def add(self, value: float) -> None:
-        if self.count == 0:
-            self.mean = self.min = self.max = value
-        else:
-            alpha = max(1.0 / (self.count + 1), MAX_ALPHA)
-            self.mean += alpha * (value - self.mean)
-            self.min = min(self.min, value)
-            self.max = max(self.max, value)
-        self.count += 1
-
     def to_dict(self) -> dict[str, float | int]:
         return {"count": self.count, "mean": round(self.mean, 3), "min": round(self.min, 3), "max": round(self.max, 3)}
 
     @classmethod
-    def from_dict(cls, data: dict) -> CopBin:
+    def from_dict(cls, data: dict) -> LegacyBin:
         return cls(int(data.get("count", 0)), float(data.get("mean", 0.0)), float(data.get("min", 0.0)), float(data.get("max", 0.0)))
 
 
 @dataclass
 class CopMap:
-    bins: dict[int, CopBin] = field(default_factory=dict)
+    bands: dict[int, CopBand] = field(default_factory=dict)
+    legacy: dict[int, LegacyBin] = field(default_factory=dict)
+    # the fan stage of normal operation and the airflow curve the bands were measured with: heat is recomputed from neither
+    measured_with: dict[str, str] | None = None
+    legacy_duct_factor: float | None = None  # the factor the old values hold in them; a change of it used to forget them
 
     @staticmethod
     def bin_of(outdoor_c: float) -> int:
@@ -98,65 +157,150 @@ class CopMap:
         lo = index * BIN_WIDTH_K
         return f"{lo:+.0f}..{lo + BIN_WIDTH_K:+.0f}"
 
-    def add(self, outdoor_c: float, cop: float) -> None:
-        self.bins.setdefault(self.bin_of(outdoor_c), CopBin()).add(cop)
+    def bind(self, fan_stage: str, airflow_curve: tuple[tuple[float, float], ...], duct_factor: float) -> bool:
+        """Note what the data is measured with. True: it was measured with something else, and the table is to restart.
 
-    def expected(self, outdoor_c: float, min_count: int = MIN_BIN_COUNT) -> float | None:
-        """Expected COP at this outdoor temperature, from the bin or its neighbours."""
+        Nothing on record, as in a store from before these were kept, is taken for the setup of now.
+        """
+        current = {"fan_stage": fan_stage, "airflow_curve": ",".join(f"{rpm:g}:{flow:g}" for rpm, flow in airflow_curve)}
+        if self.measured_with is None:
+            self.measured_with = current
+        if self.legacy_duct_factor is None and self.legacy:
+            self.legacy_duct_factor = duct_factor
+        return self.measured_with != current
+
+    def add_interval(self, outdoor_c: float, heat_wh: float, electricity_wh: float, seconds: float, ts: float) -> None:
+        """Add a stretch of heating, `heat_wh` without the duct factor, to the band of its outdoor temperature."""
+        self.bands.setdefault(self.bin_of(outdoor_c), CopBand()).add(heat_wh, electricity_wh, seconds, ts)
+
+    def learned(self, outdoor_c: float, duct_factor: float) -> bool:
+        band = self.bands.get(self.bin_of(outdoor_c))
+        return band is not None and band.learned_cop(duct_factor) is not None
+
+    def expected(self, outdoor_c: float, duct_factor: float) -> float | None:
+        """Expected COP at this outdoor temperature, from the band or its neighbours, when learned."""
         idx = self.bin_of(outdoor_c)
         for candidate in (idx, idx - 1, idx + 1):
-            b = self.bins.get(candidate)
-            if b is not None and b.count >= min_count:
-                return round(b.mean, 3)
+            band = self.bands.get(candidate)
+            cop = None if band is None else band.learned_cop(duct_factor)
+            if cop is not None:
+                return round(cop, 3)
         return None
 
-    def bin_count(self, outdoor_c: float) -> int:
-        b = self.bins.get(self.bin_of(outdoor_c))
-        return 0 if b is None else b.count
+    def _legacy_cop(self, idx: int, duct_factor: float) -> float | None:
+        """The old value of a bin that had enough entries, with what its band has measured since."""
+        old = self.legacy.get(idx)
+        if old is None or old.count < MIN_SAMPLES:
+            return None
+        cop = old.mean
+        if self.legacy_duct_factor:
+            cop *= duct_factor / self.legacy_duct_factor
+        band = self.bands.get(idx)
+        if band is None or band.electricity_wh <= 0.0:
+            return cop
+        blend = (band.heat_wh * duct_factor + cop * LEGACY_WORTH_WH) / (band.electricity_wh + LEGACY_WORTH_WH)
+        lo, hi = COP_BAND_PLAUSIBLE
+        return blend if lo <= blend <= hi else None
 
-    def calibration_factor(self, min_count: int = MIN_BIN_COUNT) -> float | None:
-        """Measured / prior, weighted by samples over all bins with enough data."""
-        return _calibration(((idx, b.mean, b.count) for idx, b in self.bins.items()), min_count)
+    def calibration_factor(self, duct_factor: float) -> float | None:
+        """Measured / prior, weighted by run time over all bands that are learned or have an old value."""
+
+        # An old bin by its entries, as they weighed before the update, so that no band jumps with it: 0.83 against
+        # 0.79 on the store of 2026-11-02. The fullest is worth the hour.
+        fullest = max((old.count for old in self.legacy.values()), default=1)
+
+        def weighted() -> Iterable[tuple[int, float, float]]:
+            for idx in {*self.bands, *self.legacy}:
+                band = self.bands.get(idx)
+                cop = None if band is None else band.learned_cop(duct_factor)
+                if cop is not None:
+                    yield idx, cop, band.run_s
+                elif (old := self._legacy_cop(idx, duct_factor)) is not None:
+                    yield idx, old, LEGACY_WORTH_S * self.legacy[idx].count / fullest + (0.0 if band is None else band.run_s)
+
+        return _calibration(weighted())
 
     def estimate(
-        self, outdoor_c: float, shipped: Mapping[int, tuple[float, int]] | None = None
+        self, outdoor_c: float, duct_factor: float, shipped: Mapping[int, tuple[float, int]] | None = None
     ) -> tuple[float, str]:
-        """Expected COP and its basis: learned bin, calibrated prior, shipped map of the model, or default prior.
+        """Expected COP and its basis: learned band, old value, calibrated prior, shipped map of the model, or default prior.
 
         What this unit measured comes first. `shipped` is a map measured on the same model
         (`cop_profiles`): its bins, or the prior calibrated by them, stand in where the unit
         has measured nothing.
         """
-        learned = self.expected(outdoor_c)
+        learned = self.expected(outdoor_c, duct_factor)
         if learned is not None:
-            return learned, "learned"
-        factor = self.calibration_factor()
+            return learned, BASIS_LEARNED
+        idx = self.bin_of(outdoor_c)
+        for candidate in (idx, idx - 1, idx + 1):
+            old = self._legacy_cop(candidate, duct_factor)
+            if old is not None:
+                return round(old, 3), BASIS_LEGACY
+        factor = self.calibration_factor(duct_factor)
         if factor is not None:
             return round(prior_cop(outdoor_c) * factor, 3), "prior_calibrated"
         if shipped:
-            idx = self.bin_of(outdoor_c)
             for candidate in (idx, idx - 1, idx + 1):
-                if candidate in shipped and shipped[candidate][1] >= MIN_BIN_COUNT:
+                if candidate in shipped and shipped[candidate][1] >= MIN_SAMPLES:
                     return round(shipped[candidate][0], 3), "profile"
-            factor = _calibration(((i, mean, n) for i, (mean, n) in shipped.items()), MIN_BIN_COUNT)
+            factor = _calibration((i, mean, float(n)) for i, (mean, n) in shipped.items() if n >= MIN_SAMPLES)
             if factor is not None:
                 return round(prior_cop(outdoor_c) * factor, 3), "profile"
         return round(prior_cop(outdoor_c) * PRIOR_CALIBRATION_DEFAULT, 3), "prior"
 
-    def to_dict(self) -> dict[str, dict]:
-        return {self.bin_label(i): b.to_dict() for i, b in sorted(self.bins.items())}
+    def _shown(self, idx: int, duct_factor: float) -> dict | None:
+        band = self.bands.get(idx)
+        learned = band is not None and band.learned_cop(duct_factor) is not None
+        old = None if learned else self._legacy_cop(idx, duct_factor)
+        if band is None and old is None:
+            return None  # an old bin with too few entries: as little to show as to go by
+        cop = old if old is not None else None if band is None else band.cop(duct_factor)
+        return {
+            "runtime_h": 0.0 if band is None else round(band.run_s / 3600.0, 2),
+            "heat_kwh": 0.0 if band is None else round(band.heat_wh * duct_factor / 1000.0, 2),
+            "electricity_kwh": 0.0 if band is None else round(band.electricity_wh / 1000.0, 2),
+            "cop": None if cop is None else round(cop, 3),
+            "learned": learned,
+            "basis": BASIS_LEARNED if learned else BASIS_LEGACY if old is not None else BASIS_LEARNING,
+        }
+
+    def to_dict(self, duct_factor: float) -> dict[str, dict]:
+        shown = ((i, self._shown(i, duct_factor)) for i in sorted({*self.bands, *self.legacy}))
+        return {self.bin_label(i): values for i, values in shown if values is not None}
 
     def to_storage(self) -> dict:
-        return {"bins": {str(i): b.to_dict() for i, b in self.bins.items()}}
+        return {
+            "bands": {str(i): b.to_storage() for i, b in self.bands.items()},
+            "bins": {str(i): b.to_dict() for i, b in self.legacy.items()},  # read by older versions as their table
+            "measured_with": self.measured_with,
+            "legacy_duct_factor": self.legacy_duct_factor,
+        }
 
     @classmethod
     def from_storage(cls, data: dict | None) -> CopMap:
+        """Read a store; one from before 2026-11-02 has only `bins`, the old table."""
         cm = cls()
-        for key, value in as_dict(as_dict(data).get("bins")).items():
+        data = as_dict(data)
+        for key, value in as_dict(data.get("bins")).items():
             try:
-                cm.bins[int(key)] = CopBin.from_dict(value)
+                old = LegacyBin.from_dict(value)
+                if as_float(old.mean) is not None:
+                    cm.legacy[int(key)] = old
             except (AttributeError, TypeError, ValueError):
                 continue
+        for key, value in as_dict(data.get("bands")).items():
+            try:
+                index = int(key)
+            except (TypeError, ValueError):
+                continue
+            band = CopBand.from_storage(value)
+            if band is not None:
+                cm.bands[index] = band
+        stored = data.get("measured_with")
+        if isinstance(stored, dict):
+            cm.measured_with = {str(k): str(v) for k, v in stored.items()}
+        cm.legacy_duct_factor = as_float(data.get("legacy_duct_factor"))
         return cm
 
 

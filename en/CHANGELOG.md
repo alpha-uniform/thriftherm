@@ -4,9 +4,27 @@
 
 Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
 
-## Unreleased
+## 0.7.1 – 2026-11-03
 
+- New per room: *Longest preheat* limits how early a room begins, and it then calls the boiler in its block up to its end ([#6](https://github.com/alpha-uniform/thriftherm/issues/6)).
+- Fixed: a flow above 100 °C counted as "data missing" and boiler fault codes as hot water; a repair notice now warns, and from 90 °C and with S.53/S.54 there is no new release for now, while the heat pump heats its rooms even if it is dearer ([#5](https://github.com/alpha-uniform/thriftherm/issues/5)).
+- Fixed: a heat pump standing for over half an hour counted as stopping anew again and again, and its setpoint sank; if it does not start with a room below target, the setpoint now goes half a degree higher every half hour.
+- New choice *Heat pump alone* under *When the heat pump alone is not enough*: least power, its rooms do not call the boiler while the heat pump is cheaper, and the boiler goes on heating the others.
+- Fixed: a room thermostat back after a restart with another setpoint counted as a change by hand for two hours; the plan now applies again.
+- Fixed: the COP map knew only the last 45 minutes of running per step and read too high, by up to 27 % in the step of a start; it now adds up heat and electricity over all of the heating time with start and run-on, and old data fades with a half-life of 100 run hours.
+- Fixed: the COP of a short run no longer chooses the central heating and so stops the heat pump; the sensor still shows it, the choice goes by the settled value or the map.
+- Fixed: when a settled COP too low stopped the heat pump and the map started it again, running and resting went on with no end; two such values at least 30 minutes apart now lock it out, also across a rest of up to an hour (*Lockout after icing / inefficiency*, 120 minutes by default).
+- New learning phase: the old COP map could not be converted. Until a step has 3 hours of run time its value still counts, weakly (basis *Old table*), and learning runs are possible there again.
+- A new duct factor only rescales the COP map; another fan stage in normal operation starts it anew, as another airflow curve already did.
+- Fixed: the COP was often "unknown" because a quiet sensor counted as out of date; the last report now counts for 60 minutes at the outlet; at the intake for 3 hours once its device is silent too, otherwise up to a day (adjustable under *COP measurement*).
+- Fixed: *Dry now* left the compressor standing; the heat pump now runs a little stronger while drying.
+- The heat pump follows its rising reading and stops itself less often.
+- Fewer hard starts of the heat pump: with the central heating cheaper but a room still wanted, it stays in heating and rests instead of switching off and on; the *Decision reason* then says "central heating cheaper".
+- Fixed: returning from Away heats to the target the schedule gives at that time; back at the end of the comfort time, that is the setback, and shortly before a comfort time the room is pre-heated for it.
+- Fixed: before the return from Away no room is set lower than the away temperature.
+- Fixed: the heat pump is no longer switched off during a defrost when the rooms are warm.
 - New boiler in the list: Vaillant atmoTEC pro VUW PL 240/3-3M ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)).
+- Default COP values updated.
 
 ## 0.7.0 — 2026-10-30
 

@@ -22,8 +22,8 @@ COP_STALE_S = 180.0  # three update cycles without a valid sample
 # The intake sensors hang in room air and report on change only. Seen 2026-10-11: in a steady run the
 # humidity did not move for 35 minutes, the reading counted as stale and the COP went back to unknown.
 # Humidity hardly matters for the result (ten points of RH move the heat by under one percent).
-# The adapter reads the intake humidity with this limit and the intake temperature with an hour:
-# an older reading arrives here as invalid, so only the outlet sensor has an age to check.
+# The adapter reads the intake humidity with this limit and the temperatures with the limits of the options:
+# an older reading arrives here as invalid, so no reading has an age to check here.
 RH_MAX_AGE_S = 6 * 3600.0
 
 
@@ -84,11 +84,11 @@ def carnot_limit(indoor_coil_c: float | None, outdoor_coil_c: float | None) -> f
     return (indoor_coil_c + 273.15) / lift
 
 
-def thermal_power_now(heat_pump: HeatPumpState, params: Parameters) -> float | None:
-    """The heat the air carries right now, without the gates of a settled sample.
+def free_power_now(heat_pump: HeatPumpState, params: Parameters) -> float | None:
+    """The heat the air carries right now without the duct factor, and without the gates of a settled sample.
 
-    For adding up over a whole on/off cycle: the outlet sensor lags, but what it misses
-    at the start it shows after the compressor has stopped, as long as the fan runs.
+    For adding up over a whole on/off cycle or a band of the COP table: the outlet sensor lags, but what it
+    misses at the start it shows after the compressor has stopped, as long as the fan runs.
     0 with the fan standing, None when it cannot be told.
     """
     if heat_pump.fan_rpm is None:
@@ -103,16 +103,17 @@ def thermal_power_now(heat_pump: HeatPumpState, params: Parameters) -> float | N
         # that heat is a small part of the cycle: without it every cycle would be spoiled instead.
         airflow = curve[0][1] * rpm / curve[0][0]
     intake, outlet = heat_pump.intake_temp, heat_pump.outlet_temp
-    if airflow is None or not (intake.valid and heat_pump.intake_rh.valid and outlet.valid):
+    if airflow is None or not (intake.valid and heat_pump.intake_rh.valid):
         return None
-    warmer = outlet.value > intake.value
-    if outlet.age_s is not None and outlet.age_s > params.cop_max_sensor_age_s and (warmer or heat_pump.compressor_hz):
-        # As old as a settled sample must not be. Only a reading that shows no heat while the compressor
-        # stands is taken as it is: the sensor reports on change, and at rest there is none for a long time.
+    if not outlet.valid:
+        # Only a reading past its limit that shows no heat while the compressor stands is taken as it is:
+        # the sensor reports on change, and at rest there is none for a long time.
+        if outlet.reason == "stale" and not heat_pump.compressor_hz and outlet.value <= intake.value:
+            return 0.0
         return None
-    if not warmer:
+    if outlet.value <= intake.value:
         return 0.0
-    return psy.air_heating_power_w(intake.value, heat_pump.intake_rh.value, outlet.value, airflow * params.duct_factor)
+    return psy.air_heating_power_w(intake.value, heat_pump.intake_rh.value, outlet.value, airflow)
 
 
 def instant(heat_pump: HeatPumpState, run_state: str, electrical_power_w: float | None, params: Parameters) -> CopResult:
@@ -138,8 +139,6 @@ def instant(heat_pump: HeatPumpState, run_state: str, electrical_power_w: float 
     for name, reading in (("intake_temp", heat_pump.intake_temp), ("intake_rh", heat_pump.intake_rh), ("outlet_temp", outlet)):
         if not reading.valid:
             gates.append(f"{name}_invalid:{reading.reason}")
-    if outlet.valid and outlet.age_s is not None and outlet.age_s > params.cop_max_sensor_age_s:
-        gates.append("outlet_temp_stale")
 
     if outlet_slope_k_per_min(heat_pump.outlet_temp_history) > params.cop_settle_max_k_per_min:
         gates.append("outlet_temp_not_settled")

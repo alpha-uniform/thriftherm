@@ -42,7 +42,7 @@ const OVERRIDE_MAX = 30;
 // decision reasons that only describe normal operation; the others are worth a line
 const ORDINARY_REASONS = new Set(["hot_water_priority", "mode_off", "mode_boiler_only", "mode_heat_pump_only",
   "cop_above_break_even", "heat_pump_cheaper", "cop_below_break_even", "room_below_target", "mode_away", "no_demand",
-  "heat_pump_runs_through", "heat_pump_plan_only"]);
+  "heat_pump_runs_through", "heat_pump_gas_cheaper", "heat_pump_plan_only"]);
 // only for a card that cannot reach the integration at all
 const RETRY_MS = 30000; // after a failed request for the wording
 const FALLBACK = {

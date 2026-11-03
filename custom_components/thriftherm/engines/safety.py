@@ -19,7 +19,12 @@ HEAT_PUMP_ISSUE_PREFIX = "midea_"
 FROST_HYSTERESIS_K = 1.0
 
 
-def evaluate(snapshot: HeatingSnapshot, rooms: dict[str, RoomResult], previous_frost_rooms: tuple[str, ...] = ()) -> SafetyResult:
+def evaluate(
+    snapshot: HeatingSnapshot,
+    rooms: dict[str, RoomResult],
+    previous_frost_rooms: tuple[str, ...] = (),
+    boiler_overheated: bool = False,
+) -> SafetyResult:
     issues: list[str] = []
     frost_rooms: list[str] = []
 
@@ -50,6 +55,8 @@ def evaluate(snapshot: HeatingSnapshot, rooms: dict[str, RoomResult], previous_f
         issues.append("ebusd_signal_lost")
     elif boiler.flow_temp.entity_id and not boiler.flow_temp.valid:
         issues.append(f"boiler_flow_temp_invalid:{boiler.flow_temp.reason}")
+    if boiler_overheated:
+        issues.append("boiler_overheated")
 
     heat_pump = snapshot.heat_pump
     if heat_pump.configured and not heat_pump.available:

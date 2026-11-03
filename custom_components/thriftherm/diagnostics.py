@@ -62,6 +62,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: Thrifth
         },
         "learning": {
             "cop_map": coordinator.cop_map.to_storage(),
+            "cop_map_by_outdoor_temp": data.get("cop_map"),  # with the COP of each band, for the shipped map (docs/PUBLISHING.md)
             "heat_rates": coordinator.heat_rates.to_dict(),
             "cool_rates": coordinator.cool_rates.to_dict(),
             "boiler_memory": coordinator.boiler_memory.to_storage(),

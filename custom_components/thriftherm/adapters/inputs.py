@@ -11,7 +11,7 @@ import re
 from collections import deque
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
-from datetime import datetime, time, timedelta
+from datetime import datetime, time
 from operator import attrgetter, itemgetter
 from typing import Any
 
@@ -54,6 +54,7 @@ from ..const import (
 from ..engines import psychrometrics as psy
 from ..engines.cop import RH_MAX_AGE_S
 from ..engines.room import WINDOW_CLOSED_STATES, WINDOW_OPEN_STATES
+from ..engines.schedule_week import block_starting, comfort_run_end, next_level_change
 
 # A room sensor that has been quiet for hours is not a measurement any more: room
 # temperatures decide the heating, so they get a tighter limit than the general one
@@ -103,6 +104,7 @@ from ..models import (
     ScheduleState,
     SensorReading,
     SettingChange,
+    Week,
 )
 from .config import parameters_from_config, prices_from_config, room_configs_from_config
 
@@ -182,67 +184,6 @@ def whole_number(value: str | None) -> int | None:
 _WRAPPER_PLATFORMS = ("better_thermostat", "versatile_thermostat")
 
 _WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
-# a block of a schedule helper: start, end (time.max: to midnight), the temperature it names
-Block = tuple[time, time, float | None]
-
-
-def block_starting(week: tuple[tuple[Block, ...], ...], at: datetime) -> tuple[datetime, float | None] | None:
-    """The block of a schedule helper that starts at `at` (local time), or a minute after: its end and its temperature.
-
-    A minute between two blocks is no gap: "to 23:59" is how a block to the end of the day is often
-    written, and the next day's block starts at 00:00 (test of 2026-10-15: two days of 00:00-23:59
-    ended the comfort at 23:59, and the room did not call the boiler from 23:29 to midnight).
-    """
-    for begin in (at, at.replace(second=0, microsecond=0) + timedelta(minutes=1)):
-        for start, end, temperature in week[begin.weekday()]:
-            if start == begin.time():
-                if end == time.max:
-                    return datetime.combine(begin.date() + timedelta(days=1), time(), tzinfo=at.tzinfo), temperature
-                return datetime.combine(begin.date(), end, tzinfo=at.tzinfo), temperature
-    return None
-
-
-def comfort_run_end(
-    week: tuple[tuple[Block, ...], ...], block_end: datetime, level: float, comfort_temp: float
-) -> datetime | None:
-    """Where the comfort of a schedule helper ends, from the end of its running block; None: not within a week.
-
-    The helper's next event is the end of the running block only. A block that starts at the same
-    instant carries the comfort on (06:00-12:00 at 20 °C, 12:00-22:00 at 21 °C: taken as the comfort
-    end, 12:00 kept the room from calling the boiler from 11:30 to 12:00 every day), unless it asks
-    for less than the block before it (`level`). A block that names no temperature asks for `comfort_temp`.
-    """
-    end = block_end
-    while end - block_end < timedelta(days=7):
-        following = block_starting(week, end)
-        if following is None or following[0] <= end:
-            return end
-        asked = comfort_temp if following[1] is None else following[1]
-        if asked < level - 0.01:
-            return end
-        end, level = following[0], asked
-    return None
-
-
-def next_level_change(
-    week: tuple[tuple[Block, ...], ...], block_end: datetime, level: float, comfort_temp: float, setback_temp: float
-) -> tuple[datetime, float] | None:
-    """Where the target of a schedule helper changes next, from the end of its running block, and to what.
-
-    A block that starts at that instant at the same temperature carries it on; one at another
-    temperature is the change (to its temperature, `comfort_temp` when it names none), no block the
-    change to `setback_temp`. None: not within a week.
-    """
-    at = block_end
-    while at - block_end < timedelta(days=7):
-        following = block_starting(week, at)
-        if following is None:
-            return at, setback_temp
-        asked = comfort_temp if following[1] is None else following[1]
-        if abs(asked - level) > 0.01 or following[0] <= at:
-            return at, asked
-        at = following[0]
-    return None
 
 
 def _state_age_s(state: State, now: datetime) -> float:
@@ -503,7 +444,10 @@ class SnapshotBuilder:
         A device paired with ZHA is alive as well while ZHA has seen it within the same age (see `ZHA`).
         The reading keeps its own age, and a day without a change is too long either way.
         """
-        max_age = min(self.params.sensor_max_age_s, ROOM_TEMP_MAX_AGE_S)
+        return self._read_quiet_temperature(entity_id, now, min(self.params.sensor_max_age_s, ROOM_TEMP_MAX_AGE_S))
+
+    def _read_quiet_temperature(self, entity_id: str | None, now: datetime, max_age: float) -> SensorReading:
+        """A temperature past `max_age` that its device shows to be alive: its value just does not change."""
         reading = self.read_number(entity_id, RANGE_ROOM_TEMP, now, max_age_s=max_age)
         if reading.reason != "stale" or entity_id is None or (reading.age_s or 0.0) > ROOM_TEMP_UNCHANGED_MAX_S:
             return reading
@@ -563,7 +507,7 @@ class SnapshotBuilder:
             out.append((entity_id, state.state, open_since))
         return tuple(out)
 
-    def _schedule_blocks(self, entity_id: str) -> tuple[tuple[Block, ...], ...] | None:
+    def _schedule_blocks(self, entity_id: str) -> Week | None:
         """The week of a schedule helper, day by day; None for an entity that does not tell its blocks.
 
         The helper's state names its next event only. Its blocks are what its `schedule.get_schedule`
@@ -618,12 +562,13 @@ class SnapshotBuilder:
         temp = self.read_attr_float(state, "temperature")
         next_start = next_end = change = None
         change_target: float | None = None
+        # the room engine reads the target at a later time from it, as at the return from away
+        week = self._schedule_blocks(cfg.schedule_entity)
         raw = state.attributes.get("next_event")
         parsed = None if raw is None else dt_util.parse_datetime(str(raw))
         if parsed is not None:
             # while a block runs, the next event is its end; otherwise the next start
             event = dt_util.as_local(parsed)
-            week = self._schedule_blocks(cfg.schedule_entity)
             if active:
                 next_end = event
                 if week is not None:
@@ -645,7 +590,7 @@ class SnapshotBuilder:
                 change_target = cfg.comfort_temp if following is None or following[1] is None else following[1]
         return ScheduleState(
             active=active, temperature=temp, next_start=next_start, next_end=next_end,
-            next_change=change, next_change_target=change_target,
+            next_change=change, next_change_target=change_target, week=week,
         )
 
     def _room_state(
@@ -740,12 +685,13 @@ class SnapshotBuilder:
         except (TypeError, ValueError):
             error_code = None
 
-        cop_age = 3600.0  # validity window; the outlet sensor's freshness is gated in the cop engine
         plug_power = self.read_number(cfg.get(CONF_HEAT_PUMP_POWER), RANGE_POWER_W, now, max_age_s=PLUG_POWER_MAX_AGE_S)
         if plug_power.reason == "stale" and plug_power.value <= PLUG_STANDBY_MAX_W and running_s is None:
             plug_power = replace(plug_power, valid=True, reason=None)  # the compressor stands: a steady low draw is not reported
-        intake_temp = self.read_number(cfg.get(CONF_HEAT_PUMP_INTAKE_TEMP), RANGE_ROOM_TEMP, now, max_age_s=cop_age)
-        outlet_temp = self.read_number(cfg.get(CONF_HEAT_PUMP_OUTLET_TEMP), (-10.0, 80.0), now, max_age_s=cop_age)
+        # past these limits a reading reaches the COP and the control as invalid
+        intake_age, outlet_age = self.params.cop_intake_max_age_s, self.params.cop_outlet_max_age_s
+        intake_temp = self._read_quiet_temperature(cfg.get(CONF_HEAT_PUMP_INTAKE_TEMP), now, intake_age)
+        outlet_temp = self.read_number(cfg.get(CONF_HEAT_PUMP_OUTLET_TEMP), (-10.0, 80.0), now, max_age_s=outlet_age)
 
         now_ts = now.timestamp()
         if outlet_temp.valid:

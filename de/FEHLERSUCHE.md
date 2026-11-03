@@ -76,6 +76,12 @@ So schaltest du sie ab:
 - **An der Therme:** den Warmwasser-Drehknopf ganz nach links drehen, dann wieder auf den gewohnten Wert. Das C verschwindet (von einem Nutzer an einer Vaillant bestätigt).
 - **In Thriftherm:** in den Optionen unter *Gastherme (ebusd) und Gaszähler* *Warmwasser bereithalten* ausschalten ([Schritt 4.3](EINRICHTUNG.md#43-gastherme-ebusd-und-gaszähler)). Das passt nur zu einer Kombitherme ohne Speicher und wirkt nur bei aktiver Thermensteuerung.
 
+### Reparaturmeldung „Vorlauf der Therme über 100 °C“
+
+Eine Therme darf diesen Wert nie erreichen, egal ob er stimmt oder der Fühler defekt ist. Thriftherm kann das nicht anfordern und nicht stoppen: Gesendet werden höchstens 75 °C, und in einem gemeldeten Fall stieg der Vorlauf trotz gesendeter Sperre. Lass die Therme bald vom Fachbetrieb prüfen (Pumpe, Luft, Druck, Bypass, Vorlauf- und Rücklauffühler, Fehlerspeicher, d.60). Passiert es wieder, schalte sie aus und lass sie aus, bis sie geprüft ist.
+
+Ab 90 °C und bei den Codes S.53 und S.54 (zu wenig Wasser) gibt Thriftherm eine halbe Stunde lang keine neue Heizung frei, höchstens vier Stunden am Stück, damit ein hängender Fühler nicht für immer sperrt. Eine laufende Freigabe bleibt, Frostschutz geht vor, und bei aktiver Thermensteuerung heizt die Wärmepumpe ihre Räume in der Zeit auch dann, wenn die Heizung günstiger wäre, auch über eine Sperre wegen teurer Wärme hinweg. Die Meldung endet einen Tag nach dem letzten Wert über 100 °C, solange steht *Sicherheitsstatus* auf eingeschränkt, und die Heizkurve lernt nicht.
+
 ### Ändert Thriftherm meine Warmwassertemperatur?
 
 Nein. Für den Warmwasser-Sollwert sendet Thriftherm „kein Wert“, der Drehknopf der Therme entscheidet. Die einzige Ausnahme wählst du selbst: Ist *Warmwasser bereithalten* aus, heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist.

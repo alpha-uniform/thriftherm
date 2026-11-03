@@ -1,10 +1,12 @@
 """What the controller has learned, and when that knowledge no longer applies.
 
 Learned values describe the installation as it was: a heating curve correction
-fits the radiators and the hydraulic balance, a COP map fits the unit with or
-without ducts, a heat-up rate fits a room's sensor and thermostat. When the user
-changes exactly those settings, the old values would steer the new setup, so
-the affected area is forgotten. Anything else is kept.
+fits the radiators and the hydraulic balance, a COP table fits the unit and its
+airflow, a heat-up rate fits a room's sensor and thermostat. When the user changes
+exactly those settings, the old values would steer the new setup, so the affected
+area is forgotten. Anything else is kept. A duct factor is not among them: the table
+holds its heat without it and scales. It stays in the stored fingerprint only for an
+older version, which compares it and would forget its table.
 
 No Home Assistant imports: the comparison is plain data and unit-tested.
 """
@@ -44,8 +46,8 @@ REASON_USER = "user"
 REASON_CONFIGURATION = "configuration_changed"
 
 _ROOM_PREFIX = "room:"
-# settings no longer fingerprinted; a basis stored before still carries them
-_RETIRED = {SCOPE_BOILER: ("flow_min", "flow_max")}
+# settings that invalidate nothing any more; a basis may carry them
+_RETIRED = {SCOPE_BOILER: ("flow_min", "flow_max"), SCOPE_HEAT_PUMP: ("duct_factor",)}
 
 
 def _fingerprint(values: Mapping[str, Any]) -> str:
@@ -88,7 +90,7 @@ def basis(config: Mapping[str, Any]) -> dict[str, str]:
 
 
 def _comparable(scope: str, fingerprint: Any) -> Any:
-    """A stored fingerprint without the settings retired since it was written."""
+    """A fingerprint without the settings that invalidate nothing any more."""
     retired = _RETIRED.get(scope)
     if not retired or not isinstance(fingerprint, str):
         return fingerprint
@@ -110,7 +112,9 @@ def invalidated(stored: Any, current: Mapping[str, str]) -> tuple[set[str], set[
     """
     if not isinstance(stored, Mapping):
         return set(), set()
-    scopes = {s for s in (SCOPE_BOILER, SCOPE_HEAT_PUMP) if s in stored and _comparable(s, stored[s]) != current.get(s)}
+    scopes = {
+        s for s in (SCOPE_BOILER, SCOPE_HEAT_PUMP) if s in stored and _comparable(s, stored[s]) != _comparable(s, current.get(s))
+    }
     rooms = {
         key[len(_ROOM_PREFIX):]
         for key, value in current.items()

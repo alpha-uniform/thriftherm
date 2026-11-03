@@ -39,9 +39,11 @@ from ..const import (
     CONF_BOILER_EFFICIENCY,
     CONF_BREAK_EVEN_MARGIN_OFF,
     CONF_BREAK_EVEN_MARGIN_ON,
+    CONF_COP_INTAKE_MAX_AGE_MIN,
     CONF_COP_MIN_DELTA_T,
     CONF_COP_MIN_POWER_W,
     CONF_COP_MIN_SAMPLES,
+    CONF_COP_OUTLET_MAX_AGE_MIN,
     CONF_COP_SETTLE_MAX_K_PER_MIN,
     CONF_COP_WARMUP_S,
     CONF_DEFROST_COIL_RISE_K,
@@ -79,6 +81,7 @@ from ..const import (
     CONF_ROOM_KEY,
     CONF_ROOM_HEAT_PUMP,
     CONF_ROOM_NAME,
+    CONF_ROOM_PREHEAT_MAX_MIN,
     CONF_ROOM_PRIORITY,
     CONF_ROOM_SCHEDULE_ENTITY,
     CONF_ROOM_SCHEDULE_WEEKDAY,
@@ -94,9 +97,11 @@ from ..const import (
     DEFAULT_BOILER_EFFICIENCY,
     DEFAULT_BREAK_EVEN_MARGIN_OFF,
     DEFAULT_BREAK_EVEN_MARGIN_ON,
+    DEFAULT_COP_INTAKE_MAX_AGE_MIN,
     DEFAULT_COP_MIN_DELTA_T,
     DEFAULT_COP_MIN_POWER_W,
     DEFAULT_COP_MIN_SAMPLES,
+    DEFAULT_COP_OUTLET_MAX_AGE_MIN,
     DEFAULT_COP_SETTLE_MAX_K_PER_MIN,
     DEFAULT_COP_WARMUP_S,
     DEFAULT_DEFROST_COIL_RISE_K,
@@ -146,6 +151,14 @@ def _as_tuple(value: Any) -> tuple[str, ...]:
     return tuple(str(v) for v in value if v)
 
 
+def _minutes_as_s(value: Any) -> float | None:
+    """A number of minutes in seconds; None where none is set. 0 is a value: no preheat at all."""
+    try:
+        return None if value in (None, "") else float(value) * 60.0
+    except (TypeError, ValueError):
+        return None
+
+
 def room_configs_from_config(rooms: list[Mapping[str, Any]]) -> tuple[RoomConfig, ...]:
     out: list[RoomConfig] = []
     for raw in rooms:
@@ -167,6 +180,7 @@ def room_configs_from_config(rooms: list[Mapping[str, Any]]) -> tuple[RoomConfig
                 bathroom_drying=bool(raw.get(CONF_ROOM_DRYING, False)),
                 drying_automatic=bool(raw.get(CONF_ROOM_DRYING_AUTO, True)),
                 schedule_entity=raw.get(CONF_ROOM_SCHEDULE_ENTITY) or None,
+                preheat_max_s=_minutes_as_s(raw.get(CONF_ROOM_PREHEAT_MAX_MIN)),
             )
         )
     out.sort(key=lambda r: r.priority)
@@ -216,6 +230,8 @@ def parameters_from_config(config: Mapping[str, Any]) -> Parameters:
         cop_warmup_s=f(CONF_COP_WARMUP_S, DEFAULT_COP_WARMUP_S),
         cop_min_power_w=f(CONF_COP_MIN_POWER_W, DEFAULT_COP_MIN_POWER_W),
         cop_min_delta_t_k=f(CONF_COP_MIN_DELTA_T, DEFAULT_COP_MIN_DELTA_T),
+        cop_outlet_max_age_s=f(CONF_COP_OUTLET_MAX_AGE_MIN, DEFAULT_COP_OUTLET_MAX_AGE_MIN) * 60.0,
+        cop_intake_max_age_s=f(CONF_COP_INTAKE_MAX_AGE_MIN, DEFAULT_COP_INTAKE_MAX_AGE_MIN) * 60.0,
         cop_min_samples=int(f(CONF_COP_MIN_SAMPLES, DEFAULT_COP_MIN_SAMPLES)),
         airflow_curve=parse_airflow_curve(config.get(CONF_HEAT_PUMP_AIRFLOW_CURVE)),
         duct_factor=f(CONF_HEAT_PUMP_DUCT_FACTOR, DEFAULT_HEAT_PUMP_DUCT_FACTOR),

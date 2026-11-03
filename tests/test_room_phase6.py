@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -8,7 +8,7 @@ from custom_components.thriftherm.engines.learning import HEAT_BY_BOILER as BOIL
 from custom_components.thriftherm.engines.learning import HEAT_BY_BOTH as BOTH
 from custom_components.thriftherm.engines.learning import HEAT_BY_HEAT_PUMP as HEAT_PUMP
 from custom_components.thriftherm.engines.learning import HeatRateStats
-from custom_components.thriftherm.models import DryingState, Override, RoomConfig
+from custom_components.thriftherm.models import DryingState, Override, RoomConfig, ScheduleState
 
 from .conftest import MISSING, PARAMS, room_config, room_state
 
@@ -73,9 +73,11 @@ def test_away_return_target_holds_across_the_clock_change():
     saturday = datetime(2026, 10, 24, 12, 0, tzinfo=berlin)  # summer time
     return_ts = datetime(2026, 10, 26, 17, 0, tzinfo=berlin).timestamp()  # Monday, winter time: still setback
     res = room_engine.evaluate_room(room_state(cfg, temp=15.0), saturday, "away", PARAMS, away_return_ts=return_ts)
-    deficit = 17.0 - 15.0  # not 21.0 - 15.0 for 18:00
+    # its preheat aims at the window from 17:30 (since 2026-11-02), not at the return taken for 18:00, in comfort
+    window = datetime(2026, 10, 26, 17, 30, tzinfo=berlin).timestamp()
+    deficit = 21.0 - 15.0
     rate = PARAMS.default_heat_rate_radiator_k_h
-    assert res.preheat_start_ts == pytest.approx(return_ts - deficit / rate * 3600 - PARAMS.preheat_margin_s, abs=1)
+    assert res.preheat_start_ts == pytest.approx(window - deficit / rate * 3600 - PARAMS.preheat_margin_s, abs=1)
 
 
 def test_away_humidity_guard():
@@ -486,3 +488,183 @@ def test_a_drying_waiting_for_the_window_keeps_waiting_through_a_cycle_without_h
     res = room_engine.evaluate_room(blind, MON_EVENING, "auto", PARAMS)
     assert not res.drying.active and res.drying.started_ts == waiting.started_ts
     assert res.drying_reason == "drying_waiting_for_open_window" and res.target_reason != "bathroom_drying"
+
+
+# ---------------------------------------------------------------------------
+# Away: the preheat aims at the target the schedule gives at the return (seen 2026-11-01)
+# ---------------------------------------------------------------------------
+SUNDAY = datetime(2026, 11, 1)  # weekend comfort 09:00-22:00 (conftest.room_config)
+
+
+def _at(hour: int, minute: int = 0, day: datetime = SUNDAY) -> datetime:
+    return day.replace(hour=hour, minute=minute)
+
+
+def _aim(
+    schedule, back: datetime, now: datetime | None = None, setback: float = 17.0, temp: float = 12.0
+) -> tuple[float, str]:
+    """The target a radiator room far below it heats to before the return, by default one minute before it.
+
+    At 12 °C its preheat for the next comfort start begins up to 11.6 hours ahead; a warmer room (`temp`) shows the
+    target at the return alone, with no comfort start after it to preheat for yet.
+    """
+    cfg = room_config("badezimmer", comfort=21.0, setback=setback)
+    st = _with(room_state(cfg, temp=temp), schedule=schedule)
+    now = back - timedelta(minutes=1) if now is None else now
+    target, reason, _ = room_engine.target_temperature(st, now, "away", PARAMS, temp, None, back.timestamp())
+    return target, reason
+
+
+def _running_until(end: datetime, after: float | None = None, temp: float | None = None):
+    return ScheduleState(active=True, temperature=temp, next_end=end, next_change=end, next_change_target=after)
+
+
+def test_away_return_at_the_end_of_the_comfort_block_aims_at_the_setback():
+    # 2026-11-01: away until 22:00, the weekend block ran to 22:00; the rooms preheated to 21 from 18:00
+    assert _aim(_running_until(_at(22), 17.0), _at(22)) == (17.0, "away_preheat")
+    # without a target named for the change, what follows a block is the setback
+    assert _aim(_running_until(_at(22)), _at(22)) == (17.0, "away_preheat")
+
+
+def test_away_return_inside_the_block_aims_at_its_comfort():
+    assert _aim(_running_until(_at(22), 17.0), _at(21, 29)) == (21.0, "away_preheat")
+    assert _aim(_running_until(_at(22), 17.0, temp=22.5), _at(21)) == (22.5, "away_preheat")
+
+
+def test_away_return_in_the_last_half_hour_of_the_block_aims_at_what_follows():
+    assert _aim(_running_until(_at(22), 17.0), _at(21, 31)) == (17.0, "away_preheat")
+    # a warmer block that follows is what the room is back to
+    assert _aim(_running_until(_at(22), 22.5), _at(21, 45)) == (22.5, "away_preheat")
+
+
+def test_away_return_after_the_next_block_starts_aims_at_that_block():
+    nine = _at(9)
+    waiting = ScheduleState(active=False, next_start=nine, next_change=nine, next_change_target=21.0)
+    assert _aim(waiting, _at(10)) == (21.0, "away_preheat")
+    cfg = room_config("badezimmer", comfort=21.0, setback=17.0)
+    st = _with(room_state(cfg, temp=12.0), schedule=waiting, schedule_next_temp=22.5)
+    target, _, _ = room_engine.target_temperature(st, _at(9, 59), "away", PARAMS, 12.0, None, _at(10).timestamp())
+    assert target == 22.5
+
+
+def test_away_return_before_the_next_block_starts_aims_at_the_setback():
+    tomorrow = _at(17, 0, SUNDAY + timedelta(days=1))  # its preheat begins after the return
+    waiting = ScheduleState(active=False, next_start=tomorrow, next_change=tomorrow, next_change_target=21.0)
+    assert _aim(waiting, _at(22, 30)) == (17.0, "away_preheat")
+
+
+def test_away_return_follows_the_comfort_windows_the_same_way():
+    # at 16 °C the preheat for Monday 05:15 begins at 22:40
+    assert _aim(None, _at(22), temp=16.0) == (17.0, "away_preheat")  # the window ends at 22:00
+    assert _aim(None, _at(21, 29)) == (21.0, "away_preheat")
+    assert _aim(None, _at(21, 31), temp=16.0) == (17.0, "away_preheat")  # its last half hour
+    assert _aim(None, _at(9, 15)) == (21.0, "away_preheat")  # just after the start is comfort
+    assert _aim(None, _at(8), temp=20.9) == (17.0, "away_preheat")  # at 20.9 °C the preheat for 09:00 begins at 08:32
+
+
+def _week(*blocks: tuple[int, int, float | None]) -> tuple:
+    """A schedule helper's week with the same blocks every day: (from hour, to hour (24: midnight), temperature)."""
+    day = tuple((time(a), time.max if b == 24 else time(b), t) for a, b, t in blocks)
+    return (day,) * 7
+
+
+def _waiting(start: datetime, week: tuple) -> ScheduleState:
+    return ScheduleState(active=False, next_start=start, next_change=start, next_change_target=21.0, week=week)
+
+
+def test_away_return_after_the_helpers_block_has_ended_aims_at_the_setback():
+    """Review 2026-11-02: only the next start was checked, so a block that ends before the return still preheated.
+
+    A radiator room from 12 to 21 °C at 0.8 degrees an hour preheats more than eleven hours ahead: one block
+    can begin and end between now and the return.
+    """
+    evening = _week((17, 22, None))
+    assert _aim(_waiting(_at(17), evening), _at(22), now=_at(16)) == (17.0, "away_preheat")
+    morning = _week((6, 8, None))
+    assert _aim(_waiting(_at(6), morning), _at(12), now=_at(5, 30)) == (17.0, "away_preheat")
+    assert _aim(_waiting(_at(17), evening), _at(20), now=_at(12)) == (21.0, "away_preheat")
+
+
+def test_away_return_after_two_changes_aims_at_the_block_running_then():
+    """Review 2026-11-02: blocks 09-12 and 14-22, back at 18:00. At 10:00 the next change (12:00) lay before the
+    return, so the room aimed at the setback, though comfort runs again at 18:00."""
+    week = _week((9, 12, None), (14, 22, 22.5))
+    running = ScheduleState(active=True, next_end=_at(12), next_change=_at(12), next_change_target=17.0, week=week)
+    assert _aim(running, _at(18), now=_at(10)) == (22.5, "away_preheat")
+    # the last half hour of the 14-22 block; at 16 °C the preheat for 09:00 begins at 02:25
+    assert _aim(running, _at(21, 45), now=_at(21), temp=16.0) == (17.0, "away_preheat")
+
+
+def test_away_return_follows_the_helpers_blocks_to_what_follows_them():
+    # a block at the same temperature that follows is no change; one at another temperature is
+    same = _week((6, 12, 20.0), (12, 22, 20.0))
+    assert _aim(_waiting(_at(6), same), _at(11, 45), now=_at(5)) == (20.0, "away_preheat")
+    warmer = _week((6, 12, 20.0), (12, 22, 22.0))
+    assert _aim(_waiting(_at(6), warmer), _at(11, 45), now=_at(5)) == (22.0, "away_preheat")
+    # a block to 23:59 goes on into the next day's block at midnight: the minute between them is no gap
+    all_day = (((time(0), time(23, 59), None),),) * 7
+    on = ScheduleState(active=True, week=all_day)
+    assert _aim(on, _at(23, 59), now=_at(20)) == (21.0, "away_preheat")
+
+
+def test_away_return_exactly_half_an_hour_before_the_end_aims_at_comfort():
+    """Review 2026-11-02: the helper took 30 minutes left as the end (>=), the windows and the heat call do not (<)."""
+    assert _aim(None, _at(21, 30)) == (21.0, "away_preheat")
+    assert _aim(_running_until(_at(22), 17.0), _at(21, 30)) == (21.0, "away_preheat")  # a helper without its blocks
+    week = _week((9, 22, None))
+    with_blocks = ScheduleState(active=True, next_end=_at(22), next_change=_at(22), next_change_target=17.0, week=week)
+    assert _aim(with_blocks, _at(21, 30)) == (21.0, "away_preheat")
+    assert _aim(with_blocks, _at(21, 31), temp=16.0) == (17.0, "away_preheat")
+
+
+def test_away_return_never_aims_below_the_away_temperature():
+    """Review 2026-11-02: a setback below the away temperature (15) would have set the room lower before the return."""
+    assert _aim(None, _at(23), setback=14.0, temp=17.0) == (15.0, "away_preheat")  # its preheat for 05:15 from 23:55
+    assert _aim(_waiting(_at(17), _week((17, 22, None))), _at(22), now=_at(21), setback=14.0) == (15.0, "away_preheat")
+    assert _aim(_running_until(_at(22)), _at(22), setback=14.0) == (15.0, "away_preheat")
+
+
+def test_away_return_shortly_before_a_comfort_start_preheats_for_it():
+    """Review 2026-11-02: back at 16:45 for a block from 17:00, the room aimed at the setback, the preheat for 17:00
+    began only at the return, and a radiator room reached comfort at 21:41. Where the preheat for the next comfort
+    start must begin before the return, that start is aimed at, as without away."""
+    evening = _week((17, 22, None))
+    assert _aim(_waiting(_at(17), evening), _at(16, 45), now=_at(12)) == (21.0, "away_preheat")
+    warmer = _week((17, 22, 22.5))
+    assert _aim(_waiting(_at(17), warmer), _at(16, 45), now=_at(12)) == (22.5, "away_preheat")
+    assert _aim(_waiting(_at(17), None), _at(16, 45), now=_at(12)) == (21.0, "away_preheat")  # a helper without its blocks
+    assert _aim(None, _at(8, 45), now=_at(4)) == (21.0, "away_preheat")  # the time ranges: weekend from 09:00
+    # back at 22:30 for the next morning: from 12 °C at 0.8 degrees an hour its preheat for 05:15 begins at 17:40
+    monday = _at(5, 15, SUNDAY + timedelta(days=1))
+    assert _aim(None, _at(22, 30), now=_at(20)) == (21.0, "away_preheat")
+    assert _aim(_waiting(monday, None), _at(22, 30), now=_at(20)) == (21.0, "away_preheat")
+    # a preheat that may begin after the return waits for it: from 05:25 for 17:00
+    assert _aim(_waiting(_at(17), evening), _at(4), now=_at(3)) == (17.0, "away_preheat")
+
+
+def test_away_preheat_for_a_comfort_start_after_the_return_is_judged_against_that_start():
+    cfg = room_config("badezimmer", comfort=21.0, setback=17.0)
+    st = _with(room_state(cfg, temp=12.0), schedule=_waiting(_at(17), _week((17, 22, None))))
+    res = room_engine.evaluate_room(st, _at(12), "away", PARAMS, away_return_ts=_at(16, 45).timestamp())
+    assert (res.target, res.target_reason, res.preheat_for_ts) == (21.0, "away_preheat", _at(17).timestamp())
+    # at 20.8 °C the preheat for 17:00 may begin at 16:25, after a return at 16:00; once begun it is not undone
+    warmer = _with(room_state(cfg, temp=20.8), schedule=st.schedule)
+    res = room_engine.evaluate_room(warmer, _at(15, 45), "away", PARAMS, away_return_ts=_at(16).timestamp())
+    assert (res.target, res.preheat_for_ts) == (17.0, _at(16).timestamp())
+    latched = _with(warmer, preheat_latch_ts=_at(17).timestamp())
+    res = room_engine.evaluate_room(latched, _at(15, 45), "away", PARAMS, away_return_ts=_at(16).timestamp())
+    assert (res.target, res.preheat_for_ts) == (21.0, _at(17).timestamp())
+
+
+def test_away_return_half_an_hour_before_the_end_counts_real_time_across_the_clock_change():
+    """Review 2026-11-02: the guard measured the clock. 2026-10-25, block 00:00-03:00, back 02:45 summer time: 75
+    minutes really remain, comfort; 2027-03-28 back 01:45 winter time: 15 minutes remain, the setback."""
+    berlin = ZoneInfo("Europe/Berlin")
+    night = _week((0, 3, None))
+    autumn = datetime(2026, 10, 25, 2, 45, tzinfo=berlin)  # fold 0: the first 02:45, summer time
+    running = ScheduleState(active=True, next_end=autumn.replace(hour=3), next_change=autumn.replace(hour=3), week=night)
+    assert _aim(running, autumn) == (21.0, "away_preheat")
+    assert _aim(_running_until(autumn.replace(hour=3)), autumn) == (21.0, "away_preheat")  # a helper without its blocks
+    spring = datetime(2027, 3, 28, 1, 45, tzinfo=berlin)
+    running = ScheduleState(active=True, next_end=spring.replace(hour=3), next_change=spring.replace(hour=3), week=night)
+    assert _aim(running, spring) == (17.0, "away_preheat")

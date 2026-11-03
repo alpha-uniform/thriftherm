@@ -9,7 +9,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.thriftherm import learning_reset
-from custom_components.thriftherm.const import DOMAIN, SERVICE_RESET_LEARNING
+from custom_components.thriftherm.const import DEFAULT_HEAT_PUMP_DUCT_FACTOR, DOMAIN, SERVICE_RESET_LEARNING
 from custom_components.thriftherm.engines.boiler_control import BoilerMemory
 from custom_components.thriftherm.engines.heat_pump_control import ControlMemory
 from custom_components.thriftherm.engines.learning import HeatRateStats
@@ -32,10 +32,44 @@ def test_unrelated_changes_keep_everything() -> None:
     assert learning_reset.invalidated(before, learning_reset.basis(config)) == (set(), set())
 
 
-def test_duct_factor_invalidates_only_the_heat_pump() -> None:
+def test_the_airflow_curve_invalidates_only_the_heat_pump() -> None:
     before = learning_reset.basis(_entry_data())
-    after = learning_reset.basis({**_entry_data(), "midea_duct_factor": 0.8})
+    after = learning_reset.basis({**_entry_data(), "midea_airflow_curve": "500:300,700:450"})
     assert learning_reset.invalidated(before, after) == ({"heat_pump"}, set())
+
+
+def test_the_duct_factor_invalidates_nothing_any_more() -> None:
+    # The COP table holds its heat without the factor and scales. A basis stored with the factor in it still matches.
+    config = _entry_data()
+    before = learning_reset.basis(config)
+    assert learning_reset.invalidated(before, learning_reset.basis({**config, "midea_duct_factor": 0.8})) == (set(), set())
+    values = json.loads(before["heat_pump"])
+    stored = {**before, "heat_pump": json.dumps({**values, "duct_factor": 0.9}, sort_keys=True)}
+    assert learning_reset.invalidated(stored, learning_reset.basis({**config, "midea_duct_factor": 0.8})) == (set(), set())
+
+
+def test_the_stored_fingerprint_stays_as_an_older_version_writes_it() -> None:
+    # It compares the duct factor as well: a basis without it, and it forgets the old table it was promised to read.
+    config = {
+        "midea_climate": "climate.x", "midea_intake_temp": "sensor.a", "midea_outlet_temp": "sensor.b",
+        "midea_airflow_curve": "500:300, 600:350", "midea_duct_factor": 0.9, "midea_room": "wohnzimmer",
+        "rooms": [{"key": "wohnzimmer", "served_by_midea": True}],
+    }
+    older = {
+        "climate": "climate.x", "intake": "sensor.a", "outlet": "sensor.b", "airflow_curve": "500:300,600:350",
+        "duct_factor": 0.9, "installed_in": "wohnzimmer", "serves": ["wohnzimmer"],
+    }
+    assert learning_reset.basis(config)["heat_pump"] == json.dumps(older, sort_keys=True)
+    assert json.loads(learning_reset.basis({})["heat_pump"])["duct_factor"] == DEFAULT_HEAT_PUMP_DUCT_FACTOR
+
+
+def test_a_basis_stored_without_the_duct_factor_forgets_nothing() -> None:
+    config = {"midea_climate": "climate.x", "midea_duct_factor": 0.9}
+    current = learning_reset.basis(config)
+    values = json.loads(current["heat_pump"])
+    del values["duct_factor"]
+    stored = {**current, "heat_pump": json.dumps(values, sort_keys=True)}
+    assert learning_reset.invalidated(stored, current) == (set(), set())
 
 
 def test_heating_curve_invalidates_only_the_boiler() -> None:
@@ -89,7 +123,7 @@ def _learned(coordinator) -> None:
         running_since_ts=5.0, last_hvac_mode="heat", learning_bins=((0, 1.0),), manual_until_ts=9e9
     )
     coordinator.heat_rates = HeatRateStats(rates={"badezimmer": {"heat_pump": [1.5]}, "wohnzimmer": {"boiler": [0.8]}})
-    coordinator.cop_map.add(4.0, 3.5)
+    coordinator.cop_map.add_interval(4.0, 3500.0 * 3.1, 1000.0 * 3.1, 3.1 * 3600.0, 0.0)
 
 
 async def test_service_resets_only_the_chosen_area_and_keeps_run_state(hass: HomeAssistant) -> None:
@@ -101,7 +135,7 @@ async def test_service_resets_only_the_chosen_area_and_keeps_run_state(hass: Hom
 
     assert coordinator.control_memory.learning_bins == ()
     assert coordinator.control_memory.manual_until_ts == 9e9
-    assert coordinator.cop_map.to_dict() == {}
+    assert coordinator.cop_map.to_dict(1.0) == {}
     assert coordinator.boiler_memory.offset_k == 3.0
     assert coordinator.heat_rates.rates["badezimmer"] == {"heat_pump": [1.5]}
     assert coordinator.last_learning_reset["scopes"] == ["heat_pump"]
@@ -153,19 +187,21 @@ async def test_options_flow_reset_step(hass: HomeAssistant) -> None:
     assert coordinator.boiler_memory.offset_k == 3.0
 
 
-async def test_changing_the_duct_factor_forgets_the_heat_pump_on_reload(hass: HomeAssistant) -> None:
+async def test_changing_the_airflow_curve_forgets_the_heat_pump_on_reload(hass: HomeAssistant) -> None:
     entry = await _setup(hass)
     _learned(entry.runtime_data)
 
     result = await hass.config_entries.options.async_init(entry.entry_id)
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "midea"})
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {"midea_climate": "climate.midea", "midea_duct_factor": 0.8})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"midea_climate": "climate.midea", "midea_airflow_curve": "500:300,700:450"}
+    )
     assert result["type"] == "create_entry"
     await hass.async_block_till_done()
 
     coordinator = entry.runtime_data  # reloaded
     assert coordinator.control_memory.learning_bins == ()
-    assert coordinator.cop_map.to_dict() == {}
+    assert coordinator.cop_map.to_dict(1.0) == {}
     assert coordinator.boiler_memory.offset_k == 3.0
     assert coordinator.heat_rates.rates == {"badezimmer": {"heat_pump": [1.5]}, "wohnzimmer": {"boiler": [0.8]}}
     assert coordinator.last_learning_reset["reason"] == "configuration_changed"

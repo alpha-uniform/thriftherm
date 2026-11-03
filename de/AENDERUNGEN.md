@@ -4,9 +4,27 @@
 
 Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
 
-## Noch nicht veröffentlicht
+## 0.7.1 – 03.11.2026
 
+- Neu je Raum: *Längstes Vorheizen* begrenzt, wie früh ein Raum beginnt, und er ruft die Therme dann in seinem Block bis zum Ende ([#6](https://github.com/alpha-uniform/thriftherm/issues/6)).
+- Behoben: Ein Vorlauf über 100 °C galt als „Daten fehlen“, Störcodes der Therme als Warmwasser; jetzt warnt eine Reparaturmeldung, und ab 90 °C sowie bei S.53/S.54 gibt es vorerst keine neue Freigabe, die Wärmepumpe heizt ihre Räume dann auch, wenn sie teurer ist ([#5](https://github.com/alpha-uniform/thriftherm/issues/5)).
+- Behoben: Stand die Wärmepumpe länger als eine halbe Stunde, galt das immer wieder als neuer Stopp, und ihr Sollwert sank; läuft sie bei einem Raum unter Soll nicht an, geht er nun alle halbe Stunde ein halbes Grad höher.
+- Neue Wahl *Wärmepumpe allein* bei *Wenn die Wärmepumpe allein nicht reicht*: kleinste Leistung, ihre Räume rufen die Therme nicht, solange die Wärmepumpe günstiger ist, und die Therme heizt die anderen Räume weiter.
+- Behoben: Kam ein Raumthermostat nach einem Neustart mit einem anderen Sollwert zurück, galt das zwei Stunden lang als Änderung von Hand; jetzt gilt wieder der Plan.
+- Behoben: Das COP-Kennfeld kannte je Stufe nur die letzten 45 Minuten Lauf und lag zu hoch, in der Stufe des Starts bis 27 %; jetzt summiert es Wärme und Strom über die ganze Heizzeit samt Start und Nachlauf, Altes verblasst mit 100 Laufstunden Halbwertszeit.
+- Behoben: Der COP eines kurzen Laufs wählt nicht mehr die Heizung und stoppt damit die Wärmepumpe; der Sensor zeigt ihn weiter, entschieden wird nach dem eingeschwungenen Wert oder dem Kennfeld.
+- Behoben: Stoppte ein zu niedriger eingeschwungener COP die Wärmepumpe und startete das Kennfeld sie wieder, wechselten Laufen und Ruhen endlos; jetzt sperren zwei solche Werte mit mindestens 30 Minuten Abstand sie auch über eine Pause von bis zu einer Stunde (*Sperre nach Vereisung / Ineffizienz*, Standard 120 Minuten).
+- Neue Lernphase: Das alte Kennfeld ließ sich nicht umrechnen. Bis eine Stufe 3 Stunden Laufzeit hat, gilt sein Wert schwach gewichtet weiter (Grundlage *Alte Tabelle*), und Lernläufe sind dort wieder möglich.
+- Ein neuer Schlauchfaktor rechnet das Kennfeld nur um; eine andere Lüfterstufe im Normalbetrieb lässt es neu beginnen, wie schon eine andere Luftmengen-Kennlinie.
+- Behoben: Der COP war oft „unbekannt“, weil ein ruhiger Fühler als veraltet galt; jetzt zählt die letzte Meldung am Ausblas 60 Minuten; an der Ansaugung 3 Stunden, sobald auch ihr Gerät schweigt, sonst bis zu einem Tag (einstellbar unter *COP-Messung*).
+- Behoben: *Jetzt trocknen* ließ den Verdichter stehen; jetzt läuft die Wärmepumpe beim Trocknen etwas stärker.
+- Die Wärmepumpe folgt ihrer steigenden Messung und schaltet sich seltener selbst ab.
+- Weniger harte Starts der Wärmepumpe: Ist die Heizung günstiger, aber ein Raum noch gewünscht, bleibt sie im Heizbetrieb und ruht, statt aus- und wieder einzuschalten; der *Entscheidungsgrund* sagt dann „Heizung günstiger“.
+- Behoben: Zur Rückkehr aus Abwesend wird auf das Soll geheizt, das dann laut Plan gilt; kommst du am Ende der Komfortzeit zurück, ist das die Absenkung, kurz vor einer Komfortzeit wird für diese vorgeheizt.
+- Behoben: Vor der Rückkehr aus Abwesend wird kein Raum kälter gestellt als die Abwesenheitstemperatur.
+- Behoben: Beim Abtauen wird die Wärmepumpe nicht mehr ausgeschaltet, wenn die Räume warm sind.
 - Neue Therme in der Liste: Vaillant atmoTEC pro VUW PL 240/3-3M ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)).
+- Standard-COP-Werte aktualisiert.
 
 ## 0.7.0 – 30.10.2026
 

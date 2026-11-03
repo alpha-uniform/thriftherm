@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from custom_components.thriftherm.engines import cop as cop_engine, defrost
@@ -132,12 +134,68 @@ def test_a_lockout_for_dear_heat_keeps_its_own_cause_while_it_runs():
     tracker.inefficient_since = NOW - 31 * 60
     res, _ = tracker.defrost(snapshot({}, heat_pump=_state(hist), mode="auto"), "heating_stable", PARAMS, NOW)
     assert res.block_reason == "sustained_inefficiency"
-    tracker.track_efficiency(None, 2.9, 0.05, NOW + 60)  # stopped by the lockout: no COP, the timer ends
+    tracker.track_efficiency(None, 2.9, PARAMS, NOW + 60)  # stopped by the lockout: no COP, the timer ends
     stopped = _hist([(0, 0, 5, 0.0, 20, 20, 20)])
     res, _ = tracker.defrost(snapshot({}, heat_pump=_state(stopped), mode="auto"), "off", PARAMS, NOW + 60)
     assert (res.block_reason, res.block_until_ts) == ("sustained_inefficiency", NOW + PARAMS.icing_block_min * 60)
     assert texts.label(res.block_reason, "de") == "Wärme zu teuer (COP unter Break-even)"
     assert texts.label(res.block_reason, "en") == "Heat too expensive (COP below break-even)"
+
+
+def _low_runs(tracker, sightings, *, cop=2.3, params=PARAMS):
+    """Settled values at these minutes after NOW, nothing between: the unit stops the moment it has one."""
+    for minute in range(sightings[-1] + 1):
+        tracker.track_efficiency(cop if minute in sightings else None, 2.9, params, NOW + minute * 60)
+
+
+def test_a_settled_cop_too_low_on_every_run_of_a_unit_that_rests_between_them_locks_it_out():
+    """A settled value below the off limit stops the unit on the tick it appears, and a band that stays high starts it
+    again ten minutes later: 23 transitions in 6 hours, and the timer began anew with each rest. The lockout ends that."""
+    tracker = HeatPumpTracker()
+    _low_runs(tracker, (0, 32))
+    assert tracker.inefficient_since == NOW
+    resting = _state(_hist([(0, 0, 5, 0.0, 20, 20, 20)]))
+    res, _ = tracker.defrost(snapshot({}, heat_pump=resting, mode="auto"), "off", PARAMS, NOW + 33 * 60)
+    assert res.block_reason == "sustained_inefficiency"
+
+
+def test_one_settled_cop_too_low_does_not_lock_out_however_long_the_rest_after_it():
+    tracker = HeatPumpTracker()
+    _low_runs(tracker, (0,))
+    for minute in range(1, 45):
+        tracker.track_efficiency(None, 2.9, PARAMS, NOW + minute * 60)
+    assert tracker.inefficient_since is None
+
+
+def test_the_timer_ends_with_a_settled_cop_above_the_limit_or_a_long_silence():
+    tracker = HeatPumpTracker()
+    _low_runs(tracker, (0,))
+    tracker.track_efficiency(3.5, 2.9, PARAMS, NOW + 60)
+    tracker.track_efficiency(2.3, 2.9, PARAMS, NOW + 40 * 60)
+    assert tracker.inefficient_since == NOW + 40 * 60  # begun anew: the good value lay between
+    tracker = HeatPumpTracker()
+    _low_runs(tracker, (0, 84))  # a day of gas, say: the value of then says nothing about now
+    assert tracker.inefficient_since == NOW + 84 * 60
+
+
+@pytest.mark.parametrize("rest", [10, 32, 39, 45, 60])
+def test_a_rest_of_up_to_an_hour_keeps_the_timer_though_the_next_value_comes_22_minutes_into_its_run(rest):
+    """Ten minutes of settling and twelve samples: with an hour between two values, rests from about 38 minutes on went on
+    with no lockout, each run about 22 minutes of dear heat and a hard start (review 2026-11-02)."""
+    tracker = HeatPumpTracker()
+    _low_runs(tracker, (0, 1 + rest + 22))  # the stop comes a tick after the value
+    assert tracker.inefficient_since == NOW
+
+
+def test_more_samples_asked_for_make_the_next_value_later_and_the_rest_it_may_follow_stays_an_hour():
+    # 30 samples: the value comes 40 minutes into the run
+    params = replace(PARAMS, cop_min_samples=30)
+    tracker = HeatPumpTracker()
+    _low_runs(tracker, (0, 101), params=params)
+    assert tracker.inefficient_since == NOW
+    tracker = HeatPumpTracker()
+    _low_runs(tracker, (0, 102), params=params)
+    assert tracker.inefficient_since == NOW + 102 * 60
 
 
 def test_a_lockout_that_protects_the_unit_runs_to_its_end_also_where_the_heat_was_dear_as_well():
@@ -195,16 +253,15 @@ def test_settle_gate_blocks_rising_outlet():
 
 def test_cop_map_bins_and_expected():
     cm = CopMap()
-    for v in (3.0, 3.2, 3.1, 2.9, 3.0):
-        cm.add(4.5, v)
-    assert cm.expected(5.0) == pytest.approx(3.04, abs=0.02)
-    assert cm.expected(12.0) is None  # no data there
-    cm.add(6.5, 3.5)
-    assert cm.expected(7.0) == pytest.approx(3.04, abs=0.02)  # neighbour bin (4..6) has enough samples, 6..8 not yet
+    cm.add_interval(4.5, 3100.0 * 3.1, 1000.0 * 3.1, 3.1 * 3600.0, 0.0)
+    assert cm.expected(5.0, 1.0) == pytest.approx(3.1, abs=0.02)
+    assert cm.expected(12.0, 1.0) is None  # no data there
+    cm.add_interval(6.5, 350.0, 100.0, 600.0, 0.0)
+    assert cm.expected(7.0, 1.0) == pytest.approx(3.1, abs=0.02)  # neighbour bin (4..6) has enough run time, 6..8 not yet
     restored = CopMap.from_storage(cm.to_storage())
-    assert restored.to_dict() == cm.to_dict()
-    assert "+4..+6" in cm.to_dict()
-    assert CopMap.from_storage(None).to_dict() == {}
+    assert restored.to_dict(1.0) == cm.to_dict(1.0)
+    assert "+4..+6" in cm.to_dict(1.0)
+    assert CopMap.from_storage(None).to_dict(1.0) == {}
 
 
 # ---- a defrost of the Midea PortaSplit, 2026-10-13 09:58-10:13 (HA history)

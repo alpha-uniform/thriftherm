@@ -275,6 +275,7 @@ Du legst einen Raum pro Seite an. Mit dem Haken **Weiteren Raum hinzufügen** ko
 | Thermostat (TRV oder Better Thermostat) | die **Better-Thermostat**-Entität des Raums. Noch kein Better Thermostat? Leer lassen und später ergänzen (Optionen → *Räume* → Raum → *Bearbeiten*) |
 | Leistungssensoren interner Wärmequellen | optional, leer lassen |
 | Zeitplan-Helfer (optional; ersetzt die Komfortfenster unten) | ein Zeitplan-Helfer von Home Assistant, dessen Blöcke die Komfortzeiten sind |
+| Längstes Vorheizen | optional, für einen Raum, den du nur kurz warm brauchst ([Einzelheiten](ANLEITUNG.md#vorheizen)) |
 | Komforttemperatur | Temperatur, wenn der Raum genutzt wird, zum Beispiel 20 °C |
 | Absenktemperatur | Temperatur außerhalb der Komfortzeiten, zum Beispiel 17 °C; nie über der Komforttemperatur |
 | Komfortzeiten Mo–Fr / Sa–So | Zeiten als `HH:MM-HH:MM`, mehrere mit Komma getrennt, zum Beispiel `06:00-08:00,17:00-22:00` |

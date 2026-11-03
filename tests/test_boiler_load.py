@@ -568,3 +568,16 @@ def test_a_room_catching_up_with_another_line_stays_within_the_bound():
     after = learning.apply(on, BoilerMemory(lines=lines), 1, "rooms_lagging", "few:kuche", "few:wohnzimmer")
     assert correction(after, 12.0, "few:kuche") <= 10.0 + 1e-9
     assert all(step >= 0 for step in after.adjustment_steps)
+
+
+def test_while_a_room_with_a_limited_preheat_wants_heat_the_curve_learns_nothing(monkeypatch):
+    """Cold at the start of its block by choice, and brisk in it: either way no sign of the flow (issue #6). Left out of
+    the rules upward only, it pushed its line down morning after morning (review 2026-11-03)."""
+    seen = []
+    learn = learning.learn
+    monkeypatch.setattr(learning, "learn", lambda inp, *a, **k: seen.append(inp.learning_allowed) or learn(inp, *a, **k))
+    room = rr(temp=19.0, target=21.0)
+    decide(_inp([room], mode="active", flow=45.0, ret=40.0, burner=True), heating_memory())
+    assert seen == [True]
+    decide(_inp([replace(room, short_preheat=True)], mode="active", flow=45.0, ret=40.0, burner=True), heating_memory())
+    assert seen == [True, False]

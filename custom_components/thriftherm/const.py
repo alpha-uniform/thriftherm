@@ -8,6 +8,8 @@ DOMAIN: Final = "thriftherm"
 PLATFORMS: Final = ["sensor", "binary_sensor", "select", "button", "number", "datetime"]
 STORAGE_KEY: Final = "thriftherm.learning"
 STORAGE_VERSION: Final = 1
+# Minor: an older version with the same major version still loads the store (see persistence.migrate_store).
+STORAGE_MINOR_VERSION: Final = 2
 
 UPDATE_INTERVAL_S: Final = 60
 
@@ -111,6 +113,7 @@ CONF_BOILER_STATE_NUMBER: Final = "boiler_state_number"  # ebusd "Statenumber": 
 # what the boiler's own status code says it burns for
 BOILER_REPORTS_HEATING: Final = "heating"
 BOILER_REPORTS_HOT_WATER: Final = "hot_water"
+BOILER_REPORTS_FAULT: Final = "fault"
 # overrun or burner lockout after a heating run: no gas, and the circuit is cooling back
 BOILER_REPORTS_HEATING_AFTER: Final = "heating_after"
 CONF_BOILER_HWC_MODE: Final = "boiler_hwc_mode"
@@ -179,6 +182,7 @@ CONF_ROOMS: Final = "rooms"
 CONF_ROOM_KEY: Final = "key"
 CONF_ROOM_NAME: Final = "name"
 CONF_ROOM_PRIORITY: Final = "priority"
+CONF_ROOM_PREHEAT_MAX_MIN: Final = "preheat_max_min"  # longest preheat of a room; absent: as long as it takes
 CONF_ROOM_TEMP: Final = "temperature_sensor"
 CONF_ROOM_HUMIDITY: Final = "humidity_sensor"
 CONF_ROOM_WINDOWS: Final = "window_sensors"
@@ -218,6 +222,8 @@ CONF_COP_WARMUP_S: Final = "cop_warmup_s"
 CONF_COP_MIN_POWER_W: Final = "cop_min_power_w"
 CONF_COP_MIN_DELTA_T: Final = "cop_min_delta_t_k"
 CONF_COP_MIN_SAMPLES: Final = "cop_min_samples"
+CONF_COP_OUTLET_MAX_AGE_MIN: Final = "cop_outlet_max_age_min"
+CONF_COP_INTAKE_MAX_AGE_MIN: Final = "cop_intake_max_age_min"
 CONF_HEAT_PUMP_DUCT_FACTOR: Final = "midea_duct_factor"
 CONF_HEAT_PUMP_COP_PROFILE: Final = "heat_pump_cop_profile"  # engines/cop_profiles.py
 CONF_HEAT_PUMP_ROOM: Final = "midea_room"  # room the unit itself stands in
@@ -264,6 +270,10 @@ DEFAULT_COP_WARMUP_S: Final = 600
 DEFAULT_COP_MIN_POWER_W: Final = 150.0
 DEFAULT_COP_MIN_DELTA_T: Final = 3.0
 DEFAULT_COP_MIN_SAMPLES: Final = 12
+# These sensors report on a change of 0.2 degrees, and Home Assistant drops their hourly report of an unchanged
+# value: in steady heating 27 minutes without a report at the outlet, 108 at the intake (2026-10-31 to 11-02).
+DEFAULT_COP_OUTLET_MAX_AGE_MIN: Final = 60
+DEFAULT_COP_INTAKE_MAX_AGE_MIN: Final = 180
 DEFAULT_HEAT_PUMP_DUCT_FACTOR: Final = 1.0
 DEFAULT_HEAT_PUMP_COP_PROFILE: Final = "none"
 DEFAULT_COP_SETTLE_MAX_K_PER_MIN: Final = 0.5
@@ -290,7 +300,8 @@ DEFAULT_HEAT_PUMP_ALLOW_ACTIVE: Final = False
 SHORTFALL_BOILER_HELPS: Final = "boiler_helps"
 SHORTFALL_LIFT: Final = "lift"
 SHORTFALL_SLOWER: Final = "slower"
-SHORTFALL_CHOICES: Final = (SHORTFALL_BOILER_HELPS, SHORTFALL_LIFT, SHORTFALL_SLOWER)
+SHORTFALL_ALONE: Final = "alone"
+SHORTFALL_CHOICES: Final = (SHORTFALL_BOILER_HELPS, SHORTFALL_LIFT, SHORTFALL_SLOWER, SHORTFALL_ALONE)
 DEFAULT_HEAT_PUMP_SHORTFALL: Final = SHORTFALL_BOILER_HELPS
 # The heat pump's fan stage in normal operation; "full" is its strongest, however the unit names it.
 FAN_STAGE_CHOICES: Final = ("auto", "low", "medium", "high", "full")
@@ -309,7 +320,7 @@ SERVICE_BOOST: Final = "boost"
 RANGE_ROOM_TEMP: Final = (-10.0, 45.0)
 RANGE_HUMIDITY: Final = (0.0, 100.0)
 RANGE_OUTDOOR_TEMP: Final = (-40.0, 50.0)
-RANGE_FLOW_TEMP: Final = (0.0, 100.0)
+RANGE_FLOW_TEMP: Final = (0.0, 130.0)  # a boiler past 100 °C is a fault to report, not a value to throw away (issue #5)
 RANGE_POWER_W: Final = (-50.0, 30000.0)
 RANGE_GAS_FLOW_M3H: Final = (0.0, 10.0)
 

@@ -12,9 +12,12 @@ import time
 from dataclasses import asdict
 from typing import TYPE_CHECKING, Any
 
+from homeassistant.helpers.storage import Store
+
 from . import learning_reset
 from .engines import hand
 from .engines.boiler_memory import BoilerMemory
+from .engines.boiler import BoilerFault
 from .engines.gas_split import GasSplit
 from .engines.pump_share import PumpShare
 from .engines.common import as_dict, as_float
@@ -22,7 +25,7 @@ from .engines.heat_call import CallMemory
 from .engines.heat_pump_control import ControlMemory
 from .engines.room_control import RoomCtrlMemory
 from .engines.learning import CoolRateStats, CopMap, HeatRateStats
-from .const import SOURCE_BOILER, SOURCE_HEAT_PUMP
+from .const import SOURCE_BOILER, SOURCE_HEAT_PUMP, STORAGE_VERSION
 from .models import DryingState, Override
 
 if TYPE_CHECKING:
@@ -32,6 +35,26 @@ LOAD_LOG_COLUMNS = 10
 # Half a day of cycles survives a restart (about 50 kB); the store is written every ten minutes
 # and on every user action, a full day in it would be rewritten for nothing.
 LOAD_LOG_STORED_ROWS = 720
+
+
+def migrate_store(old_major: int, old_minor: int, data: Any) -> Any:
+    """A store of an older format, for this one. A newer major version is not ours to read.
+
+    1.2 (2026-11-02): the COP table became sums per band, and what it held cannot be turned into sums (no energy
+    in it). Its `bins` stay as they are, as a weak basis until a band is learned, and under that name an older version
+    still reads them, as its table: the minor version lets it load the store, and it drops only the `bands`.
+    """
+    if old_major != STORAGE_VERSION:
+        raise NotImplementedError
+    if old_minor < 2 and isinstance(data, dict):
+        cop_map = as_dict(data.get("cop_map"))
+        return {**data, "cop_map": {**cop_map, "bands": {}}}
+    return data
+
+
+class ThrifthermStore(Store):
+    async def _async_migrate_func(self, old_major_version: int, old_minor_version: int, old_data: Any) -> Any:
+        return migrate_store(old_major_version, old_minor_version, old_data)
 
 
 def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
@@ -74,6 +97,7 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
     coord.boiler_memory = BoilerMemory.from_storage(data.get("boiler_memory"))
     coord.gas_split = GasSplit.from_storage(data.get("gas_split"))
     coord.pump_share = PumpShare.from_storage(data.get("boiler_pump_share"))
+    coord.boiler_fault = BoilerFault.from_storage(data.get("boiler_fault"))
     if data.get("boiler_entities_held") is True:
         coord._boiler_entities_released = False  # handed back by the first cycle that does not command
     # a boiler handed back before the restart keeps following the curve
@@ -160,6 +184,7 @@ def to_store(coord: ThrifthermCoordinator) -> dict[str, Any]:
         "boiler_memory": coord.boiler_memory.to_storage(),
         "gas_split": coord.gas_split.to_storage(),
         "boiler_pump_share": coord.pump_share.to_storage(),
+        "boiler_fault": coord.boiler_fault.to_storage(),
         "boiler_load_log": list(coord.load_log)[-LOAD_LOG_STORED_ROWS:],
         "room_control_mode": coord.room_control_mode,
         "room_temps": coord.room_temps,

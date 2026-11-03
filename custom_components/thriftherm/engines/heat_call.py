@@ -67,6 +67,7 @@ STALL_BAND_K = 0.3
 STALL_RATE_K_H = 0.15
 STALL_RELEASE_K = 0.5
 COMFORT_END_GUARD_S = 1800.0
+SHORT_PREHEAT_NEW_CALL_S = 300.0  # a release holds this long (MIN_STATE_S): begun later it outlasts the block
 # seen 2026-10-21 22:00 and 2026-10-22 07:30: one schedule helper switched 15 ms before another, and the
 # cycle it set off still saw the other room's block running with its end just passed. That room called,
 # the boiler lit once for nothing, and the target fell to setback seconds later. An end this recent still
@@ -149,7 +150,14 @@ def update(
     if not urgent and room.target_reason in _COMFORT_REASONS and comfort_end_ts is not None:
         left = comfort_end_ts - now_ts
         # a helped room calls in the last half hour as well, but not past the end
-        if -COMFORT_END_PASSED_S <= left < (0.0 if helping else COMFORT_END_GUARD_S):
+        # A limited preheat (issue #6) has its heat to come in the block itself, however short that is. Only a call
+        # that begins too late to light the burner for the room is left out.
+        guard = COMFORT_END_GUARD_S
+        if helping:
+            guard = 0.0
+        elif room.short_preheat:
+            guard = 0.0 if mem.calling else SHORT_PREHEAT_NEW_CALL_S
+        if -COMFORT_END_PASSED_S <= left < guard:
             return CALL_COMFORT_ENDING, CallMemory()
 
     if mem.calling and mem.target is not None and room.target < mem.target:
@@ -197,6 +205,7 @@ def join(
             out[key] = replace(r, target=target, target_reason=JOINED_COMFORT, deviation_k=round(r.temperature - target, 2))
         elif (
             r.target_reason == "schedule_setback"
+            and not r.short_preheat  # its limit says how early it begins, with or without a run to join
             and r.preheat_start_ts is not None
             and r.preheat_start_ts - now_ts <= PULL_FORWARD_S
             and r.temperature < level

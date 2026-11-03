@@ -14,6 +14,7 @@ from dataclasses import dataclass
 
 from .const import (
     BOILER_REPORTS_HEATING,
+    BOILER_REPORTS_FAULT,
     BOILER_REPORTS_HEATING_AFTER,
     BOILER_REPORTS_HOT_WATER,
     CONF_BOILER_FLOW_TEMP,
@@ -36,6 +37,8 @@ class BoilerProfile:
     heating_states: frozenset[int] = frozenset()  # status codes while the burner serves the heating circuit
     hot_water_states: frozenset[int] = frozenset()  # status codes while it makes hot water
     heating_after_states: frozenset[int] = frozenset()  # overrun and lockout after a heating run
+    water_wait_states: frozenset[int] = frozenset()  # it waits, seeing too little water move through it
+    fault_states: frozenset[int] = frozenset()  # those and the tests of its sensors that hold back the heating
 
     def reported_mode(self, state_number: int | None) -> str | None:
         """What the boiler itself says it burns for, None when the code does not tell."""
@@ -45,6 +48,8 @@ class BoilerProfile:
             return BOILER_REPORTS_HEATING
         if state_number in self.heating_after_states:
             return BOILER_REPORTS_HEATING_AFTER
+        if state_number in self.fault_states:
+            return BOILER_REPORTS_FAULT
         return None
 
 
@@ -77,6 +82,10 @@ PROFILES: dict[str, BoilerProfile] = {
             heating_states=frozenset(range(1, 5)),
             hot_water_states=frozenset({*range(11, 15), *range(21, 25)}),
             heating_after_states=frozenset(range(5, 9)),
+            # S.53, S.54: waiting for too little water (spread or rise too large). S.96, S.98: testing its return and
+            # flow sensors, the heating held back. S.97, the pressure sensor's test, comes before most starts.
+            water_wait_states=frozenset({53, 54}),
+            fault_states=frozenset({53, 54, 96, 98}),
         ),
     )
 }

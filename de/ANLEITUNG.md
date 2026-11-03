@@ -96,6 +96,8 @@ Für das Lernen der Heizkurve ist das sogar günstig, sie lernt aus langen, glei
 
 ### Vorheizen
 
+Braucht ein Raum nur kurz Wärme, etwa ein Bad von 06:00 bis 06:30, begrenzt *Längstes Vorheizen* in den Raumeinstellungen, wie früh er beginnt (leer: so lange wie nötig, 0: gar nicht). Gesetzt ruft der Raum die Therme auch in seinem Block bis zum Ende, sonst bliebe ein kurzer Block kalt (eine neue Anforderung beginnt bis 5 Minuten vor dem Ende). Solange er Wärme will, lernt die Heizkurve nichts. Sinnvoll sind 45 bis 60 Minuten.
+
 Thriftherm beginnt so früh, dass der Raum zu Beginn eines Komfort-Blocks warm ist. Dafür nimmt es den Abstand zum Soll, die gelernte Aufheizrate des Raums für die Wärmequelle, die heizen wird, und einen Sicherheitszuschlag (Standard 20 Minuten). Den geplanten Beginn zeigt der Solltemperatur-Sensor unter *Vorheizen beginnt*. Formel und Startwerte: [Wie Thriftherm rechnet: Vorheizen](FUNKTIONSWEISE.md#vorheizen).
 
 ## 4. Dienste
@@ -124,7 +126,7 @@ data:
 Eine Therme ohne eBUS lässt sich als Vorschau über eine Zahl-Entität (Vorlauf-Sollwert) und einen Schalter (Heizung an/aus) steuern, siehe [EINRICHTUNG.md](EINRICHTUNG.md) Abschnitt 4.3a. Alles Folgende gilt für beide Wege; wo von SetMode die Rede ist, schreibt Thriftherm dort Zahl und Schalter.
 
 - **Vorlauftemperatur:** aus einer Zwei-Punkt-Heizkurve (Standard 55 °C bei −10 °C, 30 °C bei +15 °C). Dazu kommt, was der Raum verlangt, der am meisten braucht: seine gelernte Korrektur ([Abschnitt 6](#6-lernen)), bis zu 8 Grad mehr, solange er weit unter Soll ist, und sein Zuschlag fürs [Aufheiztempo](#aufheiztempo). Der Vorlauf bleibt immer zwischen eingestelltem Minimum und Maximum und steigt nicht sprunghaft ([Vorlauf im Detail](FUNKTIONSWEISE.md#vorlauf)).
-- **Anforderung:** Ein Raum fordert die Therme an, wenn er spürbar unter Soll liegt, bis er fast dort ist; in der letzten halben Stunde seiner Komfortzeit nicht mehr, außer die Therme hilft der Wärmepumpe. Den Zustand zeigt das Attribut *Anforderung an die Therme* am Sensor *Heizbedarf* des Raums ([Schwellen](FUNKTIONSWEISE.md#wann-ein-raum-die-therme-anfordert)).
+- **Anforderung:** Ein Raum fordert die Therme an, wenn er spürbar unter Soll liegt, bis er fast dort ist; in der letzten halben Stunde seiner Komfortzeit nicht mehr, außer die Therme hilft der Wärmepumpe oder der Raum hat ein *Längstes Vorheizen* (dann beginnt eine neue Anforderung bis 5 Minuten vor dem Ende). Den Zustand zeigt das Attribut *Anforderung an die Therme* am Sensor *Heizbedarf* des Raums ([Schwellen](FUNKTIONSWEISE.md#wann-ein-raum-die-therme-anfordert)).
 - **Mitheizen:** Läuft die Therme ohnehin, heizen andere Räume mit (Grund *Heizt mit* bzw. *Heizt früher vor*). Das gibt längere Brennerläufe und weniger Starts ([Einzelheiten](FUNKTIONSWEISE.md#mitheizen)).
 - **Heizbetrieb gesperrt** (`disablehc`), wenn kein Raum Wärme braucht. Warmwasser wird nicht angefasst: Der Warmwasser-Sollwert geht immer als „kein Wert“ hinaus, die Therme folgt weiter ihrem Drehknopf. Die einzige Ausnahme wählst du selbst: Ist *Warmwasser bereithalten* in den Thermen-Optionen aus, heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist (das stündliche Warmhalten einer Kombitherme). Mit Warmwasserspeicher eingeschaltet lassen.
 - **Thermostat aus oder stumm:** Ein von Hand ausgeschaltetes Thermostat fordert keine Therme an, sein Ventil ist zu. Ein nur nicht erreichbares zählt weiter, denn sein Ventil regelt selbst. Ein Heizkörperthermostat, das über zweieinhalb Stunden schweigt, fordert keine Therme an und nimmt keine neuen Sollwerte an; dazu erscheint eine Reparaturmeldung. Bei Better Thermostat wird das echte Thermostat dahinter überwacht. Hält Thriftherm ein gesundes Thermostat für stumm, in Zigbee2MQTT dessen Entität *Last seen* einschalten; mit ZHA ist nichts zu tun ([warum](FUNKTIONSWEISE.md#ausfälle-und-wiederholung)).
@@ -182,7 +184,7 @@ Jeder Raum benötigt einen Temperaturfühler, kein smartes Thermostat. Alles obe
 | Räume | Aufheizrate je Raum und Wärmequelle (Grad je Stunde) | echte Heizphasen bei geschlossenem Fenster |
 | Räume | Auskühlkoeffizient je Raum (1/h) | Phasen ohne Heizen bei geschlossenem Fenster |
 | Räume | Heizleistung je Raum (Grad je Stunde ohne Verluste) | Aufheizrate plus die Verluste in der Phase; anders als die reine Rate gilt sie auch im Winter |
-| Wärmepumpe | COP über der Außentemperatur | gemessene COP-Läufe |
+| Wärmepumpe | COP über der Außentemperatur | Wärme und Strom der ganzen Heizzeit |
 
 Einzelheiten zu allen Bereichen: [Wie Thriftherm rechnet: Lernen](FUNKTIONSWEISE.md#lernen).
 
@@ -216,7 +218,7 @@ Nach einer Änderung an der Anlage passen alte Werte nicht mehr.
 | Änderung | Vergessen wird |
 |---|---|
 | Heizkurve | Thermen-Korrektur |
-| Wärmepumpen-Entität, Ansaug-/Ausblassensor, Luftmengen-Kennlinie, Schlauchfaktor, Aufstellraum, beheizte Räume | COP-Kennfeld und Lernläufe |
+| Wärmepumpen-Entität, Ansaug-/Ausblassensor, Luftmengen-Kennlinie, Lüfterstufe im Normalbetrieb, Aufstellraum, beheizte Räume | COP-Kennfeld und Lernläufe (der Schlauchfaktor rechnet das Kennfeld nur um) |
 | Temperatursensor oder Thermostat eines Raums | Aufheizrate dieses Raums |
 
 Laufzustand, Sperrzeiten und Handbedienung werden nie zurückgesetzt – ein Zurücksetzen kann also kein Takten auslösen.
@@ -225,23 +227,23 @@ Laufzustand, Sperrzeiten und Handbedienung werden nie zurückgesetzt – ein Zur
 
 Erprobt ist sie an einer Midea PortaSplit, auch mit Vereisung und Abtauen; andere Geräte noch nicht.
 
-- **COP:** Thriftherm misst ihn aus der Luft, die die Wärmepumpe ansaugt und ausbläst, und aus ihrem Strom. Taktet sie, zählt der ganze Takt samt Pause (Attribut *COP über den letzten Takt*); dieser Wert bestimmt die Kosten ([COP messen](FUNKTIONSWEISE.md#cop-messen)).
+- **COP:** Thriftherm misst ihn aus der Luft, die die Wärmepumpe ansaugt und ausbläst, und aus ihrem Strom. Taktet sie, zählt der ganze Takt samt Pause (Attribut *COP über den letzten Takt*). Dieser Wert wird nur angezeigt; die Kosten bestimmt der eingeschwungene COP oder das COP-Kennfeld ([COP messen](FUNKTIONSWEISE.md#cop-messen)).
 - **Kosten:** Die Wärmepumpe läuft langsam mit hohem COP. Verglichen wird mit dem Preis der zentralen Wärme. Bei Fernwärme zählt der **Heizkostenschlüssel**: Nur der Verbrauchsanteil folgt dem eigenen Zähler. Eine gesparte kWh spart also weniger als ihr Preis, und die Wärmepumpe braucht einen höheren COP, damit sie sich lohnt.
 - **Aufstellort und Schläuche:** Ohne Schläuche bleibt die warme Luft im Aufstellraum. Aufstellraum und Schlauchfaktor (1,0 = keine Schläuche) eintragen; nicht erreichbare Räume erzeugen eine Reparaturmeldung. Der Schlauchfaktor korrigiert die Luftmenge, nicht die Wärme: Was die Schläuche unterwegs abgeben, bleibt in der Wohnung.
-- **Gesperrt** ist die Wärmepumpe unter ihrer Mindest-Außentemperatur (Standard −10 °C), bei Vereisung oder häufigem Abtauen, wenn jemand mit ihr kühlt, und wenn ihr gemessener COP länger unter dem *Break-even-COP* liegt, sie also teurer heizt als die Heizung. Wie lange die Sperren wegen Vereisung und Ineffizienz dauern, stellt *Sperre nach Vereisung / Ineffizienz* ein (Standard zwei Stunden). Im Modus *Nur Wärmepumpe* gibt es die Sperre wegen Ineffizienz nicht ([Sperren](FUNKTIONSWEISE.md#sperren)).
+- **Gesperrt** ist die Wärmepumpe unter ihrer Mindest-Außentemperatur (Standard −10 °C), bei Vereisung oder häufigem Abtauen, wenn jemand mit ihr kühlt, und wenn ihr eingeschwungener COP länger unter dem *Break-even-COP* liegt, sie also teurer heizt als die Heizung. Wie lange die Sperren wegen Vereisung und Ineffizienz dauern, stellt *Sperre nach Vereisung / Ineffizienz* ein (Standard zwei Stunden). Im Modus *Nur Wärmepumpe* und solange eine Störung die Therme zurückhält, gibt es die Sperre wegen Ineffizienz nicht ([Sperren](FUNKTIONSWEISE.md#sperren)).
 - **Kühlen und Heizen überschneiden sich nie:** Solange sie kühlt, bleiben die Heizkörper der Räume, die sie bedient, auf Absenktemperatur und fordern keine Wärme von der Therme an. Der Frostschutz gilt weiter.
 - **Schnell aufheizen** (Button je Raum oder `thriftherm.boost`) lässt sie für begrenzte Zeit mit voller Leistung laufen.
 - **Lüfter:** Thriftherm stellt ihn nur beim Einschalten, für eine Trocknung oder ein Schnell-Aufheizen und danach zurück, auf die *Lüfterstufe im Normalbetrieb* aus der Feineinstellung (Standard *Auto*). Eine höhere Stufe bringt mehr Wärme in die Räume, ist aber lauter. Eine neu gewählte Stufe bekommt die Wärmepumpe auch mitten im Lauf, sofern sie noch die alte hat. Eine Stufe, die du von Hand wählst, bleibt. Vom Heizen geht es nie direkt auf Aus: Erst läuft 15 Minuten nur der Lüfter (Parameter, 0 = sofort aus). Stellt in dieser Zeit jemand von Hand einen anderen Modus ein, endet der Nachlauf.
 
 **Bad-Trocknung** braucht die Wärmepumpe: nur in einem Raum, den sie beheizt und der einen Feuchtesensor hat. Das Raumformular bietet sie erst an, wenn eine Wärmepumpe eingerichtet ist.
 
-- Getrocknet wird **nach** dem Duschen: Steigt die Feuchte, wartet Thriftherm, bis sie nicht mehr steigt. Dann bläst die Wärmepumpe mit höchster Lüfterstufe und der Trocknungs-Solltemperatur, höchstens 60 Minuten (Standard) und nur, solange sie aktiv gesteuert wird, heizen und effizient laufen kann. Danach bekommt der Lüfter seine Stufe von vorher zurück.
+- Getrocknet wird **nach** dem Duschen: Steigt die Feuchte, wartet Thriftherm, bis sie nicht mehr steigt. Dann bläst die Wärmepumpe mit höchster Lüfterstufe und der Trocknungs-Solltemperatur, ihr Sollwert 3 Grad über ihrer eigenen Messung im Stand, höchstens 60 Minuten (Standard) und nur, solange sie aktiv gesteuert wird, heizen und effizient laufen kann. Danach bekommt der Lüfter seine Stufe von vorher zurück, und sie läuft wieder mit kleinster Leistung.
 - Der Knopf *Jetzt trocknen* startet sofort und für die volle Dauer, etwa für Wäsche oder einen nassen Boden; *Zurück zur Automatik* beendet die Trocknung. Wer nur den Knopf will, schaltet im Raumformular *Trocknung nach dem Duschen von selbst starten* aus.
 - Hinaus geht die Feuchte nur durchs Fenster. Hat das Bad einen Fensterkontakt, bläst die Wärmepumpe deshalb nur, solange das Fenster offen ist: Fenster nach dem Duschen weit öffnen, dann trocknet die warme Luft Wände und Spiegel, und die Feuchte zieht ab. Bei geschlossenem Fenster wartet die Trocknung (*Wartet: Fenster öffnen*). Ohne Fensterkontakt bläst sie wie bisher auch bei geschlossenem Fenster. Der Heizkörper folgt immer der normalen Fensterlogik.
 
 Wann sie startet und endet: [Bad-Trocknung](FUNKTIONSWEISE.md#bad-trocknung).
 
-**Sollwert:** Die Wärmepumpe läuft mit kleinster Leistung, dort ist ihr COP am besten. Ihr Sollwert liegt ein Grad unter ihrer eigenen Messung und wird nur selten neu gesetzt, damit sie wenig piept. Der kälteste versorgte Raum entscheidet: Ein halbes Grad über Soll ruht der Verdichter (Sollwert 17 °C, das Gerät bleibt im Heizbetrieb), am Soll heizt sie wieder. Kommt ein Raum nicht hinterher, hilft die Heizung, also Therme oder Fernwärme (Attribut `boiler_helps`); ohne zentrale Heizung oder im Modus *Nur Wärmepumpe* geht ihr Sollwert langsam höher. Das lässt sich unter *Wenn die Wärmepumpe allein nicht reicht* in der Feineinstellung ändern: *Wärmepumpe dreht höher* (ohne Therme, ihr COP sinkt) oder *Langsamer warm werden* (nur kleinste Leistung; die Heizung hilft erst, wenn ein Raum ein halbes Grad unter Soll liegt). Ohne zentrale Heizung dreht sie immer höher, was auch gewählt ist. Mehr Leistung gibt es mit *Schnell aufheizen*. Läuft sie, ohne dass ein Raum gerade Wärme braucht, steht im *Entscheidungsgrund* „Wärmepumpe läuft durch“ und nicht „Kein Raum braucht Wärme“ ([Einzelheiten](FUNKTIONSWEISE.md#am-minimum-halten)).
+**Sollwert:** Die Wärmepumpe läuft mit kleinster Leistung, dort ist ihr COP am besten. Ihr Sollwert liegt ein Grad unter ihrer eigenen Messung und wird nur selten neu gesetzt, damit sie wenig piept. Der kälteste versorgte Raum entscheidet: Ein halbes Grad über Soll ruht der Verdichter (Sollwert 17 °C, das Gerät bleibt im Heizbetrieb), am Soll heizt sie wieder. Kommt ein Raum nicht hinterher, hilft die Heizung, also Therme oder Fernwärme (Attribut `boiler_helps`); ohne zentrale Heizung oder im Modus *Nur Wärmepumpe* geht ihr Sollwert langsam höher. Das lässt sich unter *Wenn die Wärmepumpe allein nicht reicht* in der Feineinstellung ändern: *Wärmepumpe dreht höher* (ohne Therme, ihr COP sinkt) oder *Langsamer warm werden* (nur kleinste Leistung; die Heizung hilft erst, wenn ein Raum ein halbes Grad unter Soll liegt) oder *Wärmepumpe allein* (nur kleinste Leistung; solange sie die günstigere Quelle ist, rufen ihre Räume die Therme nicht, die anderen Räume heizt die Therme weiter und alle, wenn die Wärmepumpe teurer oder gesperrt ist). Ohne zentrale Heizung dreht sie immer höher, was auch gewählt ist. Mehr Leistung gibt es mit *Schnell aufheizen*. Läuft sie, ohne dass ein Raum gerade Wärme braucht, steht im *Entscheidungsgrund* „Wärmepumpe läuft durch“ und nicht „Kein Raum braucht Wärme“; ruht sie, weil die Heizung günstiger ist, steht dort „Heizung günstiger, die Wärmepumpe pausiert“ ([Einzelheiten](FUNKTIONSWEISE.md#am-minimum-halten)).
 
 ## 8. Wichtige Anzeigen
 
@@ -249,7 +251,7 @@ Wann sie startet und endet: [Bad-Trocknung](FUNKTIONSWEISE.md#bad-trocknung).
 |---|---|
 | *Entscheidungsgrund* | in Worten, warum das System tut, was es tut |
 | *Empfohlene Wärmequelle* | Heizung (Therme oder Fernwärme), Wärmepumpe, beide oder keine |
-| *Sicherheitsstatus* | OK, eingeschränkt (ein Sensor fehlt), Fallback (kein Raum oder keine verlässliche Raumtemperatur, nichts wird gesendet). Störungen der Wärmepumpe stehen in den Attributen, schränken den Status aber nur ein, wo die Wärmepumpe die einzige Wärmequelle ist. |
+| *Sicherheitsstatus* | OK, eingeschränkt (ein Sensor fehlt oder eine Störung der Therme), Fallback (kein Raum oder keine verlässliche Raumtemperatur, nichts wird gesendet). Störungen der Wärmepumpe stehen in den Attributen, schränken den Status aber nur ein, wo die Wärmepumpe die einzige Wärmequelle ist. |
 | *Solltemperatur* je Raum | den Sollwert und unter *Grund*, woher er kommt |
 | *Thermostat-Plan* je Raum | was an das Thermostat geht |
 | *Therme-Steuerbefehl* | was die Therme bekommt; *Drehknopf regelt* heißt, es wird nichts gesendet und die Therme läuft über ihren Knopf. Zeigt auch Heizungspumpe und Status S.xx |
@@ -266,6 +268,7 @@ Wann sie startet und endet: [Bad-Trocknung](FUNKTIONSWEISE.md#bad-trocknung).
 | *Raum*: kein Heizfenster hinterlegt | weder Zeitplan-Helfer noch Zeitfenster – der Raum bleibt auf Absenkung. In den Raum-Optionen einen Zeitplan wählen. |
 | *Raum*: Zeitplan-Helfer fehlt | der gewählte Zeitplan wurde gelöscht. Neu anlegen oder einen anderen wählen. |
 | *Raum*: Heizkörperthermostat antwortet nicht | ein Ventil hat sich seit zweieinhalb Stunden nicht gemeldet, obwohl es Befehle bekam. Es hängt meist am Funk oder an der Batterie; der Raum fordert die Therme so lange nicht an. Batterie prüfen, Ventil neu anlernen oder aus- und einschalten. |
+| Vorlauf der Therme über 100 °C | die Therme vom Fachbetrieb prüfen lassen ([Einzelheiten](FEHLERSUCHE.md#reparaturmeldung-vorlauf-der-therme-über-100-c)). |
 | Keine Daten von der Therme | ebusd liefert nichts Brauchbares; nichts wird gesendet, die Therme läuft über ihren Drehknopf. ebusd-App und Adapter prüfen. |
 | Luftmenge der Wärmepumpe nicht kalibriert | keine Luftmengen-Kennlinie, daher kein COP; bis dahin gilt das Datenblatt oder, falls gewählt, die *COP-Werte dieses Modells*. |
 | Wärmepumpe versorgt Räume ohne Schläuche | keine Schläuche eingetragen, die warme Luft bleibt im Aufstellraum. Schläuche montieren und Schlauchfaktor setzen oder die Räume abwählen. |

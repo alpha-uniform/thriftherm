@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from dataclasses import replace
+from datetime import datetime, time, timedelta
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -10,6 +11,7 @@ from homeassistant.helpers.entity_component import DATA_INSTANCES
 from homeassistant.setup import async_setup_component
 from homeassistant.util import dt as dt_util
 
+from custom_components.thriftherm.adapters.config import room_configs_from_config
 from custom_components.thriftherm.adapters.inputs import SnapshotBuilder
 from custom_components.thriftherm.const import (
     CONF_HEAT_PUMP_OUTLET_TEMP,
@@ -19,6 +21,7 @@ from custom_components.thriftherm.const import (
 )
 from custom_components.thriftherm.engines import room as room_engine
 
+from .conftest import room_config, room_state
 from .test_integration import _entry_data, _set_states
 
 START = datetime(2026, 1, 15, 12, 0, tzinfo=dt_util.UTC)
@@ -498,3 +501,44 @@ async def test_the_next_change_of_a_schedule_helper_before_its_block_and_all_wee
     _, bath, living = await _rooms_with_schedules(hass, freezer, tuesday, named, all_day)
     assert (bath.schedule.next_change, bath.schedule.next_change_target) == (tuesday.replace(hour=6, minute=0), 20.0)
     assert (living.schedule.next_change, living.schedule.next_change_target) == (None, None)  # comfort all week
+
+
+async def test_a_return_from_away_aims_at_the_target_the_helpers_week_gives_then(hass: HomeAssistant, freezer) -> None:
+    """Review 2026-11-02: the helper's state tells its next change only; its week tells the target at the return.
+
+    At 10:00 the bathroom's block ends at 12:00 and another runs from 14:00 to 22:00: back at 18:00 that is
+    comfort. The living room's block from 17:00 is over at 22:00: back then, the setback.
+    """
+    tuesday = datetime(2026, 10, 13, 10, 0, tzinfo=BERLIN)
+    two = [_block("09:00:00", "12:00:00"), _block("14:00:00", "22:00:00")]
+    evening = [_block("17:00:00", "22:00:00")]
+    snap, bath, living = await _rooms_with_schedules(hass, freezer, tuesday, two, evening)
+    assert bath.schedule.week is not None and len(bath.schedule.week) == 7
+    assert bath.schedule.week[1] == ((time(9), time(12), None), (time(14), time(22), None))
+
+    def aim(state, back: datetime):
+        temperature = state.temperature.value
+        return room_engine.target_temperature(state, snap.now, "away", snap.params, temperature, None, back.timestamp())
+
+    back = tuesday.replace(hour=18)
+    # bathroom 18.5 °C, comfort 21, served by the heat pump: 2.5 degrees take its longest lead of four hours
+    assert aim(bath, back)[2] == pytest.approx(back.timestamp() - room_engine.PREHEAT_LEAD_MAX_HEAT_PUMP_S)
+    back = tuesday.replace(hour=22)
+    # living room at its setback of 17 °C: only the margin
+    assert aim(living, back)[2] == pytest.approx(back.timestamp() - 20 * 60)
+
+
+@pytest.mark.parametrize(
+    ("limit", "by_heat_pump", "lead"),
+    [(None, False, None), (45.0, False, 2700.0), (0.0, False, 0.0), (45.0, True, 2700.0), (600.0, True, 14400.0), (None, True, 14400.0)],
+)
+def test_the_longest_preheat_of_a_room_limits_it_with_either_source(limit, by_heat_pump, lead):
+    """Issue #6: a bathroom wanted from 06:00 to 06:30 began at 02:30."""
+    cfg = replace(room_config("badezimmer"), preheat_max_s=None if limit is None else limit * 60.0)
+    assert room_engine._lead_max_s(replace(room_state(cfg), preheat_by_heat_pump=by_heat_pump)) == lead
+
+
+@pytest.mark.parametrize(("raw", "seconds"), [(None, None), ("", None), (45, 2700.0), (0, 0.0), ("rubbish", None)])
+def test_the_longest_preheat_is_read_from_the_room(raw, seconds):
+    rooms = room_configs_from_config([{"key": "bad", "preheat_max_min": raw}])
+    assert rooms[0].preheat_max_s == seconds

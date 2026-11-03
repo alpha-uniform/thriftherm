@@ -18,7 +18,7 @@ from custom_components.thriftherm.coordinator import ThrifthermCoordinator
 from custom_components.thriftherm.engines.boiler_control import BoilerMemory
 from custom_components.thriftherm.engines.heat_pump_control import ControlMemory
 from custom_components.thriftherm.engines.room_control import RoomCtrlMemory
-from custom_components.thriftherm.models import Override
+from custom_components.thriftherm.models import Override, SettingChange
 
 from .test_integration import _setup
 
@@ -151,7 +151,7 @@ async def test_override_and_manual_changes_use_the_default_duration(hass: HomeAs
     coordinator.room_control_mode = "active"
     coordinator.room_ctrl_memory["wohnzimmer"] = RoomCtrlMemory(last_sent_target=18.5, confirmed=True)
     snapshot = coordinator.data["snapshot"]
-    room = replace(snapshot.rooms["wohnzimmer"], trv_target_temp=20.0)
+    room = replace(snapshot.rooms["wohnzimmer"], trv_target_temp=20.0, thermostat_change=SettingChange(990.0, "device"))
     snapshot = replace(snapshot, rooms={**snapshot.rooms, "wohnzimmer": room})
     adopted = coordinator._adopt_manual_thermostat_changes(snapshot, 1000.0)
     assert coordinator.overrides["wohnzimmer"] == Override(20.0, 1000.0 + 45 * 60.0, 1000.0, "device")
@@ -759,7 +759,7 @@ async def test_the_heat_pump_control_is_told_whether_the_boiler_can_help_and_whe
     await coordinator.async_refresh()
     assert seen[-1].boiler_can_help is False
     coordinator.set_mode("auto")
-    coordinator.heat_pump_tracker.defrost = lambda *args: (replace(coordinator.data["defrost"], suspected=True), False)
+    coordinator.heat_pump_tracker.defrost = lambda *args, **kwargs: (replace(coordinator.data["defrost"], suspected=True), False)
     await coordinator.async_refresh()
     assert seen[-1].defrosting is True
 
@@ -787,6 +787,10 @@ async def test_without_a_central_heat_source_no_boiler_can_help_the_heat_pump(ha
         ("district", "slower", "auto", True, False, True),
         ("none", "slower", "auto", False, True, False),  # no central heat source: always lifted, whatever is set
         ("none", "boiler_helps", "auto", False, True, False),
+        ("gas", "alone", "auto", False, False, False),  # at its least power, and the boiler never helps
+        ("district", "alone", "auto", False, False, False),
+        ("gas", "alone", "midea_only", False, False, False),
+        ("none", "alone", "auto", False, True, False),
     ],
 )
 async def test_the_option_for_a_shortfall_decides_whether_the_boiler_helps_or_the_unit_is_set_higher(
@@ -829,7 +833,7 @@ async def test_the_fan_stage_chosen_for_normal_operation_reaches_the_heat_pump_c
     assert seen[-1].params.heat_pump_fan_stage == stage
 
 
-@pytest.mark.parametrize(("shortfall", "helps"), [(None, True), ("lift", False), ("slower", True)])
+@pytest.mark.parametrize(("shortfall", "helps"), [(None, True), ("lift", False), ("slower", True), ("alone", False)])
 async def test_the_boiler_heats_a_heat_pump_room_it_helps_from_two_tenths_below_its_target(
     hass: HomeAssistant, shortfall: str | None, helps: bool
 ) -> None:
@@ -861,6 +865,105 @@ async def test_the_boiler_heats_a_heat_pump_room_it_helps_from_two_tenths_below_
         assert coordinator.data["boiler_command"].plan == "heat"
 
 
+@pytest.mark.parametrize(("shortfall", "helps"), [("slower", True), ("alone", False)])
+async def test_with_the_heat_pump_alone_the_boiler_leaves_its_rooms_to_it_and_heats_only_the_others(
+    hass: HomeAssistant, shortfall: str, helps: bool
+) -> None:
+    """2026-11-02: 20 burner starts by morning for a preheating bathroom, and the mode "heat pump only" left the
+    living room without any heat. Here only the rooms the unit does not serve call the boiler."""
+    _climate_calls(hass)
+    async_mock_service(hass, "mqtt", "publish")
+    coordinator = (await _setup(hass, options={**RELEASED, "heat_pump_shortfall": shortfall})).runtime_data
+    hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20, "compressor_frequency": 24})
+    hass.states.async_set("sensor.bath_temp", "19.5")  # far below its 21 °C
+    hass.states.async_set("sensor.living_temp", "21.0")
+    coordinator.set_control_mode("active")
+    coordinator.set_boiler_control_mode("active")
+    long_ago = time.time() - 7200
+    coordinator.control_memory = ControlMemory(
+        running_since_ts=long_ago, phase_since_ts=long_ago, last_command_ts=long_ago, last_hvac_mode="heat", last_target=20.0
+    )
+    coordinator.call_memory = {}
+    await coordinator.async_refresh()
+    assert coordinator.mode == "auto"
+    assert coordinator.control_memory.boiler_helps is helps
+    await coordinator.async_refresh()
+    assert coordinator.data["midea_command"].plan == "heat"
+    assert coordinator.data["midea_command"].delivers is not helps
+    assert (coordinator.data["boiler_command"].reason == "room_demand") is helps
+    assert coordinator.data["midea_command"].target_temp == 20.0  # not set higher
+
+    hass.states.async_set("sensor.living_temp", "15.0")  # a room only the boiler heats
+    await coordinator.async_refresh()
+    await coordinator.async_refresh()
+    assert coordinator.data["boiler_command"].reason == "room_demand"
+    assert coordinator.data["rooms"]["wohnzimmer"].boiler_call == "calling"
+    assert coordinator.data["midea_command"].plan == "heat"
+
+
+async def _running_unit(hass: HomeAssistant, shortfall: str, **options):
+    _climate_calls(hass)
+    async_mock_service(hass, "mqtt", "publish")
+    coordinator = (await _setup(hass, options={**RELEASED, "heat_pump_shortfall": shortfall, **options})).runtime_data
+    hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20, "compressor_frequency": 24})
+    coordinator.set_control_mode("active")
+    coordinator.set_boiler_control_mode("active")
+    long_ago = time.time() - 7200
+    coordinator.control_memory = ControlMemory(
+        running_since_ts=long_ago, phase_since_ts=long_ago, last_command_ts=long_ago, last_hvac_mode="heat", last_target=20.0
+    )
+    coordinator.call_memory = {}
+    return coordinator
+
+
+@pytest.mark.parametrize(("shortfall", "set_by"), [("alone", "wohnzimmer"), ("lift", "badezimmer")])
+async def test_with_the_heat_pump_alone_its_rooms_do_not_set_the_flow_of_a_boiler_running_for_another(
+    hass: HomeAssistant, shortfall: str, set_by: str
+) -> None:
+    """Review 2026-11-02: the bathroom, slow at the least power by choice, set a flow 6.5 degrees hotter for the living
+    room's run, its slow rise taught the curve to go up, and it counted towards the load class."""
+    coordinator = await _running_unit(hass, shortfall)
+    hass.states.async_set("sensor.bath_temp", "19.0")
+    hass.states.async_set("sensor.living_temp", "18.1")
+    await coordinator.async_refresh()
+    await coordinator.async_refresh()
+    assert coordinator.data["boiler_command"].reason == "room_demand"
+    assert coordinator.data["boiler_command"].flow_set_by == set_by
+    assert coordinator.data["midea_command"].plan == "heat"
+
+
+@pytest.mark.parametrize(("shortfall", "sent"), [("alone", 21.0), ("lift", 21.5)])
+async def test_with_the_heat_pump_alone_its_rooms_do_not_heat_along(
+    hass: HomeAssistant, monkeypatch, shortfall: str, sent: float
+) -> None:
+    """Heating along raised the bathroom's thermostat by half a degree, for gas heat while the unit was the cheaper source."""
+    from custom_components.thriftherm.engines import room_control
+
+    sent_targets, decide = {}, room_control.decide
+    def recording(room, mode, res, *args, **kwargs):
+        sent_targets[room] = res.target
+        return decide(room, mode, res, *args, **kwargs)
+
+    monkeypatch.setattr(room_control, "decide", recording)
+    coordinator = await _running_unit(hass, shortfall)
+    hass.states.async_set("sensor.bath_temp", "20.8")
+    hass.states.async_set("sensor.living_temp", "15.0")
+    await coordinator.async_refresh()
+    await coordinator.async_refresh()
+    assert coordinator.data["boiler_command"].plan == "heat"
+    assert sent_targets["badezimmer"] == sent
+
+
+async def test_with_the_heat_pump_alone_a_dearer_unit_leaves_its_rooms_to_the_boiler(hass: HomeAssistant) -> None:
+    coordinator = await _running_unit(hass, "alone", electricity_price=2.0)
+    hass.states.async_set("sensor.bath_temp", "19.0")
+    hass.states.async_set("sensor.living_temp", "21.0")
+    await coordinator.async_refresh()
+    await coordinator.async_refresh()
+    assert coordinator.data["boiler_command"].reason == "room_demand"
+    assert coordinator.data["boiler_command"].flow_set_by == "badezimmer"
+
+
 async def test_a_room_the_heat_pump_heats_with_no_room_calling_learns_no_cool_down(hass: HomeAssistant) -> None:
     """Held at its least speed the compressor runs for hours with no room calling: the slow drift is no cool-down."""
     _climate_calls(hass)
@@ -881,6 +984,28 @@ async def test_a_room_the_heat_pump_heats_with_no_room_calling_learns_no_cool_do
     assert (coordinator.data["advice"].source, coordinator.data["boiler_command"].plan) == ("none", "block")
     assert "badezimmer" not in coordinator.cool_rates.episodes
     assert "wohnzimmer" in coordinator.cool_rates.episodes  # its radiator is cold: it cools
+
+
+async def test_a_heat_pump_resting_for_gas_cheaper_says_so_instead_of_no_room_needing_heat(hass: HomeAssistant) -> None:
+    """Seen 2026-10-31: four stops for "gas cheaper" showed "no room needs heat" with the bathroom at 19.9/20."""
+    _climate_calls(hass)
+    coordinator = (await _setup(hass, options={**RELEASED, "electricity_price": 1.5})).runtime_data
+    hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20, "compressor_frequency": 24})
+    hass.states.async_set("sensor.bath_temp", "21.2")  # wanted warm, none calls
+    hass.states.async_set("sensor.living_temp", "19.0")
+    coordinator.set_control_mode("active")
+    long_ago = time.time() - 7200
+    coordinator.control_memory = ControlMemory(
+        running_since_ts=long_ago, phase_since_ts=long_ago, last_command_ts=long_ago, last_hvac_mode="heat", last_target=20.0
+    )
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    command = coordinator.data["midea_command"]
+    assert (command.plan, command.target_temp, command.reason) == ("heat", 17.0, "gas_cheaper")
+    assert coordinator.control_memory.resting
+    shown = hass.states.get("sensor.thriftherm_decision_reason").attributes
+    assert "heat_pump_gas_cheaper" in shown["reason_codes"] and "no_demand" not in shown["reason_codes"]
+    assert "central heating cheaper, the heat pump pauses" in shown["reasons"]
 
 
 async def test_a_resting_heat_pump_is_not_said_to_run_through(hass: HomeAssistant) -> None:

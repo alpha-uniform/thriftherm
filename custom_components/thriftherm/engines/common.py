@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from math import isfinite
 
 
 def round_half(value: float) -> float:
@@ -11,11 +12,12 @@ def round_half(value: float) -> float:
 
 
 def as_float(value: object) -> float | None:
-    """A stored or reported value as a number; anything that is not one becomes None."""
+    """A stored or reported value as a number; anything that is not one, "nan" and "inf" among them, becomes None."""
     try:
-        return float(value)  # type: ignore[arg-type]
+        number = float(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return None
+    return number if isfinite(number) else None
 
 
 def as_dict(value: object) -> dict:

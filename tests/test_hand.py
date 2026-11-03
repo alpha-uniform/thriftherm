@@ -636,3 +636,66 @@ async def test_a_setpoint_changed_by_hand_shows_as_an_override_at_once(hass, fre
     bath.at_the_device(target=24.0)  # the knob does
     await hass.async_block_till_done()
     assert cycles and coordinator.overrides["badezimmer"].target == 24.0
+
+
+async def _back_after_a_restart(coordinator, bath, *, mode, target) -> None:
+    """A restart empties what was seen of the thermostat, and it comes back only after Thriftherm has started."""
+    bath._attr_available = False
+    bath.async_write_ha_state()
+    coordinator._setting_changes.clear()
+    coordinator._last_settings.clear()
+    bath._attr_available = True
+    bath.at_the_device(mode=mode, target=target)
+
+
+async def test_a_thermostat_back_after_a_restart_with_another_setpoint_is_no_hand(hass, freezer) -> None:
+    """2026-11-02: two restarts 100 s apart, Better Thermostat took its valves' setpoints, four rooms overrode their plan."""
+    coordinator, bath, _ = await _setup(hass, freezer)
+    await _cycle(hass, coordinator, freezer, 600)
+    assert coordinator.room_ctrl_memory["badezimmer"].confirmed is True
+    await _back_after_a_restart(coordinator, bath, mode=HVACMode.HEAT, target=19.0)
+    await _cycle(hass, coordinator, freezer, 70)
+    assert "badezimmer" not in coordinator.overrides
+    await _cycle(hass, coordinator, freezer, 70)
+    assert bath.target_temperature == 21.0
+
+
+async def test_a_thermostat_back_switched_off_and_switched_on_again_is_no_hand_on_its_setpoint(hass, freezer, hass_admin_user) -> None:
+    """Switching it on says nothing about the 5 °C it came back with, whoever does it."""
+    coordinator, bath, _ = await _setup(hass, freezer)
+    await _cycle(hass, coordinator, freezer, 600)
+    await _back_after_a_restart(coordinator, bath, mode=HVACMode.OFF, target=5.0)
+    await _cycle(hass, coordinator, freezer, 70)
+    assert "badezimmer" not in coordinator.overrides
+    switch_on = {"entity_id": "climate.bath", "hvac_mode": "heat"}
+    await hass.services.async_call("climate", "set_hvac_mode", switch_on, blocking=True, context=Context(user_id=hass_admin_user.id))
+    await _cycle(hass, coordinator, freezer, 70)
+    assert "badezimmer" not in coordinator.overrides
+
+
+async def test_a_knob_turned_after_the_restart_is_still_a_hand(hass, freezer) -> None:
+    coordinator, bath, _ = await _setup(hass, freezer)
+    await _cycle(hass, coordinator, freezer, 600)
+    await _back_after_a_restart(coordinator, bath, mode=HVACMode.HEAT, target=21.0)
+    await _cycle(hass, coordinator, freezer, 70)
+    bath.at_the_device(target=23.0)
+    await _cycle(hass, coordinator, freezer, 70)
+    assert coordinator.overrides["badezimmer"].target == 23.0 and coordinator.overrides["badezimmer"].by == "device"
+
+
+async def test_a_setpoint_and_then_a_mode_in_one_go_stay_a_hand_on_the_setpoint(hass, freezer, hass_admin_user) -> None:
+    """Review 2026-11-02: a change of mode right after a setpoint hid it from the rule that a setpoint must be seen
+    changing, while a running burner kept the debouncer busy between the two, and the plan overwrote the setpoint."""
+    coordinator, bath, _ = await _setup(hass, freezer)
+    await _cycle(hass, coordinator, freezer, 600)
+    bath.at_the_device(mode=HVACMode.OFF)
+    await _cycle(hass, coordinator, freezer, 70)
+    await coordinator.async_request_refresh()  # the cooldown runs
+    await hass.async_block_till_done()
+    freezer.tick(timedelta(seconds=1))
+    context = Context(user_id=hass_admin_user.id)
+    await _set(hass, "climate.bath", 24.0, context)
+    switch_on = {"entity_id": "climate.bath", "hvac_mode": "heat"}
+    await hass.services.async_call("climate", "set_hvac_mode", switch_on, blocking=True, context=context)
+    await _cycle(hass, coordinator, freezer, 70)
+    assert coordinator.overrides["badezimmer"].target == 24.0 and bath.target_temperature == 24.0

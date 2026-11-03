@@ -14,6 +14,8 @@ that is configured.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
+
 from ..const import PUMP_STATE_HWC, PUMP_STATE_ON, PUMP_STATE_OVERRUN
 from ..models import BoilerResult, BoilerState, Prices
 from .economics import gas_energy_kwh, gas_power_w
@@ -24,6 +26,66 @@ MIN_DELTA_T_FOR_HEATING_K = 2.0
 # 2026-09-13..16: 2169 changes in three days). Treating each of those as a data
 # outage stopped the SetMode for a minute and reset the controller's timers.
 EBUS_SIGNAL_GRACE_S = 120.0
+# Issue #5: a flow of 98 to 113 °C at a target of 45 °C, also in S.8 with the burner off and under a block sent for over an
+# hour, so nothing sent stops it. What it gets: no new release for a while after it, and a warning. From 90 °C: above the
+# highest flow sent (75 °C) plus its overshoot of 14 degrees. The warning only from 100 °C, as a knob may stand at 85 °C.
+FAULT_FLOW_C = 90.0
+OVERHEAT_C = 100.0
+FAULT_HOLD_S = 1800.0
+FAULT_HOLD_MAX_S = 4 * 3600.0  # a reading that hangs must not hold back the heating for good (engines/safety.py)
+OVERHEAT_SHOWN_S = 24 * 3600.0
+
+
+@dataclass(frozen=True)
+class BoilerFault:
+    """Since when and until when signs of a fault were seen, the highest flow past `OVERHEAT_C` and the last one."""
+
+    since_ts: float | None = None
+    seen_ts: float | None = None
+    overheat_ts: float | None = None
+    overheat_c: float | None = None
+    overheat_last_ts: float | None = None
+
+    def to_storage(self) -> dict:
+        return {key: getattr(self, key) for key in _FAULT_KEYS}
+
+    @classmethod
+    def from_storage(cls, raw: object) -> BoilerFault:
+        if not isinstance(raw, dict):
+            return cls()
+        values = [raw.get(key) for key in _FAULT_KEYS]
+        if not all(v is None or (isinstance(v, (int, float)) and not isinstance(v, bool)) for v in values):
+            return cls()
+        fault = cls(*(None if v is None else float(v) for v in values))
+        if None in (fault.overheat_ts, fault.overheat_c, fault.overheat_last_ts):  # all three or none
+            return cls(fault.since_ts, fault.seen_ts)
+        return fault
+
+
+_FAULT_KEYS = ("since_ts", "seen_ts", "overheat_ts", "overheat_c", "overheat_last_ts")
+
+
+def watch_fault(fault: BoilerFault, flow_c: float | None, waits_for_water: bool, now_ts: float) -> BoilerFault:
+    """Note the signs seen now; of the flows past `OVERHEAT_C` within a day the highest with its time, and the last."""
+    if flow_c is not None and flow_c >= OVERHEAT_C:
+        if not overheated(fault, now_ts) or flow_c > fault.overheat_c:
+            fault = replace(fault, overheat_ts=now_ts, overheat_c=flow_c)
+        fault = replace(fault, overheat_last_ts=now_ts)
+    if not waits_for_water and (flow_c is None or flow_c < FAULT_FLOW_C):
+        return fault
+    over = fault.seen_ts is None or now_ts - fault.seen_ts >= FAULT_HOLD_S
+    return replace(fault, since_ts=now_ts if over or fault.since_ts is None else fault.since_ts, seen_ts=now_ts)
+
+
+def no_new_release(fault: BoilerFault, now_ts: float) -> bool:
+    """Half an hour after the last sign, and no longer than `FAULT_HOLD_MAX_S` in all."""
+    if fault.seen_ts is None or fault.since_ts is None:
+        return False
+    return now_ts - fault.seen_ts < FAULT_HOLD_S and now_ts - fault.since_ts < FAULT_HOLD_MAX_S
+
+
+def overheated(fault: BoilerFault | None, now_ts: float) -> bool:
+    return fault is not None and fault.overheat_last_ts is not None and now_ts - fault.overheat_last_ts < OVERHEAT_SHOWN_S
 
 
 def signal_with_grace(signal_ok: bool | None, lost_since: float | None, now_ts: float) -> tuple[bool | None, float | None]:

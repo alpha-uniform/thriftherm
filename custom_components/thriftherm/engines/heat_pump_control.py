@@ -27,27 +27,34 @@ Principles
   a degree above it, its own controller climbed to 600-690 W and the rooms rose a
   degree an hour. The setpoint is set once per phase (a start, a resume, a
   takeover, the end of a quick heat-up) and then held: a room target that changes
-  sends nothing, and a reading that rises never raises it (that chase cost 20
-  beeps that night). It is set anew only where the unit stopped itself while a
-  room is short, or its reading fell well below the setpoint (`CAP_K`).
+  sends nothing, and while no room is short a reading that rises never raises it
+  (that chase cost 20 beeps that night). It is set anew only where the unit stopped
+  itself while a room is short, its reading fell well below the setpoint (`CAP_K`),
+  or, while a room is short, rose to where it would stop itself (2026-11-02).
 * The coldest served room decides run or rest. Half a degree above its target
   the unit rests at the lowest setpoint, in heat mode: from there it restarts
   softly, where every start from off or fan only boosted to 60-79 Hz. At its
   target the unit heats again. A unit in a room too cold to rest by setpoint is
-  stopped instead, and one the lowest setpoint does not stop as well.
-* More power comes only from a quick heat-up (30 °C and the fan high). A served
-  room that lags lets the boiler add the peak (`delivers`), and the unit stays at
-  its least speed: above it the extra heat costs more than the boiler's. Only
-  without a boiler, or in the mode "heat pump only", is the unit set higher, half
-  a degree at a time.
+  stopped instead, and one the lowest setpoint does not stop as well. Gas cheaper
+  while a room is still wanted warm, it rests alike, as it will be wanted again
+  soon (2026-11-02), and is switched off once gas stayed cheaper for an hour.
+* More power comes only from a quick heat-up (30 °C and the fan high), a little
+  more from a drying (see below). A served room that lags lets the boiler add the
+  peak (`delivers`), and the unit stays at its least speed: above it the extra
+  heat costs more than the boiler's. Only without a boiler, or in the mode "heat
+  pump only", is the unit set higher, half a degree at a time.
 * A quick heat-up and the drying of a room turn the fan up, the drying to the
   strongest stage the unit has, never down from a stronger one. Once neither
   applies any more the fan gets back the stage it was turned up from, as long as
   it still shows the one it was turned up to; a stage somebody chose meanwhile is
   left alone. Apart from that only a start and a newly chosen stage of normal operation
   set the fan: a stage chosen by hand stays.
-  Stages are sent as the unit spells them ("Auto" for "auto"). A drying counts as
-  a room that is short: it never rests, and the compressor stays at its least speed.
+  Stages are sent as the unit spells them ("Auto" for "auto"). A drying never rests:
+  its setpoint goes `DRYING_LEAD_K` above the unit's own standing reading at once (running, less
+  `READING_JUMP_K`), also with the compressor standing, and is held for the drying, set anew only where the unit stops
+  itself. At its end the unit goes straight back to its least speed (2026-11-02). Fallen out at
+  its ceiling it heats again only `DRYING_CEILING_HYSTERESIS_K` below it, out of a rest after the
+  minimum pause.
 * In normal operation the fan has the stage chosen in the options ("auto" unless
   chosen otherwise): a start sets it, a turn up gives it back, and a unit still on
   the stage it was given before gets the one chosen now, once. One chosen by hand stays.
@@ -80,7 +87,6 @@ from ..const import (
 from . import hand
 from .common import as_dict, as_float, round_half
 from .heat_pump import USER_STATES
-from .learning import MIN_BIN_COUNT
 from ..models import HeatPumpCommand, HeatPumpState, Parameters, RoomResult
 
 # Split heat pumps typically refuse heating setpoints below 17 °C and report the
@@ -94,6 +100,12 @@ ADJUST_MIN_STEP_K = 0.5
 RATE_TOO_SLOW_K_H = 0.3
 LEARNING_MIN_RATIO = 0.85  # estimate must be at least 85 % of break-even
 DRYING_MAX_OVERSHOOT_K = 1.5  # drying keeps asking for heat, but not without a ceiling
+# Fallen out at its ceiling, a drying heats again only this far below it (review 2026-11-02: 23.6 / 23.4 °C for a
+# target of 22 set the unit to 21, 25, 21, 25 ... every minute, each at once).
+DRYING_CEILING_HYSTERESIS_K = 0.5
+# During a drying the setpoint is this far above its own reading, held for the drying. Seen 2026-10-30 16:54: "Dry now" left
+# the setpoint at 20.5 with the compressor standing, nothing was sent; set to 22 by hand it ran at about 30 Hz and 350-430 W.
+DRYING_LEAD_K = 3.0
 LEARNING_REPEAT_S = 24 * 3600.0
 LEARNING_RUN_S = 3600.0
 MANUAL_DETECT_GRACE_S = 120.0  # a unit may take this long to show what it was sent
@@ -136,13 +148,30 @@ READING_JUMP_K = 1.5
 CAP_K = 0.5
 CAP_LIFT_K = 1.5
 CAP_HOLD_S = 600.0  # above the cap this long with the compressor running: set anew from its reading
+# It stops itself at about 1.75 above its setpoint (in half degrees: at +2.0 within 0-6 minutes, at +1.5 after 44 minutes
+# or not at all). Seen 2026-10-31 03:09-03:55: five stops of its own in 46 minutes at setpoint 19 while the office warmed,
+# 2026-11-01 19:30 one after 41 minutes at +1.5. While a room is short, its reading this long `READING_JUMP_K` above the
+# setpoint, or `UNIT_HYSTERESIS_K` above at once, sets it anew a degree below its reading: one beep, no stop.
+READING_HIGH_S = 300.0
 REST_ABOVE_K = 0.5  # the coldest served room this far above its target: the unit rests
 RESUME_AT_K = 0.0  # ... and at its target it heats again
 # A rest by setpoint needs its own reading this far above the lowest setpoint: it stops at about
 # 1.75-2 degrees above its setpoint. In a colder room it is stopped by mode instead.
 UNIT_HYSTERESIS_K = 2.0
 REST_FAILSAFE_S = 900.0  # its compressor still runs this long after the lowest setpoint went out: stopped by mode
+# Gas cheaper while a room still wants heat: the unit rests at the lowest setpoint in heat mode, as for warm rooms, and is
+# switched off only once gas stayed cheaper this long. Seen 2026-10-31 04:35-06:45: each stop for "gas cheaper" ended in a
+# start from fan only or off at 67-74 Hz and 1.0-1.1 kW, four in two hours, with the bathroom at 19.9/20 each time. Resting
+# costs 9 W more than off: a hard start (60-105 Wh) is worth 7-12 hours of it. An hour was as long as the last cycle's COP
+# counted then, which flipped the economics with the mode: in heat its 2.3-2.7, in off the learned 3.0-4.0. Since
+# 2026-11-02 that COP decides nothing (heat_pump_tracking.HeatPumpTracker.cop).
+ECON_REST_MAX_S = 3600.0
 STAND_S = 300.0  # its compressor at 0 Hz this long: the unit stopped itself (its shortest restart came after 5.4 min)
+# A room `LAG_BELOW_K` short and its compressor still standing this long after the last setpoint: half a degree more, up to `CAP_LIFT_K`
+# above its reading. Night of 2026-11-02/03: half a degree and a degree above its reading left it standing for four hours.
+WAKE_S = 1800.0
+# ... standing as far as its samples show: they reach back half an hour on a grid of about 60 s, so 1740 to 1800 s (adapters/inputs.py).
+WAKE_STOOD_S = 1680.0
 # A defrost stops the compressor and its own reading falls to 15.5-17.5 °C: nothing is set anew
 # during it and for this long after it.
 DEFROST_HOLD_S = 900.0
@@ -206,11 +235,14 @@ class ControlMemory:
     phase_since_ts: float | None = None  # start of the current run or rest; None: not set since it was taken over
     # the fan stage of normal operation the unit was given last; None: "auto", what every start set before the option
     fan_normal: str | None = None
+    drying_held: bool = False  # the setpoint is a drying's (`DRYING_LEAD_K` above its reading), not the least speed's
     # not stored: when its last stop of its own was answered (a setpoint sent or not), since when its reading
     # is below the setpoint by more than the cap, and until when a defrost holds the setpoint
     stop_noted_ts: float | None = None
     above_cap_since_ts: float | None = None
     defrost_until_ts: float | None = None
+    econ_rest_since_ts: float | None = None  # not stored: since when it rests for gas cheaper while a room wants heat
+    reading_high_since_ts: float | None = None  # not stored: since when its reading is `READING_JUMP_K` above the setpoint
 
     def to_storage(self) -> dict:
         # The run state is persisted too: after a restart mid-run the controller must
@@ -234,6 +266,7 @@ class ControlMemory:
             "lifted": self.lifted,
             "phase_since_ts": self.phase_since_ts,
             "fan_normal": self.fan_normal,
+            "drying_held": self.drying_held,
         }
 
     @classmethod
@@ -259,6 +292,7 @@ class ControlMemory:
             boiler_helps=data.get("boiler_helps") is True,
             resting=data.get("resting") is True,
             lifted=data.get("lifted") is True,
+            drying_held=data.get("drying_held") is True,
             **{key: as_float(data.get(key)) for key in _STORED_FLOATS},
         )
 
@@ -292,16 +326,18 @@ class ControlInputs:
     expected_cop: float | None
     break_even_cop: float | None  # None when the prices cannot be used
     outdoor_bin: int | None
-    bin_count: int
+    bin_learned: bool
     params: Parameters
     cheaper: bool = False  # the heat pump is the cheaper source right now, whether or not a room calls
     started_ts: float | None = None  # when the control itself began (Home Assistant started, the entry was loaded)
     defrosting: bool = False  # a defrost is suspected right now (engines/defrost.py)
     # False without a boiler, in the mode "heat pump only", and where the option for a shortfall is "heat pump runs higher"
+    # or "heat pump alone"
     boiler_can_help: bool = True
-    may_lift: bool = True  # without the boiler's help the unit is set higher for a lagging room; False: "warm up slower"
+    may_lift: bool = True  # without the boiler's help the unit is set higher for a lagging room; False: "warm up slower", "heat pump alone"
     # "warm up slower" with a boiler: it helps only from SLOWER_FLOOR_K below a target, not for a room that merely lags
     help_at_floor: bool = False
+    boiler_held: bool = False  # signs of a boiler fault hold back a new release: the unit heats whatever is cheaper
 
 
 def to_step(value: float, step: float | None) -> float:
@@ -376,16 +412,27 @@ def stood_s(unit: HeatPumpState, now: float) -> float | None:
     return max(now - min(stood, default=now), 0.0)
 
 
-def _held(value: float | None, unit: HeatPumpState, rooms: tuple[RoomResult, ...]) -> float | None:
+def stopped_ts(unit: HeatPumpState) -> float | None:
+    """When its compressor stopped, as far as its samples show it: None where none shows it running.
+
+    Its age in `stood_s` then moves along with the samples, and after a restart begins with them: that is no new stop.
+    """
+    last_ran = max((s.ts for s in unit.history if s.compressor_hz is not None and s.compressor_hz > 0), default=None)
+    if last_ran is None:
+        return None
+    return min((s.ts for s in unit.history if s.ts > last_ran), default=None)
+
+
+def _held(value: float | None, unit: HeatPumpState, rooms: tuple[RoomResult, ...], lead: float = 0.0) -> float | None:
     """A setpoint to hold, in the unit's step: above the lowest one (that is the rest), below a quick heat-up's,
-    and never far above the warmest wanted target (a reading stuck high)."""
+    and never far above the warmest wanted target (a reading stuck high), by `lead` more for one set above its reading."""
     if value is None:
         return None
     step = max(SETPOINT_STEP, unit.target_temp_step or 0.0)
     top = BOOST_C - step
     targets = [r.target for r in wanted_rooms(rooms)]
     if targets:
-        top = min(top, max(targets) + LATCH_ABOVE_TARGET_MAX_K)
+        top = min(top, max(targets) + LATCH_ABOVE_TARGET_MAX_K + lead)
     return to_step(min(max(value, SETPOINT_MIN + step), top), unit.target_temp_step)
 
 
@@ -403,9 +450,19 @@ def latch_start(reading: float | None, unit: HeatPumpState, rooms: tuple[RoomRes
     return _held(None if reading is None else reading + AIM_K + READING_JUMP_K, unit, rooms)
 
 
+def drying_setpoint(reading: float | None, unit: HeatPumpState, rooms: tuple[RoomResult, ...]) -> float | None:
+    """The setpoint of a drying: `DRYING_LEAD_K` above its reading, a little stronger than its least speed.
+
+    Running, its reading shows `READING_JUMP_K` more than standing: measured without it, a drying is as strong either way.
+    """
+    if reading is None:
+        return None
+    return _held(reading - (READING_JUMP_K if runs(unit) else 0.0) + DRYING_LEAD_K, unit, rooms, lead=DRYING_LEAD_K)
+
+
 def latched_setpoint(mem: ControlMemory) -> float | None:
-    """The setpoint the unit is held at while it runs; None while it rests, heats up quickly or is not ours."""
-    if mem.running_since_ts is None or mem.resting or mem.last_target is None or mem.last_target >= BOOST_C:
+    """The setpoint the unit is held at while it runs; None while it rests, heats up quickly, dries or is not ours."""
+    if mem.running_since_ts is None or mem.resting or mem.drying_held or mem.last_target is None or mem.last_target >= BOOST_C:
         return None
     return mem.last_target
 
@@ -413,6 +470,25 @@ def latched_setpoint(mem: ControlMemory) -> float | None:
 def floor_setpoint(unit: HeatPumpState) -> float:
     """The lowest setpoint, where the unit rests."""
     return to_step(SETPOINT_MIN, unit.target_temp_step)
+
+
+def floor_rests(unit: HeatPumpState, now: float) -> bool:
+    """The lowest setpoint stops its compressor: its reading as it would run at least its hysteresis above it.
+
+    A compressor that stood a while reads 1.5 degrees lower than it would run: judged as it would run. In a colder
+    room it would run on at the floor, and it is stopped by mode instead.
+    """
+    if unit.indoor_temp is None:
+        return False
+    standing = (stood_s(unit, now) or 0.0) >= STAND_S
+    return unit.indoor_temp + (READING_JUMP_K if standing else 0.0) >= SETPOINT_MIN + UNIT_HYSTERESIS_K
+
+
+def rest_failed(unit: HeatPumpState, phase_start: float | None, now: float, frozen: bool) -> bool:
+    """Its compressor runs on although the lowest setpoint went out a while ago. A defrost is no evidence:
+    its compressor starts again afterwards by design."""
+    ran_through = unit.compressor_running_s is None or unit.compressor_running_s >= REST_FAILSAFE_S
+    return runs(unit) and not frozen and now - (phase_start or now) >= REST_FAILSAFE_S and ran_through
 
 
 def preheat_short_k(room: RoomResult, now: float) -> float | None:
@@ -474,7 +550,8 @@ def heats_at_minimum(
 ) -> bool:
     """The unit heats its rooms at the least speed it is held at: what its heat-up rates are learned from.
 
-    Not during a quick heat-up (30 °C, 650-930 W) or a drying (the strongest fan), not in a rest, and not
+    Not during a quick heat-up (30 °C, 650-930 W) or a drying (the strongest fan, three degrees above its reading),
+    not in a rest, and not
     in the first minutes of a run, while a start may still boost. A unit that shows no frequency counts
     from the start of its run phase (review 2026-10-30: it never learned a rate of its own).
     """
@@ -500,7 +577,8 @@ def heats_at_minimum(
 
 def why_above_minimum(unit: HeatPumpState, rooms: tuple[RoomResult, ...], mem: ControlMemory | None = None) -> str | None:
     """What runs the unit above the least speed it is held at: a quick heat-up (30 °C, 650-930 W, also while
-    it is held at 30 to its minimum run), a drying (the strongest fan) or a lift (600-1000 W). None: nothing does.
+    it is held at 30 to its minimum run), a drying (the strongest fan, three degrees above its reading) or a lift
+    (600-1000 W). None: nothing does.
 
     Asked before the control decides, so from the rooms, the unit's own setpoint and the memory of the last
     decision, not from the command.
@@ -508,8 +586,8 @@ def why_above_minimum(unit: HeatPumpState, rooms: tuple[RoomResult, ...], mem: C
     held_at_boost = unit.target_temp is not None and unit.target_temp >= BOOST_C
     if held_at_boost or any(r.heat_pump_allowed and r.boost_active for r in rooms):
         return "quick_heat_up"
-    if any(r.heat_pump_allowed and r.drying.active for r in rooms):
-        return "bathroom_drying"
+    if any(r.heat_pump_allowed and r.drying.active for r in rooms) or (mem is not None and mem.drying_held):
+        return "bathroom_drying"  # also its setpoint held on after the drying, through a defrost
     # Release check 2026-10-30: kept out of the heat-up rates (heats_at_minimum), a lift still entered the COP map.
     # Not judged by the gap to its own reading: that falls 1.5 for minutes after a stop, and a run at its least speed
     # that re-latched then sat a degree above it; dropped, the whole cycle's COP was lost.
@@ -736,7 +814,8 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
             last_hvac_mode="off", fan_until_ts=None,
             fan_turned_up_from=None, fan_turned_up_to=None,  # the next start sets the fan anyway
             lagging_since_ts=None, boiler_helps=False,  # a run that ended judges nothing any more
-            resting=False, lifted=False, phase_since_ts=None, above_cap_since_ts=None,
+            resting=False, lifted=False, phase_since_ts=None, above_cap_since_ts=None, reading_high_since_ts=None,
+            econ_rest_since_ts=None, drying_held=False,
         )
         just_sent = mem.last_command_ts is not None and now - mem.last_command_ts <= MANUAL_DETECT_GRACE_S
         if active and (unit.hvac_mode or "off") == "off" and not just_sent:
@@ -794,7 +873,8 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
             new = replace(
                 mem, manual_until_ts=now + p.manual_hold_s, manual_by=by, running_since_ts=None, last_hvac_mode=None,
                 fan_until_ts=None, not_carried_out=0, lagging_since_ts=None, boiler_helps=False,
-                resting=False, lifted=False, phase_since_ts=None, above_cap_since_ts=None,
+                resting=False, lifted=False, phase_since_ts=None, above_cap_since_ts=None, reading_high_since_ts=None,
+                econ_rest_since_ts=None, drying_held=False,
                 # switched off by hand: the minimum pause counts from now once the unit is ours again
                 stopped_since_ts=now if off_now else mem.stopped_since_ts,
             )
@@ -814,7 +894,8 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
             mem = replace(
                 mem, running_since_ts=now, stopped_since_ts=None, last_command_ts=None,
                 last_hvac_mode="heat", last_target=unit.target_temp, lagging_since_ts=None, boiler_helps=False,
-                resting=False, lifted=False, phase_since_ts=None, above_cap_since_ts=None,
+                resting=False, lifted=False, phase_since_ts=None, above_cap_since_ts=None, reading_high_since_ts=None,
+                econ_rest_since_ts=None, drying_held=False,
             )
 
     running = mem.running_since_ts is not None
@@ -857,8 +938,10 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
     gap = min((round(r.temperature - r.target, 3) for r in known), default=None)
     # Drying deliberately keeps demanding heat even once the target is met —
     # warm air carries the moisture out. It still needs a ceiling, or the
-    # bathroom would be driven up for the full hour the mode may last.
-    drying = [r for r in allowed if r.drying.active and r.temperature < r.target + DRYING_MAX_OVERSHOOT_K]
+    # bathroom would be driven up for the full hour the mode may last. A drying held is one until its ceiling,
+    # one that fell out at it (or was never held) heats again only half a degree below it.
+    ceiling = DRYING_MAX_OVERSHOOT_K - (0.0 if mem.drying_held else DRYING_CEILING_HYSTERESIS_K)
+    drying = [r for r in allowed if r.drying.active and r.temperature < r.target + ceiling]
     boost = [r for r in allowed if r.boost_active and r.temperature < r.target]
     need = bool(boost or drying) or (gap is not None and gap <= RESUME_AT_K)
     warm = not boost and not drying and gap is not None and gap >= REST_ABOVE_K
@@ -870,7 +953,7 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
     # rooms was stopped as "gas cheaper" the moment the call ended, and never started for a room
     # whose radiator thermostat is switched off.
     recommended = inp.advice_source in (SOURCE_HEAT_PUMP, SOURCE_BOTH)
-    economic = inp.cheaper or recommended or inp.op_mode == MODE_HEAT_PUMP_ONLY
+    economic = inp.cheaper or recommended or inp.op_mode == MODE_HEAT_PUMP_ONLY or inp.boiler_held
     learning_active = mem.learning_until_ts is not None and mem.learning_until_ts > now
     learning_new = False
     if (
@@ -878,7 +961,7 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         and not learning_active
         and p.heat_pump_learning_runs
         and inp.outdoor_bin is not None
-        and inp.bin_count < MIN_BIN_COUNT
+        and not inp.bin_learned
         and inp.expected_cop is not None
         and inp.break_even_cop is not None
         and inp.expected_cop >= LEARNING_MIN_RATIO * inp.break_even_cop
@@ -897,6 +980,8 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         reason, load = "bathroom_drying", "eco"
     elif inp.op_mode == MODE_HEAT_PUMP_ONLY:
         reason, load = "mode_midea_only", "eco"
+    elif economic and not inp.cheaper and not recommended and inp.boiler_held:
+        reason, load = "boiler_fault_hold", "eco"
     elif economic:
         reason, load = "cheaper_than_gas", "eco"
     elif learning:
@@ -905,6 +990,8 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         reason, load = "gas_cheaper", None
 
     permitted = bool(boost or drying or economic or learning)
+    if permitted and mem.econ_rest_since_ts is not None:
+        mem = replace(mem, econ_rest_since_ts=None)  # worth it again: a rest goes on for the rooms alone
     if inp.defrosting:
         mem = replace(mem, defrost_until_ts=now + DEFROST_HOLD_S)
     frozen = inp.defrosting or (mem.defrost_until_ts is not None and mem.defrost_until_ts > now)
@@ -975,7 +1062,12 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         if mem.stopped_since_ts is not None and now - mem.stopped_since_ts < p.heat_pump_min_off_s:
             return cmd(HEAT_PUMP_PLAN_OFF, "none", reason, waiting="min_off_time"), mem
         up = fan_up(load)
-        target = BOOST_C if load == "boost" else latch_start(ref_reading(unit, mem, now), unit, inp.rooms)
+        if load == "boost":
+            target = BOOST_C
+        elif drying:
+            target = drying_setpoint(ref_reading(unit, mem, now), unit, inp.rooms)
+        else:
+            target = latch_start(ref_reading(unit, mem, now), unit, inp.rooms)
         if target is None:
             return cmd(HEAT_PUMP_PLAN_OFF, "none", "intake_temperature_unknown"), mem
         bins = mem.learning_bins
@@ -1005,8 +1097,9 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
             resting=False,
             lifted=False,
             phase_since_ts=now,
-            above_cap_since_ts=None,
+            above_cap_since_ts=None, reading_high_since_ts=None,
             fan_normal=normal,
+            drying_held=bool(drying) and load != "boost",
         )
         return cmd(HEAT_PUMP_PLAN_HEAT, "start", reason, target=target, fan=up or normal, load=load), new
 
@@ -1019,24 +1112,52 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         # Out of a long rest its fan has run all along: a run-on blows nothing warm into the rooms. A run
         # resumed out of a rest has its minimum run from the resume (review 2026-10-30: stopped two minutes in).
         rested = mem.resting and (stood_s(unit, now) or 0.0) >= p.heat_pump_fan_run_on_s
+        if awake and mem.resting:
+            # Gas cheaper while a room still wants heat: it rests on in heat mode, from where it restarts softly once
+            # the heat pump is worth it again (the rest below). Off only once gas stayed cheaper for an hour.
+            since = mem.econ_rest_since_ts if mem.econ_rest_since_ts is not None else now
+            if now - since >= ECON_REST_MAX_S:
+                return stop(reason, run_on=not rested)
+            if rest_failed(unit, mem.phase_since_ts or mem.running_since_ts, now, frozen):
+                return stop("rest_not_reached")
+            if since != mem.econ_rest_since_ts:
+                mem = replace(mem, econ_rest_since_ts=since)
+            return keep_heating(mem, reason, load, floor_setpoint(unit))
         ran_since = mem.running_since_ts if mem.resting else (mem.phase_since_ts or mem.running_since_ts)
         if not rested and now - (ran_since or now) < p.heat_pump_min_run_s:
             # Finish the minimum run at the setpoint it has, unless that is the full power of a quick
             # heat-up: left at 30 °C, the unit would drive the rooms on for the rest of the minimum run.
-            boosted = mem.last_target is not None and mem.last_target >= BOOST_C
+            # The same for a drying's setpoint, three degrees above its reading.
+            boosted = mem.drying_held or (mem.last_target is not None and mem.last_target >= BOOST_C)
             own_latch = latch_running(unit.indoor_temp, unit, inp.rooms) if boosted else mem.last_target
+            if mem.drying_held:
+                mem = replace(mem, drying_held=False)
             return keep_heating(mem, reason, load, own_latch, waiting="min_run_time", at_once=boosted)
+        # Gas cheaper while a room still wants heat: it will be wanted again soon. A start from fan only or off boosts to
+        # 67-74 Hz and 1.0-1.1 kW (seen 2026-10-31), one in heat mode starts softly at 25 Hz: it rests at the floor.
+        # Nobody wanting the rooms warm (away, mode off, frost protection), it is switched off: a rest of a day costs more.
+        heating = not active or unit.hvac_mode == "heat"
+        if awake and heating and frozen:
+            # During a defrost and its hold its own reading falls to 15.5-17.5 °C, and the floor seemed not to rest it
+            # (review 2026-11-02): it was stopped by mode. The setpoint is held, and rest or stop decided after it.
+            return keep_heating(mem, reason, load, mem.last_target)
+        if awake and heating and floor_rests(unit, now):
+            rest = replace(
+                mem, resting=True, phase_since_ts=now, above_cap_since_ts=None, reading_high_since_ts=None,
+                econ_rest_since_ts=now, learning_until_ts=None, drying_held=False,
+            )
+            return keep_heating(rest, reason, load, floor_setpoint(unit), at_once=True)
         return stop(reason, run_on=not rested)
 
     # ---- a quick heat-up: full power, at once, also out of a rest ---------------------------
     if boost:
-        if mem.resting:
-            mem = replace(mem, resting=False, phase_since_ts=now)
+        if mem.resting or mem.drying_held:
+            mem = replace(mem, resting=False, phase_since_ts=now if mem.resting else mem.phase_since_ts, drying_held=False)
         return keep_heating(mem, reason, load, BOOST_C, at_once=True)
 
     # ---- resting at the lowest setpoint, in heat mode -----------------------------------------
     phase_start = mem.phase_since_ts if mem.phase_since_ts is not None else mem.running_since_ts
-    if mem.resting:
+    if mem.resting and not drying:
         floor = floor_setpoint(unit)
         if need:
             if now - (phase_start or now) < p.heat_pump_min_off_s:
@@ -1047,12 +1168,10 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
                 target = latch_running(unit.indoor_temp, unit, inp.rooms)
             else:
                 target = latch_start(ref_reading(unit, mem, now), unit, inp.rooms)
-            resumed = replace(mem, resting=False, phase_since_ts=now, above_cap_since_ts=None)
+            resumed = replace(mem, resting=False, phase_since_ts=now, above_cap_since_ts=None, reading_high_since_ts=None)
             return keep_heating(resumed, "resumed_at_minimum", load, target, at_once=True)
         # A unit the lowest setpoint does not stop runs on at whatever speed it likes: stopped by mode.
-        # A defrost is no evidence, its compressor starts again afterwards by design.
-        ran_through = (unit.compressor_running_s is None or unit.compressor_running_s >= REST_FAILSAFE_S)
-        if runs(unit) and not frozen and now - (phase_start or now) >= REST_FAILSAFE_S and ran_through:
+        if rest_failed(unit, phase_start, now, frozen):
             return stop("rest_not_reached")
         return keep_heating(mem, "rooms_warm_compressor_rests", load, floor)
 
@@ -1084,14 +1203,47 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
     lifting = not inp.boiler_can_help and inp.may_lift and (lagging_since is not None or late or lifted)
     cap = CAP_LIFT_K if lifting else CAP_K
 
+    # ---- a drying: a little stronger, set at once, also out of a rest, and held ---------------------------
+    if drying:
+        if frozen:
+            return keep_heating(mem, reason, load, mem.last_target)  # its reading says nothing: the fan goes up only
+        # A rest at its ceiling during the drying ends after the minimum pause, as any rest.
+        ceiling_rest = mem.resting and any(
+            r.drying.started_ts is not None and phase_start is not None and phase_start > r.drying.started_ts for r in drying
+        )
+        if ceiling_rest and now - phase_start < p.heat_pump_min_off_s:
+            return keep_heating(mem, reason, load, floor_setpoint(unit), waiting="min_off_time")
+        # A setpoint the unit did not carry out was forgotten for the repeat (review 2026-11-02: never sent again).
+        if not mem.drying_held or mem.resting or mem.last_target is None:
+            target = drying_setpoint(ref_reading(unit, mem, now), unit, inp.rooms)
+            dry = replace(
+                mem, drying_held=True, resting=False, phase_since_ts=now if mem.resting else phase_start,
+                above_cap_since_ts=None, reading_high_since_ts=None, econ_rest_since_ts=None,
+            )
+            return keep_heating(dry, reason, load, target, at_once=True)
+        # Set anew only where it stopped itself during the drying, once per stop, at the pace of an adjustment.
+        stood = stood_s(unit, now)
+        if stood is not None and stood >= STAND_S:
+            answered = max((ts for ts in (mem.last_command_ts, mem.stop_noted_ts) if ts is not None), default=None)
+            stop = stopped_ts(unit)
+            if answered is None or (stop is not None and stop > answered):
+                target = drying_setpoint(own, unit, inp.rooms)
+                again = replace(mem, stop_noted_ts=now)
+                if goes_out(again, target):
+                    return keep_heating(again, reason, load, target)
+                if target is None or (mem.last_target is not None and abs(target - mem.last_target) < ADJUST_MIN_STEP_K):
+                    mem = again
+        return keep_heating(mem, reason, load, mem.last_target)
+
     if warm and now - (phase_start or now) >= p.heat_pump_min_run_s and not learning_active:
         # A unit found off (switched off at the unit, a start it did not carry out) is not switched on to rest.
         heating = not active or unit.hvac_mode == "heat"
-        # A compressor that stood a while reads 1.5 degrees lower than it would run: judged as it would run.
-        standing = (stood_s(unit, now) or 0.0) >= STAND_S
-        running_own = None if own is None else own + (READING_JUMP_K if standing else 0.0)
-        if heating and running_own is not None and running_own >= SETPOINT_MIN + UNIT_HYSTERESIS_K:
-            rest = replace(mem, resting=True, phase_since_ts=now, above_cap_since_ts=None)
+        if heating and frozen:
+            return keep_heating(mem, "target_reached", load, mem.last_target)  # decided after the defrost, as above
+        if heating and floor_rests(unit, now):
+            rest = replace(
+                mem, resting=True, phase_since_ts=now, above_cap_since_ts=None, reading_high_since_ts=None, drying_held=False
+            )
             return keep_heating(rest, "rooms_warm_compressor_rests", load, floor_setpoint(unit), at_once=True)
         # In a cold room the lowest setpoint is too close to its reading to stop it: stopped by mode.
         return stop("target_reached")
@@ -1101,9 +1253,16 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
 
     # During a defrost and a quarter of an hour after it the readings say nothing: the setpoint is held.
     if frozen and not boosted:
-        if mem.above_cap_since_ts is not None:
-            mem = replace(mem, above_cap_since_ts=None)
+        if mem.above_cap_since_ts is not None or mem.reading_high_since_ts is not None:
+            mem = replace(mem, above_cap_since_ts=None, reading_high_since_ts=None)
         return keep_heating(mem, hold_reason, load, mem.last_target, waiting=waiting)
+
+    # The end of a drying: straight back to its least speed.
+    if mem.drying_held:
+        reading = own if may_run(unit) else ref_reading(unit, mem, now)
+        target = (latch_running if may_run(unit) else latch_start)(reading, unit, inp.rooms)
+        down = replace(mem, drying_held=False, above_cap_since_ts=None, reading_high_since_ts=None)
+        return keep_heating(down, "holding_at_minimum", load, target, waiting=waiting, at_once=True)
 
     # Set once: a unit taken over, the first cycle after an update, the end of a quick heat-up.
     if mem.last_target is None or mem.phase_since_ts is None or boosted:
@@ -1111,12 +1270,12 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         if not need and not boosted and mem.last_target is not None and mem.last_target <= floor:
             # Found at the floor with no room short: a rest that a moment out of reach or the update from 0.6.8
             # left off the record (review 2026-10-30: it was resumed for no room, two beeps and a run).
-            rest = replace(mem, resting=True, phase_since_ts=now, above_cap_since_ts=None)
+            rest = replace(mem, resting=True, phase_since_ts=now, above_cap_since_ts=None, reading_high_since_ts=None)
             return keep_heating(rest, "rooms_warm_compressor_rests", load, floor)
         target = (latch_running if may_run(unit) else latch_start)(
             own if may_run(unit) else ref_reading(unit, mem, now), unit, inp.rooms
         )
-        latched = replace(mem, phase_since_ts=phase_start, above_cap_since_ts=None)
+        latched = replace(mem, phase_since_ts=phase_start, above_cap_since_ts=None, reading_high_since_ts=None)
         return keep_heating(latched, "holding_at_minimum", load, target, waiting=waiting, at_once=True)
 
     # A lift that ended sets the unit back to its least speed at once (review 2026-10-30): left up to half a degree
@@ -1124,7 +1283,7 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
     if was_lifted and not lifted and may_run(unit):
         target = latch_running(own, unit, inp.rooms)
         if target is not None and mem.last_target - target >= ADJUST_MIN_STEP_K:
-            down = replace(mem, above_cap_since_ts=None)
+            down = replace(mem, above_cap_since_ts=None, reading_high_since_ts=None)
             return keep_heating(down, "holding_at_minimum", load, target, waiting=waiting, at_once=True)
 
     # It stopped itself although a room is short: the office warmed (a PC of up to 460 W), or the unit
@@ -1133,15 +1292,25 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
     # thermostat; its reading falling on while it stands is no new stop to be set lower for.
     stood = stood_s(unit, now)
     if need and stood is not None and stood >= STAND_S:
-        stopped_ts = now - stood
+        stop = stopped_ts(unit)
         answered = max((ts for ts in (mem.last_command_ts, mem.stop_noted_ts) if ts is not None), default=None)
-        if answered is None or stopped_ts > answered:
+        if answered is None or (stop is not None and stop > answered):
             target = latch_start(own, unit, inp.rooms)
-            again = replace(mem, stop_noted_ts=now, above_cap_since_ts=None)
+            again = replace(mem, stop_noted_ts=now, above_cap_since_ts=None, reading_high_since_ts=None)
             if goes_out(again, target):
                 return keep_heating(again, "relatched_unit_stopped", load, target, waiting=waiting)
             if target is None or (mem.last_target is not None and abs(target - mem.last_target) < ADJUST_MIN_STEP_K):
                 mem = again  # nothing to send: noted, and its own thermostat restarts it
+        # It does not restart: half a degree more every half hour, at least to where a start is set. Once it runs its reading
+        # jumps to about the setpoint, where it holds about 28 Hz, and rises away from it to where it is set a degree below
+        # (`relatched_reading_rose`). A unit found off takes no setpoint for a start: the tries to start it go on instead.
+        told_ts, told = mem.last_command_ts, mem.last_target
+        short_now = gap is not None and gap <= -LAG_BELOW_K and (not active or unit.hvac_mode == "heat")
+        if short_now and stood >= WAKE_STOOD_S and own is not None and told is not None and told_ts is not None and now - told_ts >= WAKE_S:
+            step = max(SETPOINT_STEP, unit.target_temp_step or 0.0)
+            target = _held(min(max(told + step, own + AIM_K + READING_JUMP_K), own + CAP_LIFT_K), unit, inp.rooms)
+            if target is not None and target > told and goes_out(mem, target):
+                return keep_heating(replace(mem, stop_noted_ts=now), "woken_unit_stands", load, target, waiting=waiting)
 
     # Its reading fell well below the setpoint while it runs (the office cooled, a door open): its own
     # controller would climb past the least speed. Set anew from its reading after a while.
@@ -1150,12 +1319,29 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         if now - since >= CAP_HOLD_S:
             target = latch_running(own, unit, inp.rooms) if not lifting else _held(own + cap, unit, inp.rooms)
             if goes_out(mem, target):
-                down = replace(mem, above_cap_since_ts=None)
+                down = replace(mem, above_cap_since_ts=None, reading_high_since_ts=None)
                 return keep_heating(down, "relatched_reading_fell", load, target, waiting=waiting)
         if since != mem.above_cap_since_ts:
             mem = replace(mem, above_cap_since_ts=since)
     elif mem.above_cap_since_ts is not None:
         mem = replace(mem, above_cap_since_ts=None)
+
+    # Its reading rose towards where it stops itself while a room is short (the office warmed): set a degree below it,
+    # where it holds its least speed. Not while no room is short: between their target and the rest the rooms let its
+    # own thermostat rest it, and that chase cost 20 beeps in a night (2026-10-29/30).
+    short = gap is not None and gap <= RESUME_AT_K and not dries and not lifting
+    high = None if own is None or mem.last_target is None else own - mem.last_target
+    if short and runs(unit) and high is not None and high >= READING_JUMP_K:
+        since = mem.reading_high_since_ts if mem.reading_high_since_ts is not None else now
+        if high >= UNIT_HYSTERESIS_K or now - since >= READING_HIGH_S:
+            target = latch_running(own, unit, inp.rooms)
+            if goes_out(mem, target):
+                up = replace(mem, reading_high_since_ts=None)
+                return keep_heating(up, "relatched_reading_rose", load, target, waiting=waiting)
+        if since != mem.reading_high_since_ts:
+            mem = replace(mem, reading_high_since_ts=since)
+    elif mem.reading_high_since_ts is not None:
+        mem = replace(mem, reading_high_since_ts=None)
 
     # Without a boiler a lagging room has the unit set half a degree higher every `LAG_S`, up to the lift cap.
     if lifting and lag_due and own is not None and mem.last_target is not None and mem.last_target - own < CAP_LIFT_K:

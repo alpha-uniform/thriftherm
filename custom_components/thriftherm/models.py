@@ -62,6 +62,11 @@ class TimeWindow:
         return t >= self.start or t < self.end
 
 
+# a block of a schedule helper: start, end (time.max: to midnight), the temperature it names
+Block = tuple[time, time, float | None]
+Week = tuple[tuple[Block, ...], ...]  # Monday to Sunday
+
+
 @dataclass(frozen=True)
 class ScheduleState:
     """State of a Home Assistant schedule helper assigned to a room."""
@@ -74,6 +79,8 @@ class ScheduleState:
     # temperature is no change, one at another temperature is (comfort_end runs on across a warmer one)
     next_change: datetime | None = None
     next_change_target: float | None = None
+    # the helper's blocks, Monday to Sunday (engines/schedule_week.py); None for a helper that does not tell them
+    week: Week | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +101,7 @@ class RoomConfig:
     bathroom_drying: bool = False
     drying_automatic: bool = True  # False: a drying starts with the button only, not by the humidity after a shower
     schedule_entity: str | None = None  # weekly schedule helper, replaces the text windows
+    preheat_max_s: float | None = None  # longest preheat; set, the room also calls up to the end of its block
 
 
 @dataclass(frozen=True)
@@ -252,9 +260,10 @@ class Parameters:
     cop_warmup_s: float = 600.0
     cop_min_power_w: float = 150.0
     cop_min_delta_t_k: float = 3.0
-    cop_max_sensor_age_s: float = 300.0  # this and the three limits below are fixed: no form asks for them
+    cop_outlet_max_age_s: float = 3600.0
+    cop_intake_max_age_s: float = 10800.0
     cop_min_samples: int = 12
-    cop_ema_tau_s: float = 300.0
+    cop_ema_tau_s: float = 300.0  # this and the two limits below are fixed: no form asks for them
     cop_min_raw: float = 0.5
     cop_max_raw: float = 7.0
     airflow_curve: tuple[tuple[float, float], ...] = ()  # (rpm, m3/h)
@@ -337,6 +346,7 @@ class RoomResult:
     # how fast it has risen since then, over the trend window but never before it began (engines/room.preheat_began)
     preheat_pace_k_per_h: float | None = None
     comfort_end_ts: float | None = None  # end of the running comfort window (schedule only)
+    short_preheat: bool = False  # its preheat is limited (RoomConfig.preheat_max_s)
     boiler_call: str | None = None  # engines/heat_call.py: calling, idle, stalled, comfort_ending, not_allowed
     # the room's own target its stall was accepted at: heating along raises `target`, the stall is still held against this
     stalled_target: float | None = None

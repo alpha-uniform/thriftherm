@@ -109,7 +109,8 @@
           "add_another": "Weiteren Raum hinzufügen",
           "bathroom_drying_mode": "Bad-Trocknung mit der Wärmepumpe",
           "bathroom_drying_automatic": "Trocknung nach dem Duschen von selbst starten (aus: nur mit dem Knopf „Jetzt trocknen“)",
-          "schedule_entity": "Zeitplan-Helfer (optional; ersetzt die Komfortfenster unten)"
+          "schedule_entity": "Zeitplan-Helfer (optional; ersetzt die Komfortfenster unten)",
+          "preheat_max_min": "Längstes Vorheizen (optional; leer: so lange wie nötig. Gesetzt ruft der Raum die Therme auch bis zum Ende seines Blocks, für einen kurzen Block)"
         }
       }
     },
@@ -234,7 +235,7 @@
           "heat_pump_fan_stage": "Lüfterstufe im Normalbetrieb"
         },
         "data_description": {
-          "heat_pump_shortfall": "Therme oder Fernwärme hilft: am schnellsten warm, ein paar Cent teurer. Wärmepumpe dreht höher: ohne Therme, ihr COP sinkt. Langsamer warm werden: die Wärmepumpe bleibt auf kleinster Leistung; erst ab einem halben Grad unter Soll hilft Therme oder Fernwärme, bis alle Räume am Soll sind. Ohne zentrale Heizung dreht sie immer höher.",
+          "heat_pump_shortfall": "Therme oder Fernwärme hilft: am schnellsten warm, ein paar Cent teurer. Wärmepumpe dreht höher: ohne Therme, ihr COP sinkt. Langsamer warm werden: die Wärmepumpe bleibt auf kleinster Leistung; erst ab einem halben Grad unter Soll hilft Therme oder Fernwärme, bis alle Räume am Soll sind. Wärmepumpe allein: sie bleibt auf kleinster Leistung, und solange sie die günstigere Quelle ist, rufen ihre Räume die Therme nicht. Die Therme heizt die anderen Räume weiter, und alle, wenn die Wärmepumpe teurer oder gesperrt ist. Bei Fernwärme heißt das nur kleinste Leistung. Ohne zentrale Heizung dreht sie immer höher.",
           "heat_pump_fan_stage": "Auto: Das Gerät wählt selbst. Eine höhere Stufe bringt mehr Wärme in die Räume (gemessen: Voll rund 7 % mehr als Auto bei gleichem Strom), ist aber lauter. Trocknen und Schnell aufheizen nutzen ihre eigene Stufe und geben danach diese zurück. Eine Stufe, die das Gerät nicht hat, gilt als Auto. Eine Stufe von Hand bleibt."
         },
         "sections": {
@@ -264,7 +265,9 @@
               "cop_min_power_w": "Minimale elektrische Leistung",
               "cop_min_delta_t_k": "Minimale Lufterwärmung",
               "cop_min_samples": "Minimale Anzahl gültiger Messwerte",
-              "cop_settle_max_k_per_min": "Max. Anstieg der Ausblastemperatur (eingeschwungen)"
+              "cop_settle_max_k_per_min": "Max. Anstieg der Ausblastemperatur (eingeschwungen)",
+              "cop_outlet_max_age_min": "Ausblaslufttemperatur: längste Zeit ohne Meldung",
+              "cop_intake_max_age_min": "Ansauglufttemperatur: längste Zeit ohne Meldung von ihr und ihrem Gerät"
             }
           },
           "icing": {
@@ -353,7 +356,8 @@
           "schedule_weekend": "Komfortzeiten Sa–So",
           "bathroom_drying_mode": "Bad-Trocknung mit der Wärmepumpe",
           "bathroom_drying_automatic": "Trocknung nach dem Duschen von selbst starten (aus: nur mit dem Knopf „Jetzt trocknen“)",
-          "schedule_entity": "Zeitplan-Helfer (optional; ersetzt die Komfortfenster unten)"
+          "schedule_entity": "Zeitplan-Helfer (optional; ersetzt die Komfortfenster unten)",
+          "preheat_max_min": "Längstes Vorheizen (optional; leer: so lange wie nötig. Gesetzt ruft der Raum die Therme auch bis zum Ende seines Blocks, für einen kurzen Block)"
         }
       },
       "reset_learning": {
@@ -421,7 +425,8 @@
       "options": {
         "boiler_helps": "Therme oder Fernwärme hilft",
         "lift": "Wärmepumpe dreht höher",
-        "slower": "Langsamer warm werden"
+        "slower": "Langsamer warm werden",
+        "alone": "Wärmepumpe allein"
       }
     },
     "heat_pump_fan_stage": {
@@ -465,6 +470,7 @@
             "state": {
               "measured": "Gemessen",
               "learned": "Gelernt",
+              "legacy": "Alte Tabelle",
               "prior": "Startkurve",
               "prior_calibrated": "Startkurve (kalibriert)",
               "profile": "Gemessen am gleichen Modell"
@@ -741,7 +747,10 @@
               "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
               "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
               "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+              "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
               "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
               "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
               "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
               "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -959,7 +968,10 @@
               "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
               "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
               "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+              "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
               "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
               "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
               "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
               "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -1073,7 +1085,10 @@
               "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
               "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
               "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+              "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
               "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
               "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
               "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
               "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -1141,6 +1156,7 @@
             "state": {
               "measured": "Gemessen",
               "learned": "Gelernt",
+              "legacy": "Alte Tabelle",
               "prior": "Startkurve",
               "prior_calibrated": "Startkurve (kalibriert)",
               "profile": "Gemessen am gleichen Modell"
@@ -1261,7 +1277,10 @@
               "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
               "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
               "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+              "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
               "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
               "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
               "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
               "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -1375,7 +1394,10 @@
               "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
               "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
               "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+              "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
               "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
               "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
               "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
               "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -1540,7 +1562,10 @@
               "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
               "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
               "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+              "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
               "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
               "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
               "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
               "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -1685,7 +1710,10 @@
               "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
               "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
               "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+              "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
               "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
               "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
               "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
               "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -1796,7 +1824,10 @@
               "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
               "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
               "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+              "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
               "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
               "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
               "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
               "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -1909,6 +1940,7 @@
             "state": {
               "measured": "Gemessen",
               "learned": "Gelernt",
+              "legacy": "Alte Tabelle",
               "prior": "Startkurve",
               "prior_calibrated": "Startkurve (kalibriert)",
               "profile": "Gemessen am gleichen Modell"
@@ -2003,7 +2035,10 @@
               "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
               "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
               "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+              "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
               "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
               "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
               "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
               "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -2152,7 +2187,10 @@
               "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
               "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
               "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+              "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
               "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
               "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
               "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
               "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -2282,7 +2320,10 @@
               "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
               "resumed_at_minimum": "Ein Raum ist am Soll: heizt wieder mit kleinster Leistung",
               "relatched_unit_stopped": "Gerät hat selbst abgeschaltet, ein Raum ist zu kühl: Sollwert neu gesetzt",
+              "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert ein halbes Grad höher",
+              "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
               "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
+              "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
               "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
               "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
               "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -2521,6 +2562,10 @@
     "airflow_not_calibrated": {
       "title": "Luftmenge der Wärmepumpe nicht kalibriert",
       "description": "Ohne die Kennlinie Drehzahl → m³/h lässt sich keine Wärmeleistung und damit kein COP berechnen. Der Kostenvergleich läuft solange auf den Werten aus dem Datenblatt. Die Kennlinie steht in den Optionen unter Wärmepumpe."
+    },
+    "boiler_overheated": {
+      "title": "Vorlauf der Therme über 100 °C",
+      "description": "Die Therme meldete einen Vorlauf von bis zu {flow} °C, den höchsten um {time}. Das ist weit mehr, als sie je erreichen darf, egal ob der Wert stimmt oder der Fühler defekt ist, und keine Software kann das beheben. Lass die Therme bald vom Fachbetrieb prüfen (Pumpe, Luft, Druck, Bypass, Vorlauf- und Rücklauffühler, Fehlerspeicher). Passiert es wieder, schalte die Therme aus und lass sie aus, bis sie geprüft ist. Thriftherm kann es nicht stoppen; eine halbe Stunde nach so einem Wert gibt es nur keine neue Heizfreigabe. Dieser Hinweis endet einen Tag nach dem letzten Wert."
     },
     "boiler_data_unavailable": {
       "title": "Keine Daten von der Therme",

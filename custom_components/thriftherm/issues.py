@@ -14,8 +14,10 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.util import dt as dt_util
 
 from .const import CONF_HEAT_PUMP_ROOM, DOMAIN
+from .engines import boiler as boiler_engine
 
 _ISSUE_PREFIX = "thriftherm_"
 # After a restart the first evaluation runs before ebusd has republished its
@@ -98,6 +100,13 @@ def detect(
         unavailable = boiler is not None and getattr(boiler, "available", True) is False
         if _sustained(coordinator, "boiler_data_unavailable", unavailable, BOILER_UNAVAILABLE_GRACE_S, pending):
             found["boiler_data_unavailable"] = {"translation_key": "boiler_data_unavailable"}
+        fault = getattr(coordinator, "boiler_fault", None)
+        if boiler_engine.overheated(fault, time.time()):
+            found["boiler_overheated"] = {
+                "translation_key": "boiler_overheated",
+                "flow": f"{fault.overheat_c:.0f}",
+                "time": dt_util.as_local(dt_util.utc_from_timestamp(fault.overheat_ts)).strftime("%Y-%m-%d %H:%M"),
+            }
 
     return found
 

@@ -8,7 +8,7 @@ import pytest
 from custom_components.thriftherm.engines.heat_pump_tracking import HeatPumpTracker
 from custom_components.thriftherm.models import DefrostResult, HeatPumpResult
 
-from .conftest import PARAMS, heat_pump_state
+from .conftest import PARAMS, heat_pump_state, reading
 
 NO_DEFROST = DefrostResult(
     suspected=False, kind="none", indicators=(), cycles_last_90min=0, block_reason=None, block_until_ts=None
@@ -18,7 +18,7 @@ ON_W, OFF_W = 360.0, 12.0
 
 def sample(
     tracker: HeatPumpTracker, ts: float, on: bool, defrost: DefrostResult = NO_DEFROST, outlet: float | None = None,
-    fan_rpm: float | None = 600.0,
+    fan_rpm: float | None = 600.0, outlet_reading=None, run_state: str | None = None,
 ):
     unit = heat_pump_state(
         compressor_hz=24.0 if on else 0.0,
@@ -28,8 +28,10 @@ def sample(
         outlet=((outlet if outlet is not None else (34.0 if on else 22.0)), None),
         fan_rpm=fan_rpm,
     )
+    if outlet_reading is not None:
+        unit = replace(unit, outlet_temp=outlet_reading)
     res = HeatPumpResult(
-        run_state="heating_warming_up" if on else "heating_idle",
+        run_state=run_state or ("heating_warming_up" if on else "heating_idle"),
         electrical_power_w=ON_W if on else OFF_W,
         electrical_power_source="plug",
         heating_available=True,
@@ -62,7 +64,6 @@ def test_a_whole_cycle_gives_the_cop_of_heat_over_electricity_including_the_off_
     # standby electricity and the ramps count: clearly below heat-while-on over power-while-on, but a real COP
     assert 2.0 < res.cycle_cop < 6.0
     assert on_only.value is None
-    assert tracker.take_cycle_cop() == res.cycle_cop and tracker.take_cycle_cop() is None  # once, for the map
 
 
 def test_a_hole_in_the_samples_spoils_the_cycle():
@@ -93,7 +94,7 @@ def test_reset_forgets_the_cycle():
     tracker = HeatPumpTracker()
     run_cycles(tracker, 1)
     tracker.reset()
-    assert tracker.cycle_cop is None and tracker.take_cycle_cop() is None and tracker.cycle_start_ts is None
+    assert tracker.cycle_cop is None and tracker.cycle_start_ts is None
 
 
 @pytest.mark.parametrize("cycles", [2, 3])
@@ -107,23 +108,47 @@ def test_a_cycle_with_an_unknown_fan_speed_is_spoiled_not_counted_as_without_hea
     tracker = HeatPumpTracker()
     for minute in range(21):
         res = sample(tracker, minute * 60.0, on=(minute % 20) < 10, fan_rpm=None if minute == 5 else 600.0)
-    assert res.cycle_cop is None and tracker.take_cycle_cop() is None
+    assert res.cycle_cop is None
 
 
-def test_the_cop_of_a_cycle_enters_the_map_once_however_many_settled_samples_are_still_counted():
+def test_the_cop_of_a_cycle_is_shown_but_does_not_count_as_settled():
     tracker = HeatPumpTracker()
-    stable = HeatPumpResult("heating_stable", 800.0, "plug", True)
-    entries = []
-    for minute in range(1, 33):
-        # a quarter of an hour of settled samples, then the outlet air stays cold: no settled value any more
-        unit = heat_pump_state() if minute <= 14 else heat_pump_state(outlet=(21.0, None))
-        if minute == 20:
-            tracker.cycle_cop, tracker.cycle_cop_new = (minute * 60.0, 4.2), 4.2  # a whole cycle closes
-        res = tracker.cop(SimpleNamespace(heat_pump=unit), stable, NO_DEFROST, PARAMS, minute * 60.0)
-        if (value := tracker.take_cycle_cop()) is not None or tracker.map_entry_due(res, minute * 60.0):
-            entries.append((minute, value if value is not None else res.value))
-    assert res.value == 4.2 and res.samples >= 12  # the cycle's COP is reported, next to the count of older samples
-    assert [entry for entry in entries if entry[0] >= 20] == [(20, 4.2)]
+    res = run_cycles(tracker, 1)
+    assert res.value == res.cycle_cop is not None and tracker.cop_settled is False
+
+
+def test_a_quiet_outlet_phase_does_not_spoil_the_cycle():
+    # Seen 2026-10-31 to 11-02: the sensor reports on a change of 0.2 degrees, up to 27 minutes apart in a steady run.
+    tracker = HeatPumpTracker()
+    res = None
+    for minute in range(21):
+        on = (minute % 20) < 10
+        quiet = reading(34.0 if on else 22.0, age_s=25 * 60.0)
+        res = sample(tracker, minute * 60.0, on=on, outlet_reading=quiet)
+    assert res.cycle_cop is not None and 2.0 < res.cycle_cop < 6.0
+
+
+def test_a_long_rest_with_the_fan_turning_and_an_outlet_past_its_limit_does_not_spoil_the_cycle():
+    # At rest nothing changes for the sensor to report; the reading shows no heat, so there is none to add up.
+    def cycle(rest_reading):
+        tracker = HeatPumpTracker()
+        res = None
+        for minute in range(21):
+            on = (minute % 20) < 10
+            res = sample(tracker, minute * 60.0, on=on, outlet_reading=None if on else rest_reading)
+        return res
+
+    assert cycle(reading(21.0, valid=False)).cycle_cop is not None  # no heat in it
+    assert cycle(reading(30.0, valid=False)).cycle_cop is None  # says heat, but past its limit
+
+
+def test_a_defrost_dip_is_discarded_however_young_the_report_of_the_outlet():
+    # The age no longer keeps it out: the operating state does.
+    tracker = HeatPumpTracker()
+    defrost = replace(NO_DEFROST, suspected=True, kind="cycle")
+    dip = reading(30.0, age_s=60.0)
+    res = sample(tracker, 0.0, on=True, defrost=defrost, outlet_reading=dip, run_state="heating_stable")
+    assert "defrost_cycle" in res.gate_reasons and tracker.cop_samples == []
 
 
 def test_a_fan_turning_below_the_calibrated_range_between_two_starts_does_not_spoil_the_cycle():
@@ -175,4 +200,4 @@ def test_a_cycle_with_a_quick_heat_up_is_not_measured():
         run = HeatPumpResult("heating_warming_up" if on else "heating_idle", ON_W if on else OFF_W, "plug", True)
         res = tracker.cop(SimpleNamespace(heat_pump=unit), run, NO_DEFROST, PARAMS, minute * 60.0,
                           above_minimum="quick_heat_up" if minute == 5 else None)
-    assert res.cycle_cop is None and tracker.take_cycle_cop() is None
+    assert res.cycle_cop is None
