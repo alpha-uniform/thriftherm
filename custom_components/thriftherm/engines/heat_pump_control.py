@@ -167,11 +167,16 @@ REST_FAILSAFE_S = 900.0  # its compressor still runs this long after the lowest 
 # 2026-11-02 that COP decides nothing (heat_pump_tracking.HeatPumpTracker.cop).
 ECON_REST_MAX_S = 3600.0
 STAND_S = 300.0  # its compressor at 0 Hz this long: the unit stopped itself (its shortest restart came after 5.4 min)
-# A room `LAG_BELOW_K` short and its compressor still standing this long after the last setpoint: half a degree more, up to `CAP_LIFT_K`
-# above its reading. Night of 2026-11-02/03: half a degree and a degree above its reading left it standing for four hours.
-WAKE_S = 1800.0
-# ... standing as far as its samples show: they reach back half an hour on a grid of about 60 s, so 1740 to 1800 s (adapters/inputs.py).
-WAKE_STOOD_S = 1680.0
+# A room `LAG_BELOW_K` short and its compressor still standing this long after the last setpoint: set `CAP_LIFT_K` above its reading.
+# After a longer rest half a degree and a degree above it do not start it: four hours in the night of 2026-11-02/03, 26 and 21 minutes
+# on 2026-11-04. A degree and a half did within 30 seconds, at 28 Hz that day and at 62 and 67 Hz on 2026-11-03: a start that may be
+# harder for a minute or three, against a room left short.
+WAKE_S = 300.0
+WAKE_HELPED_S = 1800.0  # ... while the boiler carries the room there is no hurry for a start that may be hard
+# Its reading falls with its speed for a while after a higher speed, and the setpoint taken from it is left too high, within the cap.
+# 2026-11-04: from 22 at 50 Hz to 21 in 11 minutes and 20.5 in 36, 28 to 36 Hz for hours. Set once more this long after the way down,
+# with its compressor running this long: right after a start its reading does not show the jump yet. A wake has the same end.
+SETTLE_S = 900.0
 # A defrost stops the compressor and its own reading falls to 15.5-17.5 °C: nothing is set anew
 # during it and for this long after it.
 DEFROST_HOLD_S = 900.0
@@ -243,6 +248,7 @@ class ControlMemory:
     defrost_until_ts: float | None = None
     econ_rest_since_ts: float | None = None  # not stored: since when it rests for gas cheaper while a room wants heat
     reading_high_since_ts: float | None = None  # not stored: since when its reading is `READING_JUMP_K` above the setpoint
+    came_down_ts: float | None = None  # not stored: when a higher speed ended, to set the setpoint once more after `SETTLE_S`
 
     def to_storage(self) -> dict:
         # The run state is persisted too: after a restart mid-run the controller must
@@ -1261,7 +1267,9 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
     if mem.drying_held:
         reading = own if may_run(unit) else ref_reading(unit, mem, now)
         target = (latch_running if may_run(unit) else latch_start)(reading, unit, inp.rooms)
-        down = replace(mem, drying_held=False, above_cap_since_ts=None, reading_high_since_ts=None)
+        down = replace(
+            mem, drying_held=False, above_cap_since_ts=None, reading_high_since_ts=None, came_down_ts=now if runs(unit) else None
+        )
         return keep_heating(down, "holding_at_minimum", load, target, waiting=waiting, at_once=True)
 
     # Set once: a unit taken over, the first cycle after an update, the end of a quick heat-up.
@@ -1275,7 +1283,10 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         target = (latch_running if may_run(unit) else latch_start)(
             own if may_run(unit) else ref_reading(unit, mem, now), unit, inp.rooms
         )
-        latched = replace(mem, phase_since_ts=phase_start, above_cap_since_ts=None, reading_high_since_ts=None)
+        latched = replace(
+            mem, phase_since_ts=phase_start, above_cap_since_ts=None, reading_high_since_ts=None,
+            came_down_ts=now if boosted and runs(unit) else None,
+        )
         return keep_heating(latched, "holding_at_minimum", load, target, waiting=waiting, at_once=True)
 
     # A lift that ended sets the unit back to its least speed at once (review 2026-10-30): left up to half a degree
@@ -1283,7 +1294,7 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
     if was_lifted and not lifted and may_run(unit):
         target = latch_running(own, unit, inp.rooms)
         if target is not None and mem.last_target - target >= ADJUST_MIN_STEP_K:
-            down = replace(mem, above_cap_since_ts=None, reading_high_since_ts=None)
+            down = replace(mem, above_cap_since_ts=None, reading_high_since_ts=None, came_down_ts=now if runs(unit) else None)
             return keep_heating(down, "holding_at_minimum", load, target, waiting=waiting, at_once=True)
 
     # It stopped itself although a room is short: the office warmed (a PC of up to 460 W), or the unit
@@ -1301,16 +1312,23 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
                 return keep_heating(again, "relatched_unit_stopped", load, target, waiting=waiting)
             if target is None or (mem.last_target is not None and abs(target - mem.last_target) < ADJUST_MIN_STEP_K):
                 mem = again  # nothing to send: noted, and its own thermostat restarts it
-        # It does not restart: half a degree more every half hour, at least to where a start is set. Once it runs its reading
-        # jumps to about the setpoint, where it holds about 28 Hz, and rises away from it to where it is set a degree below
-        # (`relatched_reading_rose`). A unit found off takes no setpoint for a start: the tries to start it go on instead.
-        told_ts, told = mem.last_command_ts, mem.last_target
-        short_now = gap is not None and gap <= -LAG_BELOW_K and (not active or unit.hvac_mode == "heat")
-        if short_now and stood >= WAKE_STOOD_S and own is not None and told is not None and told_ts is not None and now - told_ts >= WAKE_S:
-            step = max(SETPOINT_STEP, unit.target_temp_step or 0.0)
-            target = _held(min(max(told + step, own + AIM_K + READING_JUMP_K), own + CAP_LIFT_K), unit, inp.rooms)
-            if target is not None and target > told and goes_out(mem, target):
-                return keep_heating(replace(mem, stop_noted_ts=now), "woken_unit_stands", load, target, waiting=waiting)
+        # It does not restart: set where it starts, five minutes after its last setpoint or a stop left to its own thermostat.
+        # A stop not answered yet comes first. Once it runs its reading jumps to about the setpoint, where it holds about 28 Hz,
+        # and rises away from it to where it is set a degree below (`relatched_reading_rose`). A unit found off takes no
+        # setpoint for a start: the tries to start it go on instead.
+        told = mem.last_target
+        answered = max((ts for ts in (mem.last_command_ts, mem.stop_noted_ts) if ts is not None), default=None)
+        wait = WAKE_HELPED_S if helps else WAKE_S
+        settled_since = answered is not None and (stop is None or stop <= answered) and now - answered >= wait
+        paused = stop is None or now - stop >= p.heat_pump_min_off_s
+        # A planned run heats nothing and is not woken. "Warm up slower" chose the slow way: only from its comfort floor.
+        short_by = SLOWER_FLOOR_K if inp.help_at_floor else LAG_BELOW_K
+        short_now = gap is not None and gap <= -short_by and active and unit.hvac_mode == "heat"
+        if short_now and settled_since and paused and own is not None and told is not None:
+            target = _held(own + CAP_LIFT_K, unit, inp.rooms)
+            if target is not None and target - told >= ADJUST_MIN_STEP_K:
+                woken = replace(mem, stop_noted_ts=now, came_down_ts=now)
+                return keep_heating(woken, "woken_unit_stands", load, target, waiting=waiting, at_once=True)
 
     # Its reading fell well below the setpoint while it runs (the office cooled, a door open): its own
     # controller would climb past the least speed. Set anew from its reading after a while.
@@ -1326,6 +1344,17 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
     elif mem.above_cap_since_ts is not None:
         mem = replace(mem, above_cap_since_ts=None)
 
+    # Some time after a higher speed its reading has come down with it: once more, and only down. Only where a frequency
+    # shows it: without one the reading is the room's, and nothing would raise a setpoint set below it again.
+    settled_run = runs(unit) and unit.compressor_running_s is not None and unit.compressor_running_s >= SETTLE_S
+    if mem.came_down_ts is not None and now - mem.came_down_ts >= SETTLE_S and settled_run:
+        mem = replace(mem, came_down_ts=None)
+        if not lifting:
+            target = latch_running(own, unit, inp.rooms)
+            if target is not None and mem.last_target is not None and mem.last_target - target >= ADJUST_MIN_STEP_K:
+                down = replace(mem, above_cap_since_ts=None, reading_high_since_ts=None)
+                return keep_heating(down, "holding_at_minimum", load, target, waiting=waiting, at_once=True)
+
     # Its reading rose towards where it stops itself while a room is short (the office warmed): set a degree below it,
     # where it holds its least speed. Not while no room is short: between their target and the rest the rooms let its
     # own thermostat rest it, and that chase cost 20 beeps in a night (2026-10-29/30).
@@ -1336,7 +1365,7 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         if high >= UNIT_HYSTERESIS_K or now - since >= READING_HIGH_S:
             target = latch_running(own, unit, inp.rooms)
             if goes_out(mem, target):
-                up = replace(mem, reading_high_since_ts=None)
+                up = replace(mem, reading_high_since_ts=None, came_down_ts=now)
                 return keep_heating(up, "relatched_reading_rose", load, target, waiting=waiting)
         if since != mem.reading_high_since_ts:
             mem = replace(mem, reading_high_since_ts=since)

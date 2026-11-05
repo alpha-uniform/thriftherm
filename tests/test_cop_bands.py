@@ -243,6 +243,27 @@ def test_an_outlet_hung_cold_under_a_settled_compressor_counts_as_nothing():
     assert cm.estimate(1.0, DUCT) == (pytest.approx(1270.0 / 310.0, rel=0.005), "learned")
 
 
+def _settled_cop(outlet):
+    tracker, result = HeatPumpTracker(), None
+    for minute in range(14):
+        unit = heat_pump_state(compressor_hz=24.0, running_s=1320.0 + minute * 60.0, plug_power=310.0, intake=(INTAKE, RH), outlet=(INTAKE, None), fan_rpm=RPM)
+        unit = replace(unit, outlet_temp=outlet(minute))
+        res = HeatPumpResult("heating_stable", 310.0, "plug", True)
+        result = tracker.cop(SimpleNamespace(heat_pump=unit), res, NO_DEFROST, PARAMS_DUCT, minute * 60.0)
+    return tracker, result
+
+
+def test_an_outlet_silent_since_before_the_start_gives_no_settled_cop():
+    """Kept valid while its device reports, it would decide between heat pump and gas with a value from before this run."""
+    tracker, result = _settled_cop(lambda minute: reading(INTAKE + 8.0, age_s=7200.0 + minute * 60.0))
+    assert not tracker.cop_settled and "outlet_temp_silent" in result.gate_reasons
+
+
+def test_an_outlet_quiet_within_the_run_still_gives_a_settled_cop():
+    tracker, _ = _settled_cop(lambda minute: reading(INTAKE + 8.0, age_s=600.0 + minute * 60.0))
+    assert tracker.cop_settled
+
+
 def test_a_hung_outlet_does_not_pull_an_old_value_down_either():
     cm = CopMap.from_storage({"bins": {"2": {"count": 40, "mean": 3.73, "min": 2.0, "max": 5.0}}})
     tracker = HeatPumpTracker()

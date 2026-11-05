@@ -570,6 +570,7 @@ async def test_a_change_at_the_heat_pump_while_the_cycle_runs_is_not_overwritten
 async def test_a_unit_switched_off_while_unreachable_is_not_switched_on_again(hass: HomeAssistant, freezer) -> None:
     coordinator, _, midea = await _setup(hass, freezer, heat_pump_active=True)
     await _cycle(hass, coordinator, freezer, 600)
+    await _cycle(hass, coordinator, freezer, 180)  # past the grace after the last setpoint
     calls = len(midea.calls)
     midea._attr_available = False
     midea.async_write_ha_state()
@@ -585,6 +586,7 @@ async def test_a_unit_switched_off_while_unreachable_is_not_switched_on_again(ha
 async def test_back_to_automatic_ends_every_override_and_the_heat_pumps_time_in_hand(hass, freezer, hass_admin_user) -> None:
     coordinator, _, midea = await _setup(hass, freezer, heat_pump_active=True)
     await _cycle(hass, coordinator, freezer, 600)
+    await _cycle(hass, coordinator, freezer, 180)  # past the grace after the last setpoint
     await _set(hass, "climate.bath", 23.0, Context(user_id=hass_admin_user.id))
     await _set(hass, "climate.midea", 26.0, Context(user_id=hass_admin_user.id))
     await _cycle(hass, coordinator, freezer)

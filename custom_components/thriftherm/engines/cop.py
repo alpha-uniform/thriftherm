@@ -22,8 +22,8 @@ COP_STALE_S = 180.0  # three update cycles without a valid sample
 # The intake sensors hang in room air and report on change only. Seen 2026-10-11: in a steady run the
 # humidity did not move for 35 minutes, the reading counted as stale and the COP went back to unknown.
 # Humidity hardly matters for the result (ten points of RH move the heat by under one percent).
-# The adapter reads the intake humidity with this limit and the temperatures with the limits of the options:
-# an older reading arrives here as invalid, so no reading has an age to check here.
+# The adapter reads the intake humidity with this limit and the temperatures with the limits of the options: an older
+# reading arrives here as invalid, unless its device still reports (the temperatures, up to a limit of their own).
 RH_MAX_AGE_S = 6 * 3600.0
 
 
@@ -112,6 +112,9 @@ def free_power_now(heat_pump: HeatPumpState, params: Parameters) -> float | None
             return 0.0
         return None
     if outlet.value <= intake.value:
+        return 0.0
+    # Past its limit with the compressor standing no heat comes any more, whatever it last showed.
+    if not heat_pump.compressor_hz and (outlet.age_s or 0.0) > params.cop_outlet_max_age_s:
         return 0.0
     return psy.air_heating_power_w(intake.value, heat_pump.intake_rh.value, outlet.value, airflow)
 

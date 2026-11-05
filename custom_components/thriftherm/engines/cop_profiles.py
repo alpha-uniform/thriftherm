@@ -15,12 +15,13 @@ from collections.abc import Mapping
 PROFILE_NONE = "none"
 
 # Midea PortaSplit, one unit, heating a flat through two hoses, first weeks of the heating season
-# (2026-10-11 to 2026-11-03): intake and outlet air temperature and humidity, airflow from the fan
+# (2026-10-11 to 2026-11-05): intake and outlet air temperature and humidity, airflow from the fan
 # speed, power from a smart plug. Steady runs only.
 MIDEA_PORTASPLIT: dict[int, tuple[float, int]] = {
-    1: (3.61, 133),  # +2..+4 °C
-    2: (3.81, 125),  # +4..+6
-    3: (4.03, 143),  # +6..+8
+    0: (3.10, 92),  # +0..+2 °C
+    1: (3.44, 45),  # +2..+4
+    2: (3.77, 279),  # +4..+6
+    3: (3.99, 186),  # +6..+8
     4: (4.38, 103),  # +8..+10
     5: (4.35, 67),  # +10..+12
     6: (4.42, 46),  # +12..+14

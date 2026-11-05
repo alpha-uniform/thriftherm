@@ -22,7 +22,7 @@ Jede Steuerung hat drei Stufen, wählbar über ihre Auswahl-Entität:
 | Stufe | Bedeutung |
 |---|---|
 | **Aus** | nichts wird geplant oder gesendet |
-| **Nur planen (Beta)** | alles wird berechnet und angezeigt, nichts gesendet – Standard |
+| **Nur planen** | alles wird berechnet und angezeigt, nichts gesendet – Standard |
 | **Aktiv** | Befehle werden gesendet. Erst wählbar, wenn in den Optionen freigegeben |
 
 Mit *Nur planen* anfangen, einige Tage die Pläne ansehen, dann auf *Aktiv* – Schritt für Schritt in der [Einrichtungsanleitung, Schritt 7](EINRICHTUNG.md#7-erst-nur-planen-dann-aktiv).
@@ -176,7 +176,7 @@ Jeder Raum benötigt einen Temperaturfühler, kein smartes Thermostat. Alles obe
 
 ## 6. Lernen
 
-**Beta.** Die Steuerung selbst – Sperren, Vorlauf, Sicherheit – ist an der Therme des Entwicklers geprüft. Die gelernten Korrekturen kennen bisher Außentemperaturen bis hinunter zu 2 °C, noch keinen Frost; in den ersten Frostwochen lohnt ein Blick darauf.
+**Was erprobt ist.** Die Steuerung selbst – Sperren, Vorlauf, Sicherheit – ist an der Therme des Entwicklers geprüft. Die gelernten Korrekturen kennen bisher Außentemperaturen bis hinunter zu 2 °C, noch keinen Frost; in den ersten Frostwochen lohnt ein Blick darauf.
 
 | Bereich | Was gelernt wird | Woraus |
 |---|---|---|

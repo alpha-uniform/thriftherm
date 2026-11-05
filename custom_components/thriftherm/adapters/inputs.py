@@ -64,6 +64,9 @@ ROOM_TEMP_MAX_AGE_S = 6 * 3600.0
 # 07:42 to 15:42 on 2026-09-23 and was taken for dead. While the same device still reports
 # something else (humidity, as a rule), its temperature still holds, up to this age.
 ROOM_TEMP_UNCHANGED_MAX_S = 24 * 3600.0
+# The outlet moves with every burst of the unit: two hours unchanged was the longest seen in a run (2026-11-04).
+# Longer than this with its device alive it hangs, and the table of the COP would learn from it.
+OUTLET_UNCHANGED_MAX_S = 6 * 3600.0
 SAMPLE_SPACING_S = 30.0  # room histories: 240 samples cover two hours, 400 the humidity's 3 h 10 min
 # A gas flow above 0 that has not changed for this long, while the meter reading has not moved
 # either, was left behind by a meter that dropped off: burning gas moves the reading within minutes.
@@ -446,10 +449,13 @@ class SnapshotBuilder:
         """
         return self._read_quiet_temperature(entity_id, now, min(self.params.sensor_max_age_s, ROOM_TEMP_MAX_AGE_S))
 
-    def _read_quiet_temperature(self, entity_id: str | None, now: datetime, max_age: float) -> SensorReading:
+    def _read_quiet_temperature(
+        self, entity_id: str | None, now: datetime, max_age: float, value_range: tuple[float, float] = RANGE_ROOM_TEMP,
+        unchanged_max: float = ROOM_TEMP_UNCHANGED_MAX_S,
+    ) -> SensorReading:
         """A temperature past `max_age` that its device shows to be alive: its value just does not change."""
-        reading = self.read_number(entity_id, RANGE_ROOM_TEMP, now, max_age_s=max_age)
-        if reading.reason != "stale" or entity_id is None or (reading.age_s or 0.0) > ROOM_TEMP_UNCHANGED_MAX_S:
+        reading = self.read_number(entity_id, value_range, now, max_age_s=max_age)
+        if reading.reason != "stale" or entity_id is None or (reading.age_s or 0.0) > unchanged_max:
             return reading
         alive = [age for age in (self._device_age_s(entity_id, now), self._zha_seen_s((entity_id,), now)) if age is not None]
         if alive and min(alive) <= max_age:
@@ -691,7 +697,7 @@ class SnapshotBuilder:
         # past these limits a reading reaches the COP and the control as invalid
         intake_age, outlet_age = self.params.cop_intake_max_age_s, self.params.cop_outlet_max_age_s
         intake_temp = self._read_quiet_temperature(cfg.get(CONF_HEAT_PUMP_INTAKE_TEMP), now, intake_age)
-        outlet_temp = self.read_number(cfg.get(CONF_HEAT_PUMP_OUTLET_TEMP), (-10.0, 80.0), now, max_age_s=outlet_age)
+        outlet_temp = self._read_quiet_temperature(cfg.get(CONF_HEAT_PUMP_OUTLET_TEMP), now, outlet_age, (-10.0, 80.0), OUTLET_UNCHANGED_MAX_S)
 
         now_ts = now.timestamp()
         if outlet_temp.valid:
@@ -705,7 +711,8 @@ class SnapshotBuilder:
                 outdoor_coil_temp=self.read_attr_float(climate, "outdoor_coil_temperature"),
                 indoor_coil_temp=self.read_attr_float(climate, "indoor_coil_temperature"),
                 intake_temp=intake_temp.value_or_none,
-                outlet_temp=outlet_temp.value_or_none,
+                # the defrost signs read these: a report older than its limit stays out, or a cold hang locks the unit out
+                outlet_temp=outlet_temp.value_or_none if (outlet_temp.age_s or 0.0) <= outlet_age else None,
             )
         )
         _trim(self._heat_pump_history, now_ts - 1800.0, attrgetter("ts"))

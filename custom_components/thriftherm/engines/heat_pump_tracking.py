@@ -137,7 +137,7 @@ class HeatPumpTracker:
     ) -> bool:
         """What a settled compressor with the fan turning cannot give, or no reaction to its start at all: it is the sensor.
 
-        It stays valid for up to an hour. Counted as no heat under all the electricity it could put a band below the off
+        It stays valid while its device reports, for up to six hours. Counted as no heat under all the electricity it could put a band below the off
         limit, where the unit does not run again and nothing lifts it; counted as more than a unit gives it could start
         the unit from gas until the half-life has diluted it. A start is left in, its sensor lags and shows at the stop
         what it missed, and so is a defrost, which truly gives no heat.
@@ -277,7 +277,11 @@ class HeatPumpTracker:
             gates.append("warming_up")
         if above_minimum is not None:
             gates.append(above_minimum)
-        if instant.raw is not None and settled and above_minimum is None and not defrost_res.suspected:
+        # Not from a value older than this run, kept valid only because its device reports: a live sensor reacts to a start.
+        silent = self._outlet_silent(unit, defrost_res)
+        if instant.raw is not None and settled and silent:
+            gates.append("outlet_temp_silent")
+        if instant.raw is not None and settled and above_minimum is None and not defrost_res.suspected and not silent:
             self.cop_samples.append((now_ts, instant.raw))
         if heat_pump_res.run_state not in (HEAT_PUMP_HEATING_STABLE, HEAT_PUMP_HEATING_WARMING_UP):
             # samples from a finished run must not blend into the next one

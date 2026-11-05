@@ -22,7 +22,7 @@ Every controller has three settings, chosen with its select entity:
 | Setting | Meaning |
 |---|---|
 | **Off** | nothing is planned or sent |
-| **Plan only (beta)** | everything is calculated and shown, nothing is sent – the default |
+| **Plan only** | everything is calculated and shown, nothing is sent – the default |
 | **Active** | commands are sent. Only offered after you release it in the options |
 
 Start with *Plan only*, watch the plans for a few days, then switch to *Active* – step by step in the [setup guide, step 7](SETUP.md#7-plan-only-first-then-active).
@@ -176,7 +176,7 @@ A room needs a temperature sensor, not a smart thermostat. Everything above stil
 
 ## 6. Learning
 
-**Beta.** The control itself – blocking, flow, safety – is verified on the maintainer's boiler. The learned corrections have so far seen outdoor temperatures down to 2 °C, no frost yet; watch them in your first frosty weeks.
+**What has been tried.** The control itself – blocking, flow, safety – is verified on the maintainer's boiler. The learned corrections have so far seen outdoor temperatures down to 2 °C, no frost yet; watch them in your first frosty weeks.
 
 | Area | What is learned | From |
 |---|---|---|

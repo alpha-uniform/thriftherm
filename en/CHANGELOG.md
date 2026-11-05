@@ -4,6 +4,14 @@
 
 Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
 
+## 0.7.2 – 2026-11-05
+
+- Thriftherm is no longer a beta; the mode is now just called *Plan only*.
+- Fixed: when the heat pump did not start after a rest with a room below its target, it could take up to an hour; its setpoint now goes to 1.5 degrees above its reading after 5 minutes.
+- Fixed: after a drying or a quick heat-up it ran above its least speed for a long time; its setpoint is set once more 15 minutes later.
+- Fixed: when the outlet sensor stayed quiet for over an hour in a steady run, the COP was unknown and the map learned nothing; the limit now counts only once its device is silent too.
+- Default COP values updated, now also for 0 to 2 °C.
+
 ## 0.7.1 – 2026-11-03
 
 - New per room: *Longest preheat* limits how early a room begins, and it then calls the boiler in its block up to its end ([#6](https://github.com/alpha-uniform/thriftherm/issues/6)).

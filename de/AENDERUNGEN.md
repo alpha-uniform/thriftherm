@@ -4,6 +4,14 @@
 
 Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
 
+## 0.7.2 – 2026-11-05
+
+- Thriftherm ist keine Beta mehr; der Modus heißt nur noch *Nur planen*.
+- Behoben: Lief die Wärmepumpe nach einer Ruhe nicht an, obwohl ein Raum unter Soll war, wartete sie bis zu einer Stunde; jetzt geht ihr Sollwert nach 5 Minuten auf 1,5 Grad über ihre Messung.
+- Behoben: Nach dem Trocknen oder dem schnellen Aufheizen lief sie lange über ihrer kleinsten Leistung; 15 Minuten danach wird ihr Sollwert noch einmal gesetzt.
+- Behoben: Stand der Ausblasfühler in einem ruhigen Lauf über eine Stunde still, war der COP unbekannt und das Kennfeld lernte nichts; jetzt zählt die Grenze erst, wenn auch sein Gerät schweigt.
+- Standard-COP-Werte aktualisiert, neu auch für 0 bis 2 °C.
+
 ## 0.7.1 – 03.11.2026
 
 - Neu je Raum: *Längstes Vorheizen* begrenzt, wie früh ein Raum beginnt, und er ruft die Therme dann in seinem Block bis zum Ende ([#6](https://github.com/alpha-uniform/thriftherm/issues/6)).

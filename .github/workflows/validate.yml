@@ -37,6 +37,6 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install test dependencies
-        run: pip install pytest-homeassistant-custom-component==0.13.364
+        run: pip install -U pytest-homeassistant-custom-component
       - name: Run tests
         run: pytest -q

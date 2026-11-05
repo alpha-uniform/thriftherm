@@ -198,6 +198,67 @@ async def test_a_quiet_intake_temperature_holds_while_its_device_reports(hass, f
     assert not past_limit.valid and past_limit.reason == "stale"
 
 
+async def test_a_quiet_outlet_temperature_holds_while_its_device_reports(hass, freezer):
+    """2026-11-04: 30.4 °C unchanged from 21:15 to about 23:06 in a steady run, the humidity of the same sensor moving: the COP
+    was unknown from 22:18 and the table lost those 48 minutes. Only a device that fell silent is past the limit."""
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(domain="zigbee")
+    entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id=entry.entry_id, identifiers={("zigbee", "outlet")})
+    registry = er.async_get(hass)
+    for uid, object_id in (("temp", "outlet_temp"), ("rh", "outlet_rh")):
+        registry.async_get_or_create("sensor", "zigbee", uid, suggested_object_id=object_id, device_id=device.id, config_entry=entry)
+    freezer.move_to(START)
+    builder = _sensor_builder(hass)
+    hass.states.async_set("sensor.outlet_temp", "52.0")  # above any room: an outlet keeps its own range
+    freezer.move_to(START + timedelta(minutes=70))
+    hass.states.async_set("sensor.outlet_rh", "21")
+    unit = _unit(builder)
+    assert unit.outlet_temp.valid and unit.outlet_temp.value == 52.0
+    assert unit.history[-1].outlet_temp is None  # the defrost signs look at reports of the last hour only: a cold hang locks the unit out
+    freezer.move_to(START + timedelta(minutes=131))  # an hour and a minute after the humidity: all of it silent
+    past_limit = _unit(builder).outlet_temp
+    assert not past_limit.valid and past_limit.reason == "stale"
+
+
+async def test_a_quiet_outlet_temperature_counts_for_six_hours_at_most(hass, freezer):
+    """It moves with every burst of the unit: two hours was the longest seen. Beyond that it hangs with its humidity alive."""
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    entry = MockConfigEntry(domain="zigbee")
+    entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id=entry.entry_id, identifiers={("zigbee", "outlet")})
+    registry = er.async_get(hass)
+    for uid, object_id in (("temp", "outlet_temp"), ("rh", "outlet_rh")):
+        registry.async_get_or_create("sensor", "zigbee", uid, suggested_object_id=object_id, device_id=device.id, config_entry=entry)
+    freezer.move_to(START)
+    builder = _sensor_builder(hass)
+    freezer.move_to(START + timedelta(hours=5, minutes=59))
+    hass.states.async_set("sensor.outlet_rh", "21")
+    assert _unit(builder).outlet_temp.valid
+    freezer.move_to(START + timedelta(hours=6, minutes=1))
+    hass.states.async_set("sensor.outlet_rh", "22")
+    past_limit = _unit(builder).outlet_temp
+    assert not past_limit.valid and past_limit.reason == "stale"
+
+
+def test_an_old_outlet_reading_shows_no_heat_while_the_compressor_stands():
+    """An hour after its last report nothing warm comes from a standing unit: 0.6 degrees above the intake over a long rest
+    added 13 % to the COP of the cycle."""
+    unit = heat_pump_state(compressor_hz=0.0, running_s=None, intake=(20.0, 45.0), outlet=(20.6, None), fan_rpm=330.0)
+    fresh = replace(unit, outlet_temp=reading(20.6, age_s=3000.0))
+    assert cop_engine.free_power_now(fresh, PARAMS) > 0.0
+    old = replace(unit, outlet_temp=reading(20.6, age_s=3700.0))
+    assert cop_engine.free_power_now(old, PARAMS) == 0.0
+    running = replace(old, compressor_hz=24.0, compressor_running_s=7200.0)
+    assert cop_engine.free_power_now(running, PARAMS) > 0.0  # quiet in a steady run: as on 2026-11-04
+
+
 async def test_an_outlet_reading_counts_for_an_hour_without_a_report(hass, freezer):
     freezer.move_to(START)
     builder = _sensor_builder(hass)
@@ -308,7 +369,7 @@ def test_without_own_measurements_the_shipped_map_of_the_model_counts():
 
     portasplit = cop_profiles.profile("midea_portasplit")
     empty = CopMap()
-    assert empty.estimate(3.0, 1.0, portasplit) == (3.61, "profile")  # the bin measured on the model
+    assert empty.estimate(3.0, 1.0, portasplit) == (3.44, "profile")  # the bin measured on the model
     assert empty.estimate(13.0, 1.0, portasplit) == (4.42, "profile")
     cold, basis = empty.estimate(-8.0, 1.0, portasplit)  # beyond what was measured: the curve, calibrated by the model
     assert basis == "profile" and cold < prior_cop(-8.0) and cold > prior_cop(-8.0) * 0.5
