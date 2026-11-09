@@ -25,7 +25,6 @@ Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at ver
 - Boiler: a raised minimum flow holds at once, and a failed eBUS command is sent again in the next cycle.
 - Card: rooms and warnings stay current while the mode list is open, and it says when Thriftherm is not loaded.
 - Default COP values updated, now also for −2 to 0 °C.
-- Releases now carry thriftherm.zip, so that the Marketplace built into Home Assistant since 2026.11 can count downloads.
 
 ## 0.7.2 – 2026-11-05
 

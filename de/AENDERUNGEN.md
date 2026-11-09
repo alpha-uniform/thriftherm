@@ -25,7 +25,6 @@ Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei 
 - Therme: Ein erhöhter Mindestvorlauf gilt sofort, und ein gescheiterter eBUS-Befehl wird im nächsten Zyklus wiederholt.
 - Karte: Räume und Warnungen bleiben aktuell, während die Modusliste offen ist, und sie sagt, wenn Thriftherm nicht geladen ist.
 - Standard-COP-Werte aktualisiert, neu auch für −2 bis 0 °C.
-- Releases enthalten jetzt thriftherm.zip, damit der seit Home Assistant 2026.11 eingebaute Marketplace die Downloads zählen kann.
 
 ## 0.7.2 – 2026-11-05
 
