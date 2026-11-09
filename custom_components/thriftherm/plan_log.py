@@ -9,15 +9,26 @@ from __future__ import annotations
 import logging
 import time
 from collections import deque
+from collections.abc import Mapping
 from typing import Any
 
 from . import texts
-from .models import Advice, BoilerCommand, DefrostResult, HeatPumpCommand, SafetyResult
+from .models import Advice, BoilerCommand, DefrostResult, HeatPumpCommand, Reason, SafetyResult
 
 _LOGGER = logging.getLogger(__name__)
 
 HISTORY_LENGTH = 20
 STARTUP_GRACE_S = 180.0  # right after start most source entities are not loaded yet
+# The decision reason keeps its text while it says the same; its numbers catch up this often at most.
+REASON_REFRESH_S = 3600.0
+# The numbers measured anew every cycle. A setpoint, a room target or a limit is decided, and part of what the reasons
+# say: dropped with the rest, a new setpoint stood in the text as the old one for up to an hour (second review 2026-11-08).
+_LIVE = frozenset({"temp_c", "outdoor_c", "cop", "break_even", "heat_pump_eur", "central_eur", "saving_pct"})
+
+
+def _meaning(reasons: tuple[Reason, ...]) -> tuple:
+    """What the reasons say without their live numbers: codes, rooms, states, targets, the basis of a COP."""
+    return tuple((item.code, tuple((key, value) for key, value in item.params if key not in _LIVE)) for item in reasons)
 
 
 class PlanLog:
@@ -31,6 +42,27 @@ class PlanLog:
         self._last_defrost_kind = "none"
         self._recorded = False  # the last heat pump command was put on record
         self._started_ts = time.time()
+        # the decision reason as shown: (meaning, when its text was made, state, texts)
+        self._shown_reasons: tuple[tuple, float, str, list[str]] | None = None
+
+    def reasons(
+        self, advice: Advice, ha_language: str | None, room_names: Mapping[str, str], now_ts: float
+    ) -> tuple[str, list[str]]:
+        """The decision reason's state and its texts, changed only when what they say changes.
+
+        Every cycle's COP and €/kWh made a new state (1941 in 7 days, 2026-11-08), each a row in the
+        recorder. While the reasons say the same, the text stays; its numbers are brought up to date
+        once an hour at most. The state is cut at a whole reason, the texts hold them all.
+        """
+        meaning = (_meaning(advice.reasons), texts.language_for(ha_language), tuple(sorted(room_names.items())))
+        shown = self._shown_reasons
+        if shown is not None and shown[0] == meaning and now_ts - shown[1] < REASON_REFRESH_S:
+            return shown[2], shown[3]
+        rendered = texts.render_reasons(advice.reasons, ha_language, room_names)
+        if shown is not None and shown[0] == meaning and rendered == shown[3]:
+            return shown[2], shown[3]  # the hour is up, nothing new: the next change is due at once
+        self._shown_reasons = (meaning, now_ts, texts.fit_state(rendered), rendered)
+        return self._shown_reasons[2], rendered
 
     def boiler(self, command: BoilerCommand, now_ts: float, active: bool) -> None:
         plan = (command.plan, command.payload or "")

@@ -10,7 +10,9 @@ from __future__ import annotations
 from dataclasses import replace
 
 from ..const import (
+    HEAT_PUMP_DEFROSTING,
     HEAT_PUMP_FAN_ONLY,
+    HEAT_PUMP_HEATING_IDLE,
     HEAT_PUMP_HEATING_STABLE,
     HEAT_PUMP_HEATING_WARMING_UP,
     MODE_HEAT_PUMP_ONLY,
@@ -42,6 +44,36 @@ BAND_RUN_ON_S = 900.0
 # A unit stopped by a settled COP too low rests and, its band still high, runs again: no value between two runs, 32
 # minutes apart. The timer for dear heat outlasts a rest of this. A longer one says nothing about the unit of now.
 INEFFICIENT_REST_S = 3600.0
+# A defrost runs at 89 Hz for 3-4 minutes between two stops of about a minute (seen 7 times in the week to 2026-11-08): a stop
+# this short before or after it belongs to it, and the run goes on afterwards, it does not warm up anew.
+DEFROST_STOP_S = 180.0
+
+
+def bridged(unit: HeatPumpState) -> bool:
+    """The unit is away for a dropout of its bridge, and the snapshot builder goes on with the count of its run.
+
+    Ten seconds at most (safety.HEAT_PUMP_DROPOUT_S), as the safety and the control bridge it: the run goes on through
+    it (review 2026-11-08: it ended the run, ten minutes of warming up and the COP samples lost).
+    """
+    return not unit.available and unit.compressor_running_s is not None
+
+
+def _ran_before_watched(unit: HeatPumpState, params: Parameters) -> bool:
+    """Its compressor runs in every sample there is, the first one with its outlet warm, and its count of the run starts
+    with them: it ran before Home Assistant watched it (a restart, seen 2026-11-06 11:25-11:36), it did not start now.
+
+    Samples from before its entity was loaded show no frequency and are left out (review 2026-11-08): after a full restart
+    the first cycle may come before the unit's integration has loaded, and its run was taken for a new start."""
+    history, running = unit.history, unit.compressor_running_s
+    known = next((i for i, s in enumerate(history) if s.compressor_hz is not None), len(history))
+    history = history[known:]
+    if not history or running is None or not all(s.compressor_hz for s in history):
+        return False
+    first = history[0]
+    if running > history[-1].ts - first.ts + UPDATE_INTERVAL_S:
+        return False  # its start is known from before the watch: its count is taken as it is
+    warm = first.outlet_temp is not None and first.intake_temp is not None
+    return warm and first.outlet_temp - first.intake_temp >= params.cop_min_delta_t_k
 
 
 class HeatPumpTracker:
@@ -67,6 +99,75 @@ class HeatPumpTracker:
         self.band_last: tuple[float, float | None, float | None, bool, bool] | None = None
         self.band_on_ts: float | None = None  # when its compressor last ran
         self.band_held: tuple[float, float, float, float] | None = None  # a start the sensor has not reacted to: since, as above
+        # Not stored: seconds a run found heating had run already (None: no run seen yet), when the run under way began
+        # as counted, through a defrost, the begin and end of the one before it, and when a defrost was last seen.
+        self.taken_over_s: float | None = None
+        self.run_began_ts: float | None = None
+        self.last_run: tuple[float, float] | None = None
+        self.defrost_seen_ts: float | None = None
+
+    def taken_over(self, unit: HeatPumpState, params: Parameters, now_ts: float) -> HeatPumpState:
+        """The unit with the run it was found in counted past its warm-up, where it ran before it was watched.
+
+        After a restart its count of the run begins with the first sample: "warming up" for ten minutes, and no COP
+        sample, for a compressor that had run all along. Decided once per run, at the first sample that shows it.
+        """
+        running = unit.compressor_running_s
+        if bridged(unit):
+            return replace(unit, compressor_running_s=running + self.taken_over_s) if self.taken_over_s else unit
+        if not unit.compressor_hz or running is None:
+            self.taken_over_s = None
+            return unit
+        if self.taken_over_s is None:
+            self.taken_over_s = max(params.cop_warmup_s, SETTLED_RUN_S) if _ran_before_watched(unit, params) else 0.0
+        return replace(unit, compressor_running_s=running + self.taken_over_s) if self.taken_over_s else unit
+
+    def _defrost_before(self, ts: float) -> bool:
+        """The run that ended last ended with a defrost, at most `DEFROST_STOP_S` before `ts`.
+
+        A defrost seen at its end, not anywhere in it (review 2026-11-08): an ordinary stop two hours after the one defrost
+        of a run showed "defrosting", and a start by hand right after it went on with the run, its boost in the COP.
+        """
+        last = self.last_run
+        seen = self.defrost_seen_ts
+        return (
+            last is not None and seen is not None and seen >= max(last[0], last[1] - DEFROST_STOP_S)
+            and ts - last[1] <= DEFROST_STOP_S
+        )
+
+    def run_state(
+        self, unit: HeatPumpState, state: str, defrost_res: DefrostResult, params: Parameters, now_ts: float
+    ) -> str:
+        """The run state as shown: "defrosting" during a defrost and the stop after it, and the run going on after it.
+
+        Each defrost showed as two "idle, then warming up" (review 2026-11-08): the stops around it counted as a start
+        each, ten minutes of warm-up after it and its COP samples lost. Called once a cycle, after the defrost signs.
+        """
+        if bridged(unit):
+            return state  # the run goes on through a dropout
+        on = bool(unit.compressor_hz) and unit.compressor_running_s is not None and state in _HEATING
+        began = now_ts - unit.compressor_running_s if on else None
+        if on and self.run_began_ts is None:
+            self.run_began_ts = self.last_run[0] if self._defrost_before(began) else began
+        elif not on and self.run_began_ts is not None:
+            self.last_run, self.run_began_ts = (self.run_began_ts, now_ts), None
+        if defrost_res.kind == "cycle":
+            last = self.last_run
+            if on and last is not None and began - last[1] <= DEFROST_STOP_S and self.run_began_ts > last[0]:
+                self.run_began_ts = last[0]  # the stop just before it belongs to the defrost
+            self.defrost_seen_ts = now_ts
+            return HEAT_PUMP_DEFROSTING
+        if not on and state == HEAT_PUMP_HEATING_IDLE and self._defrost_before(now_ts):
+            return HEAT_PUMP_DEFROSTING
+        if on and state == HEAT_PUMP_HEATING_WARMING_UP and now_ts - self.run_began_ts >= params.cop_warmup_s:
+            return HEAT_PUMP_HEATING_STABLE
+        return state
+
+    def run_age_s(self, unit: HeatPumpState, now_ts: float) -> float | None:
+        """How long its compressor has run, counted through a defrost; the unit's own count where no run is on record."""
+        if unit.compressor_hz and unit.compressor_running_s is not None and self.run_began_ts is not None:
+            return max(now_ts - self.run_began_ts, unit.compressor_running_s)
+        return unit.compressor_running_s
 
     def reset(self) -> None:
         """Forget what was learned; an icing lockout and the defrost count protect the unit and stay."""
@@ -272,7 +373,8 @@ class HeatPumpTracker:
         gates = list(instant.gate_reasons)
         if defrost_res.suspected:
             gates.append(f"defrost_{defrost_res.kind}")
-        settled = unit.compressor_running_s is not None and unit.compressor_running_s >= SETTLED_RUN_S
+        age = self.run_age_s(unit, now_ts)  # through a defrost: its restart is no new warm-up
+        settled = age is not None and age >= SETTLED_RUN_S
         if instant.raw is not None and not settled and "warming_up" not in gates:
             gates.append("warming_up")
         if above_minimum is not None:
@@ -283,8 +385,10 @@ class HeatPumpTracker:
             gates.append("outlet_temp_silent")
         if instant.raw is not None and settled and above_minimum is None and not defrost_res.suspected and not silent:
             self.cop_samples.append((now_ts, instant.raw))
-        if heat_pump_res.run_state not in (HEAT_PUMP_HEATING_STABLE, HEAT_PUMP_HEATING_WARMING_UP):
-            # samples from a finished run must not blend into the next one
+        through = bridged(unit)
+        in_run = heat_pump_res.run_state in (HEAT_PUMP_HEATING_STABLE, HEAT_PUMP_HEATING_WARMING_UP, HEAT_PUMP_DEFROSTING)
+        if not in_run and not through:
+            # samples from a finished run must not blend into the next one; a defrost and a dropout do not finish it
             self.cop_samples = []
         self.cop_samples = [(ts, v) for ts, v in self.cop_samples if now_ts - ts <= COP_SAMPLE_RETENTION_S]
         value, n = cop_engine.aggregate(self.cop_samples, now_ts, params)
@@ -293,8 +397,11 @@ class HeatPumpTracker:
             gates.append(f"insufficient_samples:{n}/{params.cop_min_samples}")
         free_heat = cop_engine.free_power_now(unit, params)
         heat = None if free_heat is None else free_heat * params.duct_factor
-        self._cycle(snapshot, heat_pump_res, heat, defrost_res.suspected or above_minimum is not None, params, now_ts)
-        self._band(snapshot, heat_pump_res, free_heat, defrost_res, above_minimum, params, now_ts)
+        if through:
+            self.band_interval = None  # the cycle and the stretch go on from the sample before it, a minute or so on
+        else:
+            self._cycle(snapshot, heat_pump_res, heat, defrost_res.suspected or above_minimum is not None, params, now_ts)
+            self._band(snapshot, heat_pump_res, free_heat, defrost_res, above_minimum, params, now_ts)
         cycle_cop = None
         if self.cycle_cop is not None and heat_pump_res.run_state in _HEATING:
             cycle_cop = self.cycle_cop[1] if now_ts - self.cycle_cop[0] <= CYCLE_COP_FRESH_S else None
@@ -308,16 +415,20 @@ class HeatPumpTracker:
             airflow_m3h=instant.airflow_m3h, samples=n, gate_reasons=tuple(gates), cycle_cop=cycle_cop,
         )
 
-    def track_efficiency(self, cop_value: float | None, break_even_cop: float | None, params: Parameters, now_ts: float) -> None:
+    def track_efficiency(
+        self, cop_value: float | None, break_even_cop: float | None, params: Parameters, now_ts: float, learning: bool = False
+    ) -> None:
         """Run the inefficiency timer while the settled COP stays below break-even, also over the rests between runs.
 
         Only a value that is too low now can end it in a lockout, not a lone one with the time passing after it.
+        Not during a learning run (review 2026-11-08): it starts only where gas is cheaper and the estimate close to
+        break-even, and a COP it confirmed just below locked the unit out for two hours as "heat too expensive".
         """
         self.inefficient_since = None
         span = self.inefficient_span
         # Between two values lie the tick of the stop, the rest and what the next run takes to give one: settling and samples.
         gap = INEFFICIENT_REST_S + SETTLED_RUN_S + (params.cop_min_samples + 1) * UPDATE_INTERVAL_S
-        if break_even_cop is None:
+        if break_even_cop is None or learning:
             self.inefficient_span = None
         elif cop_value is None:
             if span is not None and now_ts - span[1] > gap:

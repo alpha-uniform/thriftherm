@@ -13,11 +13,13 @@ from homeassistant.helpers import selector
 
 from . import boiler_profiles, learning_reset, texts
 from .adapters import ebusd_detect
+from .adapters.inputs import driven_by
 from .adapters.config import system_type_from_config
 from .const import (
     CONFIG_VERSION,
     CONF_BOILER_FILL_DECLINED,
     CONF_BOILER_PROFILE,
+    CONF_HEAT_PUMP_CLIMATE,
     CONF_HEAT_PUMP_ROOM,
     CONF_ROOMS,
     CONF_ROOM_COMFORT_TEMP,
@@ -105,6 +107,9 @@ class ThrifthermConfigFlow(ConfigFlow, domain=DOMAIN):
         self._rooms: list[dict[str, Any]] = []
         self._boiler_fill: dict[str, Any] = {}
 
+    def _drives(self, climate: str) -> tuple[str, ...]:
+        return driven_by(self.hass, climate)  # a room thermostat in front of the heat pump's unit is the unit
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
@@ -155,7 +160,7 @@ class ThrifthermConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_room(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = validate_room(user_input, self._rooms)
+            errors = validate_room(user_input, self._rooms, self._data.get(CONF_HEAT_PUMP_CLIMATE), self._drives)
             if not errors:
                 self._rooms.append(room_from_input(user_input))
                 if user_input.get("add_another"):
@@ -184,6 +189,9 @@ class ThrifthermOptionsFlow(OptionsFlow):
     @property
     def _config(self) -> dict[str, Any]:
         return {**self.config_entry.data, **self.config_entry.options, **self._system}
+
+    def _drives(self, climate: str) -> tuple[str, ...]:
+        return driven_by(self.hass, climate)  # see ThrifthermConfigFlow._drives
 
     def _save(self, changes: dict[str, Any]) -> ConfigFlowResult:
         options = known_keys({**self._config, **changes})
@@ -248,7 +256,8 @@ class ThrifthermOptionsFlow(OptionsFlow):
         return self.async_show_form(step_id="boiler", data_schema=schema, errors=errors, description_placeholders=placeholders)
 
     async def async_step_midea(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return self._simple_step("midea", user_input, schema_heat_pump, HEAT_PUMP_KEYS, validate=validate_heat_pump)
+        rooms = self._config.get(CONF_ROOMS, [])
+        return self._simple_step("midea", user_input, schema_heat_pump, HEAT_PUMP_KEYS, validate=lambda u: validate_heat_pump(u, rooms, self._drives))
 
     async def async_step_outdoor(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return self._simple_step("outdoor", user_input, schema_outdoor, OUTDOOR_KEYS)
@@ -357,7 +366,8 @@ class ThrifthermOptionsFlow(OptionsFlow):
         current = self._in_force(current)
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = validate_room(user_input, [r for r in rooms if r[CONF_ROOM_KEY] != self._room_key])
+            others = [r for r in rooms if r[CONF_ROOM_KEY] != self._room_key]
+            errors = validate_room(user_input, others, self._config.get(CONF_HEAT_PUMP_CLIMATE), self._drives)
             if not errors:
                 room = room_from_input(user_input, key=self._room_key)
                 if self._room_key is None:

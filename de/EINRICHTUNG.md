@@ -10,7 +10,7 @@ Diese Anleitung bringt dich Schritt für Schritt von null zu einer laufenden Thr
 |---|---|---|
 | [1](#1-was-du-brauchst) | Prüfen, ob alles da ist | – |
 | [2](#2-ebusd-einrichten) | Home Assistant mit der Therme verbinden | ebusd-App |
-| [3](#3-thriftherm-installieren) | Thriftherm installieren | HACS |
+| [3](#3-thriftherm-installieren) | Thriftherm installieren | HACS (Marketplace) |
 | [4](#4-integration-hinzufügen) | Den Einrichtungsdialog durchgehen | Home Assistant |
 | [5](#5-better-thermostat-je-raum-optional) | Ein Better Thermostat je Raum | Better Thermostat |
 | [6](#6-an-der-therme) | Drehknopf stellen, Pumpenmodus prüfen | an der Therme |
@@ -26,7 +26,7 @@ Fernwärme oder keine eigene Therme? Dann überspringst du die Schritte 2 und 6;
 |---|---|---|
 | Therme mit eBUS | bei eigener Therme | für die Thermensteuerung |
 | eBUS-Adapter | bei eigener Therme | zum Beispiel ein ebusd Adapter Shield, an die eBUS-Klemmen der Therme angeschlossen |
-| Home Assistant 2026.9 oder neuer | ja | *Einstellungen → Über* zeigt deine Version. Temperaturen in °C (metrisches Einheitensystem): Thriftherm rechnet nur in °C und bricht die Einrichtung sonst ab |
+| Home Assistant 2026.9 oder neuer | ja | *Einstellungen → Über* zeigt deine Version. Temperaturen in °C (metrisches Einheitensystem): Thriftherm rechnet nur in °C und bricht die Einrichtung sonst ab; später umgestellt, sendet es keine Sollwerte mehr (eine laufende Wärmepumpe wird gestoppt, eine Therme über Entitäten zurückgegeben) und zeigt eine Reparaturmeldung |
 | MQTT-Broker | bei eigener Therme | die App **Mosquitto broker** |
 | App **ebusd** | bei eigener Therme | liest die Therme und schickt ihr den Sollwert |
 | Ein Temperaturfühler je Raum | ja | jeder Sensor, der in Home Assistant die Raumtemperatur zeigt |
@@ -148,7 +148,7 @@ Optional, für Fortgeschrittene. ebusd fragt die Werte der Therme reihum ab; je 
 
 ## 3. Thriftherm installieren
 
-**Mit HACS (empfohlen):** Thriftherm steht seit dem 21.10.2026 in der Standardliste von HACS, ein benutzerdefiniertes Repository braucht es nicht mehr.
+**Mit HACS (empfohlen):** Thriftherm steht seit dem 21.10.2026 in der Standardliste von HACS, ein benutzerdefiniertes Repository braucht es nicht mehr. Seit Home Assistant 2026.11 ist HACS eingebaut und heißt *Marketplace*: Dort steht *Marketplace*, wo dieser Abschnitt HACS sagt. Bei älteren Versionen ist es HACS.
 
 Am schnellsten mit diesem Knopf, er öffnet Thriftherm direkt in HACS; dann *Herunterladen* klicken und bei Punkt 3 der Liste unten weitermachen:
 
@@ -241,7 +241,7 @@ Hat deine Therme kein eBUS, lässt sie sich über zwei Entitäten steuern, die s
 
 Sind Zahl und Schalter gewählt, geht nichts mehr an ebusd; der ebusd-Kreis und *Warmwasser bereithalten* haben dann keine Wirkung. Es braucht immer beide.
 
-Ein Unterschied zu ebusd: Ein ebusd-Befehl läuft nach einigen Minuten ab, und die Therme heizt wieder nach ihrem Drehknopf. Eine Entität behält, was ihr gesendet wurde. Thriftherm gibt die Therme deshalb selbst zurück (Heizung an), sobald es nicht mehr steuert: beim Umschalten auf *Nur planen* und ohne Thermendaten mit dem Vorlauf der Heizkurve, der dann weiter der Außentemperatur folgt; beim Beenden von Home Assistant mit dem maximalen Vorlauf, so wie ein Drehknopf stünde. Entitäten, die Thriftherm nie gesteuert hat, fasst es nicht an. Stürzt Home Assistant ab oder fällt der Strom aus, bleibt der letzte Zustand stehen – auch eine gesperrte Heizung. Prüfe, ob dein Adapter für diesen Fall eine eigene Zeitüberwachung hat.
+Ein Unterschied zu ebusd: Ein ebusd-Befehl läuft nach einigen Minuten ab, und die Therme heizt wieder nach ihrem Drehknopf. Eine Entität behält, was ihr gesendet wurde. Thriftherm gibt die Therme deshalb selbst zurück (Heizung an), sobald es nicht mehr steuert: beim Umschalten auf *Nur planen* und ohne Thermendaten mit dem Vorlauf der Heizkurve, der dann weiter der Außentemperatur folgt; beim Beenden von Home Assistant mit dem maximalen Vorlauf, so wie ein Drehknopf stünde. Sind Zahl oder Schalter in diesem Moment nicht erreichbar, sagt das eine Reparaturmeldung, und Thriftherm gibt die Therme zurück, sobald sie wieder da sind, solange Home Assistant läuft. Entitäten, die Thriftherm nie gesteuert hat, fasst es nicht an. Stürzt Home Assistant ab oder fällt der Strom aus, bleibt der letzte Zustand stehen – auch eine gesperrte Heizung. Prüfe, ob dein Adapter für diesen Fall eine eigene Zeitüberwachung hat.
 
 ### 4.4 Wärmepumpe (optionales Zusatzmodul)
 
@@ -292,7 +292,7 @@ Nur wenn eine Wärmepumpe eingerichtet ist, zeigt das Formular zusätzlich *Wird
 
 Für jeden Raum:
 
-1. **Better Thermostat** aus HACS installieren, falls noch nicht geschehen.
+1. **Better Thermostat** aus HACS (Marketplace) installieren, falls noch nicht geschehen.
 2. Ein Better Thermostat für den Raum anlegen: die Heizkörperthermostate des Raums wählen, **denselben Raumtemperaturfühler**, den auch Thriftherm bekommen hat, und die **Fensterkontakte** des Raums.
 3. Gibst du ihm einen Außentemperaturfühler, die Außentemperatur, bei der es abschaltet, **hoch genug einstellen, zum Beispiel 25 °C** – oder den Außenfühler leer lassen. Sonst sperrt Better Thermostat Heizen, das Thriftherm anfordert.
 4. In Thriftherm dieses Better Thermostat als Thermostat des Raums wählen (Optionen → *Räume* → Raum → *Bearbeiten*), falls du es in Schritt 4.6 leer gelassen hast.

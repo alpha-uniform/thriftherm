@@ -162,6 +162,13 @@ def test_every_safety_issue_has_wording() -> None:
     assert codes and codes <= texts.SAFETY_ISSUES["en"].keys()
 
 
+def test_a_safety_issue_with_wording_of_its_own_for_its_detail_is_shown_with_it() -> None:
+    # review 2026-11-08 (#R15): a power sensor refused for its unit read "power reading missing"
+    source = card.CARD_FILE.read_text()
+    assert "safety_issues[`${code}:${detail}`] || this._texts.safety_issues[code]" in source
+    assert "unit: rest.join(\":\")" in source
+
+
 def test_every_reason_the_learning_pauses_for_has_wording() -> None:
     source = (COMPONENT / "coordinator.py").read_text() + (COMPONENT / "sensor.py").read_text()
     codes = set(re.findall(r'learning_blocked\.append\("([a-z_]+)"\)', source)) | {"no_heating_run", "rooms_heating_up"}
@@ -481,3 +488,234 @@ def test_heat_pump_rooms_waiting_for_a_blocked_heat_pump_are_said_by_the_block_a
         ("off", "off", _decision(unreachable, reason("heat_pump_rooms_blocked"))),
     ]
     assert _warnings_through(stages) == [["Heat pump blocked: Unavailable"], []]
+
+
+_MODE = """
+      hass.entities["select.thriftherm_operating_mode"] = { entity_id: "select.thriftherm_operating_mode", platform: "thriftherm", translation_key: "mode" };
+      hass.states["select.thriftherm_operating_mode"] = { entity_id: "select.thriftherm_operating_mode", state: "auto",
+        attributes: { options: ["auto", "off"] }, last_updated: "t0" };
+"""
+
+
+def test_a_dropdown_left_open_does_not_hold_back_the_rest_of_the_card() -> None:
+    """Review 2026-11-08: the mode dropdown closed with Escape keeps the focus and fires no change. The card waited
+    for the focus to leave, with room temperatures, the heat source and a frost warning frozen until someone tapped."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass();
+    """ + _MODE + """
+      await shown(main, hass);
+      const live = { innerHTML: "" };
+      main.shadowRoot.querySelector = (selector) => (selector === ".live" ? live : null);
+      main.shadowRoot.activeElement = { tagName: "SELECT" };
+      const before = main.shadowRoot.innerHTML;
+      const warmer = { entity_id: "sensor.wohnzimmer_temp", state: "19.5", attributes: {}, last_updated: "t1" };
+      main.hass = { ...hass, states: { ...hass.states, "sensor.wohnzimmer_temp": warmer } };
+      const kept = main.shadowRoot.innerHTML === before;
+      main.shadowRoot.activeElement = null;
+      main._onLeave({ target: { dataset: { action: "mode" } } });
+      await tick(5);
+      console.log(JSON.stringify({ live: live.innerHTML.includes("19.5"), kept, after: main.shadowRoot.innerHTML.includes("19.5") }));
+    """)
+
+    assert result == {"live": True, "kept": True, "after": True}
+
+
+def test_a_stepped_value_goes_out_although_the_room_changed_before_it_was_sent() -> None:
+    """Review 2026-11-08: the 60 s cycle wrote the room target again (a new preheat start) within the 600 ms
+    after a tap; the card took that for the answer and dropped the value before it was ever sent."""
+    result = _run_card("""
+      const room = new (customElements.get("thriftherm-room-card"))();
+      room.setConfig({ room: "wohnzimmer" });
+      const hass = makeHass();
+      await shown(room, hass);
+      const target = "sensor.thriftherm_wohnzimmer_target_temperature";
+      room._overrideRooms[target] = "wohnzimmer";
+      room._step(target, 1);
+      room.hass = { ...hass, states: { ...hass.states, [target]: { ...hass.states[target], last_updated: "t1" } } };
+      await tick(700);
+      console.log(JSON.stringify({ calls }));
+    """)
+
+    assert result["calls"] == [["thriftherm", "set_override", {"room": "wohnzimmer", "temperature": 21.5}]]
+
+
+def _reason_warnings(script: str) -> dict:
+    """The main card with a heat pump out of reach as the decision's reason, answered as the script says."""
+    from custom_components.thriftherm.models import reason
+
+    decision = _decision(reason("heat_pump_unavailable", state="unavailable"))
+    return _run_card(f"""
+      const realTimeout = globalThis.setTimeout; // the 30 s before a request is made again, shortened
+      globalThis.setTimeout = (fn, ms, ...a) => realTimeout(fn, ms >= 30000 ? 30 : ms, ...a);
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({{}});
+      const hass = makeHass();
+      const decision = {json.dumps(decision)};
+      const stamped = (stamp) => {{
+        hass.entities["sensor.thriftherm_decision_reason"] = {{ entity_id: "sensor.thriftherm_decision_reason",
+          platform: "thriftherm", translation_key: "decision_reason" }};
+        hass.states["sensor.thriftherm_decision_reason"] = {{ entity_id: "sensor.thriftherm_decision_reason", state: "-",
+          attributes: {{ reason_codes: decision.codes }}, last_updated: stamp }};
+      }};
+      let answer = async () => decision;
+      const ask = hass.callWS;
+      hass.callWS = (msg) => (msg.type.endsWith("decision_reasons") ? answer(msg) : ask(msg));
+      const warnings = () => [...main.shadowRoot.innerHTML.matchAll(/warn-text">([^<]*)</g)].map((m) => m[1]);
+      {script}
+    """)
+
+
+def test_a_reason_warning_stays_while_the_next_decision_is_asked_for() -> None:
+    """Review 2026-11-08: every new decision emptied the reason warnings until the answer came, so they blinked."""
+    result = _reason_warnings("""
+      stamped("t0");
+      await shown(main, hass);
+      const before = warnings();
+      let release;
+      answer = () => new Promise((r) => { release = () => r(decision); });
+      stamped("t1");
+      main.hass = { ...hass, states: { ...hass.states } };
+      const during = warnings();
+      release();
+      await tick(5);
+      console.log(JSON.stringify({ before, during, after: warnings() }));
+    """)
+
+    assert result["before"] and result["during"] == result["before"] and result["after"] == result["before"]
+
+
+def test_a_reason_warning_the_new_decision_no_longer_has_is_not_shown_while_it_is_asked_for() -> None:
+    """Second review 2026-11-08 (#R19): until the answer came, or after a request that failed, the card showed the
+    warnings of the decision before, also one the decision now had no more."""
+    result = _reason_warnings("""
+      stamped("t0");
+      await shown(main, hass);
+      const before = warnings();
+      answer = () => new Promise(() => {});  // asked, and not answered yet
+      stamped("t1");
+      hass.states["sensor.thriftherm_decision_reason"].attributes = { reason_codes: ["boiler_data_unavailable"] };
+      main.hass = { ...hass, states: { ...hass.states } };
+      const pending = warnings();
+      answer = async () => { throw new Error("connection lost"); };
+      stamped("t2");
+      hass.states["sensor.thriftherm_decision_reason"].attributes = { reason_codes: ["boiler_data_unavailable"] };
+      main.hass = { ...hass, states: { ...hass.states } };
+      await tick(5);
+      console.log(JSON.stringify({ before, pending, failed: warnings() }));
+      process.exit(0);
+    """)
+
+    assert len(result["before"]) == 1
+    assert result["pending"] == [] and result["failed"] == []
+
+
+def test_a_reason_request_that_failed_is_made_again() -> None:
+    """Review 2026-11-08: a request cut off by a reconnect was not made again until the reason changed, hours later."""
+    result = _reason_warnings("""
+      answer = async () => { throw new Error("connection lost"); };
+      stamped("t0");
+      await shown(main, hass);
+      const failed = warnings();
+      answer = async () => decision;
+      await tick(80);
+      console.log(JSON.stringify({ failed, later: warnings() }));
+      process.exit(0);
+    """)
+
+    assert result["failed"] == [] and len(result["later"]) == 1
+
+
+def test_the_editor_asks_for_its_wording_once_per_half_minute_and_says_why_it_is_empty() -> None:
+    """Review 2026-11-08: with Thriftherm not loaded the editor sent a request with every update and showed nothing."""
+    result = _run_card("""
+      const editor = document.createElement("thriftherm-card-editor");
+      editor.setConfig({});
+      const hass = makeHass();
+      let asked = 0;
+      hass.callWS = async () => { asked += 1; throw new Error("unknown command"); };
+      for (let i = 0; i < 10; i++) { editor.hass = { ...hass }; await tick(2); }
+      console.log(JSON.stringify({ asked, shown: editor.shadowRoot.innerHTML }));
+    """)
+
+    assert result["asked"] == 1
+    assert "Thriftherm is not loaded" in result["shown"]
+
+
+def test_a_card_whose_integration_is_not_loaded_says_so_after_a_few_tries() -> None:
+    """Review 2026-11-08: with Thriftherm's entities there but its websocket command gone (an import failure after
+    an update, the wall tablet left open), the card painted nothing at all: an empty gap on the dashboard."""
+    result = _run_card("""
+      let now = Date.now();
+      Date.now = () => now;
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass();
+      const ask = hass.callWS;
+      hass.callWS = async () => { throw new Error("unknown command"); };
+      const seen = [];
+      for (let i = 0; i < 3; i++) {
+        main.hass = { ...hass };
+        await tick(5);
+        seen.push(main.shadowRoot.innerHTML.includes("Thriftherm is not loaded"));
+        now += 31000;
+      }
+      hass.callWS = ask;
+      await shown(main, hass);
+      const back = main.shadowRoot.innerHTML;
+      console.log(JSON.stringify({ seen, back: back.includes("Wohnzimmer") && !back.includes("not loaded") }));
+    """)
+
+    assert result == {"seen": [False, False, True], "back": True}
+
+
+_COUNTED = """
+      // reads of one registry entry: each look over all entities reads it once
+      let reads = 0;
+      const counted = {};
+      for (const [id, e] of Object.entries(hass.entities)) {
+        Object.defineProperty(counted, id, { enumerable: true,
+          get() { if (id.endsWith("wohnzimmer_window_open")) reads += 1; return e; } });
+      }
+      hass.entities = counted;
+"""
+
+
+def test_a_room_with_its_target_disabled_is_left_out_without_looking_again_and_again() -> None:
+    """Review 2026-11-08: a disabled room target made the card look over every entity with every update."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass();
+      delete hass.entities["sensor.thriftherm_badezimmer_target_temperature"]; // disabled: not listed for display
+    """ + _COUNTED + """
+      await shown(main, hass);
+      const settled = reads;
+      for (let i = 0; i < 5; i++) main.hass = { ...hass, states: { ...hass.states } };
+      console.log(JSON.stringify({ more: reads - settled, rooms: main._model.rooms.map((r) => r.key) }));
+    """)
+
+    assert result == {"more": 0, "rooms": ["wohnzimmer"]}
+
+
+def test_a_room_restored_after_a_restart_is_looked_for_again_when_its_target_changes() -> None:
+    """Before Thriftherm runs after a restart the room target has no room key yet: the card looks again once it changes."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass();
+      const target = "sensor.thriftherm_badezimmer_target_temperature";
+      const ready = hass.states[target];
+      hass.states[target] = { entity_id: target, state: "unavailable", attributes: { restored: true }, last_updated: "t0" };
+    """ + _COUNTED + """
+      await shown(main, hass);
+      const settled = reads;
+      for (let i = 0; i < 5; i++) main.hass = { ...hass, states: { ...hass.states } };
+      const waiting = reads - settled;
+      const roomsBefore = main._model.rooms.map((r) => r.key);
+      main.hass = { ...hass, states: { ...hass.states, [target]: { ...ready, last_updated: "t1" } } };
+      console.log(JSON.stringify({ waiting, roomsBefore, rooms: main._model.rooms.map((r) => r.key).sort() }));
+    """)
+
+    assert result == {"waiting": 0, "roomsBefore": ["wohnzimmer"], "rooms": ["badezimmer", "wohnzimmer"]}

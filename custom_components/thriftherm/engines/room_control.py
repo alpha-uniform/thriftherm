@@ -47,6 +47,9 @@ class RoomCtrlMemory:
     # What the thermostat showed in answer to our setpoint when that was something else: its own
     # step or limit (21.5 sent, 22 shown). It counts as our setpoint until the next one is sent.
     answered_with: float | None = None
+    # When the thermostat was first sent a setpoint it has not answered since: retries and a new
+    # target keep it. A thermostat that does not answer for long is silent (room.THERMOSTAT_UNANSWERED_S).
+    pending_since_ts: float | None = None
 
     def to_storage(self) -> dict:
         # Kept over a restart so the rate limit still holds. A setpoint that differs after a restart
@@ -57,6 +60,7 @@ class RoomCtrlMemory:
             "confirmed": self.confirmed,
             "thermostat_before_send": self.thermostat_before_send,
             "answered_with": self.answered_with,
+            "pending_since_ts": self.pending_since_ts,
         }
 
     @classmethod
@@ -69,7 +73,46 @@ class RoomCtrlMemory:
             confirmed=bool(data.get("confirmed")),
             thermostat_before_send=as_float(data.get("thermostat_before_send")),
             answered_with=as_float(data.get("answered_with")),
+            pending_since_ts=as_float(data.get("pending_since_ts")),
         )
+
+
+def pending_since(mem: RoomCtrlMemory, wrapped: bool = False) -> float | None:
+    """Since when the thermostat has not answered a setpoint sent to it, None if it answered the last one.
+
+    `wrapped`: the room thermostat drives valves of its own (Better Thermostat). It takes a setpoint at
+    once, whether its valve is there or not (review 2026-11-08): its answer says nothing, the setpoint
+    stays unanswered until the valve was heard after it (`valve_heard`).
+    """
+    if mem.last_sent_target is None:
+        return None
+    if not wrapped and (mem.confirmed or mem.answered_with is not None):
+        return None
+    return mem.pending_since_ts
+
+
+def valve_heard(mem: RoomCtrlMemory, silent_s: float | None, now_ts: float) -> RoomCtrlMemory:
+    """The memory with the setpoint answered if the valve behind the room thermostat reported after it was sent.
+
+    `silent_s` is how long the valve has not reported. A report after the send is an answer, whatever it
+    says: Better Thermostat passes a new target on, and the valve reports what it got.
+    """
+    pending = mem.pending_since_ts
+    if pending is None or silent_s is None or silent_s >= now_ts - pending:
+        return mem
+    return replace(mem, pending_since_ts=None)
+
+
+def _renders(desired: float, shown: float, step: float | None) -> bool:
+    """True when a thermostat showing `shown` cannot hold `desired` and shows the nearest it can.
+
+    `step` is the thermostat's own (its target_temp_step). One that does not name it is taken as able
+    to hold half degrees, the setpoint's own step, unless it shows a whole degree half a degree off.
+    """
+    if step is not None and step > 0.0:
+        held = abs(desired / step - round(desired / step)) < 0.01
+        return not held and abs(shown - desired) < step
+    return abs(desired - round(desired)) > 0.01 and abs(shown - round(shown)) < 0.01 and abs(shown - desired) <= 0.5 + 0.01
 
 
 def thermostat_setpoint(target: float, min_temp: float | None = None, max_temp: float | None = None) -> float:
@@ -215,12 +258,15 @@ def decide(
     own_target: bool = False,
     min_temp: float | None = None,
     max_temp: float | None = None,
+    step: float | None = None,
+    wrapped: bool = False,
 ) -> tuple[RoomCommand, RoomCtrlMemory]:
     """The setpoint plan for one room thermostat and what to remember of it.
 
     `min_temp` and `max_temp` are the limits the thermostat names (see `thermostat_setpoint`).
     The limited setpoint is what is sent and remembered: the thermostat showing it is in sync,
-    and nobody's hand.
+    and nobody's hand. `step` is the thermostat's own step (see `_renders`), `wrapped` whether
+    it drives valves of its own (see `pending_since`).
     """
 
     def cmd(plan: str, reason: str, target: float | None = None, send: bool = False) -> RoomCommand:
@@ -268,5 +314,27 @@ def decide(
         return cmd(ROOM_PLAN_HOLD, "rate_limit", desired), mem
 
     if active:
-        mem = RoomCtrlMemory(last_sent_target=desired, last_sent_ts=now_ts, confirmed=False, thermostat_before_send=thermostat_target)
+        # A thermostat in whole degrees at 22 that is sent 21.5 rounds it to the 22 it already
+        # shows: no state changes, so no answer comes, and 21.5 went out every five minutes for good
+        # (review 2026-11-08). When the same setpoint is sent again and the thermostat still shows
+        # what it did, one step from it, that is taken as its rendering: one retry against a lost
+        # command, then no more. Only where it cannot hold the setpoint: one in half degrees at 21
+        # that lost 22 twice was held a degree low for good (review 2026-11-08).
+        rendered = (
+            mem.last_sent_target == desired
+            and not mem.confirmed
+            and thermostat_target is not None
+            and mem.thermostat_before_send is not None
+            and abs(thermostat_target - mem.thermostat_before_send) <= TOLERANCE_K
+            and _renders(desired, thermostat_target, step)
+        )
+        pending = pending_since(mem, wrapped)
+        mem = RoomCtrlMemory(
+            last_sent_target=desired,
+            last_sent_ts=now_ts,
+            confirmed=False,
+            thermostat_before_send=thermostat_target,
+            answered_with=thermostat_target if rendered else None,
+            pending_since_ts=now_ts if pending is None else pending,
+        )
     return cmd(ROOM_PLAN_SET, result.target_reason, desired, send=True), mem

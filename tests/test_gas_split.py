@@ -101,6 +101,17 @@ def test_another_meter_starts_from_where_it_stands():
         assert (split.heating_kwh, split.unassigned_kwh, split.meter_m3) == (7.0, 0.0, reading)
 
 
+
+def test_a_reading_that_jitters_back_is_not_counted_again_on_its_way_up():
+    """Review 2026-11-08: an optical reader's misread 1000.05 between two 1000.10 credited the same 0.05 twice."""
+    split = by_meter(GasSplit(), 1000.0, KWH_PER_M3, False, NOW)
+    for i, reading in enumerate((1000.10, 1000.05, 1000.10, 1000.05, 1000.10), start=1):
+        split = by_meter(split, reading, KWH_PER_M3, False, NOW + 60 * i)
+    assert (split.heating_kwh, split.unassigned_kwh, split.meter_m3) == (1.0, 0.0, 1000.10)
+    assert meter_total_kwh(split) == 10001.0  # where the meter stands
+    split = by_meter(split, 1000.15, KWH_PER_M3, True, NOW + 360)  # past it again: the step from the highest reading
+    assert split.hot_water_kwh == 0.5 and split.counted_ts == NOW + 360
+
 def test_the_meters_total_starts_at_the_meter_and_never_goes_down():
     """Reading times today's calorific value rescaled the whole total with every change of that value."""
     assert meter_total_kwh(GasSplit()) is None

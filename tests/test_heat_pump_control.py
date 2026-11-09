@@ -37,7 +37,8 @@ def off_heat_pump(**kw):
 
 
 def inp(rooms, *, mode="shadow", op="auto", heat_pump=None, advice="midea", blocked=None, safety="ok", outdoor=5.0, cop=3.5,
-        bin_learned=True, now=NOW, params=PARAMS, cheaper=False, defrosting=False, boiler=True, lift=True, floor=False):
+        bin_learned=True, now=NOW, params=PARAMS, cheaper=False, defrosting=False, boiler=True, lift=True, floor=False,
+        frost=(), source=True):
     heat_pump = heat_pump or off_heat_pump()
     return ControlInputs(
         now_ts=now,
@@ -60,6 +61,8 @@ def inp(rooms, *, mode="shadow", op="auto", heat_pump=None, advice="midea", bloc
         boiler_can_help=boiler,
         may_lift=lift,
         help_at_floor=floor,
+        frost_rooms=tuple(frost),
+        has_heat_source=source,
     )
 
 
@@ -84,6 +87,72 @@ def test_hands_off_while_user_runs_the_heat_pump(hvac):
     assert cmd.plan == "hands_off" and cmd.action == "none"
     assert cmd.reason == f"manual_mode_{hvac}"
     assert mem.running_since_ts is None
+
+
+HELD_BY_HAND = ControlMemory(manual_until_ts=NOW + 3600, manual_by="person", last_command_ts=NOW - 600)
+
+
+@pytest.mark.parametrize(
+    ("unit", "kw", "blocker"),
+    [
+        (heat_pump_state(), {"blocked": "icing_lockout_active"}, "icing_lockout_active"),
+        (heat_pump_state(), {"blocked": "outdoor_coil_iced"}, "outdoor_coil_iced"),
+        (heat_pump_state(error_code=5), {}, "error_code_5"),
+        (heat_pump_state(), {"outdoor": -15.0}, "outdoor_below_-10C"),
+        (heat_pump_state(), {"safety": "fallback"}, "safety_fallback"),
+    ],
+)
+def test_what_protects_the_unit_stops_it_during_a_change_by_hand(unit, kw, blocker):
+    """Review 2026-11-08: a nudged setpoint held the unit heating through an icing lockout, an error code and frost."""
+    cmd, mem = decide(inp([rr()], mode="active", heat_pump=unit, **kw), HELD_BY_HAND)
+    assert (cmd.plan, cmd.action, cmd.reason, cmd.hvac_mode) == ("off", "stop", "blocked", "fan_only")
+    assert blocker in cmd.blockers and (mem.manual_until_ts, cmd.manual_until_ts) == (None, None)
+
+
+@pytest.mark.parametrize(
+    ("first", "then"),
+    [
+        ("outdoor_coil_iced", "icing_lockout_active"),  # a lockout begins with its cause and goes on as a lockout
+        ("icing_lockout_active", "icing_lockout_active"),
+        ("frequent_defrost_cycles", "icing_lockout_active"),
+    ],
+)
+def test_heat_chosen_by_hand_during_a_lockout_is_stopped_at_most_once(first, then):
+    """Review 2026-11-08 (#R11): switched to heat by hand during an icing lockout, the unit was stopped the next cycle,
+    and again each time it was switched on, as long as the lockout lasted. Chosen during it, it is the user's; the
+    lockout is named, and only what begins during the time in hand stops it, once."""
+    stopped = ControlMemory(stopped_since_ts=NOW - 3600, last_command_ts=NOW - 3600, last_hvac_mode="off")
+    by_hand = replace(heat_pump_state(), settings_watched_since_ts=NOW - 86400,
+                      setting_change=SettingChange(NOW - 10, "person", setpoint=False, mode=True))
+    cmd, mem = decide(inp([rr()], mode="active", heat_pump=by_hand, blocked=first), stopped)
+    assert (cmd.plan, cmd.reason, mem.manual_by) == ("hands_off", "manual_takeover", "person")
+    mem = ControlMemory.from_storage(mem.to_storage())  # also across a restart
+    for minute in (1, 2, 30):
+        cmd, mem = decide(inp([rr()], mode="active", heat_pump=by_hand, blocked=then, now=NOW + minute * 60), mem)
+        assert (cmd.plan, cmd.action, cmd.reason, cmd.blockers) == ("hands_off", "none", "manual_takeover", (then,)), minute
+    error = replace(by_hand, error_code=5)  # something new protects the unit: stopped, once, and the hold is over
+    cmd, mem = decide(inp([rr()], mode="active", heat_pump=error, blocked=then, now=NOW + 1860), mem)
+    assert (cmd.action, cmd.reason, mem.manual_until_ts) == ("stop", "blocked", None) and "error_code_5" in cmd.blockers
+
+
+@pytest.mark.parametrize("kw", [{"op": "off"}, {"op": "boiler_only"}, {"blocked": "sustained_inefficiency"}, {}])
+def test_a_mode_or_dear_heat_leaves_a_unit_run_by_hand_alone(kw):
+    """Heat chosen by hand is newer than a mode or a price: it is the user's for the time a change by hand is respected."""
+    cmd, _ = decide(inp([rr()], mode="active", heat_pump=heat_pump_state(), **kw), HELD_BY_HAND)
+    assert (cmd.plan, cmd.action, cmd.reason) == ("hands_off", "none", "manual_takeover")
+    off = heat_pump_state(hvac_mode="off")  # switched off by hand: nothing to stop
+    cmd, _ = decide(inp([rr()], mode="active", heat_pump=off, blocked="icing_lockout_active"), HELD_BY_HAND)
+    assert (cmd.plan, cmd.action) == ("hands_off", "none")
+
+
+@pytest.mark.parametrize("hvac", ["heat_cool", "vendor_special"])
+def test_a_mode_other_than_heat_is_the_users_also_from_fresh_memory(hvac):
+    """Review 2026-11-08: "heat_cool", which many climate entities offer, fell through to heating and was set to "heat"."""
+    unit = heat_pump_state(hvac_mode=hvac)
+    assert not heat_pump_engine.evaluate(unit, PARAMS).heating_available
+    for mem in (ControlMemory(), RUNNING):
+        cmd, _ = decide(inp([rr(temp=20.5)], mode="active", heat_pump=unit, cheaper=True), mem)
+        assert (cmd.plan, cmd.action, cmd.reason) == ("hands_off", "none", f"manual_mode_{hvac}")
 
 
 def test_starts_in_eco_when_cheaper_and_room_cold():
@@ -294,6 +363,156 @@ def test_planning_only_never_takes_a_running_unit_over():
     assert mem.running_since_ts is None
 
 
+# ---- without a central heat source the heat pump is all there is (review 2026-11-08) -------------------------------
+# System type "none": away and in summer mode the unit was switched off for good, a room at 4 °C included.
+STOPPED = ControlMemory(stopped_since_ts=NOW - 3600, last_command_ts=NOW - 3600, last_hvac_mode="off")
+
+
+def summer(**kw) -> RoomResult:
+    return replace(rr(**kw), target_reason="mode_off_frost_protection")
+
+
+def test_without_a_central_heat_source_the_heat_pump_holds_the_away_temperature():
+    room = resting(temp=14.5, target=15.0)
+    cmd, mem = decide(inp([room], mode="active", cheaper=True, boiler=False, source=False), STOPPED)
+    assert (cmd.plan, cmd.action, cmd.reason) == ("heat", "start", "cheaper_than_gas")
+    cmd, _ = decide(inp([room], mode="active", cheaper=True), STOPPED)  # a boiler holds it there
+    assert (cmd.plan, cmd.action, cmd.reason) == ("off", "none", "no_demand")
+    running = replace(LONG_RUN, last_target=20.0)
+    cmd, _ = decide(inp([room], mode="active", heat_pump=AT_20, cheaper=True, boiler=False, source=False), running)
+    assert (cmd.plan, cmd.reason) == ("heat", "cheaper_than_gas")  # not switched off while it is short
+
+
+@pytest.mark.parametrize("op", ["off", "away", "boiler_only"])
+def test_without_a_central_heat_source_the_heat_pump_protects_a_room_from_frost(op):
+    room = (summer if op == "off" else resting)(temp=4.0, target=7.0 if op == "off" else 15.0)
+    kw = {"mode": "active", "op": op, "cheaper": True, "boiler": False, "source": False, "frost": ("badezimmer",)}
+    cmd, mem = decide(inp([room], **kw), STOPPED)
+    assert (cmd.plan, cmd.action, cmd.reason, cmd.blockers) == ("heat", "start", "frost_protection", ())
+    cmd, _ = decide(inp([room], **{**kw, "frost": ()}), STOPPED)  # out of frost protection: the mode decides
+    assert cmd.action == ("start" if op == "away" else "none")  # away it holds the away temperature
+    cmd, _ = decide(inp([room], **{**kw, "source": True}), STOPPED)  # the boiler protects it
+    assert cmd.action == "none"
+
+
+@pytest.mark.parametrize(
+    ("unit", "kw"),
+    [
+        (replace(off_heat_pump(), outdoor_temp=None), {"outdoor": None}),  # the outdoor sensor lost, the unit shows none
+        (off_heat_pump(), {"outdoor": -12.0}),  # below the outdoor limit of the options
+        (off_heat_pump(), {"blocked": "sustained_inefficiency"}),  # dear heat beats no heat
+    ],
+    ids=["outdoor_unknown", "below_outdoor_limit", "dear_heat"],
+)
+def test_without_a_central_heat_source_frost_protection_is_not_blocked_by_the_weather(unit, kw):
+    """Review 2026-11-08 (#R2/#R21): a room at 4 °C stayed cold with the outdoor temperature unknown or below -10 °C,
+    though nothing else heats it. Outside its range the unit protects itself; frost in a room weighs more."""
+    kw = {"mode": "active", "op": "off", "cheaper": True, "boiler": False, "source": False, "heat_pump": unit, **kw}
+    room = summer(temp=4.0, target=7.0)
+    cmd, _ = decide(inp([room], frost=("badezimmer",), **kw), STOPPED)
+    assert (cmd.plan, cmd.action, cmd.reason, cmd.blockers) == ("heat", "start", "frost_protection", ())
+    cmd, _ = decide(inp([room], frost=(), **kw), STOPPED)  # out of frost protection the blockers count again
+    assert (cmd.plan, cmd.reason) == ("off", "blocked")
+    cmd, _ = decide(inp([room], frost=("badezimmer",), **{**kw, "source": True}), STOPPED)  # a boiler protects it
+    assert (cmd.plan, cmd.reason) == ("off", "blocked")
+
+
+@pytest.mark.parametrize(
+    ("unit", "kw", "blocker"),
+    [
+        (off_heat_pump(), {"blocked": "icing_lockout_active"}, "icing_lockout_active"),
+        (off_heat_pump(error_code=5), {}, "error_code_5"),
+        (off_heat_pump(), {"safety": "fallback"}, "safety_fallback"),
+    ],
+)
+def test_without_a_central_heat_source_frost_protection_still_stops_for_what_protects_the_unit(unit, kw, blocker):
+    kw = {"mode": "active", "op": "off", "cheaper": True, "boiler": False, "source": False, "heat_pump": unit, **kw}
+    cmd, _ = decide(inp([summer(temp=4.0, target=7.0)], frost=("badezimmer",), outdoor=-12.0, **kw), STOPPED)
+    assert (cmd.plan, cmd.reason) == ("off", "blocked") and blocker in cmd.blockers
+    assert "outdoor_below_-10C" not in cmd.blockers
+
+
+def test_a_frost_run_without_a_central_heat_source_lasts_while_the_room_is_in_frost_protection():
+    """Its window open too: frost protection comes first, as for the boiler. It ends with the safety's hysteresis."""
+    kw = {"mode": "active", "op": "off", "cheaper": True, "boiler": False, "source": False}
+    frost_run = replace(LONG_RUN, last_target=20.0)
+    for room in (summer(temp=7.8, target=7.0), summer(temp=5.0, target=7.0, heat_pump_allowed=False)):
+        cmd, _ = decide(inp([room], frost=("badezimmer",), heat_pump=AT_20, **kw), frost_run)
+        assert (cmd.plan, cmd.reason) == ("heat", "frost_protection"), room
+    cmd, _ = decide(inp([summer(temp=8.1, target=7.0)], heat_pump=AT_20, **kw), frost_run)
+    assert (cmd.plan, cmd.action, cmd.blockers) == ("off", "stop", ("mode_off",))
+
+
+# ---- with a central heat source the heat pump is the frost reserve (0.7.3) --------------------------------------------
+# District heating Thriftherm does not control may be switched off by the landlord, a boiler may fail or stand on its own
+# knob: a served room that stays below the frost limit for half an hour is heated by the unit as without a heat source.
+RESERVE_S = 1800.0
+
+
+def frost_cycles(steps, kw, mem=STOPPED, room=None):
+    """decide at the given minutes, the room on the frost list where its flag says so: the commands and the memory."""
+    room = room or summer(temp=4.0, target=7.0)
+    out = []
+    for minute, on_list in steps:
+        cmd, mem = decide(inp([room], now=NOW + minute * 60, frost=("badezimmer",) if on_list else (), **kw), mem)
+        out.append(cmd)
+    return out, mem
+
+
+@pytest.mark.parametrize("op", ["off", "boiler_only", "auto"])
+def test_with_district_heating_the_heat_pump_is_the_frost_reserve_after_half_an_hour(op):
+    """District heating Thriftherm does not control, switched off by the landlord: the room stays in frost."""
+    kw = {"mode": "active", "op": op, "cheaper": True, "source": True, "outdoor": None}  # the outdoor sensor lost as well
+    (first, before, after), mem = frost_cycles([(0, True), (29, True), (30, True)], kw)
+    assert first.action == "none" and before.action == "none"
+    assert (after.plan, after.action, after.reason, after.blockers) == ("heat", "start", "frost_reserve", ())
+    assert ControlMemory.from_storage(mem.to_storage()).frost_since == (("badezimmer", NOW),)  # also across a restart
+    run = replace(LONG_RUN, last_target=20.0, frost_since=mem.frost_since)
+    warmer = summer(temp=7.8, target=7.0)  # still on the list: the safety lets it go a degree above the limit
+    cmd, run = decide(inp([warmer], heat_pump=AT_20, now=NOW + 3600, frost=("badezimmer",), **kw), run)
+    assert (cmd.plan, cmd.reason) == ("heat", "frost_reserve")
+    cmd, run = decide(inp([summer(temp=8.1, target=7.0)], heat_pump=AT_20, now=NOW + 3660, **kw), run)
+    assert cmd.action == "stop" and run.frost_since == ()  # off the list: the normal rules, and the count is over
+
+
+def test_with_a_boiler_released_a_room_still_below_the_frost_limit_gets_the_reserve_after_half_an_hour():
+    """A boiler fault, or a boiler on its own knob: released, it has not lifted the room in half an hour."""
+    kw = {"mode": "active", "op": "auto", "advice": "boiler", "cheaper": False, "source": True}
+    room = rr(temp=5.0, target=21.0)
+    (first, before, after), mem = frost_cycles([(0, True), (29, True), (30, True)], kw, room=room)
+    assert (first.action, first.reason) == ("none", "gas_cheaper") and (before.action, before.reason) == ("none", "gas_cheaper")
+    assert (after.plan, after.action, after.reason) == ("heat", "start", "frost_reserve")
+    later = {**kw, "now": NOW + RESERVE_S, "frost": ("badezimmer",)}
+    cmd, _ = decide(inp([room], **{**later, "blocked": "icing_lockout_active"}), mem)
+    assert (cmd.plan, cmd.reason) == ("off", "blocked")  # what protects the unit still blocks it
+    cmd, _ = decide(inp([room], **{**later, "mode": "shadow"}), mem)
+    assert cmd.plan == "heat"  # only planned: the coordinator writes nothing in Plan only, as for every plan
+
+
+def test_a_room_not_read_yet_after_a_restart_keeps_its_frost_half_hour():
+    """After a restart the room sensors come a cycle or two late: the half hour on the frost list goes on."""
+    kw = {"mode": "active", "op": "off", "cheaper": True, "source": True}
+    _, mem = frost_cycles([(0, True), (20, True)], kw)
+    unread = summer(temp=None, target=7.0)
+    _, mem = decide(inp([unread], now=NOW + 21 * 60, **kw), mem)  # not on the list: its temperature is not known yet
+    assert mem.frost_since == (("badezimmer", NOW),)
+    cmd, _ = decide(inp([summer(temp=4.0, target=7.0)], now=NOW + 30 * 60, frost=("badezimmer",), **kw), mem)
+    assert (cmd.plan, cmd.reason) == ("heat", "frost_reserve")
+
+
+def test_without_a_central_heat_source_frost_protection_still_acts_at_once():
+    kw = {"mode": "active", "op": "off", "cheaper": True, "boiler": False, "source": False}
+    (cmd,), _ = frost_cycles([(0, True)], kw)
+    assert (cmd.plan, cmd.action, cmd.reason) == ("heat", "start", "frost_protection")
+
+
+def test_a_room_that_leaves_the_frost_list_starts_the_half_hour_anew():
+    kw = {"mode": "active", "op": "off", "cheaper": True, "source": True}
+    cmds, mem = frost_cycles([(0, True), (20, True), (21, False), (22, True), (30, True), (51, True), (52, True)], kw)
+    assert [c.action for c in cmds] == ["none"] * 6 + ["start"]
+    assert cmds[-1].reason == "frost_reserve" and mem.frost_since == (("badezimmer", NOW + 22 * 60),)
+
+
 # ---- a restart of Home Assistant changes nothing for a running unit ----------------------
 
 def test_a_running_unit_is_not_stopped_while_the_room_sensors_have_not_reported():
@@ -318,6 +537,23 @@ def test_a_restart_counts_although_the_watch_on_the_unit_was_carried_across_it()
     assert cmd.waiting != "room_data"
 
 
+def test_a_safety_fallback_only_from_room_sensors_not_arrived_yet_leaves_the_unit_as_it_is():
+    """Review 2026-11-08 (#R5): after a restart the unit loaded before the room sensors. Every room unknown, the safety
+    said fallback, and a unit under a change by hand had the hold ended and was stopped, as was a run of ours."""
+    restarted = replace(heat_pump_state(), settings_watched_since_ts=NOW - 7200)
+    kw = {"mode": "active", "heat_pump": restarted, "safety": "fallback", "blocked": "safety_fallback"}
+    starting = replace(inp([rr(temp=None)], **kw), started_ts=NOW - 30, safety_pending=True)
+    cmd, mem = decide(starting, HELD_BY_HAND)
+    assert (cmd.plan, cmd.action, cmd.reason, mem.manual_until_ts) == ("hands_off", "none", "manual_takeover", NOW + 3600)
+    cmd, mem = decide(starting, LONG_RUN)
+    assert (cmd.plan, cmd.action, cmd.waiting, mem) == ("heat", "none", "room_data", LONG_RUN)
+    cmd, _ = decide(replace(starting, heat_pump=off_heat_pump()), STOPPED)
+    assert (cmd.plan, cmd.action) == ("off", "none")  # nor is one started for it
+    for mem in (HELD_BY_HAND, LONG_RUN):  # a fallback that is one stops it, as before
+        cmd, _ = decide(replace(starting, safety_pending=False), mem)
+        assert (cmd.action, cmd.blockers) == ("stop", ("safety_fallback",))
+
+
 def test_a_room_sensor_that_stays_silent_does_not_keep_the_unit_on_for_good():
     long_run = replace(LONG_RUN, last_target=21.0)
     rooms = [rr(temp=23.0), rr(key="flur", temp=None)]  # one room 2 K above its target, one that never reports
@@ -327,6 +563,19 @@ def test_a_room_sensor_that_stays_silent_does_not_keep_the_unit_on_for_good():
     watched = replace(watched, settings_watched_since_ts=NOW - 660)
     cmd, _ = decide(inp(rooms, mode="active", advice="boiler", heat_pump=watched), long_run)
     assert (cmd.action, cmd.target_temp, cmd.reason, cmd.waiting) == ("adjust", 17.0, "gas_cheaper", None)  # rests
+
+
+def test_a_run_whose_served_rooms_all_lost_their_temperature_rests_or_stops():
+    """Review 2026-11-08: with no served room known after the grace period it held its least speed without end."""
+    watched = replace(heat_pump_state(), target_temp=22.0, settings_watched_since_ts=NOW - 7200)
+    cmd, mem = decide(inp([rr(temp=None)], mode="active", heat_pump=watched, cheaper=True), LONG_RUN)
+    assert (cmd.plan, cmd.action, cmd.target_temp, cmd.reason) == ("heat", "adjust", 17.0, "room_data_missing")
+    assert mem.resting
+    cold = replace(watched, indoor_temp=17.0)  # the floor would not stop it: stopped by mode
+    cmd, mem = decide(inp([rr(temp=None)], mode="active", heat_pump=cold, cheaper=True), LONG_RUN)
+    assert (cmd.plan, cmd.action, cmd.reason) == ("off", "stop", "room_data_missing")
+    cmd, _ = decide(inp([rr(temp=None)], mode="active", heat_pump=watched, cheaper=True), RUNNING)  # within its minimum run
+    assert (cmd.plan, cmd.waiting) == ("heat", "min_run_time")
 
 
 # ---- drying a room: the strongest fan, and afterwards the stage the unit had
@@ -659,6 +908,20 @@ def test_a_unit_not_loaded_yet_right_after_a_start_keeps_its_run():
     assert mem.running_since_ts is None
 
 
+def test_a_dropout_of_ten_seconds_at_most_keeps_the_run():
+    """Review 2026-11-08 (#R6): a bridge dropout no longer degraded the safety, yet the run was forgotten, taken over anew
+    as a run of now, its minimum run and phase reset, and a setpoint sent the moment it was back."""
+    gone = replace(AS_SENT, available=False, hvac_mode=None)
+    run = replace(HALF_HOUR_RUN, phase_since_ts=NOW - 1800)
+    for gone_s in (0.0, 10.0):
+        cmd, mem = decide(replace(inp([rr(temp=20.9)], mode="active", heat_pump=gone), heat_pump_gone_s=gone_s), run)
+        assert (cmd.plan, cmd.action, cmd.reason, mem) == ("hands_off", "none", "midea_unavailable", run), gone_s
+    cmd, mem = decide(inp([rr(temp=20.9)], mode="active", heat_pump=AS_SENT, now=NOW + 30), mem)
+    assert (cmd.plan, cmd.action, mem.running_since_ts, mem.phase_since_ts) == ("heat", "none", NOW - 1800, NOW - 1800)
+    _, mem = decide(replace(inp([rr(temp=20.9)], mode="active", heat_pump=gone), heat_pump_gone_s=11.0), run)
+    assert mem.running_since_ts is None  # away longer: the run is over, as before
+
+
 def test_a_unit_back_from_a_mode_set_by_hand_is_taken_over_again():
     drying = replace(AS_SENT, hvac_mode="dry")
     _, mem = decide(inp([rr(temp=20.9)], mode="active", heat_pump=drying), HALF_HOUR_RUN)
@@ -839,12 +1102,40 @@ def test_a_unit_off_for_long_is_started_from_the_intake_sensor():
         assert (cmd.action, cmd.target_temp) == ("start", start_at), stopped_s_ago
 
 
-def test_a_rising_own_reading_never_raises_the_setpoint_while_no_room_is_short():
+def test_a_rising_own_reading_raises_the_setpoint_only_where_the_unit_would_stop_itself():
     """The night of 2026-10-29/30: the setpoint chased the unit's own reading, 19.5 and 20 by turns, 20 beeps.
-    Between their target and half a degree above the rooms rest the unit by its own thermostat."""
-    for own in (21.5, 22.0, 22.5, 23.0):
-        cmd, mem = held([rr(temp=21.2)], LATCHED, unit=replace(AT_20, indoor_temp=own))
-        assert (cmd.plan, cmd.action, cmd.target_temp, mem.reading_high_since_ts) == ("heat", "none", 20.0, None), own
+    Below a degree and a half above its setpoint nothing is sent, whether a room is short or not."""
+    for own in (20.5, 21.0, 21.4):
+        for temp in (20.8, 21.2):
+            cmd, mem = held([rr(temp=temp)], LATCHED, unit=replace(AT_20, indoor_temp=own))
+            assert (cmd.plan, cmd.action, cmd.target_temp, mem.reading_high_since_ts) == ("heat", "none", 20.0, None), own
+
+
+def test_a_unit_that_runs_through_is_set_anew_before_it_stops_itself():
+    """Seen 2026-11-08 14:10-14:43: at setpoint 20 and its own 22 °C the unit stopped itself three times, ran 5-8 minutes
+    and stood 7-9, with no room short; only then was it set anew. Set a degree below its reading it runs on at least speed."""
+    rising = replace(AT_20, indoor_temp=21.5)
+    cmd, mem = held([rr(temp=21.2)], LATCHED, unit=rising)
+    assert (cmd.action, mem.reading_high_since_ts) == ("none", NOW)
+    cmd, mem = held([rr(temp=21.2)], mem, unit=rising, now=NOW + 300)
+    assert (cmd.action, cmd.target_temp, cmd.reason, mem.came_down_ts) == ("adjust", 20.5, "relatched_reading_rose", NOW + 300)
+    cmd, _ = held([rr(temp=21.2)], LATCHED, unit=replace(AT_20, indoor_temp=22.0))  # where it stops within minutes: at once
+    assert (cmd.action, cmd.target_temp, cmd.reason) == ("adjust", 21.0, "relatched_reading_rose")
+
+
+@pytest.mark.parametrize("high_min, period_min", [(8, 20), (8, 30), (6, 25), (10, 40), (12, 21)])
+def test_a_reading_that_flips_by_half_a_degree_is_followed_once(high_min, period_min):
+    """Review 2026-11-08 (#R9): no room short, its own reading at 21.5 and 21.0 by turns as the office warms and cools, the
+    setpoint went 20.5 and 20.0 by turns, 24-38 beeps in eight hours. Set a degree below 21.5 once, it stays there."""
+    mem, sent = LATCHED, []
+    for minute in range(8 * 60):
+        own = 21.5 if minute % period_min < high_min else 21.0
+        unit = replace(AT_20, indoor_temp=own, target_temp=mem.last_target)
+        cmd, mem = held([rr(temp=21.2)], mem, unit=unit, now=NOW + minute * 60)
+        if cmd.action != "none":
+            sent.append((minute, cmd.target_temp, cmd.reason))
+    assert [s[1:] for s in sent] == [(20.5, "relatched_reading_rose")], sent
+    assert sent[0][0] == 5 and mem.last_target == 20.5  # five minutes at 21.5 in the first stretch
 
 
 # Seen 2026-10-31 03:09-03:55: at setpoint 19 the unit stopped itself five times in 46 minutes while the office warmed,
@@ -1913,6 +2204,33 @@ def test_after_a_quick_heat_up_the_setpoint_is_set_once_more_as_well():
     later = replace(AT_20, target_temp=22.0, indoor_temp=21.5)
     cmd, _ = held([rr(temp=20.9)], mem, unit=later, now=NOW + 900)
     assert (cmd.action, cmd.target_temp, cmd.reason) == ("adjust", 20.5, "holding_at_minimum")
+
+
+@pytest.mark.parametrize("hz", [0.0, 40.0])
+def test_a_quick_heat_up_that_ends_during_a_defrost_is_set_from_the_intake_sensor(hz):
+    """Review 2026-11-08: set from its own reading, which a defrost drops to 16 °C, it went to 17.5 and stopped itself."""
+    boosted = replace(LATCHED, last_target=30.0, last_command_ts=NOW - 60, phase_since_ts=NOW - 3600)
+    thawing = replace(AT_20, target_temp=30.0, indoor_temp=16.0, compressor_hz=hz)  # the intake sensor reads 20 °C
+    cmd, mem = held([rr(temp=20.9)], boosted, unit=thawing, defrosting=True)
+    assert (cmd.action, cmd.target_temp, cmd.reason) == ("adjust", 20.5, "holding_at_minimum")  # where it starts
+    assert mem.came_down_ts == NOW  # and set once more from its own reading once it ran a while
+    ended = replace(RUNNING, last_target=30.0)  # within the minimum run, the room needs no more heat
+    cmd, _ = held([rr(temp=21.6)], ended, unit=thawing, defrosting=True, advice="boiler", cop=2.5)
+    assert (cmd.action, cmd.target_temp, cmd.waiting) == ("adjust", 20.5, "min_run_time")
+
+
+def test_after_a_quick_heat_up_a_unit_without_a_reading_of_its_own_is_set_from_the_intake_sensor():
+    """Review 2026-11-08: a climate entity that reports no room temperature stayed at 30 °C, cycle after cycle."""
+    boosted = replace(LATCHED, last_target=30.0, last_command_ts=NOW - 60, phase_since_ts=NOW - 3600)
+    blind = replace(AT_20, target_temp=30.0, indoor_temp=None)
+    for hz in (40.0, None):
+        cmd, _ = held([rr(temp=20.9)], boosted, unit=replace(blind, compressor_hz=hz))
+        assert (cmd.action, cmd.target_temp) == ("adjust", 19.0), hz  # a degree below the intake sensor's 20 °C
+    no_reading = replace(blind, intake_temp=replace(blind.intake_temp, valid=False))
+    cmd, _ = held([rr(temp=20.9)], boosted, unit=no_reading)
+    assert (cmd.action, cmd.target_temp) == ("adjust", 17.0)  # no reading at all: the floor, not 30 °C
+    cmd, _ = held([rr(temp=21.6)], replace(RUNNING, last_target=30.0), unit=no_reading, advice="boiler", cop=2.5)
+    assert (cmd.action, cmd.target_temp, cmd.waiting) == ("adjust", 17.0, "min_run_time")
 
 
 def test_a_drying_waits_for_its_window_and_a_defrost():

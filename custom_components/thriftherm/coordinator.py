@@ -6,13 +6,13 @@ import asyncio
 import logging
 import time
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import ATTR_DOMAIN, ATTR_ENTITY_ID, ATTR_SERVICE_DATA, EVENT_CALL_SERVICE
+from homeassistant.const import ATTR_DOMAIN, ATTR_ENTITY_ID, ATTR_SERVICE_DATA, EVENT_CALL_SERVICE, UnitOfTemperature
 from homeassistant.core import CALLBACK_TYPE, Context, Event, EventStateChangedData, HomeAssistant, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
@@ -102,7 +102,7 @@ from .engines import (
     safety,
 )
 from .engines.heat_pump_tracking import HeatPumpTracker
-from .engines.safety import HEAT_PUMP_ISSUE_PREFIX
+from .engines.safety import HEAT_PUMP_DROPOUT_S, HEAT_PUMP_ISSUE_PREFIX
 from .engines import cop_profiles
 from .engines.learning import HEAT_BY_BOILER, HEAT_BY_BOTH, HEAT_BY_HEAT_PUMP, HEAT_SOURCES, CoolRateStats, CopMap, HeatRateStats
 from .engines.boiler_memory import BoilerInputs, BoilerMemory, curve_flow
@@ -148,6 +148,8 @@ LOAD_LOG_ROWS = 720
 STORE_SAVE_INTERVAL_S = 600.0
 SETTING_PAIR_S = 15.0  # a setpoint and a mode changed this close may reach one cycle: its debouncer waits 10 s
 SETPOINT_SETTLE_S = 1200.0  # after a setpoint change the rooms and their thermostats settle first
+# How long an unload waits for the cycle under way: one call times out after 30 s, and none follows it
+UNLOAD_WAIT_S = 120.0
 
 type ThrifthermConfigEntry = ConfigEntry["ThrifthermCoordinator"]
 
@@ -179,6 +181,76 @@ def _runs_through(advice: Advice, setpoint: float | None) -> Advice:
 def _instead_of_no_demand(advice: Advice, said: Reason) -> Advice:
     """The advice with "no room needs heat" put the way the heat pump control saw it."""
     return replace(advice, reasons=tuple(said if item.code == "no_demand" else item for item in advice.reasons))
+
+
+# hass.data key: (flow number, heating switch) -> (entry id, remover) of a hand-back that waits for the boiler's
+# entities to come back. Keyed by the entities, not the entry: an entry deleted and added again has a new id, and the
+# old wait set off by the new block's own write switched the heating on against it (second review 2026-11-08).
+HAND_BACK_RETRIES = f"{DOMAIN}_hand_back_retries"
+
+
+def cancel_hand_back_retry(hass: HomeAssistant, entry_id: str, entities: tuple[str, str] | None = None) -> None:
+    """A run starts that commands these entities, or one of the entry starts again: the waiting for them ends.
+
+    The run of the entry finds in its store what the entities hold; a run of another entry commands them itself, and
+    is only given `entities` when it does: one that plans only or is off never writes them (verifier of 0.7.3b).
+    """
+    retries: dict[tuple[str, str], tuple[str, Callable[[], None]]] = hass.data.get(HAND_BACK_RETRIES, {})
+    for key in [k for k, (owner, _) in retries.items() if owner == entry_id or (entities and set(k) & set(entities))]:
+        retries.pop(key)[1]()
+
+
+def _commanded_elsewhere(hass: HomeAssistant, entities: tuple[str, str]) -> bool:
+    """A loaded entry commands one of these entities: what it writes is not ours to undo.
+
+    Only one whose boiler control is active: an entry added again starts in Plan only with a fresh store and never
+    hands back, and the block stayed on the switch for good (verifier of 0.7.3b, #R4, #R23).
+    """
+    for entry in hass.config_entries.async_loaded_entries(DOMAIN):
+        coordinator = getattr(entry, "runtime_data", None)
+        own = getattr(coordinator, "boiler_entities", None)
+        if own and set(own) & set(entities) and getattr(coordinator, "boiler_control_mode", None) == CTRL_ACTIVE:
+            return True
+    return False
+
+
+def retry_hand_back(hass: HomeAssistant, entry_id: str, entities: tuple[str, str], flow: float, heating_on: bool | None) -> None:
+    """Hand the boiler back as soon as its entities come back, with no coordinator left to do it.
+
+    Review 2026-11-08: disabled or deleted while an ESPHome gateway rebooted, the block stayed on
+    the switch for good, and a deleted entry took the store with it that a reload makes it up from.
+    Not tied to the entry: it ends when the hand-back went through or a run commands the entities again.
+    """
+    cancel_hand_back_retry(hass, entry_id, entities)
+    trying = False
+
+    def _mine() -> bool:
+        held = hass.data.get(HAND_BACK_RETRIES, {}).get(entities)
+        return held is not None and held[1] is remove
+
+    async def _try() -> None:
+        nonlocal trying
+        if trying or not _mine():
+            return
+        if _commanded_elsewhere(hass, entities):
+            cancel_hand_back_retry(hass, entry_id, entities)  # never over a running entry's command
+            return
+        trying = True
+        try:
+            sent = await executors.async_send_boiler_entities(hass, *entities, flow, heating_on, logging.DEBUG)
+        finally:
+            trying = False
+        if sent and _mine():
+            cancel_hand_back_retry(hass, entry_id, entities)
+            issues.async_clear_hand_back(hass)
+            _LOGGER.warning("thriftherm: boiler handed back after all (flow %.1f °C)", flow)
+
+    @callback
+    def _changed(_event: Event[EventStateChangedData]) -> None:
+        hass.async_create_task(_try())
+
+    remove = async_track_state_change_event(hass, list(entities), _changed)
+    hass.data.setdefault(HAND_BACK_RETRIES, {})[entities] = (entry_id, remove)
 
 
 class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -278,8 +350,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._boiler_entities_released: bool | None = None
         self._boiler_handed_back_flow: float | None = None
         self._boiler_let_go = False  # handed back for good: this coordinator commands no more
+        self._unloading = False  # the entry is being unloaded: a cycle under way sends nothing more
         self._boiler_lock = asyncio.Lock()  # one write to the boiler's entities at a time
         self._started_ts = time.time()
+        self._heat_pump_gone_since: float | None = None  # when the heat pump last went away, while it is
+        self._arrived: set[str] = set()  # the inputs that have reported since the start (engines/safety.arrivals)
         self._frost_rooms: tuple[str, ...] = ()
         self._last_room_plans: dict[str, tuple[str, float | None]] = {}
         self._last_targets: dict[str, float] = {}
@@ -374,6 +449,14 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return self.builder.has_heat_pump
 
     @property
+    def celsius(self) -> bool:
+        """Home Assistant shows temperatures in °C, the only unit this control reads and writes.
+
+        The setup refuses any other; a unit system switched after it keeps the control hands-off.
+        """
+        return self.hass.config.units.temperature_unit == UnitOfTemperature.CELSIUS
+
+    @property
     def allow_active(self) -> bool:
         return bool(self.config.get(CONF_HEAT_PUMP_ALLOW_ACTIVE, DEFAULT_HEAT_PUMP_ALLOW_ACTIVE))
 
@@ -414,6 +497,9 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not self.has_boiler:
             # no own boiler: never plan or send a SetMode, whatever was stored
             self.boiler_control_mode = CTRL_OFF
+        # This entry's waiting ends: its store tells what the entities hold. Another's only when this run commands them.
+        commands = self.boiler_entities if self.boiler_control_mode == CTRL_ACTIVE else None
+        cancel_hand_back_retry(self.hass, self.entry.entry_id, commands)
         watched = self.builder.watched_entities()
         if watched:
             self.entry.async_on_unload(async_track_state_change_event(self.hass, list(watched), self._on_watched_change))
@@ -692,6 +778,22 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._store_dirty = False
         await self._store.async_save(persistence.to_store(self))
 
+    async def async_stop_cycles(self) -> None:
+        """No new cycle, and the one under way finished, before the entry saves and lets go.
+
+        Review 2026-11-08: a reload for an options change ran while a cycle was sending. It went on
+        sending past the forced save and the release, the room setpoints with the old modes, even
+        after active control had just been taken back. From here it sends nothing more; the call
+        that is out already ends by itself, within its timeout.
+        """
+        self._unloading = True
+        await self.async_shutdown()
+        try:
+            async with asyncio.timeout(UNLOAD_WAIT_S), self._debounced_refresh.async_lock():
+                pass
+        except TimeoutError:
+            _LOGGER.warning("thriftherm: the cycle under way did not end within %.0f s, unloading all the same", UNLOAD_WAIT_S)
+
     def _boiler_held(self, now_ts: float) -> bool:
         """Whether signs of a fault keep the boiler from a release it would get: not on its knob, not with one in force."""
         return (
@@ -795,13 +897,46 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def set_control_mode(self, mode: str) -> None:
         if self._switch_mode("midea", self.control_mode, mode, self.control_modes):
+            was_active, left = self.control_mode == CTRL_ACTIVE, self.control_memory
             self.control_mode = mode
             # a planned run never touched the unit; carrying it over looked like a manual change
             self.control_memory = self.control_memory.fresh_run_state()
+            if was_active:
+                self.hass.async_create_task(self.async_let_go_of_heat_pump(left))
+
+    async def async_let_go_of_heat_pump(self, mem: ControlMemory | None = None) -> None:
+        """Set a unit our last command left above its least speed down to its floor, as the control lets go of it.
+
+        Review 2026-11-08: switched to Plan only or Off, or unloaded, mid-way through a quick heat-up (30 °C, the
+        fan high) or a drying, the unit kept heating to that setpoint for good: their time limits run here only.
+        As the boiler is handed back on the same transitions, the unit gets one last setpoint, the lowest, where
+        it rests. A unit held at its least speed is left as it is, and so is one somebody set meanwhile.
+        """
+        mem = self.control_memory if mem is None else mem
+        entity_id = self.config.get(CONF_HEAT_PUMP_CLIMATE)
+        boosted = mem.last_target is not None and mem.last_target >= heat_pump_control.BOOST_C
+        if not (self.has_heat_pump and entity_id and mem.running_since_ts is not None and mem.last_hvac_mode == "heat"):
+            return
+        if not (boosted or mem.drying_held) or (mem.manual_until_ts is not None and mem.manual_until_ts > time.time()):
+            return
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state != "heat" or state.attributes.get("temperature") != mem.last_target:
+            return  # not as we left it: somebody's now
+        step = state.attributes.get("target_temp_step")
+        floor = heat_pump_control.to_step(heat_pump_control.SETPOINT_MIN, step if isinstance(step, (int, float)) else None)
+        command = HeatPumpCommand("off", "adjust", None, floor, None, None, "control_let_go")
+        if await executors.async_execute_heat_pump(self.hass, entity_id, command, self._own_context()):
+            _LOGGER.info("thriftherm heat pump: left at %.1f °C as the control lets go, set down to %.1f °C", mem.last_target, floor)
+            if mem is self.control_memory:
+                # What the store keeps, and a new run finds: a drying still held at 17 °C stood on it until the unit
+                # had stopped itself and stood five minutes, then started hard. Not held, it gets its setpoint at once.
+                self.control_memory = replace(mem, last_target=floor, drying_held=False)
 
     def set_boiler_control_mode(self, mode: str) -> None:
         if self._switch_mode("boiler", self.boiler_control_mode, mode, self.boiler_control_modes):
             self.boiler_control_mode = mode
+            if mode == CTRL_ACTIVE:
+                cancel_hand_back_retry(self.hass, self.entry.entry_id, self.boiler_entities)  # this run commands them now
             # a fresh telegram right away when switching to active
             self.boiler_memory = replace(self.boiler_memory, last_payload=None, last_send_ts=None)
 
@@ -990,14 +1125,18 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.has_boiler and self.boiler_entities:
             await self._async_command_boiler_entities(boiler_cmd)
         elif self.has_boiler and self.boiler_control_mode == CTRL_ACTIVE and boiler_cmd.send and boiler_cmd.payload:
-            await executors.async_send_setmode(self.hass, self.boiler_setmode_topic, boiler_cmd.payload)
+            if self._unloading or not await executors.async_send_setmode(self.hass, self.boiler_setmode_topic, boiler_cmd.payload):
+                # Not carried out, as on the entity path: due again next cycle, and no block counts as in force,
+                # or a changed telegram waited for the keep-alive (review 2026-11-08).
+                self.boiler_memory = replace(self.boiler_memory, last_payload=None, last_send_ts=None, block_since_ts=None)
         command: HeatPumpCommand = result["midea_command"]
         heat_pump_entity = self.config.get(CONF_HEAT_PUMP_CLIMATE)
         cycle_ts = snapshot.now.timestamp()
         if self.control_mode == CTRL_ACTIVE and self.has_heat_pump and heat_pump_entity and command.action != "none":
             stop = command.action == "stop"
-            if self._asked_meanwhile(heat_pump_entity, cycle_ts):
-                # planned without what somebody just asked for: not sent, and not on record as sent
+            if self._writes_held(command.target_temp) or self._asked_meanwhile(heat_pump_entity, cycle_ts):
+                # planned without what somebody just asked for, or nothing may be written now: not sent,
+                # and not on record as sent
                 self.control_memory = self._control_memory_before
                 self.plan_log.not_sent()
             elif not stop and cycle_ts < self._heat_pump_retry_ts:
@@ -1033,7 +1172,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 wait = heat_pump_control.MANUAL_DETECT_GRACE_S * 2 ** min(self._heat_pump_call_failures, 8)
                 self._heat_pump_retry_ts = cycle_ts + min(wait, heat_pump_control.RETRY_MAX_S)
                 self._heat_pump_call_failures += 1
-        if self.has_boiler and not self.boiler_entities:
+        if self.has_boiler and not self.boiler_entities and not self._unloading:
             await self._async_keep_boiler_readings_fresh(result["boiler"].gas_power_w, now)
         if self.room_control_mode == CTRL_ACTIVE:
             climate_of = {r.key: r.climate_entity for r in self.builder.rooms}
@@ -1041,8 +1180,10 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 entity = climate_of.get(room_cmd.room)
                 if not (room_cmd.send and room_cmd.target is not None and entity):
                     continue
-                if self._asked_meanwhile(entity, cycle_ts, setpoint_only=True):
-                    # planned without what somebody just asked for: not sent, and not on record as sent
+                # asked anew for each room: an unload may begin while the calls before it are out
+                if self._writes_held(room_cmd.target) or self._asked_meanwhile(entity, cycle_ts, setpoint_only=True):
+                    # planned without what somebody just asked for, or nothing may be written now: not sent,
+                    # and not on record as sent
                     if room_cmd.room in self._room_memory_before:
                         self.room_ctrl_memory[room_cmd.room] = self._room_memory_before[room_cmd.room]
                     continue
@@ -1050,6 +1191,15 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self.async_save_store()
         await issues.async_sync(self.hass, self, result)
         return result
+
+    def _writes_held(self, temperature: float | None) -> bool:
+        """No command to the heat pump or the room thermostats now: the entry is being unloaded, or one with a
+        temperature they would take our °C for another unit.
+
+        A stop carries none: held back as well, a unit boosted to 30 °C heated on at full power for as long as
+        Home Assistant showed °F (second review 2026-11-08).
+        """
+        return self._unloading or (temperature is not None and not self.celsius)
 
     def _holds_boiler(self, held: bool) -> None:
         """Remember across restarts whether the entities hold something of ours."""
@@ -1116,11 +1266,13 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _boiler_sent(self, sent: bool) -> None:
         self._boiler_send_failed = not sent
+        if sent:
+            issues.async_clear_hand_back(self.hass)  # the entities take our commands again
 
-    async def _async_hand_back(self, flow: float, heating_on: bool | None = True) -> None:
+    async def _async_hand_back(self, flow: float, heating_on: bool | None = True) -> bool:
         entities = self.boiler_entities
         if entities is None:
-            return
+            return True
         sent = await executors.async_send_boiler_entities(self.hass, *entities, flow, heating_on, self._boiler_log_level)
         self._boiler_sent(sent)
         if sent:
@@ -1130,6 +1282,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self._boiler_handed_back_flow != flow:
                 self._boiler_handed_back_flow = flow
                 self._store_dirty = True
+        return sent
 
     async def async_release_boiler(self, final: bool = False) -> None:
         """Hand a boiler addressed through entities back, if they hold something of ours.
@@ -1147,13 +1300,27 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._boiler_let_go = True
         async with self._boiler_lock:
             flow_max = self.builder.params.boiler_flow_max
+            heating_on: bool | None = True
             if self._boiler_entities_released is False:
-                await self._async_hand_back(flow_max if final else self._hand_back_flow())
+                sent = await self._async_hand_back(flow_max if final else self._hand_back_flow())
             elif final and self._boiler_entities_released and self._boiler_handed_back_flow not in (None, flow_max):
                 # Handed back earlier, it has followed the curve since, and nothing follows it once we stop.
                 # The switch was the user's from the hand-back on and stays as it is.
-                await self._async_hand_back(flow_max, heating_on=None)
-            # never commanded: the entities are not ours to write
+                heating_on = None
+                sent = await self._async_hand_back(flow_max, heating_on=None)
+            else:
+                sent = True  # never commanded: the entities are not ours to write
+            if final and not sent:
+                # Nothing of ours runs after this one: said loud, whatever the outage was logged at before,
+                # put up as a repair, and made up as soon as the entities are back (review 2026-11-08).
+                number, switch = self.boiler_entities
+                _LOGGER.error(
+                    "thriftherm: boiler not handed back, %s and %s did not take it; done as soon as they are back,"
+                    " else switch %s on by hand",
+                    number, switch, switch,
+                )
+                issues.async_raise_hand_back(self.hass, number, switch)
+                retry_hand_back(self.hass, self.entry.entry_id, (number, switch), flow_max, heating_on)
 
     async def _async_keep_boiler_readings_fresh(self, gas_power_w: float | None, now: float) -> None:
         """Keep flow and return current: high poll priority always, direct reads while gas burns.
@@ -1252,6 +1419,27 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 snapshot,
                 rooms={k: replace(s, preheat_latch_ts=self._preheat_latch.get(k)) for k, s in snapshot.rooms.items()},
             )
+        if self.room_control_mode == CTRL_ACTIVE:
+            # a setpoint a thermostat has not answered makes it silent (room.thermostat_is_silent); in Plan
+            # only nothing is sent, and what was pending before says nothing. Behind Better Thermostat the
+            # setpoint is answered by its valve reporting after it, not by Better Thermostat taking it at once.
+            pending: dict[str, float | None] = {}
+            for key, state in snapshot.rooms.items():
+                mem = self.room_ctrl_memory.get(key)
+                if mem is None:
+                    continue
+                if state.thermostat_wrapped:
+                    heard = room_control.valve_heard(mem, state.thermostat_silent_s, now_ts)
+                    if heard is not mem:
+                        self.room_ctrl_memory[key] = mem = heard
+                        self._store_dirty = True
+                pending[key] = room_control.pending_since(mem, state.thermostat_wrapped)
+            snapshot = replace(
+                snapshot,
+                rooms={k: replace(s, thermostat_pending_since_ts=pending.get(k)) for k, s in snapshot.rooms.items()},
+            )
+        # a run found heating after a restart is no new start (review 2026-11-08)
+        snapshot = replace(snapshot, heat_pump=self.heat_pump_tracker.taken_over(snapshot.heat_pump, params, now_ts))
         heat_pump_res: HeatPumpResult = heat_pump_engine.evaluate(snapshot.heat_pump, params)
         held = self.control_memory.manual_until_ts is not None and self.control_memory.manual_until_ts > now_ts
         if held and snapshot.heat_pump.hvac_mode != "heat":
@@ -1265,6 +1453,9 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         if lockout_changed:
             self._store_dirty = True
+        # a defrost shows as one, and the run goes on after it (review 2026-11-08)
+        shown = self.heat_pump_tracker.run_state(snapshot.heat_pump, heat_pump_res.run_state, defrost_res, params, now_ts)
+        heat_pump_res = replace(heat_pump_res, run_state=shown)
 
         outdoor = snapshot.outdoor_temp.value_or_none
         if outdoor is not None:
@@ -1321,8 +1512,18 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._note_boiler_signs(snapshot.boiler.flow_temp.value_or_none, waits_for_water, now_ts)
         no_new_release = boiler_engine.no_new_release(self.boiler_fault, now_ts)
         boiler_held = self._boiler_held(now_ts)
+        starting = now_ts - self._started_ts < ROOM_DATA_GRACE_S
+        if starting:
+            self._arrived |= safety.arrivals(snapshot, rooms)
+        gone = snapshot.heat_pump.configured and not snapshot.heat_pump.available
+        self._heat_pump_gone_since = (self._heat_pump_gone_since or now_ts) if gone else None
+        heat_pump_gone_s = None if self._heat_pump_gone_since is None else now_ts - self._heat_pump_gone_since
         safety_res: SafetyResult = safety.evaluate(
-            snapshot, rooms, self._frost_rooms, boiler_overheated=boiler_engine.overheated(self.boiler_fault, now_ts)
+            snapshot, rooms, self._frost_rooms, boiler_overheated=boiler_engine.overheated(self.boiler_fault, now_ts),
+            celsius=self.celsius,
+            # inputs that have not arrived after a start are no fault yet; the boiler waits for them as long
+            arrived=frozenset(self._arrived) if starting else None,
+            heat_pump_gone_s=heat_pump_gone_s,
         )
         self._frost_rooms = safety_res.frost_rooms
         boiler_res: BoilerResult = boiler_engine.evaluate(snapshot.boiler, snapshot.prices)
@@ -1370,13 +1571,15 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if econ.cheaper_source != "unknown":
             self._last_cheaper = econ.cheaper_source
 
-        self.heat_pump_tracker.track_efficiency(settled_cop, econ.break_even_cop, params, now_ts)
+        learning_until = self.control_memory.learning_until_ts
+        learning_run = learning_until is not None and learning_until > now_ts
+        self.heat_pump_tracker.track_efficiency(settled_cop, econ.break_even_cop, params, now_ts, learning=learning_run)
 
         # --- learning: COP table ---------------------------------------------------
         # Goes to the store with the next regular save: a restart loses ten minutes at most, of a sum of hours.
         interval = self.heat_pump_tracker.band_interval
         if outdoor is not None and interval is not None:
-            self.cop_map.add_interval(outdoor, *interval, now_ts)
+            self.cop_map.add_interval(outdoor, *interval, now_ts, recheck=learning_run)
 
         # --- boiler calls: hysteresis, stalled rooms, end of the comfort window ------------
         call_states: dict[str, str] = {}
@@ -1435,7 +1638,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 expected_cop=decision_cop,
                 break_even_cop=econ.break_even_cop,
                 outdoor_bin=None if outdoor is None else CopMap.bin_of(outdoor),
-                bin_learned=outdoor is not None and self.cop_map.learned(outdoor, params.duct_factor),
+                # known and run in within a week: a band that says gas is measured again now and then (review 2026-11-08)
+                bin_learned=outdoor is not None and self.cop_map.learned(outdoor, params.duct_factor, now_ts),
                 params=params,
                 cheaper=econ.cheaper_source == SOURCE_HEAT_PUMP,
                 started_ts=self._started_ts,
@@ -1445,6 +1649,16 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 may_lift=may_lift,
                 boiler_held=boiler_held,
                 help_at_floor=help_at_floor,  # "warm up slower": the boiler helps from half a degree below only
+                # without a central heat source the unit holds frost and away protection itself (review 2026-11-08)
+                has_heat_source=self.has_heat_source,
+                frost_rooms=safety_res.frost_rooms,
+                heat_pump_gone_s=heat_pump_gone_s,  # a dropout of its bridge keeps the run, as the safety bridges it
+                # every room unknown only because none has reported since the start: the unit is left as it is
+                safety_pending=starting
+                and safety_res.state == SAFETY_FALLBACK
+                and self.celsius
+                and bool(rooms)
+                and all(f"room:{key}" not in self._arrived for key, res in rooms.items() if res.temperature is None),
             ),
             self.control_memory,
         )
@@ -1497,7 +1711,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Right after a start, a heat pump whose run is kept while its entity is not loaded yet
         # counts as data still missing, like a room sensor that has not reported: the advice would
         # name the boiler for the rooms the unit serves, and the boiler would hold that for its
-        # minimum time in state once the unit is back (review 2026-10-14).
+        # minimum time in state once the unit is back (review 2026-10-14). The same for a dropout of
+        # its bridge at any time, whose run is kept as well (review 2026-11-08).
         heat_pump_pending = heat_pump_res.run_state == HEAT_PUMP_UNAVAILABLE and self.control_memory.running_since_ts is not None
         # After a failed call a start is held back for 2, 4, 8 ... minutes (see _async_update_data)
         # and planned again every cycle: counted as heating, it kept the boiler blocked for the
@@ -1517,8 +1732,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 op_mode=snapshot.mode,
                 safety_state=safety_res.state,
                 boiler_available=boiler_res.available,
-                room_data_pending=now_ts - self._started_ts < ROOM_DATA_GRACE_S
-                and (heat_pump_pending or any(r.temperature is None for r in rooms.values())),
+                room_data_pending=(
+                    now_ts - self._started_ts < ROOM_DATA_GRACE_S
+                    and (heat_pump_pending or any(r.temperature is None for r in rooms.values()))
+                )
+                or (heat_pump_pending and heat_pump_gone_s is not None and heat_pump_gone_s <= HEAT_PUMP_DROPOUT_S),
                 rooms=tuple(
                     replace(res, boiler_call=heat_call.CALL_IDLE) if key in left_to_unit else res for key, res in rooms.items()
                 ),
@@ -1603,6 +1821,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 state.thermostat_own_target,
                 min_temp=state.thermostat_min_temp,
                 max_temp=state.thermostat_max_temp,
+                step=state.thermostat_step,
+                wrapped=state.thermostat_wrapped,
             )
             if self.room_ctrl_memory[cfg.key].last_sent_target != before.last_sent_target:
                 # A sent setpoint must survive a restart at once: measured 2026-09-26, the store
@@ -1671,6 +1891,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._store_dirty = True
 
         self.plan_log.changes(advice, safety_res, defrost_res)
+        room_names = {r.key: r.name for r in self.builder.rooms}
+        reason_state, reason_texts = self.plan_log.reasons(advice, self.hass.config.language, room_names, now_ts)
 
         return {
             "snapshot": snapshot,  # what the cycle read; nothing in the integration uses it, the tests look at it
@@ -1728,7 +1950,10 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "setpoint_changed_in": list(self._last_target_change_rooms) if settling else [],
             "learning_reset": self.last_learning_reset,
             "language": self.hass.config.language,
-            "room_names": {r.key: r.name for r in self.builder.rooms},
+            "room_names": room_names,
+            # the decision reason as the sensor shows it: changed only when what it says changes
+            "reason_state": reason_state,
+            "reason_texts": reason_texts,
             "room_commands": room_commands,
             "echoes_ignored": dict(self.echoes_ignored),
             "room_control_mode": self.room_control_mode,

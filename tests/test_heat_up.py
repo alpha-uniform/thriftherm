@@ -220,3 +220,24 @@ def test_an_extra_swallowed_by_the_flow_minimum_does_not_grow():
         on = inp([living(20.5, target=21.5)], mode="active", now=NOW + minute * 60, params=warm, burner=True, outdoor=22.0)
         cmd, mem = decide(on, mem)
     assert cmd.flow_setpoint == 40.0 and mem.heat_up["wohnzimmer"].extra_k == 0.0
+
+
+def test_a_heat_up_ended_by_a_lower_target_takes_no_step_off():
+    """Review 2026-11-08: 18 -> 21 °C, then the target fell to 17 at 18.5 °C: counted as reached fast, 6 K became 4."""
+    states = heat_up.follow({"wohnzimmer": HeatUp(extra_k=6.0)}, (living(18.0, target=21.0),), 1.0, NOW, True, True)
+    states = heat_up.follow(states, (living(18.5, target=17.0),), 1.0, NOW + 900, True, True)
+    assert states["wohnzimmer"] == HeatUp(extra_k=6.0)
+    raised = heat_up.follow({"wohnzimmer": HeatUp(extra_k=6.0)}, (living(18.0, target=19.5),), 1.0, NOW, True, True)
+    raised = heat_up.follow(raised, (living(19.0, target=20.0),), 1.0, NOW + 900, True, True)
+    raised = heat_up.follow(raised, (living(19.9, target=20.0),), 1.0, NOW + 1100, True, True)
+    assert raised["wohnzimmer"] == HeatUp(extra_k=4.0)  # a target raised on the way and reached fast: a step off
+
+
+def test_a_heat_up_that_raced_without_our_flow_or_the_boiler_takes_no_step_off():
+    """Review 2026-11-08: the end ignored what the verdicts rule out: a rise with Plan only, or from the sun."""
+    for heating, judging in ((True, False), (False, True)):
+        states = {"wohnzimmer": HeatUp(extra_k=16.0)}
+        for minute in range(23):
+            room = living(21.3 + minute * 0.05, target=22.5)
+            states = heat_up.follow(states, (room,), 1.0, NOW + minute * 60, heating, judging)
+        assert states["wohnzimmer"] == HeatUp(extra_k=16.0), (heating, judging)

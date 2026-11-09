@@ -24,6 +24,7 @@ class SensorReading:
     age_s: float | None = None
     valid: bool = False
     reason: str | None = None
+    unit: str | None = None  # the unit it came in, where that is why it is no reading ("wrong_unit")
 
     @staticmethod
     def missing(entity_id: str | None = None, reason: str = "not_configured") -> SensorReading:
@@ -160,6 +161,12 @@ class RoomState:
     thermostat_own_target: bool = False
     thermostat_change: SettingChange | None = None  # the last change of the thermostat's mode or target
     thermostat_silent_s: float | None = None  # how long the valve device behind it has not reported
+    thermostat_gone_s: float | None = None  # how long every entity of that valve has been unavailable, None if not
+    # since when the room thermostat has not answered a setpoint sent to it (room control), None if it has
+    thermostat_pending_since_ts: float | None = None
+    # the room thermostat drives thermostats of its own (Better Thermostat): its answer is not its valve's
+    thermostat_wrapped: bool = False
+    thermostat_step: float | None = None  # the steps its setpoint goes in (its target_temp_step), None if it does not say
     schedule: ScheduleState | None = None  # None: no schedule helper configured or it is unavailable
     preheat_latch_ts: float | None = None  # comfort start (or away return) preheating already began for
     # the setpoints the room thermostat accepts (its min_temp and max_temp), None if it does not say

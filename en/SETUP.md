@@ -10,7 +10,7 @@ This guide takes you from nothing to a working Thriftherm installation, one step
 |---|---|---|
 | [1](#1-what-you-need) | Check you have everything | – |
 | [2](#2-set-up-ebusd) | Connect Home Assistant to the boiler | ebusd app |
-| [3](#3-install-thriftherm) | Install Thriftherm | HACS |
+| [3](#3-install-thriftherm) | Install Thriftherm | HACS (Marketplace) |
 | [4](#4-add-the-integration) | Walk through the setup dialog | Home Assistant |
 | [5](#5-better-thermostat-per-room-optional) | One Better Thermostat per room | Better Thermostat |
 | [6](#6-at-the-boiler) | Set the knob, check the pump mode | at the boiler |
@@ -26,7 +26,7 @@ Have district heating or no own boiler? Skip steps 2 and 6; the setup dialog lea
 |---|---|---|
 | Boiler with eBUS | with an own boiler | for boiler control |
 | eBUS adapter | with an own boiler | for example an ebusd adapter shield, connected to the boiler's eBUS terminals |
-| Home Assistant 2026.9 or newer | yes | *Settings → About* shows your version. Temperatures in °C (metric unit system): Thriftherm works in °C only and stops the setup otherwise |
+| Home Assistant 2026.9 or newer | yes | *Settings → About* shows your version. Temperatures in °C (metric unit system): Thriftherm works in °C only and stops the setup otherwise; switched later, it sends no more setpoints (a running heat pump is stopped, a boiler through entities handed back) and shows a repair notice |
 | MQTT broker | with an own boiler | the **Mosquitto broker** app |
 | **ebusd** app | with an own boiler | reads the boiler and sends it the setpoint |
 | One temperature sensor per room | yes | any sensor that shows the room temperature in Home Assistant |
@@ -148,7 +148,7 @@ Optional, for advanced users. ebusd polls the boiler's values in turn; the short
 
 ## 3. Install Thriftherm
 
-**With HACS (recommended):** Thriftherm has been in the HACS default list since 2026-10-21; no custom repository is needed any more.
+**With HACS (recommended):** Thriftherm has been in the HACS default list since 2026-10-21; no custom repository is needed any more. Since Home Assistant 2026.11 HACS is built in and called *Marketplace*: there, read *Marketplace* wherever this section says HACS. On older versions it is HACS.
 
 Quickest with this button, it opens Thriftherm in HACS directly; then click *Download* and continue with point 3 of the list below:
 
@@ -241,7 +241,7 @@ A boiler without eBUS can be controlled through two entities that have to exist 
 
 With the number and the switch chosen nothing goes to ebusd any more; the ebusd circuit and *Keep hot water ready* have no effect then. Both are always needed.
 
-One difference to ebusd: an ebusd command runs out after a few minutes and the boiler heats by its knob again. An entity keeps what it was sent. So Thriftherm hands the boiler back itself (heating on) whenever it stops controlling: when switched to *Plan only* and without boiler data with the flow of the heating curve, which then keeps following the outdoor temperature; when Home Assistant stops with the maximum flow, as a knob would stand. Entities Thriftherm never commanded are not touched. If Home Assistant crashes or loses power, the last state stays – a blocked heating included. Check whether your adapter has a timeout of its own for that case.
+One difference to ebusd: an ebusd command runs out after a few minutes and the boiler heats by its knob again. An entity keeps what it was sent. So Thriftherm hands the boiler back itself (heating on) whenever it stops controlling: when switched to *Plan only* and without boiler data with the flow of the heating curve, which then keeps following the outdoor temperature; when Home Assistant stops with the maximum flow, as a knob would stand. If the number or the switch cannot be reached at that moment, a repair notice says so, and Thriftherm hands the boiler back as soon as they are back while Home Assistant runs. Entities Thriftherm never commanded are not touched. If Home Assistant crashes or loses power, the last state stays – a blocked heating included. Check whether your adapter has a timeout of its own for that case.
 
 ### 4.4 Heat pump (optional add-on)
 
@@ -292,7 +292,7 @@ Skip this if you have no smart radiator thermostats. The boiler control works wi
 
 For each room:
 
-1. Install **Better Thermostat** from HACS, if not done yet.
+1. Install **Better Thermostat** from HACS (Marketplace), if not done yet.
 2. Add one Better Thermostat for the room: select the room's radiator thermostat(s), the **same room temperature sensor** you gave Thriftherm, and the room's **window contacts**.
 3. If you give it an outdoor temperature sensor, set the outdoor temperature at which it switches off **high enough, for example 25 °C** – or leave the outdoor sensor empty. Otherwise Better Thermostat blocks heating that Thriftherm asks for.
 4. In Thriftherm, select this Better Thermostat as the room's thermostat (options → *Rooms* → room → *Edit*), if you left it empty in step 4.6.

@@ -24,6 +24,16 @@ BIN_WIDTH_K = 2.0
 # follows a unit that changes, and a band that does not run for months keeps what it knows.
 COP_BAND_HALF_LIFE_S = 100 * 3600.0
 COP_BAND_LEARNED_S = 3 * 3600.0  # run time from which a band counts as known: estimate, calibration and learning runs
+# A known band that has not run for this long is open to a learning run again. One learned at 2.9 against a
+# break-even of 3.0 chose gas, and with it no learning run: it never ran again and kept its 2.9 for good, whatever
+# the unit did (review 2026-11-08). A learning run in it closes it for another week.
+COP_BAND_RECHECK_S = 7 * 24 * 3600.0
+# What a band holds weighs this much once a learning run rechecks it after that week. 50 minutes a week against 40
+# hours at 2.9 needed 11 weeks to reach a break-even of 3.0, at 100 hours most of a season (second review 2026-11-08).
+# Its COP stays as it was, and it stays known, but what it measures now counts as much as an hour against three.
+# Only a learning run: one runs in a band that chose gas alone. Any band that ran again after a week (common with
+# 2 K bands) fell back to three hours, and one unusual hour shifted one of 40 hours by a quarter (verifier of 0.7.3b).
+COP_BAND_RECHECK_WORTH_S = COP_BAND_LEARNED_S
 # Outside this the sum says more about the sensors than about the unit: an outlet reading frozen cold shows
 # no heat under a running compressor, a wrong airflow curve an impossible COP. Such a band decides nothing.
 COP_BAND_PLAUSIBLE = (1.0, 7.0)
@@ -38,6 +48,10 @@ BASIS_LEARNING = "learning"  # a band on its way: shown, it decides nothing yet
 
 EPISODE_MIN_S = 30 * 60.0
 EPISODE_MIN_RISE_K = 0.5
+# This long without a new highest point the heat-up is over, though its source still runs: a room held just below
+# its target (review 2026-11-08). Even a slow 0.1 degree an hour reaches a sensor's next tenth within it.
+HEAT_PLATEAU_S = 3600.0
+HEAT_END_FALL_K = 0.3  # this far below its highest point the room is cooling, whatever heats it
 HEAT_RATE_KEEP = 10
 HEAT_RATE_MIN = 0.1
 HEAT_RATE_MAX = 6.0
@@ -90,8 +104,13 @@ class CopBand:
     run_s: float = 0.0
     last_ts: float | None = None
 
-    def add(self, heat_wh: float, electricity_wh: float, seconds: float, ts: float) -> None:
+    def add(self, heat_wh: float, electricity_wh: float, seconds: float, ts: float, recheck: bool = False) -> None:
+        """`recheck`: the stretch is part of a learning run, which runs only where gas was chosen."""
         keep = 0.5 ** (seconds / COP_BAND_HALF_LIFE_S)
+        idle = self.last_ts is None or ts - self.last_ts >= COP_BAND_RECHECK_S
+        if recheck and idle and self.run_s > COP_BAND_RECHECK_WORTH_S:
+            # rechecked after a week or more: its COP stays, its weight goes down to the hours that make it known
+            keep *= COP_BAND_RECHECK_WORTH_S / self.run_s
         self.heat_wh = self.heat_wh * keep + heat_wh
         self.electricity_wh = self.electricity_wh * keep + electricity_wh
         self.run_s = self.run_s * keep + seconds
@@ -169,13 +188,24 @@ class CopMap:
             self.legacy_duct_factor = duct_factor
         return self.measured_with != current
 
-    def add_interval(self, outdoor_c: float, heat_wh: float, electricity_wh: float, seconds: float, ts: float) -> None:
-        """Add a stretch of heating, `heat_wh` without the duct factor, to the band of its outdoor temperature."""
-        self.bands.setdefault(self.bin_of(outdoor_c), CopBand()).add(heat_wh, electricity_wh, seconds, ts)
+    def add_interval(
+        self, outdoor_c: float, heat_wh: float, electricity_wh: float, seconds: float, ts: float, recheck: bool = False
+    ) -> None:
+        """Add a stretch of heating, `heat_wh` without the duct factor, to the band of its outdoor temperature.
 
-    def learned(self, outdoor_c: float, duct_factor: float) -> bool:
+        `recheck`: it is part of a learning run (see COP_BAND_RECHECK_WORTH_S).
+        """
+        self.bands.setdefault(self.bin_of(outdoor_c), CopBand()).add(heat_wh, electricity_wh, seconds, ts, recheck)
+
+    def learned(self, outdoor_c: float, duct_factor: float, now_ts: float | None = None) -> bool:
+        """Whether the band is known; with `now_ts`, also run in within COP_BAND_RECHECK_S, which gates the learning runs.
+
+        A band that kept no time of its last run is taken as not run in that time.
+        """
         band = self.bands.get(self.bin_of(outdoor_c))
-        return band is not None and band.learned_cop(duct_factor) is not None
+        if band is None or band.learned_cop(duct_factor) is None:
+            return False
+        return now_ts is None or (band.last_ts is not None and now_ts - band.last_ts < COP_BAND_RECHECK_S)
 
     def expected(self, outdoor_c: float, duct_factor: float) -> float | None:
         """Expected COP at this outdoor temperature, from the band or its neighbours, when learned."""
@@ -196,11 +226,12 @@ class CopMap:
         if self.legacy_duct_factor:
             cop *= duct_factor / self.legacy_duct_factor
         band = self.bands.get(idx)
-        if band is None or band.electricity_wh <= 0.0:
-            return cop
-        blend = (band.heat_wh * duct_factor + cop * LEGACY_WORTH_WH) / (band.electricity_wh + LEGACY_WORTH_WH)
+        if band is not None and band.electricity_wh > 0.0:
+            cop = (band.heat_wh * duct_factor + cop * LEGACY_WORTH_WH) / (band.electricity_wh + LEGACY_WORTH_WH)
+        # On its own as well as blended: a mean of 0.9 from short-cycle COPs the old gates let through stood unchecked
+        # until its band drew electricity, below the ratio for a learning run, so it was never measured (review 2026-11-08).
         lo, hi = COP_BAND_PLAUSIBLE
-        return blend if lo <= blend <= hi else None
+        return cop if lo <= cop <= hi else None
 
     def calibration_factor(self, duct_factor: float) -> float | None:
         """Measured / prior, weighted by run time over all bands that are learned or have an old value."""
@@ -300,7 +331,9 @@ class CopMap:
         stored = data.get("measured_with")
         if isinstance(stored, dict):
             cm.measured_with = {str(k): str(v) for k, v in stored.items()}
-        cm.legacy_duct_factor = as_float(data.get("legacy_duct_factor"))
+        factor = as_float(data.get("legacy_duct_factor"))
+        # only a factor above zero scales: a damaged -1.0 turned 3.5 into -3.5; without one, bind() takes that of now
+        cm.legacy_duct_factor = factor if factor is not None and factor > 0.0 else None
         return cm
 
 
@@ -437,7 +470,16 @@ HEAT_SOURCES = (HEAT_BY_BOILER, HEAT_BY_HEAT_PUMP)
 
 @dataclass
 class HeatEpisode(Episode):
+    """A heat-up ends at its highest point: `last_ts`, `last_temp` and the gradients stand for the way up to it.
+
+    What comes after (an hour or more just below the target with the source still on, a fall) is no heat-up.
+    Counted in, it stretched the time over the same rise: 1.0 degree an hour was stored as 0.2 (review 2026-11-08),
+    as the cool-down had it the other way round. Its gradients wait here and count once the room rises further.
+    """
+
     source: str = HEAT_BY_BOILER
+    since_high_sum: float = 0.0
+    since_high_samples: int = 0
 
 
 @dataclass
@@ -466,13 +508,22 @@ class HeatRateStats:
         if temp is None or source not in HEAT_SOURCES or window_open:
             return self._close(room, ep)
         gradient = None if outdoor is None else temp - outdoor
-        if ep is None or temp < ep.last_temp - 0.3:  # none yet, or the temperature fell: not a clean heat-up
-            self.episodes[room] = HeatEpisode(ts, temp, ts, temp, gradient or 0.0, 1 if gradient is not None else 0, source)
+        fresh = HeatEpisode(ts, temp, ts, temp, gradient or 0.0, 1 if gradient is not None else 0, source)
+        if ep is None:
+            self.episodes[room] = fresh
             return None
-        ep.last_ts, ep.last_temp = ts, temp
+        if temp < ep.last_temp - HEAT_END_FALL_K or (temp <= ep.last_temp and ts - ep.last_ts >= HEAT_PLATEAU_S):
+            learned = self._close(room, ep)  # the heat-up ended at its highest point
+            self.episodes[room] = fresh
+            return learned
         if gradient is not None:
-            ep.gradient_sum += gradient
-            ep.samples += 1
+            ep.since_high_sum += gradient
+            ep.since_high_samples += 1
+        if temp > ep.last_temp:
+            ep.last_ts, ep.last_temp = ts, temp
+            ep.gradient_sum += ep.since_high_sum
+            ep.samples += ep.since_high_samples
+            ep.since_high_sum, ep.since_high_samples = 0.0, 0
         return None
 
     def _close(self, room: str, ep: HeatEpisode | None) -> float | None:

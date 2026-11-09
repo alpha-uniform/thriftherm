@@ -11,6 +11,7 @@ from custom_components.thriftherm.engines.heat_pump_tracking import HeatPumpTrac
 from custom_components.thriftherm.engines.learning import (
     COP_BAND_HALF_LIFE_S,
     COP_BAND_LEARNED_S,
+    COP_BAND_RECHECK_S,
     LEGACY_WORTH_WH,
     PRIOR_CALIBRATION_DEFAULT,
     CopMap,
@@ -465,10 +466,10 @@ def test_reset_forgets_the_interval_under_way():
 
 
 # ------------------------------------------------------------------ forgetting
-def run(cm, outdoor, cop, hours, start=0.0, power=310.0, step=60.0):
-    """Hours of run at this COP (with duct factor 1), added up in steps as a coordinator would."""
+def run(cm, outdoor, cop, hours, start=0.0, power=310.0, step=60.0, recheck=False):
+    """Hours of run at this COP (with duct factor 1), added up in steps as a coordinator would; `recheck`: a learning run."""
     for i in range(round(hours * HOUR / step)):
-        cm.add_interval(outdoor, power * cop * step / HOUR, power * step / HOUR, step, start + i * step)
+        cm.add_interval(outdoor, power * cop * step / HOUR, power * step / HOUR, step, start + i * step, recheck=recheck)
 
 
 def test_old_data_fades_with_the_run_time_of_its_band():
@@ -488,12 +489,67 @@ def test_a_band_idle_for_a_season_keeps_its_data_and_stays_learned():
     assert cm.to_dict(1.0)["+4..+6"] == before and cm.learned(5.0, 1.0)
 
 
+def test_a_recheck_after_a_week_can_change_what_a_band_with_many_hours_decides():
+    """Second review 2026-11-08 (#R22): 50 minutes a week against 40 hours at 2.9 took 11 weeks to reach a break-even
+    of 3.0, at 100 hours most of a season. Back after a week, what the band holds weighs as its hours to be known, no more."""
+    cm = CopMap()
+    run(cm, 5.0, 2.9, 40.0, step=600.0)
+    assert cm.expected(5.0, 1.0) == pytest.approx(2.9)
+    start = cm.bands[2].last_ts
+    rechecks = 0
+    while cm.expected(5.0, 1.0) < 3.0 and rechecks < 5:
+        start += COP_BAND_RECHECK_S
+        run(cm, 5.0, 3.4, 50.0 / 60.0, start=start, recheck=True)
+        start = cm.bands[2].last_ts
+        rechecks += 1
+        assert cm.learned(5.0, 1.0)  # still known all along
+    assert rechecks <= 2
+    # a band that runs within the week keeps all of its hours
+    steady = CopMap()
+    run(steady, 5.0, 2.9, 40.0, step=600.0)
+    hours = steady.bands[2].run_s
+    run(steady, 5.0, 3.4, 50.0 / 60.0, start=steady.bands[2].last_ts + 24 * HOUR)
+    assert steady.bands[2].run_s == pytest.approx(hours + 50 * 60.0, rel=0.01)
+    assert steady.expected(5.0, 1.0) < 2.95
+
+
+def test_an_ordinary_run_after_a_week_without_data_keeps_the_hours_of_its_band():
+    """Verifier of 0.7.3b (#R22): the cut before a recheck hit every band that ran again after a week, common with 2 K
+    bands, and one unusual hour shifted a band of 40 hours by a quarter. Only a learning run in a band that chose gas
+    rechecks it."""
+    cm = CopMap()
+    run(cm, 5.0, 2.9, 40.0, step=600.0)
+    hours = cm.bands[2].run_s
+    run(cm, 5.0, 4.5, 1.0, start=cm.bands[2].last_ts + 2 * COP_BAND_RECHECK_S)  # the unit as the cheaper source
+    assert cm.bands[2].run_s == pytest.approx(hours + HOUR, rel=0.01)
+    assert cm.expected(5.0, 1.0) < 2.95
+
+
 def test_the_run_time_of_a_band_levels_off_where_the_fading_balances_it():
     cm = CopMap()
     run(cm, 5.0, 4.0, 2000.0, step=3600.0)
     assert cm.bands[2].run_s == pytest.approx(COP_BAND_HALF_LIFE_S / 0.6931, rel=0.01)
     assert cm.learned(5.0, 1.0)
 
+
+
+def test_a_band_that_has_not_run_for_a_week_is_worth_a_learning_run_again():
+    # Review 2026-11-08: a band learned at 2.9 against a break-even of 3.0 chose gas from then on, and with it no
+    # learning run, so it never ran again and kept its 2.9 whatever the unit did. Known it stays; a week after its
+    # last run it is open to a learning run again, and a run in it closes it for another week.
+    cm = CopMap()
+    run(cm, 5.0, 2.9, 4.0)
+    last = cm.bands[2].last_ts
+    assert COP_BAND_RECHECK_S == 7 * 24 * HOUR
+    assert cm.learned(5.0, 1.0) and cm.learned(5.0, 1.0, last + COP_BAND_RECHECK_S - 60.0)
+    assert not cm.learned(5.0, 1.0, last + COP_BAND_RECHECK_S)
+    assert cm.estimate(5.0, 1.0) == (2.9, "learned")  # what it measured still decides
+    run(cm, 5.0, 2.9, 1.0, start=last + COP_BAND_RECHECK_S)
+    assert cm.learned(5.0, 1.0, last + COP_BAND_RECHECK_S + HOUR)
+    # a band from a store that kept no time of its last run is open to it too
+    assert not CopMap.from_storage({"bands": {"2": {"heat_wh": 3600.0, "electricity_wh": 1240.0, "run_s": 4 * HOUR}}}).learned(
+        5.0, 1.0, last
+    )
 
 # ------------------------------------------------------------------ reading the table
 PORTASPLIT = {1: (3.61, 133), 2: (3.73, 111)}
@@ -593,6 +649,26 @@ def test_an_old_value_blended_out_of_the_plausible_range_decides_nothing(cop):
     assert value == pytest.approx(prior_cop(5.0) * PRIOR_CALIBRATION_DEFAULT, abs=0.002)
     assert cm.to_dict(1.0)["+4..+6"]["basis"] == "learning"
 
+
+
+@pytest.mark.parametrize("mean", [0.9, 7.5])
+def test_an_old_value_out_of_the_plausible_range_decides_nothing_before_its_band_has_run_either(mean):
+    # Review 2026-11-08: a mean of 0.9 from short-cycle COPs the old gates let through stood as 'legacy' unchecked
+    # while its band had drawn nothing, below the ratio of break-even for a learning run, and pulled the
+    # calibration down to its floor. Blended it was dropped; on its own it is dropped as well.
+    cm = CopMap.from_storage({"bins": {"2": {"count": 8, "mean": mean}}})
+    assert cm.estimate(5.0, 1.0) == (round(prior_cop(5.0) * PRIOR_CALIBRATION_DEFAULT, 3), "prior")
+    assert cm.calibration_factor(1.0) is None
+    assert "+4..+6" not in cm.to_dict(1.0)
+
+
+@pytest.mark.parametrize("factor", [-1.0, 0.0])
+def test_a_duct_factor_on_record_for_the_old_values_counts_only_above_zero(factor):
+    # a damaged store with -1.0 turned 3.5 into a COP of -3.5
+    cm = CopMap.from_storage({"bins": {"2": {"count": 20, "mean": 3.5}}, "legacy_duct_factor": factor})
+    assert cm.legacy_duct_factor is None
+    cm.bind("auto", PARAMS.airflow_curve, 1.0)  # taken for the factor of now, as for a store that kept none
+    assert cm.estimate(5.0, 1.0) == (3.5, "legacy")
 
 def test_the_old_values_calibrate_the_curve_as_they_did_before_the_update():
     # By their entries, or the bands that have measured nothing jump at the update: 0.83 to 0.79 on the store of 2026-11-02,

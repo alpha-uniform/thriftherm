@@ -56,6 +56,11 @@ class HeatUp:
     clean: bool = True  # since the mark the flow was ours and the valve open, all through
     held: bool = False  # since the mark the flow stood at its maximum or was held by the ramp
     start_c: float | None = None  # the room's temperature when the heat-up began
+    # Its end is judged from the start (review 2026-11-08): the target it heads for, the highest
+    # since then, and whether the flow was ours all through it and the boiler burnt in it.
+    target_c: float | None = None
+    ours: bool = True
+    burnt: bool = False
 
 
 HeatUps = Mapping[str, HeatUp]
@@ -87,9 +92,24 @@ def _verdict(extra: float, rise_k_h: float, rate_k_h: float) -> float:
 
 
 def _ended(s: HeatUp, r: RoomResult, rate_k_h: float, now: float, reached: bool) -> HeatUp:
-    """Between heat-ups only the extra is kept; one that got there much faster than asked takes a step off."""
+    """Between heat-ups only the extra is kept; one that got there much faster than asked takes a step off.
+
+    Only a heat-up that got to the target it headed for says how fast the room heats: one ended by a
+    lower target (18 -> 21 °C, the target down to 17 at 18.5) did not, and a rise while the flow was
+    not ours or the boiler did not burn is not the extra's, as for the verdicts (review 2026-11-08).
+    The valve is left out here: it throttles as the room comes close.
+    """
     extra = s.extra_k
-    if reached and s.start_c is not None and s.since_ts is not None and now - s.since_ts >= REVIEW_S / 2:
+    aimed = s.target_c is None or r.target >= s.target_c - END_K
+    if (
+        reached
+        and aimed
+        and s.ours
+        and s.burnt
+        and s.start_c is not None
+        and s.since_ts is not None
+        and now - s.since_ts >= REVIEW_S / 2
+    ):
         rise = (r.temperature - s.start_c) / (now - s.since_ts) * 3600.0
         if rise > rate_k_h * FAST_SHARE:
             extra = max(extra - STEP_K, 0.0)
@@ -122,7 +142,9 @@ def follow(
         if s.since_ts is None:
             if not wants or gap < START_K:
                 continue
-            s = HeatUp(extra_k=s.extra_k, since_ts=now, mark_ts=now, mark_c=r.temperature, start_c=r.temperature)
+            s = HeatUp(
+                extra_k=s.extra_k, since_ts=now, mark_ts=now, mark_c=r.temperature, start_c=r.temperature, target_c=r.target
+            )
         elif not wants or gap < END_K:
             # got there whether or not it still calls: with sensors in tenths the call stops 0.1 K short
             # of target (heat_call.CALL_OFF_K) in the very cycle the room comes this close
@@ -134,6 +156,9 @@ def follow(
             burned=s.burned or heating,
             clean=s.clean and judging and r.thermostat_heating is not False,
             held=s.held or held,
+            target_c=r.target if s.target_c is None else max(s.target_c, r.target),
+            ours=s.ours and judging,
+            burnt=s.burnt or heating,
         )
         due = now - s.mark_ts >= (SETTLE_S if s.mark_ts == s.since_ts else REVIEW_S)
         if due:

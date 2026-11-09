@@ -6,7 +6,8 @@ A gas meter measures all of it; each step of the meter goes to what the boiler w
 when it came. What came while nobody watched (restart, outage), and what one look brings
 beyond what a boiler can burn since the look before, is nobody's: it is counted, but for
 neither purpose. A reading that went back, or one that jumped as no consumption does
-(another meter, a value set by hand), is not counted at all: the count goes on from it.
+(another meter, a value set by hand), is not counted at all: the count goes on from it. One that went
+back by a little is a misread: the count waits at the higher reading.
 The meter's total as energy (`meter_total_kwh`) is where the meter stood when the count
 began plus everything counted since, so it never goes down.
 
@@ -39,6 +40,9 @@ MAX_GAP_S = 900.0
 HOT_WATER_SIGN_S = 120.0
 # More than this in one step is no consumption: another meter, a reading set by hand.
 MAX_STEP_M3 = 50.0
+# A step back this small is a misread, not another meter: an optical reader's 1000.05 between two 1000.10. The count
+# stays at the higher reading, or the way up again was credited a second time (review 2026-11-08).
+MAX_BACK_STEP_M3 = 0.5
 # What a household boiler burns at most: 6 m³/h is about 60 kW. One look credits no more than that for
 # the time since the look before; the rest of the step was burnt earlier, nobody knows what for. Review
 # 2026-10-13: a meter silent for three hours, its entity keeping the last reading all the while, then
@@ -128,6 +132,8 @@ def by_meter(split: GasSplit, meter_m3: float, kwh_per_m3: float, hot_water: boo
     if first:
         return looked  # first look: count from here
     step = meter_m3 - split.meter_m3
+    if -MAX_BACK_STEP_M3 < step < 0.0:
+        return replace(looked, meter_m3=split.meter_m3)  # looked at, nothing credited until it passes that reading
     if step <= 0.0 or step > MAX_STEP_M3:
         return looked  # nothing burnt, or not the same meter any more: counted from here, nothing credited
     elapsed = now_ts - split.counted_ts

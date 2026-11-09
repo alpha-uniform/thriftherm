@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
@@ -594,8 +595,18 @@ def schema_room(cur: Mapping[str, Any], allow_add_another: bool, heat_pump: bool
     return vol.Schema(fields)
 
 
-def validate_room(user_input: Mapping[str, Any], existing: Iterable[Mapping[str, Any]] = ()) -> dict[str, str]:
-    """Check one room; pass the other rooms, so its name stays unique (also when one is renamed)."""
+def validate_room(
+    user_input: Mapping[str, Any],
+    existing: Iterable[Mapping[str, Any]] = (),
+    heat_pump_climate: str | None = None,
+    drives: Callable[[str], Iterable[str]] = lambda _: (),
+) -> dict[str, str]:
+    """Check one room; pass the other rooms, so its name stays unique (also when one is renamed).
+
+    `drives` names the entities a room thermostat drives besides itself (Better Thermostat, Versatile
+    Thermostat: adapters.inputs.driven_by).
+    """
+    existing = list(existing)
     errors: dict[str, str] = {}
     for key in (CONF_ROOM_SCHEDULE_WEEKDAY, CONF_ROOM_SCHEDULE_WEEKEND):
         try:
@@ -613,7 +624,18 @@ def validate_room(user_input: Mapping[str, Any], existing: Iterable[Mapping[str,
             errors[CONF_ROOM_DRYING] = "drying_needs_heat_pump"
         if not user_input.get(CONF_ROOM_HUMIDITY):
             errors[CONF_ROOM_HUMIDITY] = "drying_needs_humidity"
+    # One climate entity, one controller (review 2026-11-08): the heat pump's unit as a room's thermostat,
+    # or one thermostat in two rooms, got two setpoints a minute, each taken for a hand at the device.
+    # A room thermostat in front of the unit (Better Thermostat around it) writes it all the same.
+    climate = user_input.get(CONF_ROOM_CLIMATE)
+    if climate and heat_pump_climate and (climate == heat_pump_climate or heat_pump_climate in drives(climate)):
+        errors[CONF_ROOM_CLIMATE] = "climate_is_heat_pump"
+    elif climate and any(r.get(CONF_ROOM_CLIMATE) == climate for r in existing):
+        errors[CONF_ROOM_CLIMATE] = "climate_used_twice"
     return errors
+
+
+_EBUS_CIRCUIT = re.compile(r"[A-Za-z0-9_.-]+")
 
 
 def validate_boiler(user_input: Mapping[str, Any]) -> dict[str, str]:
@@ -635,10 +657,20 @@ def validate_boiler(user_input: Mapping[str, Any]) -> dict[str, str]:
     setpoint, enable = user_input.get(CONF_BOILER_FLOW_SETPOINT_ENTITY), user_input.get(CONF_BOILER_HEATING_ENABLE_ENTITY)
     if bool(setpoint) != bool(enable):
         errors[CONF_BOILER_HEATING_ENABLE_ENTITY if setpoint else CONF_BOILER_FLOW_SETPOINT_ENTITY] = "boiler_entities_incomplete"
+    # The circuit is one level of the topic SetMode is written to (ebusd/<circuit>/SetMode/set): a '+' or
+    # '#' made every publish fail while the control was active, a '/' built another path (review 2026-11-08).
+    if CONF_BOILER_EBUS_CIRCUIT in user_input and not _EBUS_CIRCUIT.fullmatch(str(user_input[CONF_BOILER_EBUS_CIRCUIT]).strip()):
+        errors[CONF_BOILER_EBUS_CIRCUIT] = "invalid_ebus_circuit"
     return errors
 
 
-def validate_heat_pump(user_input: Mapping[str, Any]) -> dict[str, str]:
+def validate_heat_pump(
+    user_input: Mapping[str, Any], rooms: Iterable[Mapping[str, Any]] = (), drives: Callable[[str], Iterable[str]] = lambda _: ()
+) -> dict[str, str]:
+    climate = user_input.get(CONF_HEAT_PUMP_CLIMATE)
+    thermostats = [t for r in rooms if (t := r.get(CONF_ROOM_CLIMATE))]
+    if climate and any(t == climate or climate in drives(t) for t in thermostats):
+        return {CONF_HEAT_PUMP_CLIMATE: "climate_is_heat_pump"}  # see validate_room
     try:
         curve = parse_airflow_curve(user_input.get(CONF_HEAT_PUMP_AIRFLOW_CURVE))
     except (ValueError, TypeError):

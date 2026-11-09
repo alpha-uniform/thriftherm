@@ -53,16 +53,25 @@ async def async_set_thermostat(
         _LOGGER.info("thriftherm room %s: thermostat set to %.1f °C (%s)", room_cmd.room, room_cmd.target, room_cmd.reason)
 
 
-async def async_send_setmode(hass: HomeAssistant, topic: str, text: str) -> None:
-    """Publish a SetMode telegram to ebusd. Never retained: a stale retained telegram would outlive us."""
+async def async_send_setmode(hass: HomeAssistant, topic: str, text: str) -> bool:
+    """Publish a SetMode telegram to ebusd. Never retained: a stale retained telegram would outlive us.
+
+    False when the publish failed: the telegram then counts as not sent.
+    """
     if await _call(hass, "mqtt", "publish", {"topic": topic, "payload": text, "qos": 0, "retain": False}, "boiler SetMode"):
         _LOGGER.debug("thriftherm boiler SetMode sent: %s", text)
+        return True
+    return False
 
 
 def _number_value(state, flow_c: float) -> float:
-    """The flow as the number entity takes it: within its limits, on its step."""
+    """The flow as the number entity takes it: in its unit, within its limits, on its step."""
     attrs = state.attributes
     value = flow_c
+    if attrs.get("unit_of_measurement") == "°F":
+        # Home Assistant switched to US customary shows a temperature number in °F: the hand-back's
+        # 60 °C would have gone out as 60 °F, a boiler that barely heats (review 2026-11-08)
+        value = flow_c * 9.0 / 5.0 + 32.0
     try:
         step = float(attrs.get("step") or 0.0)
         if step > 0:

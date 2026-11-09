@@ -142,6 +142,32 @@ async def test_service_resets_only_the_chosen_area_and_keeps_run_state(hass: Hom
     assert hass.states.get("sensor.thriftherm_learning_state").attributes["last_reset"]["reason"] == "user"
 
 
+async def test_only_an_administrator_may_reset_the_learning(hass: HomeAssistant, hass_read_only_user) -> None:
+    """Review 2026-11-08 (#12): a household account or a wall tablet's token wiped months of learning, with no undo."""
+    from homeassistant.core import Context
+    from homeassistant.exceptions import Unauthorized
+
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    _learned(coordinator)
+    with pytest.raises(Unauthorized):
+        await hass.services.async_call(
+            DOMAIN, SERVICE_RESET_LEARNING, {"scope": ["heat_pump"]}, blocking=True, context=Context(user_id=hass_read_only_user.id)
+        )
+    assert coordinator.control_memory.learning_bins == ((0, 1.0),)
+
+
+async def test_clear_away_refuses_fields_it_does_not_have(hass: HomeAssistant) -> None:
+    """Review 2026-11-08 (#14): a return time meant for set_away ended the absence without a word."""
+    import voluptuous as vol
+
+    entry = await _setup(hass)
+    await entry.runtime_data.async_set_away(None)
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(DOMAIN, "clear_away", {"return_time": "2099-12-24 16:00"}, blocking=True)
+    assert entry.runtime_data.mode == "away"
+
+
 async def test_reset_keeps_the_run_state(hass: HomeAssistant) -> None:
     # checked without a cycle in between: the controller may end a run on its own
     entry = await _setup(hass)

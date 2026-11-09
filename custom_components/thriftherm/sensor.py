@@ -174,12 +174,13 @@ def _learning_attrs(d: Data) -> dict[str, Any]:
 
 
 def _reason_texts(d: Data) -> list[str]:
+    if "reason_texts" in d:
+        return list(d["reason_texts"])  # held while they say the same (plan_log.PlanLog.reasons)
     return texts.render_reasons(d["advice"].reasons, d.get("language"), d.get("room_names") or {})
 
 
 def _reason_state(d: Data) -> str:
-    text = " | ".join(_reason_texts(d))
-    return text[:252] + "..." if len(text) > 255 else (text or "no data")
+    return d.get("reason_state") or texts.fit_state(_reason_texts(d))
 
 
 # Values that move with every cycle and serve the analysis rather than the control: they start

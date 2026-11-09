@@ -75,7 +75,6 @@ SHORT_PREHEAT_NEW_CALL_S = 300.0  # a release holds this long (MIN_STATE_S): beg
 COMFORT_END_PASSED_S = 120.0
 JOIN_K = 0.5  # Better Thermostat gets half-degree steps
 PULL_FORWARD_S = 3600.0
-DEMAND_FALLBACK = 0.05  # without a temperature: the room's demand decides, as before
 
 CALL_IDLE = "idle"
 CALL_CALLING = "calling"
@@ -133,8 +132,9 @@ def update(
     if room.temperature is None:
         # A cycle without a reading tells nothing about the call, so the memory waits for the next one:
         # after a restart the sensors report one by one, and a stall or a running call must outlast that.
-        calling = (room.demand or 0.0) > DEMAND_FALLBACK
-        return (CALL_CALLING if calling else CALL_IDLE), mem
+        # Nor does the room call: without a temperature it has no demand either (room.demand), so the
+        # fallback on it that stood here never called (review 2026-11-08).
+        return CALL_IDLE, mem
 
     deficit = round(room.target - room.temperature, 2)  # sensors report tenths: 21.0 - 20.9 must be 0.1
     urgent = any(room.target_reason.startswith(r) or room.target_reason.endswith("+" + r) for r in _URGENT_REASONS)

@@ -2,8 +2,10 @@
 
 What a useful bug report needs is the shape of the installation and what the
 engines made of it: which subsystems exist, what was planned and why, and what
-has been learned so far. Nothing here is a credential, so nothing is redacted —
-entity ids in particular have to stay readable or the report is worthless.
+has been learned so far. Nothing here is a credential, and entity ids have to stay
+readable or the report is worthless. Only the people whose return ends away mode
+are left out: the docs ask for the file in a public issue, and person.<first name>
+has no place there (review 2026-11-08).
 """
 
 from __future__ import annotations
@@ -12,7 +14,15 @@ from typing import Any
 
 from homeassistant.core import HomeAssistant
 
+from .const import CONF_AWAY_RETURN_PERSONS
 from .coordinator import ThrifthermConfigEntry
+
+TO_REDACT = {CONF_AWAY_RETURN_PERSONS}
+REDACTED = "**REDACTED**"  # as Home Assistant's own diagnostics put it; its helper would make it a dependency
+
+
+def _redacted(values: Any) -> dict[str, Any]:
+    return {key: REDACTED if key in TO_REDACT and value else value for key, value in dict(values).items()}
 
 
 def _command(obj: Any) -> dict[str, Any] | None:
@@ -28,8 +38,8 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: Thrifth
     return {
         "entry": {
             "version": entry.version,
-            "data": dict(entry.data),
-            "options": dict(entry.options),
+            "data": _redacted(entry.data),
+            "options": _redacted(entry.options),
         },
         "installation": {
             "system_type": coordinator.system_type,

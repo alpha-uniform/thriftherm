@@ -563,6 +563,77 @@ async def test_options_refuses_renaming_a_room_to_another_rooms_name(hass: HomeA
     assert result["errors"] == {"name": "duplicate_room"}
 
 
+async def test_a_room_thermostat_that_is_the_heat_pump_or_another_rooms_is_refused(hass: HomeAssistant) -> None:
+    # review 2026-11-08: room control and heat pump control wrote the same unit, each taking the other's
+    # setpoint for a hand at the device, and the unit ran above its least power
+    entry = await _setup(hass)
+    result = await _submit_bathroom(hass, entry, climate_entity="climate.midea")
+    assert result["errors"] == {"climate_entity": "climate_is_heat_pump"}
+    await _edit_bathroom(hass, entry, climate_entity="climate.bath_trv")
+    result = await _open(hass, entry, "rooms")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "add-room", "action": "edit"})
+    room = {"name": "Küche", "temperature_sensor": "sensor.x", "climate_entity": "climate.bath_trv"}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], room)
+    assert result["errors"] == {"climate_entity": "climate_used_twice"}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {**room, "climate_entity": "climate.kitchen_trv"})
+    assert result["type"] == "create_entry"
+    await _edit_bathroom(hass, entry, climate_entity="climate.bath_trv")  # its own thermostat again: no second room
+
+
+async def test_the_heat_pump_that_is_a_rooms_thermostat_is_refused(hass: HomeAssistant) -> None:
+    entry = await _setup(hass)
+    await _edit_bathroom(hass, entry, climate_entity="climate.bath_trv")
+    result = await _open(hass, entry, "midea")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {**_prefilled(result), "midea_climate": "climate.bath_trv"})
+    assert result["errors"] == {"midea_climate": "climate_is_heat_pump"}
+
+
+def _register_better_thermostat(hass: HomeAssistant, object_id: str, drives: str) -> None:
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    bt = MockConfigEntry(domain="better_thermostat", options={"thermostat": [{"trv": drives}]})
+    bt.add_to_hass(hass)
+    er.async_get(hass).async_get_or_create("climate", "better_thermostat", object_id, suggested_object_id=object_id, config_entry=bt)
+
+
+async def test_a_room_thermostat_around_the_heat_pump_is_refused(hass: HomeAssistant) -> None:
+    # review 2026-11-08 (#R16): Better Thermostat in front of the unit passed, and room control wrote the unit
+    # through it against heat pump control
+    entry = await _setup(hass)
+    _register_better_thermostat(hass, "bt_midea", "climate.midea")
+    _register_better_thermostat(hass, "bt_bath", "climate.bath_trv")
+    result = await _submit_bathroom(hass, entry, climate_entity="climate.bt_midea")
+    assert result["errors"] == {"climate_entity": "climate_is_heat_pump"}
+    await _edit_bathroom(hass, entry, climate_entity="climate.bt_bath")
+    result = await _open(hass, entry, "midea")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {**_prefilled(result), "midea_climate": "climate.bath_trv"})
+    assert result["errors"] == {"midea_climate": "climate_is_heat_pump"}
+
+
+def test_the_climate_check_asks_what_a_room_thermostat_drives():
+    drives = {"climate.bt": ("climate.unit",)}.get
+    room = {"name": "Schlafzimmer", "climate_entity": "climate.bt"}
+    assert config_schema.validate_room(room, (), "climate.unit", lambda e: drives(e, ())) == {"climate_entity": "climate_is_heat_pump"}
+    assert config_schema.validate_room(room, (), "climate.other", lambda e: drives(e, ())) == {}
+    assert config_schema.validate_room(room, (), "climate.unit") == {}  # nothing to ask: the entities alone
+    heat_pump = {"midea_climate": "climate.unit"}
+    assert config_schema.validate_heat_pump(heat_pump, [room], lambda e: drives(e, ())) == {"midea_climate": "climate_is_heat_pump"}
+    assert config_schema.validate_heat_pump(heat_pump, [room]) == {}
+
+
+@pytest.mark.parametrize("circuit", ["bai/", "bai/x", "+", "#", "b ai", ""])
+async def test_an_ebus_circuit_that_is_no_single_topic_level_is_refused(hass: HomeAssistant, circuit: str) -> None:
+    # review 2026-11-08: '+' or '#' made every SetMode publish fail while the control was active, '/' built another path
+    entry = await _setup(hass)
+    result = await _open(hass, entry, "boiler")
+    good = _prefilled(result)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {**good, "boiler_ebus_circuit": circuit})
+    assert result["step_id"] == "boiler" and result["errors"] == {"boiler_ebus_circuit": "invalid_ebus_circuit"}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {**good, "boiler_ebus_circuit": " bai2 "})
+    assert result["type"] == "create_entry"
+
+
 @pytest.mark.parametrize(
     ("changes", "errors"),
     [

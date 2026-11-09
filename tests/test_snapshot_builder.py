@@ -247,6 +247,21 @@ async def test_a_gas_flow_left_hanging_is_no_reading(hass: HomeAssistant, freeze
     assert boiler.gas_flow_m3h.valid and boiler.gas_flow_m3h.value == 0.0
 
 
+async def test_a_gas_flow_left_hanging_is_no_reading_while_the_meter_repeats_its_reading(hass: HomeAssistant, freezer) -> None:
+    # review 2026-11-08: a meter that sends its unchanged reading every minute (force_update, Modbus, REST)
+    # renews its report, not its value; the flow, worked out from changes of the reading, kept 1.2 for 5 h
+    freezer.move_to(START)
+    _set_states(hass)
+    hass.states.async_set("sensor.gas_volume", "1000.00")
+    builder = SnapshotBuilder(hass, {**_entry_data(), "gas_volume": "sensor.gas_volume"})
+    for minutes in range(1, 31):
+        freezer.move_to(START + timedelta(minutes=minutes))
+        hass.states.async_set("sensor.gas_volume", "1000.00")  # the same reading, reported again
+        hass.states.async_set("sensor.gas_flow", "1.2")  # and the flow left as it was
+    boiler = _build(builder).boiler
+    assert not boiler.gas_flow_m3h.valid and boiler.gas_flow_m3h.reason == "stale"
+
+
 async def test_a_schedule_block_to_midnight_has_no_comfort_end(hass: HomeAssistant, freezer) -> None:
     """A block to 24:00 means "all day": midnight would end every boiler call at 23:30 (found in the code 2026-10-09)."""
     now = dt_util.as_local(START).replace(hour=23, minute=40)
@@ -463,6 +478,29 @@ async def test_a_steady_standby_draw_holds_while_the_compressor_stands(hass: Hom
     assert not plug.valid and plug.reason == "stale"
 
 
+async def test_a_dropout_of_the_heat_pump_of_ten_seconds_at_most_keeps_its_compressor_run(hass: HomeAssistant, freezer) -> None:
+    """Review 2026-11-08 (#R6): a bridge dropout restarted the count of the run, ten minutes of warming up and no COP."""
+    freezer.move_to(START)
+    _set_states(hass)
+    running = {**hass.states.get("climate.midea").attributes, "compressor_frequency": 28}
+    hass.states.async_set("climate.midea", "heat", running)
+    builder = _builder(hass)
+
+    def heat_pump(seconds: float, state: str | None = None):
+        if state is not None:
+            hass.states.async_set("climate.midea", state, running if state == "heat" else {})
+        freezer.move_to(START + timedelta(seconds=seconds))
+        return _build(builder).heat_pump
+
+    assert heat_pump(0).compressor_running_s == 0.0
+    gone = heat_pump(600, "unavailable")
+    assert not gone.available and gone.compressor_running_s == 600.0  # the count goes on through the dropout
+    assert heat_pump(608, "heat").compressor_running_s == 608.0
+    heat_pump(700, "unavailable")
+    assert heat_pump(715).compressor_running_s is None  # away longer: the run is over
+    assert heat_pump(720, "heat").compressor_running_s == 0.0
+
+
 async def test_a_thermostat_says_whether_its_valve_is_open(hass: HomeAssistant) -> None:
     """Better Thermostat and Versatile Thermostat name it in `hvac_action`; a room whose valve is shut does not lag."""
     _set_states(hass)
@@ -542,3 +580,55 @@ def test_the_longest_preheat_of_a_room_limits_it_with_either_source(limit, by_he
 def test_the_longest_preheat_is_read_from_the_room(raw, seconds):
     rooms = room_configs_from_config([{"key": "bad", "preheat_max_min": raw}])
     assert rooms[0].preheat_max_s == seconds
+
+
+@pytest.mark.parametrize(
+    ("value", "unit", "watts", "reason"),
+    [
+        pytest.param("350", "W", 350.0, None, id="W"),
+        pytest.param("350", None, 350.0, None, id="no unit"),
+        pytest.param("0.35", "kW", 350.0, None, id="kW"),
+        pytest.param("350000", "mW", 350.0, None, id="mW"),
+        pytest.param("350", "VA", None, "wrong_unit", id="another unit"),
+        # review 2026-11-08 (#R15): units written by hand were refused for their case
+        pytest.param("350", "w", 350.0, None, id="w"),
+        pytest.param("350", " Watt ", 350.0, None, id="Watt"),
+        pytest.param("350", "watts", 350.0, None, id="watts"),
+        pytest.param("0.35", "kw", 350.0, None, id="kw"),
+        pytest.param("0.35", "KW", 350.0, None, id="KW"),
+        pytest.param("0.00035", "MW", 350.0, None, id="MW"),
+        pytest.param("350", "mw", None, "wrong_unit", id="mw, milli or mega"),
+        pytest.param("350", "kWh", None, "wrong_unit", id="an energy"),
+        pytest.param("40", "kW", None, "out_of_range", id="kW out of range"),
+    ],
+)
+async def test_power_is_read_in_watts_whatever_unit_the_sensor_reports(hass: HomeAssistant, value, unit, watts, reason) -> None:
+    # review 2026-11-08: a plug in kW gave 0.35 "W", valid, and the COP was never learned without a word why
+    _set_states(hass)
+    attrs = {} if unit is None else {"unit_of_measurement": unit}
+    hass.states.async_set("sensor.midea_power", value, attrs)
+    hass.states.async_set("sensor.bath_tv", value, attrs)
+    config = _entry_data()
+    config["rooms"][0]["internal_gain_sensors"] = ["sensor.bath_tv"]
+    snap = SnapshotBuilder(hass, config).build("auto", {}, {}, None, {}, {})
+    plug = snap.heat_pump.plug_power
+    assert (plug.valid, plug.reason) == (watts is not None, reason)
+    if watts is not None:
+        assert plug.value == pytest.approx(watts) and snap.rooms["badezimmer"].internal_gain_w == pytest.approx(watts)
+    else:
+        assert snap.rooms["badezimmer"].internal_gain_w is None
+
+
+async def test_a_power_sensor_in_another_unit_is_named_with_its_unit(hass: HomeAssistant) -> None:
+    # review 2026-11-08 (#R15): refused for its unit, it read "Heat pump power reading missing", and nobody learned why
+    from custom_components.thriftherm import texts
+    from custom_components.thriftherm.engines import safety
+
+    _set_states(hass)
+    hass.states.async_set("sensor.midea_power", "350", {"unit_of_measurement": "VA"})
+    snap = SnapshotBuilder(hass, _entry_data()).build("auto", {}, {}, None, {}, {})
+    rooms = {k: room_engine.evaluate_room(s, snap.now, snap.mode, snap.params) for k, s in snap.rooms.items()}
+    assert "midea_power_sensor_invalid:wrong_unit:VA" in safety.evaluate(snap, rooms).issues
+    for lang in ("en", "de"):
+        wording = texts.SAFETY_ISSUES[lang]["midea_power_sensor_invalid:wrong_unit"]
+        assert "{unit}" in wording and wording != texts.SAFETY_ISSUES[lang]["midea_power_sensor_invalid"]

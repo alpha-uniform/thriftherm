@@ -54,6 +54,7 @@ from ..const import (
 from ..engines import psychrometrics as psy
 from ..engines.cop import RH_MAX_AGE_S
 from ..engines.room import WINDOW_CLOSED_STATES, WINDOW_OPEN_STATES
+from ..engines.safety import HEAT_PUMP_DROPOUT_S
 from ..engines.schedule_week import block_starting, comfort_run_end, next_level_change
 
 # A room sensor that has been quiet for hours is not a measurement any more: room
@@ -67,6 +68,10 @@ ROOM_TEMP_UNCHANGED_MAX_S = 24 * 3600.0
 # The outlet moves with every burst of the unit: two hours unchanged was the longest seen in a run (2026-11-04).
 # Longer than this with its device alive it hangs, and the table of the COP would learn from it.
 OUTLET_UNCHANGED_MAX_S = 6 * 3600.0
+# The outdoor sensors: an hour without a report, unless their device is alive; unchanged for longer than
+# this with it alive they hang. The coordinator keeps the last known value for six hours after that.
+OUTDOOR_MAX_AGE_S = 3600.0
+OUTDOOR_UNCHANGED_MAX_S = 6 * 3600.0
 SAMPLE_SPACING_S = 30.0  # room histories: 240 samples cover two hours, 400 the humidity's 3 h 10 min
 # A gas flow above 0 that has not changed for this long, while the meter reading has not moved
 # either, was left behind by a meter that dropped off: burning gas moves the reading within minutes.
@@ -183,6 +188,25 @@ def whole_number(value: str | None) -> int | None:
         return None
 
 
+# a power sensor's unit -> its factor to W; None: no unit given, taken as W
+_POWER_UNITS: dict[str | None, float] = {None: 1.0, "": 1.0, "W": 1.0, "kW": 1000.0, "mW": 0.001, "MW": 1e6}
+# units written by hand (LocalTuya, Tasmota, MQTT templates), in any case; "mw" is milli or mega, and no unit
+_POWER_UNITS_ANY_CASE: dict[str, float] = {
+    "w": 1.0, "watt": 1.0, "watts": 1.0, "kw": 1000.0, "kilowatt": 1000.0, "kilowatts": 1000.0,
+}
+
+
+def _power_factor(unit: object) -> float | None:
+    """The factor to W of a power sensor's unit, None for a unit that is no power."""
+    if unit is None:
+        return 1.0
+    if not isinstance(unit, str):
+        return None
+    unit = unit.strip()
+    factor = _POWER_UNITS.get(unit)
+    return factor if factor is not None else _POWER_UNITS_ANY_CASE.get(unit.lower())
+
+
 # room thermostats that drive valves of their own and show the room sensor as their temperature
 _WRAPPER_PLATFORMS = ("better_thermostat", "versatile_thermostat")
 
@@ -214,6 +238,47 @@ def _zha_device_seen_s(hass: HomeAssistant, device_id: str, now: datetime) -> fl
     return age if math.isfinite(age) and age >= 0.0 else None
 
 
+def _driven(hass: HomeAssistant, climate_entity: str) -> tuple[str, ...] | None:
+    """The entities a room thermostat drives, itself for a plain one; None while its entries cannot be read.
+
+    Better Thermostat names its real thermostats under "thermostat", Versatile Thermostat
+    under "underlying_entity_ids"; any other climate entity drives itself.
+    """
+    entry = er.async_get(hass).async_get(climate_entity)
+    if entry is None:
+        return None
+    if entry.platform == "better_thermostat" and entry.config_entry_id:
+        bt = hass.config_entries.async_get_entry(entry.config_entry_id)
+        if bt is None:
+            return None
+        raw = bt.options.get("thermostat") or bt.data.get("thermostat") or []
+        items = raw if isinstance(raw, list) else [raw]
+        valves = [i if isinstance(i, str) else i.get("trv") for i in items if isinstance(i, (str, dict))]
+        return tuple(v for v in valves if isinstance(v, str))
+    if entry.platform == "versatile_thermostat" and entry.config_entry_id:
+        # Versatile Thermostat keeps what it drives (valves, climates, switches) in a list;
+        # entries made by older versions have one key per entity
+        vt = hass.config_entries.async_get_entry(entry.config_entry_id)
+        if vt is None:
+            return None
+        stored = {**vt.data, **vt.options}
+        raw = stored.get("underlying_entity_ids") or []
+        items = list(raw) if isinstance(raw, (list, tuple)) else [raw]
+        for kind in ("climate", "valve", "heater"):
+            items.extend(stored.get(f"{kind}_entity{n}_id") for n in ("", "2", "3", "4"))
+        return tuple(v for v in items if isinstance(v, str) and v) or (climate_entity,)
+    return (climate_entity,)
+
+
+def driven_by(hass: HomeAssistant, climate_entity: str) -> tuple[str, ...]:
+    """The entities a room thermostat drives besides itself (Better or Versatile Thermostat), () for a plain one.
+
+    The setup asks it, so that a room thermostat in front of the heat pump's unit is refused as the
+    unit itself is (review 2026-11-08).
+    """
+    return tuple(dict.fromkeys(e for e in _driven(hass, climate_entity) or () if e != climate_entity))
+
+
 def _trim(history: deque, cutoff: float, ts: Callable[[Any], float] = itemgetter(0)) -> None:
     """Drop the entries older than `cutoff` from a history kept in time order."""
     while history and ts(history[0]) < cutoff:
@@ -240,6 +305,7 @@ class SnapshotBuilder:
             r.key: deque(maxlen=400) for r in self.rooms if r.bathroom_drying and r.served_by_heat_pump and r.drying_automatic
         }
         self._compressor_started_at: datetime | None = None
+        self._heat_pump_gone_since: datetime | None = None  # while its climate entity is away
         self._outlet_history: deque[tuple[float, float]] = deque(maxlen=120)
         self._heat_pump_history: deque[HeatPumpSample] = deque(maxlen=240)
         self._device_sensors: dict[str, tuple[str, ...]] = {}
@@ -282,6 +348,28 @@ class SnapshotBuilder:
         if max_age and age > max_age:
             return SensorReading(entity_id, value, age, False, "stale")
         return SensorReading(entity_id, value, age, True, None)
+
+    def read_power(self, entity_id: str | None, now: datetime, max_age_s: float | None = None) -> SensorReading:
+        """A power in W, whatever unit the sensor reports it in; one that is no power is no reading.
+
+        A plug in kW gave 0.35 "W", valid: the COP was never learned and nothing said why (review 2026-11-08).
+        A sensor without a unit is taken as W, as before.
+        """
+        state = self._get(entity_id)
+        unit = None if state is None else state.attributes.get("unit_of_measurement")
+        factor = _power_factor(unit)
+        if factor is None:
+            reading = self.read_number(entity_id, RANGE_POWER_W, now, max_age_s)
+            return replace(reading, valid=False, reason="wrong_unit", unit=str(unit)) if reading.valid else reading
+        reading = self.read_number(entity_id, (RANGE_POWER_W[0] / factor, RANGE_POWER_W[1] / factor), now, max_age_s)
+        return reading if reading.value is None else replace(reading, value=reading.value * factor)
+
+    def _unchanged_s(self, reading: SensorReading, now: datetime) -> float | None:
+        """How long a reading's value has not changed, None without a value."""
+        state = self._get(reading.entity_id)
+        if reading.age_s is None or state is None:
+            return None
+        return max((now - state.last_changed).total_seconds(), 0.0)
 
     def _device_age_s(self, entity_id: str, now: datetime) -> float | None:
         """Age of the newest report among the other sensors on the same device."""
@@ -327,10 +415,7 @@ class SnapshotBuilder:
         return min(ages, default=None)
 
     def valves_behind(self, climate_entity: str) -> tuple[str, ...]:
-        """Every entity of the valve devices a room thermostat drives.
-
-        Better Thermostat names its real thermostats under "thermostat", Versatile Thermostat
-        under "underlying_entity_ids"; any other climate entity is its own valve.
+        """Every entity of the valve devices a room thermostat drives (see `_driven`); a plain one is its own valve.
 
         Looked up anew for every snapshot (`build` empties the cache): kept for good, a broken
         valve replaced and Better Thermostat pointed at the new one left the old entities
@@ -340,30 +425,9 @@ class SnapshotBuilder:
         if cached is not None:
             return cached
         registry = er.async_get(self.hass)
-        entry = registry.async_get(climate_entity)
-        if entry is None:
+        valves = _driven(self.hass, climate_entity)
+        if valves is None:
             return ()  # not cached: the registry may not be loaded yet
-        valves: list[str] = [climate_entity]
-        if entry.platform == "better_thermostat" and entry.config_entry_id:
-            bt = self.hass.config_entries.async_get_entry(entry.config_entry_id)
-            if bt is None:
-                return ()
-            raw = bt.options.get("thermostat") or bt.data.get("thermostat") or []
-            items = raw if isinstance(raw, list) else [raw]
-            valves = [i if isinstance(i, str) else i.get("trv") for i in items if isinstance(i, (str, dict))]
-            valves = [v for v in valves if isinstance(v, str)]
-        elif entry.platform == "versatile_thermostat" and entry.config_entry_id:
-            # Versatile Thermostat keeps what it drives (valves, climates, switches) in a list;
-            # entries made by older versions have one key per entity
-            vt = self.hass.config_entries.async_get_entry(entry.config_entry_id)
-            if vt is None:
-                return ()
-            stored = {**vt.data, **vt.options}
-            raw = stored.get("underlying_entity_ids") or []
-            items = list(raw) if isinstance(raw, (list, tuple)) else [raw]
-            for kind in ("climate", "valve", "heater"):
-                items.extend(stored.get(f"{kind}_entity{n}_id") for n in ("", "2", "3", "4"))
-            valves = [v for v in items if isinstance(v, str) and v] or [climate_entity]
         found: list[str] = []
         for valve in valves:
             valve_entry = registry.async_get(valve)
@@ -378,12 +442,20 @@ class SnapshotBuilder:
         self._valve_entities[climate_entity] = result
         return result
 
+    def wraps_thermostats(self, climate_entity: str | None) -> bool:
+        """True when a room thermostat drives thermostats of its own (Better Thermostat, Versatile Thermostat over a climate)."""
+        if not climate_entity:
+            return False
+        behind = self.valves_behind(climate_entity)
+        return climate_entity not in behind and any(e.startswith("climate.") for e in behind)
+
     def thermostat_silent_s(self, climate_entity: str | None, now: datetime) -> float | None:
         """How long the valve behind a room thermostat has been silent, None if unknown.
 
         Measured 2026-09-27: the bathroom valve dropped out of the Zigbee network at 15:50
         and kept its last setpoint; Better Thermostat went on reporting "heat" at 21 °C.
-        Healthy valves here report at least every 15 minutes.
+        A healthy valve that reports what it had leaves no trace either (Zigbee2MQTT, ZHA):
+        silence alone counts only after long (room.THERMOSTAT_SILENT_S).
 
         A valve paired with ZHA was also heard when ZHA last saw it, unless ZHA calls it
         unavailable: its entities keep their timestamps while the values stay the same (see `ZHA`).
@@ -407,6 +479,22 @@ class SnapshotBuilder:
             return max(now.timestamp() - heard, 0.0)
         since = [max((now - state.last_changed).total_seconds(), 0.0) for state in states]
         return min(since) if since else None
+
+    def thermostat_gone_s(self, climate_entity: str | None, now: datetime) -> float | None:
+        """How long every entity of the valve behind a room thermostat has been unavailable or unknown, None if not.
+
+        An unavailable valve is silent at once, however recently it reported (review 2026-11-08):
+        the silence alone counts only after hours. Not while ZHA still sees the device.
+        """
+        if not climate_entity:
+            return None
+        entities = self.valves_behind(climate_entity)
+        states = [state for entity_id in entities if (state := self._get(entity_id)) is not None]
+        if not states or any(state.state not in BAD_STATES for state in states):
+            return None
+        if self._zha_seen_s(entities, now) is not None:
+            return None
+        return min(max((now - state.last_changed).total_seconds(), 0.0) for state in states)
 
     def valve_temperature(self, climate_entity: str | None) -> float | None:
         """What the valves themselves measure, the stand-in for a room sensor that failed.
@@ -625,7 +713,7 @@ class SnapshotBuilder:
 
         gain: float | None = None
         for entity_id in cfg.internal_gain_sensors:
-            reading = self.read_number(entity_id, RANGE_POWER_W, now)
+            reading = self.read_power(entity_id, now)
             if reading.valid:
                 gain = (gain or 0.0) + max(reading.value, 0.0)
 
@@ -664,8 +752,13 @@ class SnapshotBuilder:
             thermostat_heating=heating,
             thermostat_own_target=own_target,
             thermostat_silent_s=self.thermostat_silent_s(cfg.climate_entity, now),
+            thermostat_gone_s=self.thermostat_gone_s(cfg.climate_entity, now),
+            # Better Thermostat (or Versatile Thermostat over a climate) takes a setpoint at once and passes it
+            # on to the thermostats it drives; a switch it drives takes none, and need not report a new target
+            thermostat_wrapped=self.wraps_thermostats(cfg.climate_entity),
             thermostat_min_temp=self.read_attr_float(climate, "min_temp"),
             thermostat_max_temp=self.read_attr_float(climate, "max_temp"),
+            thermostat_step=self.read_attr_float(climate, "target_temp_step"),
         )
 
     # ------------------------------------------------------------------ midea
@@ -676,10 +769,14 @@ class SnapshotBuilder:
         attrs = climate.attributes if climate is not None else {}
 
         compressor_hz = self.read_attr_float(climate, "compressor_frequency")
+        self._heat_pump_gone_since = None if available else self._heat_pump_gone_since or now
+        # A dropout of its bridge for ten seconds at most goes on with the run, as the safety and the control bridge it
+        # (review 2026-11-08: its count began anew, ten minutes of warming up and no COP).
+        dropout = not available and (now - self._heat_pump_gone_since).total_seconds() <= HEAT_PUMP_DROPOUT_S
         if available and compressor_hz is not None and compressor_hz > 0:
             if self._compressor_started_at is None:
                 self._compressor_started_at = now
-        else:
+        elif not dropout:
             self._compressor_started_at = None
         running_s = None
         if self._compressor_started_at is not None:
@@ -691,7 +788,7 @@ class SnapshotBuilder:
         except (TypeError, ValueError):
             error_code = None
 
-        plug_power = self.read_number(cfg.get(CONF_HEAT_PUMP_POWER), RANGE_POWER_W, now, max_age_s=PLUG_POWER_MAX_AGE_S)
+        plug_power = self.read_power(cfg.get(CONF_HEAT_PUMP_POWER), now, max_age_s=PLUG_POWER_MAX_AGE_S)
         if plug_power.reason == "stale" and plug_power.value <= PLUG_STANDBY_MAX_W and running_s is None:
             plug_power = replace(plug_power, valid=True, reason=None)  # the compressor stands: a steady low draw is not reported
         # past these limits a reading reaches the COP and the control as invalid
@@ -764,8 +861,13 @@ class SnapshotBuilder:
         gas_volume = self.read_number(cfg.get(CONF_GAS_VOLUME), (0.0, 1e7), now, max_age_s=0)
         gas_flow = self.read_number(cfg.get(CONF_GAS_FLOW), RANGE_GAS_FLOW_M3H, now, max_age_s=0)
         # no meter reading (age None) cannot speak for the flow: 1.2 m³/h still meant "burning" after 10 h
-        volume_quiet = gas_volume.age_s is None or gas_volume.age_s > GAS_FLOW_STUCK_S
-        if gas_flow.valid and gas_flow.value > 0 and (gas_flow.age_s or 0.0) > GAS_FLOW_STUCK_S and volume_quiet:
+        # Whether a value moved goes by its last change, not its last report: a meter that sends its
+        # unchanged reading every minute (force_update, Modbus, REST) kept a flow of 1.2 valid for good
+        # (review 2026-11-08).
+        volume_unchanged_s = self._unchanged_s(gas_volume, now)
+        volume_quiet = volume_unchanged_s is None or volume_unchanged_s > GAS_FLOW_STUCK_S
+        flow_unchanged_s = self._unchanged_s(gas_flow, now) or 0.0
+        if gas_flow.valid and gas_flow.value > 0 and flow_unchanged_s > GAS_FLOW_STUCK_S and volume_quiet:
             gas_flow = replace(gas_flow, valid=False, reason="stale")
         sums = self._boiler_energy_sums()
         return BoilerState(
@@ -812,7 +914,11 @@ class SnapshotBuilder:
     def _outdoor(self, now: datetime) -> tuple[SensorReading, str | None, SensorReading]:
         sensors: Iterable[str] = self.config.get(CONF_OUTDOOR_TEMP_SENSORS) or []
         last_reason = "not_configured"
-        rh = self.read_number(self.config.get(CONF_OUTDOOR_RH_SENSOR), RANGE_HUMIDITY, now, max_age_s=3600)
+        # Read as the room thermometers are (review 2026-11-08): a still night held 4.0 °C for over the
+        # hour, ZHA and Zigbee2MQTT left its timestamps alone, and a sensor seen minutes before was stale.
+        rh = self._read_quiet_temperature(
+            self.config.get(CONF_OUTDOOR_RH_SENSOR), now, OUTDOOR_MAX_AGE_S, RANGE_HUMIDITY, OUTDOOR_UNCHANGED_MAX_S
+        )
         weather = self._get(self.config.get(CONF_WEATHER_ENTITY))
         if not rh.valid:
             # the weather entity's humidity stands in for a humidity sensor, wherever the temperature comes from
@@ -820,7 +926,7 @@ class SnapshotBuilder:
             if weather is not None and w_rh is not None and RANGE_HUMIDITY[0] <= w_rh <= RANGE_HUMIDITY[1]:
                 rh = SensorReading(weather.entity_id, w_rh, _state_age_s(weather, now), True, None)
         for entity_id in sensors:
-            reading = self.read_number(entity_id, RANGE_OUTDOOR_TEMP, now, max_age_s=3600)
+            reading = self._read_quiet_temperature(entity_id, now, OUTDOOR_MAX_AGE_S, RANGE_OUTDOOR_TEMP, OUTDOOR_UNCHANGED_MAX_S)
             if reading.valid:
                 return reading, entity_id, rh
             last_reason = reading.reason or "invalid"

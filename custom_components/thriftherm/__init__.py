@@ -9,6 +9,7 @@ only mode and writes nothing until active control is released and selected.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 
 import voluptuous as vol
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
@@ -17,6 +18,7 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.service import async_register_admin_service
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
@@ -24,8 +26,10 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_DEFAULT_HEAT_RATE_HEAT_PUMP,
+    CONF_HEAT_PUMP_CLIMATE,
     CONF_SYSTEM_TYPE,
     CONFIG_VERSION,
+    CTRL_ACTIVE,
     DEFAULT_DEFAULT_HEAT_RATE_HEAT_PUMP,
     DEFAULT_SYSTEM_TYPE,
     DOMAIN,
@@ -45,6 +49,10 @@ from .coordinator import ThrifthermConfigEntry, ThrifthermCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
+# hass.data key: entry id -> (heat pump climate, let-go) of an entry unloaded neither disabled nor yet deleted. A delete
+# carries it out, and so does the next run of a reload that does not go on with that unit actively or fails to start.
+PENDING_LET_GO = f"{DOMAIN}_pending_let_go"
+
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 SET_OVERRIDE_SCHEMA = vol.Schema(
@@ -62,6 +70,8 @@ RESET_LEARNING_SCHEMA = vol.Schema(
     }
 )
 SET_AWAY_SCHEMA = vol.Schema({vol.Optional("return_time"): cv.datetime, vol.Optional("clear_return_time"): cv.boolean})
+# no fields: a return time meant for set_away is refused, not taken as an end of the absence (review 2026-11-08)
+CLEAR_AWAY_SCHEMA = vol.Schema({})
 BOOST_SCHEMA = vol.Schema(
     {
         vol.Required("room"): cv.string,
@@ -125,8 +135,10 @@ def _register_services(hass: HomeAssistant) -> None:
     hass.services.async_register(DOMAIN, SERVICE_SET_OVERRIDE, set_override, schema=SET_OVERRIDE_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_CLEAR_OVERRIDE, clear_override, schema=CLEAR_OVERRIDE_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_SET_AWAY, set_away, schema=SET_AWAY_SCHEMA)
-    hass.services.async_register(DOMAIN, SERVICE_CLEAR_AWAY, clear_away)
-    hass.services.async_register(DOMAIN, SERVICE_RESET_LEARNING, reset_learning, schema=RESET_LEARNING_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_CLEAR_AWAY, clear_away, schema=CLEAR_AWAY_SCHEMA)
+    # Months of learning gone with no undo: an administrator's call, not that of any household
+    # account or a wall tablet's token (review 2026-11-08).
+    async_register_admin_service(hass, DOMAIN, SERVICE_RESET_LEARNING, reset_learning, schema=RESET_LEARNING_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_BOOST, boost, schema=BOOST_SCHEMA)
 
 
@@ -182,9 +194,25 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
     version = str(integration.version) if integration.version else None
     # first: the dashboards keep the card while a failing first refresh makes the entry retry
     await card.async_load(hass, version)
+    # a reload: the last run left the unit to this one, if this one goes on with it
+    parked = hass.data.get(PENDING_LET_GO, {}).pop(entry.entry_id, None)
     coordinator = ThrifthermCoordinator(hass, entry)
-    await coordinator.async_start()
-    await coordinator.async_config_entry_first_refresh()
+    try:
+        await coordinator.async_start()
+        if parked is not None and not (
+            coordinator.control_mode == CTRL_ACTIVE
+            and coordinator.has_heat_pump
+            and coordinator.config.get(CONF_HEAT_PUMP_CLIMATE) == parked[0]
+        ):
+            # Active control taken away, the heat pump removed or another unit chosen: nobody goes on with what the
+            # last run left, and a quick heat-up stayed at 30 °C for good (verifier of 0.7.3b, #R1, #R8).
+            let_go, parked = parked[1], None
+            await let_go()
+        await coordinator.async_config_entry_first_refresh()
+    except Exception:
+        if parked is not None:
+            await parked[1]()  # this run never starts: the unit is left to nobody, as on a disable
+        raise
     entry.runtime_data = coordinator
     # Room devices point at the hub via via_device_id. Platforms load concurrently, so the
     # hub must exist before any of them, or a room device registered first loses the link.
@@ -254,6 +282,20 @@ async def async_remove_config_entry_device(hass: HomeAssistant, entry: Thrifther
 
 async def async_unload_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> bool:
     if hasattr(entry, "runtime_data"):
+        # first the cycle under way: what it sent belongs in the save, and nothing goes out after it
+        await entry.runtime_data.async_stop_cycles()
+        if entry.runtime_data.control_mode == CTRL_ACTIVE:
+            # A quick heat-up or a drying would keep its setpoint for good, as a block would on the boiler: let go
+            # when nothing runs after this one. Not on a reload, whose next run goes on with them: set down to
+            # 17 °C there, the drying held the 17 after it, the unit stopped and started hard (second review
+            # 2026-11-08). A delete unloads first as well, so the let-go waits for async_remove_entry.
+            if entry.disabled_by is not None:
+                await entry.runtime_data.async_let_go_of_heat_pump()
+            else:
+                hass.data.setdefault(PENDING_LET_GO, {})[entry.entry_id] = (
+                    entry.runtime_data.config.get(CONF_HEAT_PUMP_CLIMATE),
+                    _let_go_later(entry.runtime_data),
+                )
         # learning and user state changed since the last periodic save must survive a restart
         await entry.runtime_data.async_save_store(force=True)
         await entry.runtime_data.async_release_boiler(final=True)
@@ -264,8 +306,25 @@ async def async_unload_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) 
     return unloaded
 
 
+def _let_go_later(coordinator: ThrifthermCoordinator) -> Callable[[], Awaitable[None]]:
+    """The let-go of an unloaded run, carried out once it is clear that nothing goes on with the unit.
+
+    The store it saved at the unload is saved again with what the let-go left: a run that starts from it after a
+    failed setup finds the unit as it was left, not at 30 °C.
+    """
+
+    async def _let_go() -> None:
+        await coordinator.async_let_go_of_heat_pump()
+        await coordinator.async_save_store(force=True)
+
+    return _let_go
+
+
 async def async_remove_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> None:
     """The entry is gone: so are its repairs, its stored learning and controller state, and the card's resource."""
+    parked = hass.data.get(PENDING_LET_GO, {}).pop(entry.entry_id, None)
+    if parked is not None:
+        await parked[1]()
     issues.async_clear(hass)
     await Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}").async_remove()
     await card.async_remove_resource(hass)

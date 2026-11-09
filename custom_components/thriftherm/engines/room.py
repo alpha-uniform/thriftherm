@@ -55,11 +55,20 @@ TREND_WINDOW_S = 5400.0  # trend_k_per_h
 # A preheat's pace needs readings over this long since it began: half an hour less a few samples, when
 # heat_pump_control.behind first judges it.
 PACE_MIN_SPAN_S = 1500.0
-# A valve that has not reported for this long takes no commands either: its room must
-# not call the boiler. Valves here report at least every 15 minutes, but a Zigbee valve left
-# at its default reports about hourly, and an unchanged value leaves no trace in Home Assistant:
-# one hour took healthy valves for lost (reported 2026-10-10). One missed report must fit in.
-THERMOSTAT_SILENT_S = 9000.0
+# A valve that is silent takes no commands either: its room must not call the boiler (GUIDE §9).
+# Silent is a valve that did not answer a setpoint sent to it, or one its integration calls
+# unavailable. Time without a report alone says little: Zigbee2MQTT and ZHA leave no trace in Home
+# Assistant while a valve reports what it had. One hour took healthy valves for lost (2026-10-10),
+# two and a half hours did so 18 times in a week in all five rooms, 8 minutes to 2.2 hours beyond
+# it (2026-11-01 to 11-08), and kept the bathroom from heating for 7.9 hours. Only a much longer
+# silence counts by itself.
+THERMOSTAT_SILENT_S = 6 * 3600.0
+# A setpoint not answered in this time, with nothing heard from the valve since it was sent: Better
+# Thermostat or the valve answers within seconds, retries go out every five minutes.
+THERMOSTAT_UNANSWERED_S = 1800.0
+# Every entity of the valve unavailable or unknown for this long: a broker reconnect takes 45 s, a
+# restart of Zigbee2MQTT a few minutes, and a valve that dropped out keeps its last setpoint meanwhile.
+THERMOSTAT_GONE_S = 1800.0
 
 
 def parse_schedule(text: str | None) -> tuple[TimeWindow, ...]:
@@ -583,6 +592,20 @@ def next_schedule_change(state: RoomState, now: datetime, mode: str) -> tuple[fl
     return (None, None) if start is None else (start.timestamp(), cfg.comfort_temp)
 
 
+def thermostat_is_silent(state: RoomState, now_ts: float) -> bool:
+    """The valve behind the room thermostat takes no commands: unavailable, deaf to a setpoint, or quiet for long."""
+    silent_s = state.thermostat_silent_s
+    if state.thermostat_gone_s is not None and state.thermostat_gone_s > THERMOSTAT_GONE_S:
+        return True
+    pending = state.thermostat_pending_since_ts
+    if pending is not None and silent_s is not None:
+        waited = now_ts - pending
+        # not heard since the setpoint went out: a report after it is an answer, whatever it says
+        if waited > THERMOSTAT_UNANSWERED_S and silent_s >= waited:
+            return True
+    return silent_s is not None and silent_s > THERMOSTAT_SILENT_S
+
+
 def evaluate_room(
     state: RoomState,
     now: datetime,
@@ -649,7 +672,7 @@ def evaluate_room(
     # is switched off by hand - its valve is shut, so the boiler would only heat the pipes.
     # Midea: independent of the valve, also while drying.
     thermostat_off = state.trv_hvac_mode == "off"
-    thermostat_silent = state.thermostat_silent_s is not None and state.thermostat_silent_s > THERMOSTAT_SILENT_S
+    thermostat_silent = thermostat_is_silent(state, now_ts)
     if thermostat_silent:
         issues.append("thermostat_silent")
     heating_allowed = not bool(window_open) and not thermostat_off and not thermostat_silent and not cooled

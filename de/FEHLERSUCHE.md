@@ -98,7 +98,7 @@ Bei einer Therme über Entitäten (Vorschau) ist das anders: Stürzt Home Assist
 
 Ein Fenster ist offen, oder das Thermostat des Raums ist ausgeschaltet. Schließ das Fenster oder stell das Thermostat wieder auf *Heizen*.
 
-Hat sich ein Heizkörperthermostat seit zweieinhalb Stunden nicht gemeldet, fordert der Raum ebenfalls keine Wärme an. Dazu erscheint eine Reparaturmeldung. Mit ZHA zählt auch ZHAs eigenes *Zuletzt gesehen* als Meldung.
+Hat ein Heizkörperthermostat einen Sollwert eine halbe Stunde lang nicht beantwortet, ist es eine halbe Stunde lang nicht verfügbar oder hat es sich sechs Stunden lang nicht gemeldet, fordert der Raum ebenfalls keine Wärme an. Dazu erscheint eine Reparaturmeldung. Sieh in Zigbee2MQTT oder ZHA nach seinem *Zuletzt gesehen*; mit ZHA zählt es auch als Meldung.
 
 ### Ein Raum steht auf 15 °C
 
@@ -173,4 +173,4 @@ Fehlt die Karte trotzdem, zeigt der Browser meist noch eine Startseite von vor d
 
 - Was eine Reparaturmeldung bedeutet und was du tun kannst, steht in der [Anleitung, Reparaturmeldungen](ANLEITUNG.md#9-reparaturmeldungen).
 - Der Sensor *Entscheidungsgrund* sagt in Worten, warum Thriftherm tut, was es tut.
-- Für einen Fehlerbericht: Einstellungen → Geräte & Dienste → Thriftherm → ⋮ → *Diagnose herunterladen*. Die Datei enthält Konfiguration, aktuellen Zustand und Lernwerte, es wird nichts daraus entfernt. Sieh sie vor dem Veröffentlichen durch und hänge sie an ein [Issue](https://github.com/alpha-uniform/thriftherm/issues) an.
+- Für einen Fehlerbericht: Einstellungen → Geräte & Dienste → Thriftherm → ⋮ → *Diagnose herunterladen*. Die Datei enthält Konfiguration, aktuellen Zustand und Lernwerte; nur die Personen, deren Ankunft *Abwesend* beendet, fehlen darin. Sieh sie vor dem Veröffentlichen durch und hänge sie an ein [Issue](https://github.com/alpha-uniform/thriftherm/issues) an.

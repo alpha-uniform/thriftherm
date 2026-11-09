@@ -713,6 +713,32 @@ async def test_diagnostics_describe_the_installation_and_the_plans(hass: HomeAss
     assert "cop_map" in diag["learning"]
 
 
+async def test_the_decision_reason_does_not_change_with_every_reading(hass: HomeAssistant) -> None:
+    """I3 (2026-11-08): a tenth of a degree in a room, or the COP's third decimal, made a new state and a recorder row."""
+    entry = await _setup(hass)
+    before = hass.states.get("sensor.thriftherm_decision_reason")
+    assert "Wohnzimmer 17.0 °C" in before.state
+    hass.states.async_set("sensor.living_temp", "17.1")
+    await entry.runtime_data.async_refresh()
+    await hass.async_block_till_done()
+    after = hass.states.get("sensor.thriftherm_decision_reason")
+    assert after.state == before.state and after.last_updated == before.last_updated
+    assert after.attributes["reasons"] == before.attributes["reasons"]
+
+
+async def test_diagnostics_name_no_person(hass: HomeAssistant) -> None:
+    """Review 2026-11-08 (#13): posted to a public issue as the docs ask, the file carried person.<first name>."""
+    import json
+
+    from custom_components.thriftherm.diagnostics import async_get_config_entry_diagnostics
+
+    entry = await _setup(hass, options={"away_return_persons": ["person.anna", "person.ben"]})
+    diag = await async_get_config_entry_diagnostics(hass, entry)
+    assert "person." not in json.dumps(diag, default=str)
+    assert diag["entry"]["options"]["away_return_persons"] == "**REDACTED**"
+    assert diag["entry"]["options"][CONF_BOILER_FLOW_TEMP] == "sensor.flow"  # the report needs the entity ids
+
+
 async def test_repair_issues_appear_and_clear(hass: HomeAssistant) -> None:
     """A room without any heating window is a silent failure, so it gets a repair entry."""
     from homeassistant.helpers import issue_registry as ir
@@ -1513,6 +1539,16 @@ async def test_the_flow_is_fitted_to_the_number_entity(hass: HomeAssistant) -> N
     assert [c[1]["value"] for c in calls] == [42.0, 45.0]  # on the step, within the limits
 
 
+async def test_a_flow_number_shown_in_fahrenheit_gets_the_flow_in_fahrenheit(hass: HomeAssistant) -> None:
+    """Review 2026-11-08 (#18): with the unit system switched, the hand-back's 60 °C would have gone out as 60 °F."""
+    from custom_components.thriftherm import executors
+
+    calls = _entity_boiler(hass)
+    hass.states.async_set("input_number.boiler_flow", "95", {"min": 68.0, "max": 176.0, "step": 1.0, "unit_of_measurement": "°F"})
+    assert await executors.async_send_boiler_entities(hass, "input_number.boiler_flow", "switch.boiler_heating", 60.0, True)
+    assert [c[1]["value"] for c in calls] == [140.0]
+
+
 async def _blocked_entity_boiler(hass: HomeAssistant, calls: list) -> MockConfigEntry:
     """An active control that has blocked the heating through the entities."""
     entry = await _setup(hass, options=ENTITY_BOILER)
@@ -1720,3 +1756,232 @@ async def test_the_boiler_heating_starts_of_the_day_are_a_sensor(hass: HomeAssis
     state = hass.states.get("sensor.thriftherm_boiler_heating_starts_today")
     assert int(state.state) == entry.runtime_data.data["boiler_command"].starts_today == 1
     assert state.attributes["state_class"] == "total_increasing"  # a daily counter: the statistics give starts per day
+
+
+async def _final_hand_back_fails(hass: HomeAssistant, caplog, remove: bool = False) -> MockConfigEntry:
+    """A blocked boiler whose gateway is away (and was away the cycle before) when the entry is disabled or deleted."""
+    from homeassistant.config_entries import ConfigEntryDisabler
+
+    calls = _entity_boiler(hass)
+    entry = await _blocked_entity_boiler(hass, calls)
+    hass.states.async_set("switch.boiler_heating", "unavailable")  # an ESPHome gateway reboots
+    entry.runtime_data._boiler_send_failed = True  # its outage already warned about: the rest went to debug
+    caplog.clear()
+    if remove:
+        assert await hass.config_entries.async_remove(entry.entry_id)
+    else:
+        assert await hass.config_entries.async_set_disabled_by(entry.entry_id, ConfigEntryDisabler.USER)
+    await hass.async_block_till_done()
+    assert hass.states.get("switch.boiler_heating").state == "unavailable"
+    return entry
+
+
+def _hand_back_issue(hass: HomeAssistant):
+    from homeassistant.helpers import issue_registry as ir
+
+    return ir.async_get(hass).async_get_issue(DOMAIN, "thriftherm_boiler_not_handed_back")
+
+
+@pytest.mark.parametrize("remove", [False, True])
+async def test_a_final_hand_back_that_failed_is_reported_and_made_up_once_the_gateway_is_back(
+    hass: HomeAssistant, caplog, remove: bool
+) -> None:
+    """Review 2026-11-08 (#0): disabled or deleted while the gateway was away, the heating stayed blocked for good, logged on debug."""
+    await _final_hand_back_fails(hass, caplog, remove)
+    warned = [r for r in caplog.records if r.levelname in ("WARNING", "ERROR") and "switch.boiler_heating" in r.getMessage()]
+    assert warned
+    issue = _hand_back_issue(hass)
+    assert issue is not None and issue.translation_placeholders["switch"] == "switch.boiler_heating"
+    hass.states.async_set("switch.boiler_heating", "off")  # back, as the block left it
+    await hass.async_block_till_done()
+    assert hass.states.get("switch.boiler_heating").state == "on"
+    assert float(hass.states.get("input_number.boiler_flow").state) == 60.0  # the maximum, as a knob would stand
+    assert _hand_back_issue(hass) is None
+
+
+async def test_a_new_start_of_the_entry_takes_over_a_hand_back_still_waited_for(hass: HomeAssistant, caplog) -> None:
+    from homeassistant.config_entries import ConfigEntryDisabler
+
+    entry = await _final_hand_back_fails(hass, caplog)
+    assert await hass.config_entries.async_set_disabled_by(entry.entry_id, None)  # enabled again before it came back
+    await hass.async_block_till_done()
+    hass.states.async_set("switch.boiler_heating", "off")  # back, as the block left it
+    await hass.async_block_till_done()
+    await entry.runtime_data.async_refresh()
+    # the control runs again and still blocks: the hand-back waited for is not its to make
+    assert entry.runtime_data.data["boiler_command"].plan == "block"
+    assert hass.states.get("switch.boiler_heating").state == "off"
+    assert _hand_back_issue(hass) is None
+    assert await hass.config_entries.async_set_disabled_by(entry.entry_id, ConfigEntryDisabler.USER)
+    await hass.async_block_till_done()
+
+
+async def test_an_entry_added_again_ends_the_hand_back_its_deleted_one_waited_for(hass: HomeAssistant, caplog) -> None:
+    """Second review 2026-11-08 (#R4, #R23): deleted while the gateway was away and added again, the old entry's hand-back
+    waited under its own id. The new block's own write set it off: heating on, flow at its maximum, against the block."""
+    from custom_components.thriftherm.coordinator import HAND_BACK_RETRIES
+
+    old = await _final_hand_back_fails(hass, caplog, remove=True)
+    assert hass.data[HAND_BACK_RETRIES]
+    calls = _entity_boiler(hass, heating="unavailable")
+    new = await _setup(hass, options=ENTITY_BOILER)
+    assert new.entry_id != old.entry_id
+    coordinator = new.runtime_data
+    coordinator.set_boiler_control_mode("active")
+    hass.states.async_set("sensor.bath_temp", "22.0")
+    hass.states.async_set("sensor.living_temp", "20.0")
+    coordinator.boiler_memory = replace(coordinator.boiler_memory, state="block", state_since_ts=0.0)
+    hass.states.async_set("switch.boiler_heating", "off")  # the gateway is back, as the block left it
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert coordinator.data["boiler_command"].plan == "block"
+    assert hass.states.get("switch.boiler_heating").state == "off"
+    assert not [c for c in calls if c[0] == "turn_on"]
+    assert not hass.data[HAND_BACK_RETRIES]  # the new run commands the entities itself
+
+
+async def test_an_entry_added_again_in_plan_only_leaves_the_hand_back_to_be_made_up(hass: HomeAssistant, caplog) -> None:
+    """Verifier of 0.7.3b (#R4, #R23): the waiting ended as soon as any entry had the entities configured. One added
+    again starts in Plan only with a fresh store and never writes them: the block stayed on the switch for good."""
+    from custom_components.thriftherm.coordinator import HAND_BACK_RETRIES
+
+    await _final_hand_back_fails(hass, caplog, remove=True)
+    calls = _entity_boiler(hass, heating="unavailable")
+    new = await _setup(hass, options=ENTITY_BOILER)
+    assert new.runtime_data.boiler_control_mode == "shadow"
+    assert hass.data[HAND_BACK_RETRIES]  # still waited for: this run writes nothing
+    hass.states.async_set("switch.boiler_heating", "off")  # the gateway is back, as the block left it
+    await hass.async_block_till_done()
+    assert hass.states.get("switch.boiler_heating").state == "on"
+    assert float(hass.states.get("input_number.boiler_flow").state) == 60.0
+    assert [c for c in calls if c[0] == "turn_on"]
+    assert _hand_back_issue(hass) is None
+    assert not hass.data[HAND_BACK_RETRIES]
+
+
+async def _boosting(hass: HomeAssistant, target: float = 30.0, drying: bool = False):
+    """An active heat pump control left mid-way through a quick heat-up (or a drying): the unit at `target`."""
+    entry = await _setup(hass, options={"midea_allow_active_control": True})
+    coordinator = entry.runtime_data
+    set_temperature = async_mock_service(hass, "climate", "set_temperature")
+    for service in ("set_hvac_mode", "set_fan_mode"):
+        async_mock_service(hass, "climate", service)
+    hass.states.async_set(
+        "climate.midea", "heat",
+        {"hvac_modes": ["off", "heat", "fan_only"], "temperature": target, "indoor_temperature": 22, "outdoor_temperature": 4.0,
+         "compressor_frequency": 60, "error_code": 0},
+    )
+    await hass.async_block_till_done()  # the cycle this change starts, while still planning only
+    coordinator.set_control_mode("active")
+    coordinator.control_memory = replace(
+        coordinator.control_memory, running_since_ts=time.time() - 600, last_hvac_mode="heat", last_target=target,
+        drying_held=drying,
+    )
+    set_temperature.clear()
+    return entry, coordinator, set_temperature
+
+
+@pytest.mark.parametrize("mode", ["shadow", "off"])
+async def test_leaving_active_control_sets_a_boosted_unit_down_to_its_floor(hass: HomeAssistant, mode: str) -> None:
+    """Review 2026-11-08 (#32): switched to Plan only mid-way through a quick heat-up, the unit stayed at 30 °C for good."""
+    _, coordinator, set_temperature = await _boosting(hass)
+    coordinator.set_control_mode(mode)
+    await hass.async_block_till_done()
+    assert [c.data["temperature"] for c in set_temperature] == [17.0]
+
+
+@pytest.mark.parametrize("remove", [False, True])
+async def test_disabling_or_deleting_sets_a_drying_unit_down_to_its_floor(hass: HomeAssistant, remove: bool) -> None:
+    from homeassistant.config_entries import ConfigEntryDisabler
+
+    entry, _, set_temperature = await _boosting(hass, target=24.5, drying=True)
+    if remove:
+        assert await hass.config_entries.async_remove(entry.entry_id)
+    else:
+        assert await hass.config_entries.async_set_disabled_by(entry.entry_id, ConfigEntryDisabler.USER)
+    await hass.async_block_till_done()
+    assert [c.data["temperature"] for c in set_temperature] == [17.0]
+
+
+async def test_a_reload_mid_way_through_a_drying_leaves_the_unit_to_the_next_run(hass: HomeAssistant) -> None:
+    """Second review 2026-11-08 (#R1, #R8): every reload, an options change included, set a drying or a quick heat-up
+    down to 17 °C. The drying held that 17 afterwards: the unit stopped itself, stood five minutes and started hard."""
+    entry, coordinator, set_temperature = await _boosting(hass, target=24.5, drying=True)
+    assert await hass.config_entries.async_unload(entry.entry_id)  # the first half of a reload
+    assert set_temperature == []
+    assert coordinator.control_memory.drying_held and coordinator.control_memory.last_target == 24.5
+
+
+async def test_a_reload_mid_way_through_a_quick_heat_up_sends_nothing(hass: HomeAssistant) -> None:
+    entry, coordinator, set_temperature = await _boosting(hass)
+    coordinator.boosts["badezimmer"] = time.time() + 1800.0
+    coordinator._store_dirty = True
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert set_temperature == []  # neither the floor nor 30 °C again
+    assert entry.runtime_data.control_memory.last_target == 30.0
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"midea_allow_active_control": False},  # active control taken away
+        {"midea_allow_active_control": True, "midea_climate": "climate.other"},  # another unit
+    ],
+)
+async def test_an_options_change_that_leaves_the_unit_to_nobody_sets_it_down_to_its_floor(
+    hass: HomeAssistant, options: dict
+) -> None:
+    """Verifier of 0.7.3b (#R1, #R8): the let-go was dropped on every reload, also one whose next run does not go on
+    with the unit. Active control taken away mid-way through a quick heat-up, the unit stayed at 30 °C for good."""
+    entry, coordinator, set_temperature = await _boosting(hass)
+    coordinator.boosts["badezimmer"] = time.time() + 1800.0
+    coordinator._store_dirty = True
+    hass.config_entries.async_update_entry(entry, options={**entry.options, **options})
+    await hass.async_block_till_done()
+    assert [c.data["temperature"] for c in set_temperature if c.data["entity_id"] == "climate.midea"] == [17.0]
+
+
+async def test_a_reload_whose_setup_fails_sets_a_boosted_unit_down_to_its_floor(hass: HomeAssistant, monkeypatch) -> None:
+    """Verifier of 0.7.3b (#R1): a reload whose next run never starts leaves the unit to nobody, as a disable would."""
+    from homeassistant.exceptions import ConfigEntryNotReady
+
+    entry, coordinator, set_temperature = await _boosting(hass)
+
+    async def _fails(self) -> None:
+        raise ConfigEntryNotReady("gone")
+
+    monkeypatch.setattr(ThrifthermCoordinator, "async_config_entry_first_refresh", _fails)
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert [c.data["temperature"] for c in set_temperature] == [17.0]
+    monkeypatch.undo()
+
+
+async def test_a_unit_let_go_when_disabled_is_found_as_left_when_enabled_again(hass: HomeAssistant) -> None:
+    """Let go at 17 °C, the drying held that 17 when the entry ran again: the store keeps a drying no longer held."""
+    from homeassistant.config_entries import ConfigEntryDisabler
+
+    from custom_components.thriftherm.engines.heat_pump_control import ControlMemory
+
+    entry, coordinator, set_temperature = await _boosting(hass, target=24.5, drying=True)
+    assert await hass.config_entries.async_set_disabled_by(entry.entry_id, ConfigEntryDisabler.USER)
+    await hass.async_block_till_done()
+    assert [c.data["temperature"] for c in set_temperature] == [17.0]
+    stored = ControlMemory.from_storage((await coordinator._store.async_load())["control_memory"])
+    assert stored.last_target == 17.0 and not stored.drying_held  # a new run sends the drying's setpoint at once
+
+
+async def test_a_unit_somebody_set_meanwhile_is_left_as_it_is_when_the_control_lets_go(hass: HomeAssistant) -> None:
+    _, coordinator, set_temperature = await _boosting(hass)
+    hass.states.async_set("climate.midea", "heat", {**hass.states.get("climate.midea").attributes, "temperature": 26.0})
+    coordinator.set_control_mode("shadow")
+    await hass.async_block_till_done()
+    assert set_temperature == []
+
+
+async def test_a_unit_held_at_its_least_speed_is_left_as_it_is_when_the_control_lets_go(hass: HomeAssistant) -> None:
+    _, coordinator, set_temperature = await _boosting(hass, target=21.5)
+    coordinator.set_control_mode("shadow")
+    await hass.async_block_till_done()
+    assert set_temperature == []

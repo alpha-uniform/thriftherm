@@ -127,6 +127,19 @@ def test_ramp_limits_flow_increase():
     assert cmd.flow_setpoint == 40.0 and cmd.waiting == "ramp_limit"
 
 
+def test_neither_the_ramp_nor_the_lockout_hold_goes_below_a_minimum_raised_since():
+    """Review 2026-11-08 (#2): the minimum raised from 30 to 45 °C, the ramp from the old 30 sent 35."""
+    from custom_components.thriftherm.const import BOILER_REPORTS_HEATING_AFTER
+
+    params = replace(PARAMS, boiler_flow_min=45.0)
+    mem = replace(BoilerMemory(), last_flow=30.0, state="heat", state_since_ts=NOW - 600)
+    cmd, _ = decide(inp([rr(demand=1.0)], outdoor=-5.0, params=params), mem)
+    assert cmd.flow_setpoint >= 45.0
+    lockout = replace(inp([rr(demand=1.0)], outdoor=-5.0, params=params), reported_mode=BOILER_REPORTS_HEATING_AFTER)
+    cmd, _ = decide(lockout, mem)
+    assert cmd.flow_setpoint >= 45.0
+
+
 # --- learning ---------------------------------------------------------------------------------
 def test_small_spread_lowers_the_curve():
     cmd, mem, _ = feed(heating_memory(), [rr(demand=0.5)], flow=45.0, ret=42.0)

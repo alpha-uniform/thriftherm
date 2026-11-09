@@ -161,9 +161,11 @@ def test_window_open_or_thermostat_off_never_calls():
     assert state == "not_allowed" and mem == CallMemory()
 
 
-def test_without_a_temperature_the_demand_decides():
-    state, _ = step(rr(temp=None, demand=0.4), CallMemory())
-    assert state == "calling"
+def test_without_a_temperature_the_room_does_not_call():
+    # review 2026-11-08: the room's demand was to decide here, but without a temperature it has none
+    # (room.demand); a demand handed in anyway is no reason to call
+    state, mem = step(rr(temp=None, demand=0.4), CallMemory())
+    assert state == "idle" and mem == CallMemory()
     state, _ = step(rr(temp=None, demand=0.0), CallMemory())
     assert state == "idle"
 

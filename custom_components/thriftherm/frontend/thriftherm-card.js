@@ -44,11 +44,18 @@ const ORDINARY_REASONS = new Set(["hot_water_priority", "mode_off", "mode_boiler
   "cop_above_break_even", "heat_pump_cheaper", "cop_below_break_even", "room_below_target", "mode_away", "no_demand",
   "heat_pump_runs_through", "heat_pump_gas_cheaper", "heat_pump_plan_only"]);
 // only for a card that cannot reach the integration at all
-const RETRY_MS = 30000; // after a failed request for the wording
+const RETRY_MS = 30000; // after a failed request for the wording or the reasons
 const FALLBACK = {
   de: "Thriftherm ist nicht eingerichtet, oder seine Entitäten sind deaktiviert.",
   en: "Thriftherm is not set up, or its entities are disabled.",
 };
+// its entities there but its wording not to be had, a few tries in a row: Thriftherm did not load (review 2026-11-08)
+const NOT_LOADED = {
+  de: "Thriftherm ist nicht geladen. Warum, steht unter Einstellungen › System › Protokolle.",
+  en: "Thriftherm is not loaded. Settings › System › Logs says why.",
+};
+const NOT_LOADED_AFTER = 3; // failed requests for the wording, about a minute: a restart is over by then
+const viewerLanguage = (hass) => (hass.language?.toLowerCase().startsWith("de") ? "de" : "en");
 
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const icon = (name, cls = "") => `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
@@ -92,12 +99,14 @@ function discover(hass) {
       system[entry.translation_key] = entry.entity_id;
     }
   }
-  let complete = true;
+  const waiting = [];
   for (const [deviceId, ids] of byDevice) {
-    const target = ids.room_target && hass.states[ids.room_target];
-    // restored after a restart, before Thriftherm runs: no room key yet, look again with the next update
+    // its target disabled (left out of the registry list): no room to draw, and nothing to wait for (review 2026-11-08)
+    if (!ids.room_target) continue;
+    const target = hass.states[ids.room_target];
+    // restored after a restart, before Thriftherm runs: no room key yet, look again once the target changes
     if (!target || !target.attributes.room_key) {
-      complete = false;
+      waiting.push(ids.room_target);
       continue;
     }
     const device = hass.devices?.[deviceId];
@@ -108,7 +117,7 @@ function discover(hass) {
     for (const k of ROOM_KEYS) if (ids[k]) entities[k.replace(/^room_/, "")] = ids[k];
     rooms.push({ key, name, ids: entities });
   }
-  return { system, rooms, complete };
+  return { system, rooms, waiting };
 }
 
 function orderedRooms(rooms, config) {
@@ -156,11 +165,11 @@ class ThrifthermCard extends HTMLElement {
     if (!this._texts && !this._loading && !(this._failedAt > Date.now() - RETRY_MS)) {
       this._loading = true;
       loadTexts(hass)
-        .then((t) => { this._texts = t; this._failedAt = 0; })
-        .catch(() => { this._failedAt = Date.now(); })
+        .then((t) => { this._texts = t; this._failedAt = 0; this._failures = 0; })
+        .catch(() => { this._failedAt = Date.now(); this._failures = (this._failures || 0) + 1; })
         .finally(() => { this._loading = false; this._signature = ""; this._render(); });
     }
-    if (this._texts && this._texts.language !== (hass.language?.toLowerCase().startsWith("de") ? "de" : "en")) {
+    if (this._texts && this._texts.language !== viewerLanguage(hass)) {
       this._texts = null; // the person switched the language
       this.hass = hass;
       return;
@@ -244,28 +253,33 @@ class ThrifthermCard extends HTMLElement {
   _render() {
     if (!this._hass) return;
     if (this._failedAt && !this._texts) {
-      // with Thriftherm's entities there, a failed request is passing (a restart): wait for the next try
+      // with Thriftherm's entities there, a failed request is mostly passing (a restart): wait for the next tries,
+      // then say so instead of an empty gap on the dashboard
       const installed = Object.values(this._hass.entities || {}).some((e) => e.platform === DOMAIN);
-      if (!installed) {
-        const lang = this._hass.language?.toLowerCase().startsWith("de") ? "de" : "en";
-        this._paint(`<div class="empty">${esc(FALLBACK[lang])}</div>`);
-      }
+      if (!installed) this._paint(`<div class="empty">${esc(FALLBACK[viewerLanguage(this._hass)])}</div>`);
+      else if (this._failures >= NOT_LOADED_AFTER) this._paint(`<div class="empty">${esc(NOT_LOADED[viewerLanguage(this._hass)])}</div>`);
       return;
     }
     if (!this._texts) return;
-    if (this._entities !== this._hass.entities || this._devices !== this._hass.devices || !this._model?.complete) {
+    // a room waited for is looked for again when its target changes, not with every update: each look goes over
+    // every entity of the installation (review 2026-11-08)
+    const changed = this._model?.waiting.some((id, i) => this._hass.states[id] !== this._waitingStates[i]);
+    if (this._entities !== this._hass.entities || this._devices !== this._hass.devices || !this._model || changed) {
       this._entities = this._hass.entities;
       this._devices = this._hass.devices;
       this._model = discover(this._hass);
+      this._waitingStates = this._model.waiting.map((id) => this._hass.states[id]);
       const ids = this._watchedSystem();
       // a room's trend changes nearly every minute and shows in its info line only: watched below while the room is open
       for (const room of this._watchedRooms()) ids.push(...Object.entries(room.ids).filter(([k]) => k !== "trend").map(([, id]) => id));
       this._watched = ids;
     }
-    // a stepped number is shown as stepped until Home Assistant reports it (or reports something else)
+    // a stepped number is shown as stepped until Home Assistant reports it (or reports something else); not before it
+    // has gone out: the 60 s cycle writes a room target anew within the 600 ms after a tap (review 2026-11-08)
     for (const [id, v] of Object.entries(this._pending)) {
       const s = this._hass.states[id];
-      if (!s || (num(s.state) === v) || (this._pendingSeen[id] && this._pendingSeen[id] !== s.last_updated)) {
+      const sent = id in this._pendingSeen;
+      if (!s || (sent && (num(s.state) === v || this._pendingSeen[id] !== s.last_updated))) {
         this._dropPending(id);
       }
     }
@@ -277,7 +291,12 @@ class ThrifthermCard extends HTMLElement {
     ].join("|");
     if (signature === this._signature) return;
     if (this._editing()) {
-      this._deferred = true; // repainted when the field is left
+      // the field keeps its block, the rest follows: a dropdown closed with Escape keeps the focus and fires no
+      // change, and the rooms and a frost warning waited for a tap elsewhere (review 2026-11-08)
+      const live = this.shadowRoot.querySelector?.(".live");
+      if (live) live.innerHTML = this._liveBlocks();
+      this._signature = signature;
+      this._deferred = true; // the field's block is repainted when the field is left
       return;
     }
     this._signature = signature;
@@ -291,8 +310,13 @@ class ThrifthermCard extends HTMLElement {
   }
 
   _paintAll() {
+    return `<div class="live">${this._liveBlocks()}</div>${this._modeBlock()}`;
+  }
+
+  // all but the operating mode: what is repainted while its dropdown or the return field is in use
+  _liveBlocks() {
     const title = this._config.title ? `<div class="title">${esc(this._config.title)}</div>` : "";
-    return title + this._sourceBlock() + this._warnings() + this._roomsBlock() + this._modeBlock();
+    return title + this._sourceBlock() + this._warnings() + this._roomsBlock();
   }
 
   // the entities whose changes repaint the card
@@ -428,9 +452,10 @@ class ThrifthermCard extends HTMLElement {
     const safety = this._sys("safety_state");
     if (safety && safety.state !== "ok" && safety.state !== "unavailable" && safety.state !== "unknown") {
       const issues = [...new Set((safety.attributes.issues || []).map((issue) => {
-        const [code, detail] = String(issue).split(":");
-        const template = this._texts.safety_issues[code];
-        return template ? fill(template, { room: roomName(detail), code: detail }) : "";
+        // "code:detail" has wording of its own where the detail says more (a power sensor in another unit)
+        const [code, detail, ...rest] = String(issue).split(":");
+        const template = this._texts.safety_issues[`${code}:${detail}`] || this._texts.safety_issues[code];
+        return template ? fill(template, { room: roomName(detail), code: detail, unit: rest.join(":") }) : "";
       }).filter(Boolean))];
       const frost = (safety.attributes.frost_rooms || []).map(roomName);
       const parts = [...issues];
@@ -496,9 +521,22 @@ class ThrifthermCard extends HTMLElement {
       this._reasonAsked = stamp;
       this._hass.callWS({ type: `${DOMAIN}/decision_reasons`, language: this._hass.language })
         .then((r) => { this._reasonCache = { stamp, codes: r.codes, texts: r.texts }; this._signature = ""; this._render(); })
-        .catch(() => {});
+        .catch(() => {
+          // cut off (a reconnect) or refused: asked again after a while, not only once the reason changes (review 2026-11-08)
+          setTimeout(() => {
+            if (this._reasonAsked !== stamp) return;
+            this._reasonAsked = undefined;
+            this._signature = "";
+            this._render();
+          }, RETRY_MS);
+        });
     }
-    return { codes: [], texts: [] };
+    // the reasons before until the answer is there: a warning that stays does not blink (review 2026-11-08),
+    // and one the decision no longer has is gone at once, whether the answer is late or failed (second review 2026-11-08)
+    const live = new Set(decision.attributes.reason_codes || []);
+    const old = this._reasonCache || { codes: [], texts: [] };
+    const kept = old.codes.map((code, i) => [code, old.texts[i]]).filter(([code]) => live.has(code));
+    return { codes: kept.map(([code]) => code), texts: kept.map(([, text]) => text) };
   }
 
   _warning(kind, iconName, text, extra = "") {
@@ -706,11 +744,13 @@ class ThrifthermCard extends HTMLElement {
     const value = Math.min(max, Math.max(min, Math.round((base + direction * step) / step) * step));
     if (value === base) return;
     this._pending[entityId] = value;
-    this._pendingSeen[entityId] = s.last_updated;
+    delete this._pendingSeen[entityId]; // not sent yet
     clearTimeout(this._stepTimer);
     // a few taps in a row send one value
     this._stepTimer = setTimeout(() => {
       for (const [id, v] of Object.entries(this._pending)) {
+        if (id in this._pendingSeen) continue; // gone out already, waiting for its answer
+        this._pendingSeen[id] = this._hass.states[id]?.last_updated; // the state it was sent from
         const room = this._overrideRooms[id];
         const sent = room ? this._hass.callService(DOMAIN, "set_override", { room, temperature: v })
           : this._hass.callService("number", "set_value", { value: v }, { entity_id: id });
@@ -746,6 +786,7 @@ class ThrifthermCard extends HTMLElement {
     }
     if (this._deferred) {
       this._deferred = false;
+      this._signature = ""; // the rest is painted already, the field's block not
       setTimeout(() => this._render(), 0); // after the focus has moved on
     }
   }
@@ -769,8 +810,13 @@ class ThrifthermCardEditor extends HTMLElement {
   set hass(hass) {
     const first = !this._hass;
     this._hass = hass;
-    if (!this._texts) {
-      loadTexts(hass).then((t) => { this._texts = t; this._render(); }).catch(() => {});
+    // as the card: one request at a time, after a failure again only after a while (review 2026-11-08)
+    if (!this._texts && !this._loading && !(this._failedAt > Date.now() - RETRY_MS)) {
+      this._loading = true;
+      loadTexts(hass)
+        .then((t) => { this._texts = t; this._failedAt = 0; })
+        .catch(() => { this._failedAt = Date.now(); })
+        .finally(() => { this._loading = false; this._render(); });
     }
     if (first) this._render();
   }
@@ -779,8 +825,17 @@ class ThrifthermCardEditor extends HTMLElement {
     return this._hass ? orderedRooms(discover(this._hass).rooms, this._config) : [];
   }
 
+  // no wording yet; when it cannot be had, a line that says so instead of an empty editor
+  _waiting() {
+    if (this._texts) return false;
+    if (this._hass && this._failedAt) {
+      this.shadowRoot.innerHTML = `<style>${EDITOR_STYLE}</style><div class="field">${esc(NOT_LOADED[viewerLanguage(this._hass)])}</div>`;
+    }
+    return true;
+  }
+
   _render() {
-    if (!this._hass || !this._texts) return;
+    if (!this._hass || this._waiting()) return;
     const t = (key) => this._texts.card[key] ?? key;
     const hidden = new Set(this._config.hidden_rooms || []);
     const rooms = this._rooms();
@@ -989,7 +1044,7 @@ class ThrifthermRoomCard extends ThrifthermCard {
 
 class ThrifthermRoomCardEditor extends ThrifthermCardEditor {
   _render() {
-    if (!this._hass || !this._texts) return;
+    if (!this._hass || this._waiting()) return;
     const t = (key) => this._texts.card[key] ?? key;
     const rooms = this._rooms();
     const options = rooms.map((r) =>

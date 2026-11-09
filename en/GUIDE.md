@@ -69,13 +69,13 @@ If anyone but Thriftherm changes a setpoint, that is a change by hand: in Home A
 - **The knob on a valve behind Better Thermostat:** whether a turn counts is up to its *Child lock* switch there. With it on, the turn does not count. With it off, the number the valve shows after the turn becomes the room's target. Because of Better Thermostat's correction that may be another value than you think ([example](HOW_IT_WORKS.md#turning-the-knob-of-a-valve-behind-a-room-thermostat)).
 - **No change by hand** are a command the heat pump did not carry out (it is sent again), a thermostat that rounds to whole degrees, and a thermostat that somebody merely switches off.
 
-While somebody cools, dries or ventilates with the heat pump, Thriftherm stays out for as long as that mode is on. A boiler through entities (section 5) has no change by hand: while the control is active the number and the switch are its own; switch to *Plan only* to set them yourself.
+While somebody cools, dries, ventilates or runs the heat pump in any mode other than heating or off (such as *Auto* or *Heat/Cool*), Thriftherm stays out for as long as that mode is on. A boiler through entities (section 5) has no change by hand: while the control is active the number and the switch are its own; switch to *Plan only* to set them yourself.
 
 Two protections apply on top, always:
 
 | Protection | Default | Behaviour |
 |---|---|---|
-| Frost protection | 7 °C | If a room falls below it, the boiler heats immediately – also in summer mode – until the room is 1 degree above. |
+| Frost protection | 7 °C | If a room falls below it, the boiler heats immediately – also in summer mode – until the room is 1 degree above. In a heat pump room without central heating the heat pump does that; with central heating it steps in if the room is still below after 30 minutes ([section 7](#7-heat-pump-optional)). |
 | Window open | 90 s grace | Heating in that room pauses while a window contact is open. A contact already open when Thriftherm starts counts at once. |
 
 Comfort and setback temperatures are number entities per room (*Comfort temperature*, *Setback temperature*); you can change them on the dashboard. The setback temperature can never be higher than comfort: turn comfort below it, and the setback follows. The room options show the values in force; if you change either of them there, both values from the form apply.
@@ -109,7 +109,7 @@ Thriftherm starts early enough for the room to be warm when a comfort block begi
 | `thriftherm.set_away` | `return_time` or `clear_return_time` (both optional) | away mode, with pre-heating for the return or with no end |
 | `thriftherm.clear_away` | – | back to Auto |
 | `thriftherm.boost` | `room`, `duration_min` (default 45) | quick heat-up of one room |
-| `thriftherm.reset_learning` | `scope` (`boiler`, `heat_pump`, `rooms`), `rooms` | forget learned values, see section 6 |
+| `thriftherm.reset_learning` | `scope` (`boiler`, `heat_pump`, `rooms`), `rooms` | forget learned values, see section 6; administrators only |
 
 `room` is the room key from the options (for example `bathroom`).
 
@@ -129,7 +129,7 @@ A boiler without eBUS can be controlled, as a preview, through a number entity (
 - **Calling the boiler:** a room calls the boiler when it is noticeably below target, until it is almost there; not in the last half hour of its comfort period, unless the boiler helps the heat pump or the room has a *Longest preheat* (then a new call begins up to 5 minutes before the end). The attribute *Boiler call* on the room's *Heat demand* sensor shows the state ([thresholds](HOW_IT_WORKS.md#when-a-room-calls-the-boiler)).
 - **Heating along:** while the boiler runs anyway, other rooms heat along (reason *Heating along* / *Pre-heating early*). That means longer burner runs and fewer starts ([details](HOW_IT_WORKS.md#heating-along)).
 - **Heating is blocked** (`disablehc`) when no room needs heat. Hot water is not touched: the hot water setpoint always goes out as "no value", so the boiler keeps following its own knob. The one exception is yours to choose: with *Keep hot water ready* switched off in the boiler options, the boiler no longer heats for hot water without a tap open (the hourly keep-warm of a combi boiler). Leave it on with a hot water cylinder.
-- **Thermostat off or silent:** a thermostat switched off by hand does not call the boiler; its valve is shut. One that is merely unavailable still counts, because its valve keeps regulating on its own. A radiator thermostat silent for over two and a half hours does not call the boiler and takes no new setpoints; a repair entry appears. With Better Thermostat the real thermostat behind it is watched. If Thriftherm takes a healthy thermostat for silent, enable its *Last seen* entity in Zigbee2MQTT; with ZHA there is nothing to do ([why](HOW_IT_WORKS.md#outages-and-resending)).
+- **Thermostat off or silent:** a thermostat switched off by hand does not call the boiler; its valve is shut. One that is unavailable for a short while still counts, because its valve keeps regulating on its own. A radiator thermostat counts as silent when it has not answered a setpoint within half an hour (behind Better Thermostat: until a valve behind it has reported), when it has been unavailable for half an hour, or after six hours without any report. It then does not call the boiler and takes no new setpoints; a repair entry appears. With Better Thermostat the real thermostat behind it is watched. If Thriftherm takes a healthy thermostat for silent, enable its *Last seen* entity in Zigbee2MQTT; with ZHA there is nothing to do ([why](HOW_IT_WORKS.md#outages-and-resending)).
 - **Outages:** after a restart Thriftherm waits up to five minutes for the room sensors. If the eBUS signal stays gone for two minutes, Thriftherm stops sending. If Home Assistant stops, the boiler is back on its knob after 9–16 minutes. The knob always stays the upper limit, so set it to the highest flow temperature you want to allow ([setup guide, step 6](SETUP.md#6-at-the-boiler)).
 - **Hot water:** Thriftherm recognises by itself when the boiler makes hot water (*Boiler hot water active*), and learning pauses for an hour then ([how](HOW_IT_WORKS.md#hot-water-detection)).
 - **Read requests only:** to keep flow and return fresh, Thriftherm has ebusd read them more often. Nothing is written to the boiler for that ([details](HOW_IT_WORKS.md#fresh-readings)).
@@ -212,7 +212,7 @@ The sensor *Boiler burner share* shows the share of the last hour the burner ran
 
 After a change to the installation old values no longer fit.
 
-- **By hand:** Options → *Reset learning*, tick the areas (and rooms), or call `thriftherm.reset_learning`.
+- **By hand:** Options → *Reset learning*, tick the areas (and rooms), or call `thriftherm.reset_learning` (as an administrator).
 - **Automatically:** when you change a setting a learned area depends on, only that area is forgotten:
 
 | Change | Forgotten |
@@ -232,6 +232,8 @@ It has been tried on a Midea PortaSplit, icing and defrosting included; other un
 - **Location and ducts:** without ducts the warm air stays in the room the unit is in. Configure the installation room and the duct factor (1.0 = no ducts); rooms it cannot reach get a repair notice. The duct factor corrects the airflow, not the heat: what the ducts give off on the way stays in the home.
 - **Locked out** is the heat pump below its minimum outdoor temperature (default −10 °C), for icing or frequent defrosts, when somebody cools with it, and when its settled COP stays below the *Break-even COP* for a while, so that it heats dearer than the central heating. How long the lockouts for icing and inefficiency last is set with *Lockout after icing / inefficiency* (two hours by default). In the mode *Heat pump only*, and while a boiler fault holds the boiler back, there is no lockout for inefficiency ([lockouts](HOW_IT_WORKS.md#lockouts)).
 - **Cooling and heating never overlap:** while it cools, the rooms it serves keep their radiators at the setback temperature and call no boiler heat. Frost protection still applies.
+- **Frost protection:** without central heating the heat pump holds the away temperature in away mode and the frost protection temperature in summer mode, and heats a room below the frost limit in every mode, window open and frost outside included, until it is 1 degree above. With a boiler or district heating it is the reserve: a room of its own still below the limit after 30 minutes is heated by it the same way, even if that is dearer. Icing, error codes and the safety state *Fallback* still stop it, and in *Plan only* nothing is sent.
+- **Letting go:** when its control goes to *Plan only* or *Off*, or Thriftherm is disabled or deleted, a heat pump left at a quick heat-up's 30 °C or a drying's setpoint is set to its lowest setpoint and rests there. One at its least power, or set by somebody meanwhile, stays as it is.
 - **Quick heat-up** (button per room or `thriftherm.boost`) runs it at full power for a limited time.
 - **Fan:** Thriftherm sets it only on a start, for a drying or a quick heat-up, and back afterwards, to the *Fan stage in normal operation* from the fine tuning (default *Auto*). A higher stage carries more heat into the rooms but is louder. A newly chosen stage reaches the heat pump also in the middle of a run, if it still has the old one. A stage you choose by hand stays. From heating it never goes straight to off: the fan runs alone for 15 minutes first (parameter, 0 = off at once). A mode set by hand during that time ends the run-on.
 
@@ -267,15 +269,17 @@ When it starts and ends: [bathroom drying](HOW_IT_WORKS.md#bathroom-drying).
 |---|---|
 | *Room*: no heating window configured | neither schedule helper nor time range – the room stays at setback. Select a schedule in the room options. |
 | *Room*: schedule helper missing | the selected schedule was deleted. Recreate it or pick another. |
-| *Room*: radiator thermostat not responding | a valve has not reported for two and a half hours although it was sent commands. Usually the radio link or the battery; the room does not call the boiler meanwhile. Check the battery, pair the valve again or switch it off and on. |
+| *Room*: radiator thermostat not responding | a valve has not answered a setpoint for half an hour, is unavailable for half an hour, or has not reported for six hours. Usually the radio link or the battery; the room does not call the boiler meanwhile. Check the battery, pair the valve again or switch it off and on. |
 | Boiler flow above 100 °C | have the boiler checked by a heating engineer ([details](TROUBLESHOOTING.md#repair-notice-boiler-flow-above-100-c)). |
 | No data from the boiler | ebusd delivers nothing usable; nothing is sent, the boiler runs on its knob. Check the ebusd app and adapter. |
 | Heat pump airflow not calibrated | no airflow curve, so no COP; the data sheet is used meanwhile, or the *COP values of this model* if picked. |
+| Boiler heating may still be blocked | Thriftherm stopped while the boiler's number or switch could not be reached (boiler through entities). It hands the boiler back as soon as both are back; until then switch the heating on by hand. |
+| Home Assistant no longer shows temperatures in °C | Thriftherm works in °C only and sends no setpoints (a running heat pump is stopped, a boiler through entities handed back) until Home Assistant is back on the metric unit system (*Settings → System → General*). |
 | Heat pump assigned to rooms it cannot reach | no ducts configured, so the warm air stays in its own room. Fit ducts and set the duct factor, or untick those rooms. |
 
 Some problems show up without a notice: a room sensor quiet for six hours no longer counts, the valve's own temperature stands in (behind Better Thermostat the valve itself, not Better Thermostat, which repeats the room sensor), and *Safety state* goes to *Degraded*.
 
-Settings → Devices & services → Thriftherm → ⋮ → *Download diagnostics* gives a file with configuration, current state and learned values for bug reports. Nothing is removed from it, so look through it before posting it publicly.
+Settings → Devices & services → Thriftherm → ⋮ → *Download diagnostics* gives a file with configuration, current state and learned values for bug reports. Only the people whose arrival ends away mode are left out, so look through it before posting it publicly.
 
 ## 10. Questions
 

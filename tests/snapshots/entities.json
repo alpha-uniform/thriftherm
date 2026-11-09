@@ -1045,7 +1045,8 @@
      "auto",
      "heating_idle",
      "heating_warming_up",
-     "heating_stable"
+     "heating_stable",
+     "defrosting"
     ]
    },
    "capabilities": {
@@ -1057,7 +1058,8 @@
      "auto",
      "heating_idle",
      "heating_warming_up",
-     "heating_stable"
+     "heating_stable",
+     "defrosting"
     ]
    },
    "device": {
@@ -2829,7 +2831,8 @@
      "auto",
      "heating_idle",
      "heating_warming_up",
-     "heating_stable"
+     "heating_stable",
+     "defrosting"
     ]
    },
    "capabilities": {
@@ -2841,7 +2844,8 @@
      "auto",
      "heating_idle",
      "heating_warming_up",
-     "heating_stable"
+     "heating_stable",
+     "defrosting"
     ]
    },
    "device": {
@@ -4619,7 +4623,8 @@
      "auto",
      "heating_idle",
      "heating_warming_up",
-     "heating_stable"
+     "heating_stable",
+     "defrosting"
     ]
    },
    "capabilities": {
@@ -4631,7 +4636,8 @@
      "auto",
      "heating_idle",
      "heating_warming_up",
-     "heating_stable"
+     "heating_stable",
+     "defrosting"
     ]
    },
    "device": {
@@ -7189,7 +7195,8 @@
      "auto",
      "heating_idle",
      "heating_warming_up",
-     "heating_stable"
+     "heating_stable",
+     "defrosting"
     ]
    },
    "capabilities": {
@@ -7201,7 +7208,8 @@
      "auto",
      "heating_idle",
      "heating_warming_up",
-     "heating_stable"
+     "heating_stable",
+     "defrosting"
     ]
    },
    "device": {

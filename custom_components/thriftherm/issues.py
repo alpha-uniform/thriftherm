@@ -27,6 +27,10 @@ BOILER_UNAVAILABLE_GRACE_S = 600.0
 
 SCHEDULE_MISSING_GRACE_S = 120.0  # the schedule integration may load after us
 
+# The last hand-back of a boiler addressed through entities did not go through: it outlives the
+# entry that raised it (disabled or deleted), so no cycle keeps it in step (review 2026-11-08).
+HAND_BACK_ISSUE = _ISSUE_PREFIX + "boiler_not_handed_back"
+
 
 def _sustained(coordinator: Any, key: str, active: bool, grace_s: float, pending: set[str] | None = None) -> bool:
     """True once a condition has held for `grace_s`; restarting the clock when it clears.
@@ -68,6 +72,10 @@ def detect(
             }
         elif not missing and not room.schedule_entity and not room.schedule_weekday and not room.schedule_weekend:
             found[f"no_schedule_{room.key}"] = {"translation_key": "no_schedule", "room": room.name}
+
+    safety = data.get("safety")
+    if safety is not None and "temperature_unit_not_celsius" in safety.issues:
+        found["temperature_unit_not_celsius"] = {"translation_key": "temperature_unit_not_celsius"}
 
     rooms = data.get("rooms") or {}
     for room in coordinator.builder.rooms:
@@ -115,8 +123,27 @@ def _ours(hass: HomeAssistant) -> set[str]:
     return {
         issue_id
         for (domain, issue_id) in ir.async_get(hass).issues
-        if domain == DOMAIN and issue_id.startswith(_ISSUE_PREFIX)
+        if domain == DOMAIN and issue_id.startswith(_ISSUE_PREFIX) and issue_id != HAND_BACK_ISSUE
     }
+
+
+def async_raise_hand_back(hass: HomeAssistant, number: str, switch: str) -> None:
+    """The heating may stay blocked with nothing of ours left to lift it: say which entities to set by hand."""
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        HAND_BACK_ISSUE,
+        is_fixable=False,
+        is_persistent=True,  # a restart before anybody read it must not hide it
+        severity=ir.IssueSeverity.ERROR,
+        translation_key="boiler_not_handed_back",
+        translation_placeholders={"number": number, "switch": switch},
+    )
+
+
+def async_clear_hand_back(hass: HomeAssistant) -> None:
+    """The boiler's entities took a command of ours again: what the issue asked for is done."""
+    ir.async_delete_issue(hass, DOMAIN, HAND_BACK_ISSUE)
 
 
 def async_clear(hass: HomeAssistant) -> None:

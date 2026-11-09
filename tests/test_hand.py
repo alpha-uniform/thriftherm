@@ -19,7 +19,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, MockPl
 
 from custom_components.thriftherm import persistence
 from custom_components.thriftherm.const import CONF_ROOMS, DOMAIN
-from custom_components.thriftherm.engines import hand
+from custom_components.thriftherm.engines import hand, room_control
 from custom_components.thriftherm.engines.heat_pump_control import (
     NOT_CARRIED_OUT,
     SETTLING,
@@ -512,6 +512,90 @@ async def test_a_thermostat_in_whole_degrees_is_not_overridden_by_its_own_answer
         await _cycle(hass, coordinator, freezer)
     assert coordinator.overrides == {} and len(bath.calls) == sent  # no override, and nothing sent against it
     assert coordinator.data["room_commands"]["badezimmer"].reason == "in_sync"
+
+
+async def test_a_thermostat_in_whole_degrees_already_showing_the_rounded_value_is_not_written_for_good(hass, freezer) -> None:
+    # review 2026-11-08: at 22 and sent 21.5 it shows 22 again, no state changes, and 21.5 went out every five minutes
+    coordinator, bath, _ = await _setup(hass, freezer)
+    bath.whole_degrees = True
+    coordinator.room_temps["badezimmer"] = {"comfort": 22.0}
+    await _cycle(hass, coordinator, freezer, 600)
+    await _cycle(hass, coordinator, freezer)
+    assert bath.target_temperature == 22.0 and coordinator.data["room_commands"]["badezimmer"].reason == "in_sync"
+    sent = len(bath.calls)
+    coordinator.room_temps["badezimmer"] = {"comfort": 21.5}
+    for _ in range(30):
+        await _cycle(hass, coordinator, freezer)
+    assert bath.calls[sent:] == [("set_temperature", 21.5)] * 2  # the setpoint and one retry
+    assert coordinator.overrides == {} and coordinator.data["room_commands"]["badezimmer"].reason == "in_sync"
+
+
+async def test_a_thermostat_that_only_keeps_its_value_does_not_count_as_silent(hass: HomeAssistant, freezer) -> None:
+    # review 2026-11-08: a valve reporting nothing new leaves no trace in Home Assistant; after 2.5 hours it
+    # counted as silent, 18 times in a week, and its room was kept from heating
+    coordinator, bath, _ = await _setup(hass, freezer)
+    await _cycle(hass, coordinator, freezer, 600)
+    for _ in range(30):  # five hours with the setpoint in sync: nothing to send, nothing to report
+        await _cycle(hass, coordinator, freezer, 600)
+        _set_states(hass)  # the sensors stay fresh
+    bath_result = coordinator.data["rooms"]["badezimmer"]
+    assert "thermostat_silent" not in bath_result.issues and bath_result.heating_allowed
+
+
+async def test_a_thermostat_that_does_not_answer_a_setpoint_counts_as_silent(hass: HomeAssistant, freezer) -> None:
+    # GUIDE §9: silent is a thermostat that did not answer although it was sent commands
+    coordinator, bath, _ = await _setup(hass, freezer)
+    await _cycle(hass, coordinator, freezer, 600)
+
+    async def lost(**kwargs) -> None:  # the valve dropped out of the network: the command goes nowhere
+        bath.calls.append(("set_temperature", kwargs["temperature"]))
+
+    bath.async_set_temperature = lost
+    coordinator.room_temps["badezimmer"] = {"comfort": 23.0}
+    for _ in range(25):
+        await _cycle(hass, coordinator, freezer)
+    assert "thermostat_silent" not in coordinator.data["rooms"]["badezimmer"].issues  # 25 minutes: it may still answer
+    for _ in range(10):
+        await _cycle(hass, coordinator, freezer)
+    bath_result = coordinator.data["rooms"]["badezimmer"]
+    assert "thermostat_silent" in bath_result.issues and not bath_result.heating_allowed
+
+
+async def test_a_valve_behind_better_thermostat_that_does_not_answer_a_setpoint_counts_as_silent(hass, freezer, monkeypatch) -> None:
+    # review 2026-11-08 (#R0/#R13/#R20): Better Thermostat takes a setpoint at once, whether its valve is there or
+    # not. Its answer cleared the setpoint, and a valve that had dropped out was found only after 6 hours.
+    coordinator, bath, _ = await _setup(hass, freezer)
+    behind = ("climate.bath_trv", "sensor.bath_trv_battery")
+    monkeypatch.setattr(coordinator.builder, "valves_behind", lambda entity: behind if entity == "climate.bath" else ())
+    freezer.tick(timedelta(seconds=5))
+    hass.states.async_set("climate.bath_trv", "heat", {"temperature": 21.0})  # the valve, heard after the first setpoint
+    hass.states.async_set("sensor.bath_trv_battery", "90")
+    await _cycle(hass, coordinator, freezer, 600)
+    assert coordinator.data["room_commands"]["badezimmer"].reason == "in_sync"
+    coordinator.room_temps["badezimmer"] = {"comfort": 23.0}
+    await _cycle(hass, coordinator, freezer)
+    assert bath.target_temperature == 23.0  # Better Thermostat took it, its valve heard nothing
+    for _ in range(25):
+        await _cycle(hass, coordinator, freezer)
+        _set_states(hass)  # the room sensors stay fresh
+    assert "thermostat_silent" not in coordinator.data["rooms"]["badezimmer"].issues  # 26 minutes: it may still answer
+    assert ("set_temperature", 23.0) in bath.calls and bath.calls.count(("set_temperature", 23.0)) == 1  # no resend
+    for _ in range(10):
+        await _cycle(hass, coordinator, freezer)
+        _set_states(hass)
+    bath_result = coordinator.data["rooms"]["badezimmer"]
+    assert "thermostat_silent" in bath_result.issues and not bath_result.heating_allowed
+
+    hass.states.async_set("sensor.bath_trv_battery", "89")  # the valve reports again
+    await _cycle(hass, coordinator, freezer)
+    await _cycle(hass, coordinator, freezer)
+    bath_result = coordinator.data["rooms"]["badezimmer"]
+    assert "thermostat_silent" not in bath_result.issues and bath_result.heating_allowed
+    assert room_control.pending_since(coordinator.room_ctrl_memory["badezimmer"], wrapped=True) is None
+    for _ in range(12):  # heard: a valve that is quiet afterwards is not silent for a setpoint it answered
+        await _cycle(hass, coordinator, freezer, 600)
+        _set_states(hass)
+    assert "thermostat_silent" not in coordinator.data["rooms"]["badezimmer"].issues
 
 
 async def _cycle_with_a_person_setting(hass, coordinator, freezer, entity, target: float, user_id: str) -> None:

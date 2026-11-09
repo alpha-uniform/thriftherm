@@ -301,3 +301,16 @@ def test_a_defrost_is_counted_once_however_long_it_lasts():
     hist = tuple(HeatPumpSample(t - dt, 89, 400, 1.0, -15.0, 21.5, 21.0) for dt in (60.0, 0.0))
     res, _ = tracker.defrost(snapshot({}, heat_pump=_state(hist)), "heating_stable", PARAMS, t)
     assert tracker.defrost_cycle_starts == [NOW, t] and res.cycles_last_90min == 2
+
+
+def test_a_learning_run_that_confirms_a_cop_just_below_break_even_runs_no_timer_for_dear_heat():
+    """Review 2026-11-08: a learning run starts knowing its COP may be marginal; confirmed, it ended in a 2 h lockout."""
+    tracker = HeatPumpTracker()
+    for minute in range(41):
+        tracker.track_efficiency(2.6, 2.89, PARAMS, NOW + minute * 60, learning=True)
+    assert (tracker.inefficient_since, tracker.inefficient_span) == (None, None)
+    hist = _hist([(60, 30, 400, 0.0, 44, 20, 38), (0, 30, 400, 0.0, 44, 20, 38)])
+    res, _ = tracker.defrost(snapshot({}, heat_pump=_state(hist), mode="auto"), "heating_stable", PARAMS, NOW + 40 * 60)
+    assert res.block_reason is None
+    tracker.track_efficiency(2.6, 2.89, PARAMS, NOW + 41 * 60)  # the run goes on for the rooms after it: the timer runs
+    assert tracker.inefficient_since == NOW + 41 * 60

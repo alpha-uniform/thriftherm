@@ -69,13 +69,13 @@ Für jeden Raum gilt die erste zutreffende Regel:
 - **Drehknopf am Ventil hinter Better Thermostat:** Ob ein Dreh zählt, entscheidet dort der Schalter *Kindersicherung*. Ist er an, zählt der Dreh nicht. Ist er aus, wird die Zahl, die das Ventil nach dem Dreh zeigt, zum Sollwert des Raums. Wegen der Korrektur von Better Thermostat kann das ein anderer Wert sein, als du denkst ([Beispiel](FUNKTIONSWEISE.md#dreh-am-ventil-hinter-einem-raumthermostat)).
 - **Keine Änderung von Hand** sind ein Befehl, den die Wärmepumpe nicht ausgeführt hat (er wird wiederholt), ein Thermostat, das auf ganze Grad rundet, und ein Thermostat, das jemand nur ausschaltet.
 
-Kühlt, entfeuchtet oder lüftet jemand mit der Wärmepumpe, bleibt Thriftherm draußen, solange dieser Modus an ist. Eine Therme über Entitäten (Abschnitt 5) hat keine Handänderung: Solange die Steuerung aktiv ist, gehören Zahl und Schalter ihr; wer selbst stellen will, schaltet auf *Nur planen*.
+Kühlt, entfeuchtet oder lüftet jemand mit der Wärmepumpe oder stellt einen anderen Modus als Heizen oder Aus ein (etwa *Auto* oder *Heizen/Kühlen*), bleibt Thriftherm draußen, solange dieser Modus an ist. Eine Therme über Entitäten (Abschnitt 5) hat keine Handänderung: Solange die Steuerung aktiv ist, gehören Zahl und Schalter ihr; wer selbst stellen will, schaltet auf *Nur planen*.
 
 Zwei Schutzregeln gelten immer zusätzlich:
 
 | Schutz | Standard | Verhalten |
 |---|---|---|
-| Frostschutz | 7 °C | Fällt ein Raum darunter, heizt die Therme sofort – auch im Sommerbetrieb – bis der Raum 1 Grad darüber liegt. |
+| Frostschutz | 7 °C | Fällt ein Raum darunter, heizt die Therme sofort – auch im Sommerbetrieb – bis der Raum 1 Grad darüber liegt. In einem Wärmepumpen-Raum ohne zentrale Heizung tut das die Wärmepumpe; mit zentraler Heizung springt sie ein, wenn der Raum nach 30 Minuten noch darunter liegt ([Abschnitt 7](#7-wärmepumpe-optional)). |
 | Fenster offen | 90 s Karenz | Solange ein Fensterkontakt offen ist, pausiert das Heizen in diesem Raum. Ein Kontakt, der beim Start von Thriftherm schon offen ist, zählt sofort. |
 
 Komfort- und Absenktemperatur sind Zahlen-Entitäten je Raum (*Komforttemperatur*, *Absenktemperatur*) und lassen sich im Dashboard ändern. Die Absenktemperatur kann nie über der Komforttemperatur liegen: Drehst du Komfort darunter, geht die Absenkung mit. Die Raum-Optionen zeigen die Werte, die gerade gelten; änderst du dort eine der beiden, gelten beide Werte aus dem Formular.
@@ -109,7 +109,7 @@ Thriftherm beginnt so früh, dass der Raum zu Beginn eines Komfort-Blocks warm i
 | `thriftherm.set_away` | `return_time` oder `clear_return_time` (beide optional) | Abwesenheit, mit Vorheizen zur Rückkehr oder ohne Ende |
 | `thriftherm.clear_away` | – | zurück auf Automatik |
 | `thriftherm.boost` | `room`, `duration_min` (Standard 45) | einen Raum schnell aufheizen |
-| `thriftherm.reset_learning` | `scope` (`boiler`, `heat_pump`, `rooms`), `rooms` | Gelerntes vergessen, siehe Abschnitt 6 |
+| `thriftherm.reset_learning` | `scope` (`boiler`, `heat_pump`, `rooms`), `rooms` | Gelerntes vergessen, siehe Abschnitt 6; nur für Administratoren |
 
 `room` ist der Raum-Schlüssel aus den Optionen (z. B. `badezimmer`).
 
@@ -129,7 +129,7 @@ Eine Therme ohne eBUS lässt sich als Vorschau über eine Zahl-Entität (Vorlauf
 - **Anforderung:** Ein Raum fordert die Therme an, wenn er spürbar unter Soll liegt, bis er fast dort ist; in der letzten halben Stunde seiner Komfortzeit nicht mehr, außer die Therme hilft der Wärmepumpe oder der Raum hat ein *Längstes Vorheizen* (dann beginnt eine neue Anforderung bis 5 Minuten vor dem Ende). Den Zustand zeigt das Attribut *Anforderung an die Therme* am Sensor *Heizbedarf* des Raums ([Schwellen](FUNKTIONSWEISE.md#wann-ein-raum-die-therme-anfordert)).
 - **Mitheizen:** Läuft die Therme ohnehin, heizen andere Räume mit (Grund *Heizt mit* bzw. *Heizt früher vor*). Das gibt längere Brennerläufe und weniger Starts ([Einzelheiten](FUNKTIONSWEISE.md#mitheizen)).
 - **Heizbetrieb gesperrt** (`disablehc`), wenn kein Raum Wärme braucht. Warmwasser wird nicht angefasst: Der Warmwasser-Sollwert geht immer als „kein Wert“ hinaus, die Therme folgt weiter ihrem Drehknopf. Die einzige Ausnahme wählst du selbst: Ist *Warmwasser bereithalten* in den Thermen-Optionen aus, heizt die Therme nicht mehr für Warmwasser, solange kein Hahn offen ist (das stündliche Warmhalten einer Kombitherme). Mit Warmwasserspeicher eingeschaltet lassen.
-- **Thermostat aus oder stumm:** Ein von Hand ausgeschaltetes Thermostat fordert keine Therme an, sein Ventil ist zu. Ein nur nicht erreichbares zählt weiter, denn sein Ventil regelt selbst. Ein Heizkörperthermostat, das über zweieinhalb Stunden schweigt, fordert keine Therme an und nimmt keine neuen Sollwerte an; dazu erscheint eine Reparaturmeldung. Bei Better Thermostat wird das echte Thermostat dahinter überwacht. Hält Thriftherm ein gesundes Thermostat für stumm, in Zigbee2MQTT dessen Entität *Last seen* einschalten; mit ZHA ist nichts zu tun ([warum](FUNKTIONSWEISE.md#ausfälle-und-wiederholung)).
+- **Thermostat aus oder stumm:** Ein von Hand ausgeschaltetes Thermostat fordert keine Therme an, sein Ventil ist zu. Ein kurz nicht erreichbares zählt weiter, denn sein Ventil regelt selbst. Als stumm gilt ein Heizkörperthermostat, wenn es einen Sollwert eine halbe Stunde lang nicht beantwortet (hinter Better Thermostat: bis sich ein Ventil dahinter gemeldet hat), wenn es eine halbe Stunde lang nicht verfügbar ist oder wenn es sich sechs Stunden lang gar nicht meldet. Dann fordert es keine Therme an und nimmt keine neuen Sollwerte an; dazu erscheint eine Reparaturmeldung. Bei Better Thermostat wird das echte Thermostat dahinter überwacht. Hält Thriftherm ein gesundes Thermostat für stumm, in Zigbee2MQTT dessen Entität *Last seen* einschalten; mit ZHA ist nichts zu tun ([warum](FUNKTIONSWEISE.md#ausfälle-und-wiederholung)).
 - **Ausfälle:** Nach einem Neustart wartet Thriftherm bis zu fünf Minuten auf die Raumfühler. Bleibt das eBUS-Signal zwei Minuten weg, sendet Thriftherm nichts mehr. Fällt Home Assistant aus, läuft die Therme nach 9–16 Minuten wieder über ihren Drehknopf. Der Knopf bleibt immer die Obergrenze; stell ihn deshalb auf die höchste Vorlauftemperatur, die du zulassen willst ([Einrichtungsanleitung, Schritt 6](EINRICHTUNG.md#6-an-der-therme)).
 - **Warmwasser:** Thriftherm erkennt selbst, wenn die Therme Warmwasser macht (*Therme Warmwasser aktiv*), und pausiert das Lernen dann eine Stunde ([woran](FUNKTIONSWEISE.md#warmwasser-erkennung)).
 - **Nur Leseanfragen:** Damit Vorlauf und Rücklauf frisch sind, lässt Thriftherm ebusd sie öfter lesen. An die Therme wird dabei nichts geschrieben ([Einzelheiten](FUNKTIONSWEISE.md#frische-messwerte)).
@@ -212,7 +212,7 @@ Der Sensor *Therme Brenneranteil* zeigt, welchen Anteil der letzten Stunde der B
 
 Nach einer Änderung an der Anlage passen alte Werte nicht mehr.
 
-- **Von Hand:** Optionen → *Lernen zurücksetzen*, Bereiche (und Räume) ankreuzen, oder Dienst `thriftherm.reset_learning`.
+- **Von Hand:** Optionen → *Lernen zurücksetzen*, Bereiche (und Räume) ankreuzen, oder Dienst `thriftherm.reset_learning` (als Administrator).
 - **Automatisch:** Ändert sich eine Einstellung, von der ein Bereich abhängt, wird nur dieser Bereich vergessen:
 
 | Änderung | Vergessen wird |
@@ -232,6 +232,8 @@ Erprobt ist sie an einer Midea PortaSplit, auch mit Vereisung und Abtauen; ander
 - **Aufstellort und Schläuche:** Ohne Schläuche bleibt die warme Luft im Aufstellraum. Aufstellraum und Schlauchfaktor (1,0 = keine Schläuche) eintragen; nicht erreichbare Räume erzeugen eine Reparaturmeldung. Der Schlauchfaktor korrigiert die Luftmenge, nicht die Wärme: Was die Schläuche unterwegs abgeben, bleibt in der Wohnung.
 - **Gesperrt** ist die Wärmepumpe unter ihrer Mindest-Außentemperatur (Standard −10 °C), bei Vereisung oder häufigem Abtauen, wenn jemand mit ihr kühlt, und wenn ihr eingeschwungener COP länger unter dem *Break-even-COP* liegt, sie also teurer heizt als die Heizung. Wie lange die Sperren wegen Vereisung und Ineffizienz dauern, stellt *Sperre nach Vereisung / Ineffizienz* ein (Standard zwei Stunden). Im Modus *Nur Wärmepumpe* und solange eine Störung die Therme zurückhält, gibt es die Sperre wegen Ineffizienz nicht ([Sperren](FUNKTIONSWEISE.md#sperren)).
 - **Kühlen und Heizen überschneiden sich nie:** Solange sie kühlt, bleiben die Heizkörper der Räume, die sie bedient, auf Absenktemperatur und fordern keine Wärme von der Therme an. Der Frostschutz gilt weiter.
+- **Frostschutz:** Ohne zentrale Heizung hält die Wärmepumpe im Modus *Abwesend* die Abwesenheitstemperatur und im Sommerbetrieb die Frostschutztemperatur, und einen Raum unter der Frostgrenze heizt sie in jedem Modus, auch bei offenem Fenster und Frost draußen, bis er 1 Grad darüber liegt. Mit Therme oder Fernwärme ist sie die Reserve: Liegt einer ihrer Räume nach 30 Minuten noch unter der Grenze, heizt sie ihn ebenso, auch wenn das teurer ist. Vereisung, Fehlercodes und der Sicherheitsstatus *Fallback* halten sie weiter an, und in *Nur planen* wird nichts gesendet.
+- **Loslassen:** Geht ihre Steuerung auf *Nur planen* oder *Aus*, oder wird Thriftherm deaktiviert oder gelöscht, wird eine Wärmepumpe, die noch auf den 30 °C des Schnell-Aufheizens oder dem Sollwert einer Trocknung steht, auf ihren kleinsten Sollwert gestellt und ruht dort. Eine auf kleinster Leistung oder eine, die inzwischen jemand gestellt hat, bleibt, wie sie ist.
 - **Schnell aufheizen** (Button je Raum oder `thriftherm.boost`) lässt sie für begrenzte Zeit mit voller Leistung laufen.
 - **Lüfter:** Thriftherm stellt ihn nur beim Einschalten, für eine Trocknung oder ein Schnell-Aufheizen und danach zurück, auf die *Lüfterstufe im Normalbetrieb* aus der Feineinstellung (Standard *Auto*). Eine höhere Stufe bringt mehr Wärme in die Räume, ist aber lauter. Eine neu gewählte Stufe bekommt die Wärmepumpe auch mitten im Lauf, sofern sie noch die alte hat. Eine Stufe, die du von Hand wählst, bleibt. Vom Heizen geht es nie direkt auf Aus: Erst läuft 15 Minuten nur der Lüfter (Parameter, 0 = sofort aus). Stellt in dieser Zeit jemand von Hand einen anderen Modus ein, endet der Nachlauf.
 
@@ -267,15 +269,17 @@ Wann sie startet und endet: [Bad-Trocknung](FUNKTIONSWEISE.md#bad-trocknung).
 |---|---|
 | *Raum*: kein Heizfenster hinterlegt | weder Zeitplan-Helfer noch Zeitfenster – der Raum bleibt auf Absenkung. In den Raum-Optionen einen Zeitplan wählen. |
 | *Raum*: Zeitplan-Helfer fehlt | der gewählte Zeitplan wurde gelöscht. Neu anlegen oder einen anderen wählen. |
-| *Raum*: Heizkörperthermostat antwortet nicht | ein Ventil hat sich seit zweieinhalb Stunden nicht gemeldet, obwohl es Befehle bekam. Es hängt meist am Funk oder an der Batterie; der Raum fordert die Therme so lange nicht an. Batterie prüfen, Ventil neu anlernen oder aus- und einschalten. |
+| *Raum*: Heizkörperthermostat antwortet nicht | ein Ventil hat einen Sollwert eine halbe Stunde lang nicht beantwortet, ist eine halbe Stunde lang nicht verfügbar oder hat sich sechs Stunden lang nicht gemeldet. Es hängt meist am Funk oder an der Batterie; der Raum fordert die Therme so lange nicht an. Batterie prüfen, Ventil neu anlernen oder aus- und einschalten. |
 | Vorlauf der Therme über 100 °C | die Therme vom Fachbetrieb prüfen lassen ([Einzelheiten](FEHLERSUCHE.md#reparaturmeldung-vorlauf-der-therme-über-100-c)). |
 | Keine Daten von der Therme | ebusd liefert nichts Brauchbares; nichts wird gesendet, die Therme läuft über ihren Drehknopf. ebusd-App und Adapter prüfen. |
 | Luftmenge der Wärmepumpe nicht kalibriert | keine Luftmengen-Kennlinie, daher kein COP; bis dahin gilt das Datenblatt oder, falls gewählt, die *COP-Werte dieses Modells*. |
+| Heizung der Therme womöglich noch gesperrt | Thriftherm wurde beendet, während Zahl oder Schalter der Therme nicht erreichbar waren (Therme über Entitäten). Es gibt die Therme zurück, sobald beide wieder da sind; bis dahin die Heizung von Hand einschalten. |
+| Home Assistant zeigt Temperaturen nicht mehr in °C | Thriftherm rechnet nur in °C und sendet keine Sollwerte (eine laufende Wärmepumpe wird gestoppt, eine Therme über Entitäten zurückgegeben), bis Home Assistant wieder das metrische Einheitensystem nutzt (*Einstellungen → System → Allgemein*). |
 | Wärmepumpe versorgt Räume ohne Schläuche | keine Schläuche eingetragen, die warme Luft bleibt im Aufstellraum. Schläuche montieren und Schlauchfaktor setzen oder die Räume abwählen. |
 
 Manches zeigt sich ohne Meldung: Ein Raumfühler, der seit sechs Stunden still ist, zählt nicht mehr, die eigene Temperatur des Ventils springt ein (hinter Better Thermostat das Ventil selbst, nicht Better Thermostat, das den Raumfühler nur wiederholt), und der *Sicherheitsstatus* geht auf *Eingeschränkt*.
 
-Einstellungen → Geräte & Dienste → Thriftherm → ⋮ → *Diagnose herunterladen* liefert eine Datei mit Konfiguration, aktuellem Zustand und Lernwerten für Fehlerberichte. Es wird nichts daraus entfernt – vor dem Veröffentlichen durchsehen.
+Einstellungen → Geräte & Dienste → Thriftherm → ⋮ → *Diagnose herunterladen* liefert eine Datei mit Konfiguration, aktuellem Zustand und Lernwerten für Fehlerberichte. Nur die Personen, deren Ankunft *Abwesend* beendet, fehlen darin – vor dem Veröffentlichen durchsehen.
 
 ## 10. Häufige Fragen
 

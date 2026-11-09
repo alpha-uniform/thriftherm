@@ -67,7 +67,8 @@ LABELS: dict[str, dict[str, str]] = {
         "learning": "Learning", "refining": "Refining", "paused": "Paused",
         # heat pump
         "cheaper_than_gas": "Cheaper than central heating", "gas_cheaper": "Central heating cheaper", "learning_run": "Learning run",
-        "quick_heat_up": "Quick heat-up", "mode_midea_only": "Mode: heat pump only", "mode_boiler_only": "Mode: boiler only",
+        "quick_heat_up": "Quick heat-up", "mode_midea_only": "Mode: heat pump only",
+        "frost_reserve": "Frost protection: central heating not enough", "mode_boiler_only": "Mode: boiler only",
         "manual_takeover": "Changed by hand", "midea_unavailable": "Heat pump unavailable", "target_reached": "Target reached",
         "rooms_warm_compressor_rests": "Rooms warm: the compressor rests",
         "holding_at_minimum": "Held at its least power: setpoint a degree below its own reading",
@@ -76,7 +77,7 @@ LABELS: dict[str, dict[str, str]] = {
         "woken_unit_stands": "The unit stands on while a room is short: setpoint set where it starts",
         "boiler_fault_hold": "Boiler fault: no new release for now",
         "relatched_reading_fell": "Its own reading fell: setpoint lower, back to its least power",
-        "relatched_reading_rose": "Its own reading rose while a room is short: setpoint higher, so it does not stop itself",
+        "relatched_reading_rose": "Its own reading rose towards where it stops itself: setpoint higher, so it does not stop itself",
         "rest_not_reached": "The lowest setpoint does not stop the compressor: switched off",
         "boiler_adds_peak": "A room lags: the boiler adds the rest, the heat pump stays at its least power",
         "heat_pump_only_lift": "A room lags and no boiler can help: setpoint half a degree higher",
@@ -85,12 +86,13 @@ LABELS: dict[str, dict[str, str]] = {
         "outdoor_temperature_unknown": "Outdoor temperature unknown", "outdoor_too_cold": "Too cold outside",
         "min_run_time": "Minimum run time",
         "room_data": "Room sensors",
+        "room_data_missing": "No served room reports a temperature: the heat pump rests or is switched off",
         "not_carried_out": "The unit did not carry the command out, sent again",
         "unit_settling": "Waiting for the unit to follow",
         "fan_run_on": "Fan runs on before switching off", "min_off_time": "Minimum off time", "rate_limit": "Waiting between commands",
         "none": "None", "start": "Start", "stop": "Stop", "adjust": "Adjust",
         "unavailable": "Unavailable", "cooling_user": "Cooling (user)", "fan_only": "Fan only", "auto": "Auto",
-        "heating_idle": "Heating idle", "heating_warming_up": "Heating warming up", "heating_stable": "Heating",
+        "heating_idle": "Heating idle", "heating_warming_up": "Heating warming up", "heating_stable": "Heating", "defrosting": "Defrosting",
         # COP basis and power source
         "measured": "Measured", "learned": "Learned", "legacy": "Old table",
         "prior": "Starting curve", "prior_calibrated": "Starting curve (calibrated)",
@@ -152,7 +154,8 @@ LABELS: dict[str, dict[str, str]] = {
         "single": "Ein Raum", "few": "Wenige Räume", "majority": "Die meisten Räume", "rooms_satisfied": "Räume warm ohne Bedarf",
         "learning": "Einlernen", "refining": "Verfeinern", "paused": "Pausiert",
         "cheaper_than_gas": "Günstiger als die Heizung", "gas_cheaper": "Heizung günstiger", "learning_run": "Lernlauf",
-        "quick_heat_up": "Schnell aufheizen", "mode_midea_only": "Modus: nur Wärmepumpe", "mode_boiler_only": "Modus: nur Therme",
+        "quick_heat_up": "Schnell aufheizen", "mode_midea_only": "Modus: nur Wärmepumpe",
+        "frost_reserve": "Frostschutz: Zentralheizung reicht nicht", "mode_boiler_only": "Modus: nur Therme",
         "manual_takeover": "Von Hand geändert", "midea_unavailable": "Wärmepumpe nicht verfügbar", "target_reached": "Ziel erreicht",
         "rooms_warm_compressor_rests": "Räume warm: Verdichter ruht",
         "holding_at_minimum": "Kleinste Leistung: Sollwert ein Grad unter der eigenen Messung",
@@ -161,7 +164,7 @@ LABELS: dict[str, dict[str, str]] = {
         "woken_unit_stands": "Gerät steht weiter, ein Raum ist zu kühl: Sollwert dorthin, wo es anläuft",
         "boiler_fault_hold": "Störung der Therme: vorerst keine neue Freigabe",
         "relatched_reading_fell": "Eigene Messung gefallen: Sollwert tiefer, zurück zur kleinsten Leistung",
-        "relatched_reading_rose": "Eigene Messung gestiegen, ein Raum zu kühl: Sollwert höher, damit es nicht selbst abschaltet",
+        "relatched_reading_rose": "Eigene Messung nah an der Selbstabschaltung: Sollwert höher, damit es nicht selbst abschaltet",
         "rest_not_reached": "Kleinster Sollwert stoppt den Verdichter nicht: ausgeschaltet",
         "boiler_adds_peak": "Ein Raum kommt nicht hinterher: die Therme hilft, die Wärmepumpe bleibt bei kleinster Leistung",
         "heat_pump_only_lift": "Ein Raum kommt nicht hinterher, keine Therme hilft: Sollwert ein halbes Grad höher",
@@ -170,12 +173,13 @@ LABELS: dict[str, dict[str, str]] = {
         "outdoor_temperature_unknown": "Außentemperatur unbekannt", "outdoor_too_cold": "Draußen zu kalt",
         "min_run_time": "Mindestlaufzeit",
         "room_data": "Raumsensoren",
+        "room_data_missing": "Kein versorgter Raum meldet eine Temperatur: die Wärmepumpe ruht oder wird ausgeschaltet",
         "not_carried_out": "Gerät hat den Befehl nicht ausgeführt, wird wiederholt",
         "unit_settling": "Wartet, bis das Gerät folgt",
         "fan_run_on": "Lüfter läuft vor dem Ausschalten nach", "min_off_time": "Mindeststillstand", "rate_limit": "Wartezeit zwischen Befehlen",
         "none": "Keine", "start": "Start", "stop": "Stopp", "adjust": "Anpassen",
         "unavailable": "Nicht verfügbar", "cooling_user": "Kühlen (Nutzer)", "fan_only": "Nur Lüfter", "auto": "Auto",
-        "heating_idle": "Heizen bereit", "heating_warming_up": "Heizen (Warmlauf)", "heating_stable": "Heizen",
+        "heating_idle": "Heizen bereit", "heating_warming_up": "Heizen (Warmlauf)", "heating_stable": "Heizen", "defrosting": "Abtauen",
         "measured": "Gemessen", "learned": "Gelernt", "legacy": "Alte Tabelle", "prior": "Startkurve", "prior_calibrated": "Startkurve (kalibriert)",
         "profile": "Gemessen am gleichen Modell",
         "plug": "Zwischenstecker", "midea_internal": "Eigener Wert der Wärmepumpe", "nominal_circulation_estimate": "Schätzung aus Nenn-Umlaufmenge (±30 %)",
@@ -308,7 +312,10 @@ _COP_LABEL = {
     "de": {"measured": "COP", "learned": "erwarteter COP (gelernt)", "legacy": "erwarteter COP (alte Tabelle)", "profile": "erwarteter COP (gemessen am gleichen Modell)"},
 }
 _COP_LABEL_PRIOR = {"en": "expected COP (starting curve)", "de": "erwarteter COP (Startkurve)"}
-_DIGITS = {"cop": 2, "break_even": 2, "heat_pump_eur": 3, "central_eur": 3}
+# As fine as they mean something: in the second and third decimal the COP and the €/kWh moved every
+# minute, and the decision reason changed 1941 times in 7 days with 1297 texts (2026-11-08).
+_DIGITS = {"cop": 1, "break_even": 1, "heat_pump_eur": 2, "central_eur": 2}
+STATE_MAX = 255  # what Home Assistant keeps of a state
 
 
 def _number(value: Any, digits: int, lang: str) -> str:
@@ -324,6 +331,13 @@ def render_reason(item: Reason, lang: str, room_names: Mapping[str, str]) -> str
     if template is None:
         return item.code.replace("_", " ")
     values: dict[str, str] = {}
+    digits = dict(_DIGITS)
+    params = dict(item.params)
+    cop, break_even = params.get("cop"), params.get("break_even")
+    if isinstance(cop, (int, float)) and isinstance(break_even, (int, float)):
+        # "3,0 > Break-even 3,0" near break-even (second review 2026-11-08): as many decimals as tell them apart
+        while digits["cop"] < 3 and _number(cop, digits["cop"], lang) == _number(break_even, digits["cop"], lang):
+            digits["cop"] = digits["break_even"] = digits["cop"] + 1
     for key, value in item.params:
         if key == "room":
             values[key] = room_names.get(value, value)
@@ -338,7 +352,7 @@ def render_reason(item: Reason, lang: str, room_names: Mapping[str, str]) -> str
         elif key == "saving_pct":
             values["saving"] = "" if value is None else f" ({float(value):+.0f} %)"
         else:
-            values[key] = _number(value, _DIGITS.get(key, 1), lang)
+            values[key] = _number(value, digits.get(key, 1), lang)
     try:
         return template.format(**values)
     except (KeyError, ValueError):
@@ -348,6 +362,25 @@ def render_reason(item: Reason, lang: str, room_names: Mapping[str, str]) -> str
 def render_reasons(reasons: Iterable[Reason], ha_language: str | None, room_names: Mapping[str, str]) -> list[str]:
     lang = language_for(ha_language)
     return [render_reason(r, lang, room_names) for r in reasons]
+
+
+def fit_state(parts: list[str], limit: int = STATE_MAX) -> str:
+    """The reasons as one state of at most `limit` characters: as many whole ones as fit, then " | …".
+
+    Cut at 252 characters, the last reason ended in the middle of a word; the attribute holds them all.
+    """
+    text = " | ".join(parts)
+    if len(text) <= limit:
+        return text or "no data"
+    more = " | …"
+    kept: list[str] = []
+    for part in parts:
+        if len(" | ".join([*kept, part])) + len(more) > limit:
+            break
+        kept.append(part)
+    if not kept:
+        return parts[0][: limit - 1] + "…"  # one reason longer than a whole state
+    return " | ".join(kept) + more
 
 
 # ---------------------------------------------------------------- setup
@@ -462,7 +495,8 @@ PAUSED_BECAUSE: dict[str, dict[str, str]] = {
 }
 
 # what restricts the safety (sensor safety_state, attribute issues: "code" or "code:detail");
-# {room} is the room the detail names, {code} an error code of the unit
+# {room} is the room the detail names, {code} an error code of the unit; "code:detail" has wording of its
+# own where the detail says more, {unit} the unit a power sensor reports in
 SAFETY_ISSUES: dict[str, dict[str, str]] = {
     "en": {
         "no_rooms_configured": "No room set up", "all_room_temperatures_missing": "No room temperatures",
@@ -472,6 +506,8 @@ SAFETY_ISSUES: dict[str, dict[str, str]] = {
         "outdoor_temperature_missing": "Outdoor temperature missing", "ebusd_signal_lost": "No connection to the boiler (eBUS)",
         "boiler_flow_temp_invalid": "Boiler flow temperature missing", "boiler_overheated": "Boiler flow above 100 °C: have the boiler checked", "midea_unavailable": "Heat pump not reachable",
         "midea_error_code": "Heat pump reports error {code}", "midea_power_sensor_invalid": "Heat pump power reading missing",
+        "midea_power_sensor_invalid:wrong_unit": "Heat pump power sensor reports in {unit}, not in W or kW",
+        "temperature_unit_not_celsius": "Home Assistant does not show temperatures in °C",
     },
     "de": {
         "no_rooms_configured": "Kein Raum eingerichtet", "all_room_temperatures_missing": "Keine Raumtemperaturen",
@@ -481,6 +517,8 @@ SAFETY_ISSUES: dict[str, dict[str, str]] = {
         "outdoor_temperature_missing": "Außentemperatur fehlt", "ebusd_signal_lost": "Keine Verbindung zur Therme (eBUS)",
         "boiler_flow_temp_invalid": "Vorlauftemperatur der Therme fehlt", "boiler_overheated": "Vorlauf der Therme über 100 °C: bitte prüfen lassen", "midea_unavailable": "Wärmepumpe nicht erreichbar",
         "midea_error_code": "Wärmepumpe meldet Fehler {code}", "midea_power_sensor_invalid": "Strommessung der Wärmepumpe fehlt",
+        "midea_power_sensor_invalid:wrong_unit": "Strommessung der Wärmepumpe meldet in {unit}, nicht in W oder kW",
+        "temperature_unit_not_celsius": "Home Assistant zeigt Temperaturen nicht in °C",
     },
 }
 

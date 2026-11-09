@@ -192,6 +192,29 @@ def test_heat_rate_rejects_short_or_falling_episodes():
     assert hs.observe("bad", t0 + 4000, 17.2, None, False) is None
 
 
+
+def test_a_heat_up_ends_at_its_highest_point_not_on_the_plateau_after_it():
+    # Review 2026-11-08: the heat pump at its least speed for a bathroom 0.1-0.2 below its target, 1 degree in the
+    # first hour, then four hours just below the target with the source still on: 0.2 an hour was stored for 1.0.
+    hs = HeatRateStats()
+    for i in range(13):  # 19.0 -> 20.0 in an hour, a sample every five minutes
+        assert hs.observe("bad", i * 300.0, 19.0 + i / 12, HEAT_PUMP, False, 5.0) is None
+    learned = []
+    for i in range(13, 61):  # four hours on the plateau, the sensor flickering by a tenth
+        learned.append(hs.observe("bad", i * 300.0, 20.0 - 0.1 * (i % 2), HEAT_PUMP, False, 5.0))
+    learned.append(hs.observe("bad", 61 * 300.0, 20.0, None, False, 5.0))
+    assert [rate for rate in learned if rate is not None] == [pytest.approx(1.0, abs=0.01)]  # one value, closed on the plateau
+    assert hs.rate("bad", HEAT_PUMP) == pytest.approx(1.0, abs=0.01)
+    assert hs.to_dict()["bad"][HEAT_PUMP]["mean_gradient_k"] == pytest.approx(14.5, abs=0.1)  # of the way up
+
+
+def test_a_heat_up_that_falls_back_from_its_highest_point_keeps_the_way_up():
+    hs = HeatRateStats()
+    for i in range(7):  # an hour of boiler heat, 0.6 degrees up
+        hs.observe("wz", i * 600.0, 19.0 + i * 0.1, BOILER, False)
+    assert hs.observe("wz", 7 * 600.0, 19.2, BOILER, False) == pytest.approx(0.6, abs=0.01)  # 0.4 below its top
+    assert hs.episodes["wz"].start_temp == 19.2  # and counted on from there
+
 def _heat_up(hs: HeatRateStats, room: str, source: str, t0: float, start: float, rise_k_h: float, outdoor=None) -> float | None:
     """An hour of heat-up from `source` in 10-minute samples, then the source goes off."""
     for i in range(7):

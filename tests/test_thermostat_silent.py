@@ -17,10 +17,10 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.thriftherm.adapters.inputs import SnapshotBuilder
+from custom_components.thriftherm.adapters.inputs import SnapshotBuilder, driven_by
 from custom_components.thriftherm.engines import room as room_engine
 from custom_components.thriftherm.engines import safety
-from custom_components.thriftherm.engines.room import THERMOSTAT_SILENT_S
+from custom_components.thriftherm.engines.room import THERMOSTAT_GONE_S, THERMOSTAT_SILENT_S, THERMOSTAT_UNANSWERED_S
 
 from .conftest import PARAMS, room_config, room_state, snapshot
 from .test_integration import _entry_data, _set_states, _setup
@@ -44,6 +44,39 @@ def test_a_silent_valve_takes_the_room_out_of_the_boiler_demand():
     assert quiet.heating_allowed and "thermostat_silent" not in quiet.issues
     silent = evaluate(THERMOSTAT_SILENT_S + 60)
     assert not silent.heating_allowed and "thermostat_silent" in silent.issues
+
+
+def test_a_valve_that_only_keeps_its_value_is_not_silent():
+    # 2026-11-01 to 11-08: 18 false alarms in all five rooms, 8 minutes to 2.2 hours each beyond the
+    # 2.5 hours, the bathroom kept from heating for 7.9 hours in a week. Zigbee2MQTT valves leave no
+    # trace in Home Assistant while they report what they had.
+    cfg = room_config("badezimmer")
+    now = snapshot({}).now
+    quiet = room_engine.evaluate_room(replace(room_state(cfg, temp=18.0), thermostat_silent_s=4.7 * 3600), now, "auto", PARAMS)
+    assert quiet.heating_allowed and "thermostat_silent" not in quiet.issues
+    assert THERMOSTAT_SILENT_S >= 6 * 3600
+
+
+def test_a_valve_that_does_not_answer_a_setpoint_or_is_unavailable_is_silent():
+    cfg = room_config("badezimmer")
+    now = snapshot({}).now
+    now_ts = now.timestamp()
+
+    def evaluate(**kw):
+        return room_engine.evaluate_room(replace(room_state(cfg, temp=18.0), **kw), now, "auto", PARAMS)
+
+    unanswered = evaluate(thermostat_silent_s=THERMOSTAT_UNANSWERED_S + 120, thermostat_pending_since_ts=now_ts - THERMOSTAT_UNANSWERED_S - 60)
+    assert not unanswered.heating_allowed and "thermostat_silent" in unanswered.issues
+    early = evaluate(thermostat_silent_s=THERMOSTAT_UNANSWERED_S - 60, thermostat_pending_since_ts=now_ts - THERMOSTAT_UNANSWERED_S + 120)
+    assert early.heating_allowed  # it has a while to answer
+    heard = evaluate(thermostat_silent_s=600.0, thermostat_pending_since_ts=now_ts - THERMOSTAT_UNANSWERED_S - 60)
+    assert heard.heating_allowed  # it reported since: not silent, whatever became of the setpoint
+    unknown = evaluate(thermostat_silent_s=None, thermostat_pending_since_ts=now_ts - THERMOSTAT_UNANSWERED_S - 60)
+    assert unknown.heating_allowed  # whether it was heard is not known
+    gone = evaluate(thermostat_silent_s=900.0, thermostat_gone_s=THERMOSTAT_GONE_S + 60)
+    assert not gone.heating_allowed and "thermostat_silent" in gone.issues
+    blink = evaluate(thermostat_silent_s=60.0, thermostat_gone_s=45.0)  # a broker reconnect
+    assert blink.heating_allowed
 
 
 def test_a_silent_valve_is_reported_by_the_safety_state(two_rooms):
@@ -88,6 +121,8 @@ async def test_the_valve_behind_better_thermostat_is_watched(hass: HomeAssistant
 
     hass.states.async_set("sensor.bath_trv_battery", "99")  # the valve itself speaks again
     assert builder.thermostat_silent_s("climate.bath_bt", dt_util.utcnow()) == pytest.approx(0.0, abs=1)
+    assert builder.thermostat_gone_s("climate.bath_bt", dt_util.utcnow()) is None  # available: not gone
+    assert builder.thermostat_gone_s(None, dt_util.utcnow()) is None
 
 
 async def test_a_valve_gone_unavailable_stays_silent(hass: HomeAssistant, freezer) -> None:
@@ -106,6 +141,11 @@ async def test_a_valve_gone_unavailable_stays_silent(hass: HomeAssistant, freeze
     hass.states.async_set("climate.bath_trv", "unavailable")
     hass.states.async_set("sensor.bath_trv_battery", "unavailable")
     assert builder.thermostat_silent_s("climate.bath_bt", dt_util.utcnow()) == pytest.approx(7200.0, abs=1)
+    # review 2026-11-08: silence alone now counts after six hours; unavailable counts on its own
+    assert builder.thermostat_gone_s("climate.bath_bt", dt_util.utcnow()) == pytest.approx(0.0, abs=1)
+    freezer.move_to(START + timedelta(hours=2, minutes=10))
+    assert builder.thermostat_gone_s("climate.bath_bt", dt_util.utcnow()) == pytest.approx(600.0, abs=1)
+    freezer.move_to(START + timedelta(hours=2))
 
     # after a restart nothing was heard yet: the silence counts from the change to unavailable
     fresh = SnapshotBuilder(hass, _entry_data())
@@ -189,6 +229,31 @@ async def test_a_plain_thermostat_is_its_own_valve(hass: HomeAssistant, freezer)
     freezer.move_to(START + timedelta(minutes=30))
     assert builder.thermostat_silent_s("climate.plain_trv", dt_util.utcnow()) == pytest.approx(1800.0, abs=1)
     assert builder.thermostat_silent_s(None, dt_util.utcnow()) is None
+
+
+async def test_a_room_thermostat_driving_valves_of_its_own_is_known_as_such(hass: HomeAssistant, freezer) -> None:
+    # review 2026-11-08 (#R0/#R13/#R20): its own answer to a setpoint says nothing about its valve
+    _register_bt_and_valve(hass)
+    vt = MockConfigEntry(domain="versatile_thermostat", data={"underlying_entity_ids": ["switch.bath_relay"]})
+    vt.add_to_hass(hass)
+    er.async_get(hass).async_get_or_create("climate", "versatile_thermostat", "vt_bath", suggested_object_id="bath_vt", config_entry=vt)
+    freezer.move_to(START)
+    _set_states(hass)
+    hass.states.async_set("climate.bath_bt", "heat", {"temperature": 21.0, "target_temp_step": 0.5})
+    hass.states.async_set("climate.bath_trv", "heat", {"temperature": 18.5})
+    hass.states.async_set("climate.bath_vt", "heat", {"temperature": 21.0})
+    data = _entry_data()
+    data["rooms"][0]["climate_entity"] = "climate.bath_bt"
+    snap = SnapshotBuilder(hass, data).build("auto", {}, {}, None, {}, {})
+    assert snap.rooms["badezimmer"].thermostat_wrapped and snap.rooms["badezimmer"].thermostat_step == 0.5
+    assert driven_by(hass, "climate.bath_bt") == ("climate.bath_trv",)
+    assert driven_by(hass, "climate.bath_vt") == ("switch.bath_relay",)
+    assert driven_by(hass, "climate.bath_trv") == () and driven_by(hass, "climate.nothing") == ()
+
+    for own in ("climate.bath_trv", "climate.bath_vt"):  # the valve itself; a switch takes no setpoint to answer
+        data["rooms"][0]["climate_entity"] = own
+        snap = SnapshotBuilder(hass, data).build("auto", {}, {}, None, {}, {})
+        assert not snap.rooms["badezimmer"].thermostat_wrapped and snap.rooms["badezimmer"].thermostat_step is None
 
 
 # ------------------------------------------------------------------ heat pump faults and the boiler learning

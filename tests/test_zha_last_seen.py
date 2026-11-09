@@ -139,19 +139,20 @@ async def test_a_zha_valve_seen_two_minutes_ago_is_not_silent_although_its_value
     ("seen_ago", "available"),
     [
         pytest.param(timedelta(minutes=2), False, id="zha calls it unavailable"),
-        pytest.param(timedelta(hours=3), True, id="seen 3 h ago"),
+        pytest.param(timedelta(hours=7), True, id="seen 7 h ago"),
     ],
 )
-async def test_a_zha_valve_that_zha_calls_unavailable_or_last_saw_three_hours_ago_is_silent_as_before(
+async def test_a_zha_valve_that_zha_calls_unavailable_or_last_saw_seven_hours_ago_is_silent_as_before(
     hass: HomeAssistant, freezer, zha: FakeZha, seen_ago: timedelta, available: bool
 ) -> None:
+    # review 2026-11-08: the silence alone counts after six hours, no longer after two and a half
     valve = _register_valve(hass, "zha")
     freezer.move_to(START)
     builder = _builder(hass)
-    freezer.move_to(START + timedelta(hours=3))
+    freezer.move_to(START + timedelta(hours=7))
     zha.devices[valve] = (_ago(seen_ago), available)
     bath = _bath(builder)
-    assert bath.thermostat_silent_s == pytest.approx(10800.0, abs=1) and bath.thermostat_silent_s > THERMOSTAT_SILENT_S
+    assert bath.thermostat_silent_s == pytest.approx(7 * 3600.0, abs=1) and bath.thermostat_silent_s > THERMOSTAT_SILENT_S
 
 
 async def test_a_zha_valve_that_zha_stops_seeing_goes_silent_again_in_the_next_build(
@@ -164,9 +165,58 @@ async def test_a_zha_valve_that_zha_stops_seeing_goes_silent_again_in_the_next_b
     zha.devices[valve] = (_ago(timedelta(minutes=2)), True)
     assert _bath(builder).thermostat_silent_s == pytest.approx(120.0, abs=1)
 
-    freezer.move_to(START + timedelta(hours=6))  # ZHA has not seen it since
+    freezer.move_to(START + timedelta(hours=10))  # ZHA has not seen it since
     silent = _bath(builder).thermostat_silent_s
-    assert silent == pytest.approx(3 * 3600.0 + 120.0, abs=1) and silent > THERMOSTAT_SILENT_S
+    assert silent == pytest.approx(7 * 3600.0 + 120.0, abs=1) and silent > THERMOSTAT_SILENT_S
+
+
+# ------------------------------------------------------------------ the outdoor thermometer
+@pytest.mark.parametrize(
+    ("seen_ago", "available", "valid"),
+    [
+        pytest.param(timedelta(minutes=3), True, True, id="seen recently, unchanged for 2 h"),
+        pytest.param(timedelta(minutes=3), False, False, id="zha calls it unavailable"),
+        pytest.param(timedelta(hours=2), True, False, id="seen 2 h ago"),
+    ],
+)
+async def test_a_zha_outdoor_thermometer_holding_its_value_stays_valid_while_zha_saw_it(
+    hass: HomeAssistant, freezer, zha: FakeZha, seen_ago: timedelta, available: bool, valid: bool
+) -> None:
+    # review 2026-11-08: the outdoor temperature and humidity had a bare hour; a still night at 4.0 °C
+    # took the sensor for lost, the safety state went degraded and the COP map lost its outdoor band
+    radio = MockConfigEntry(domain="zha")
+    radio.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id=radio.entry_id, identifiers={("zha", "outdoor")})
+    registry = er.async_get(hass)
+    for uid, object_id in (("out_temp", "outdoor"), ("out_rh", "outdoor_rh")):
+        registry.async_get_or_create("sensor", "zha", uid, suggested_object_id=object_id, device_id=device.id, config_entry=radio)
+    freezer.move_to(START)
+    _set_states(hass)
+    hass.states.async_set("sensor.outdoor_rh", "88")
+    builder = SnapshotBuilder(hass, {**_entry_data(), "outdoor_rh_sensor": "sensor.outdoor_rh"})
+    freezer.move_to(START + timedelta(hours=2))
+    zha.devices[device.id] = (_ago(seen_ago), available)
+    snap = builder.build("auto", {}, {}, None, {}, {})
+    assert snap.outdoor_temp.valid is valid and snap.outdoor_rh.valid is valid
+    if valid:
+        assert snap.outdoor_temp.value == 4.0 and snap.outdoor_rh.value == 88.0
+
+
+async def test_an_outdoor_thermometer_whose_device_still_reports_stays_valid(hass: HomeAssistant, freezer) -> None:
+    radio = MockConfigEntry(domain="mqtt")
+    radio.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(config_entry_id=radio.entry_id, identifiers={("mqtt", "outdoor")})
+    registry = er.async_get(hass)
+    for uid, object_id in (("out_temp", "outdoor"), ("out_battery", "outdoor_battery")):
+        registry.async_get_or_create("sensor", "mqtt", uid, suggested_object_id=object_id, device_id=device.id, config_entry=radio)
+    freezer.move_to(START)
+    _set_states(hass)
+    builder = SnapshotBuilder(hass, _entry_data())
+    freezer.move_to(START + timedelta(hours=2))
+    hass.states.async_set("sensor.outdoor_battery", "97")  # the device speaks, its temperature has not changed
+    assert builder.build("auto", {}, {}, None, {}, {}).outdoor_temp.valid
+    freezer.move_to(START + timedelta(hours=3, minutes=30))  # and now neither for over an hour
+    assert not builder.build("auto", {}, {}, None, {}, {}).outdoor_temp.valid
 
 
 # ------------------------------------------------------------------ the room thermometer

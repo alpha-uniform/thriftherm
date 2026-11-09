@@ -5,6 +5,7 @@ from __future__ import annotations
 from ..const import (
     HEAT_PUMP_AUTO,
     HEAT_PUMP_COOLING_USER,
+    HEAT_PUMP_DEFROSTING,
     HEAT_PUMP_FAN_ONLY,
     HEAT_PUMP_HEATING_IDLE,
     HEAT_PUMP_HEATING_STABLE,
@@ -15,7 +16,9 @@ from ..const import (
 from ..models import HeatPumpResult, HeatPumpState, Parameters
 
 PLAUSIBILITY_TOLERANCE = 0.15
-HEATING_STATES = (HEAT_PUMP_HEATING_IDLE, HEAT_PUMP_HEATING_WARMING_UP, HEAT_PUMP_HEATING_STABLE)
+# A defrost is part of a heating run: its electricity counts for the COP table, its stops are no new start.
+# run_state() never gives it, the tracker does once the defrost signs are read (HeatPumpTracker.run_state).
+HEATING_STATES = (HEAT_PUMP_HEATING_IDLE, HEAT_PUMP_HEATING_WARMING_UP, HEAT_PUMP_HEATING_STABLE, HEAT_PUMP_DEFROSTING)
 # Modes somebody runs the unit in by hand. The control keeps its hands off in all of them, "auto"
 # included, so none of them counts as available for heating: the boiler serves the rooms meanwhile.
 USER_STATES = (HEAT_PUMP_COOLING_USER, HEAT_PUMP_FAN_ONLY, HEAT_PUMP_AUTO)
@@ -40,9 +43,10 @@ def run_state(heat_pump: HeatPumpState, params: Parameters) -> str:
         return HEAT_PUMP_COOLING_USER
     if mode == "fan_only":
         return HEAT_PUMP_FAN_ONLY
-    if mode == "auto":
+    if mode != "heat":
+        # "auto", and every mode a climate entity may name besides (review 2026-11-08: "heat_cool" fell through to
+        # heating and was set to "heat", a unit that may cool counted as a heat source): the user's, hands off.
         return HEAT_PUMP_AUTO
-    # heat
     if heat_pump.compressor_hz is not None and heat_pump.compressor_hz > 0:
         if heat_pump.compressor_running_s is not None and heat_pump.compressor_running_s < params.cop_warmup_s:
             return HEAT_PUMP_HEATING_WARMING_UP

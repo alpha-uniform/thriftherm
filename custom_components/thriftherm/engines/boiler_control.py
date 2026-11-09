@@ -470,23 +470,26 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
         mem = replace(mem, lockout_since_ts=lockout_since)
         quick = any(r.boost_active for r in heating_rooms)
         holding = lockout_since is not None and now - lockout_since < LOCKOUT_HOLD_MAX_S and not (frost or quick)
-        if holding and mem.last_flow is not None and flow > mem.last_flow:
-            flow = mem.last_flow
+        # The flow sent last, but no lower than the minimum: one raised in the options since would otherwise be
+        # undercut for a few ramp windows, 35 °C sent with a minimum of 45 (review 2026-11-08).
+        last_flow = None if mem.last_flow is None else max(mem.last_flow, p.boiler_flow_min)
+        if holding and last_flow is not None and flow > last_flow:
+            flow = last_flow
             waiting = waiting or "lockout_hold"
         if frost:
             # frost protection goes straight to its floor; a ramp would only delay it
             mem = replace(mem, ramp_from=None, ramp_since_ts=None)
-        elif mem.last_flow is not None and flow > mem.last_flow:
+        elif last_flow is not None and flow > last_flow:
             # at most RAMP_UP_K per window, counted from where the rise began: the window
             # must not restart with every cycle, or 5 K per 10 min becomes 5 K per minute
-            base = mem.ramp_from if mem.ramp_from is not None else mem.last_flow
+            base = max(mem.ramp_from, p.boiler_flow_min) if mem.ramp_from is not None else last_flow
             since = mem.ramp_since_ts if mem.ramp_since_ts is not None else now
             limit = base + RAMP_UP_K * (1 + int((now - since) // RAMP_WINDOW_S))
-            if limit > mem.last_flow + RAMP_UP_K:
+            if limit > last_flow + RAMP_UP_K:
                 # Windows passed while nothing was sent (hands-off, control off, Home Assistant down): they would
                 # let the whole rise out at once, 35 -> 60 °C in one cycle after three hours of hands-off (review
                 # 2026-10-22), or one step a cycle if only capped. The rise starts a window of its own instead.
-                base, since, limit = mem.last_flow, now, mem.last_flow + RAMP_UP_K
+                base, since, limit = last_flow, now, last_flow + RAMP_UP_K
             if flow > limit:
                 flow = limit
                 waiting = waiting or "ramp_limit"

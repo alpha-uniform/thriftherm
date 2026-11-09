@@ -98,7 +98,7 @@ A boiler through entities (preview) is different: if Home Assistant crashes or l
 
 A window is open, or the room's thermostat is switched off. Close the window or switch the thermostat back to *heat*.
 
-If a radiator thermostat has not reported for two and a half hours, the room does not call for heat either. A repair notice appears for it. With ZHA, ZHA's own *Last seen* counts as a report as well.
+If a radiator thermostat has not answered a setpoint for half an hour, is unavailable for half an hour, or has not reported for six hours, the room does not call for heat either. A repair notice appears for it. Look at its *Last seen* in Zigbee2MQTT or ZHA; with ZHA it counts as a report as well.
 
 ### A room is at 15 °C
 
@@ -173,4 +173,4 @@ If the card is still missing, the browser usually shows a start page from before
 
 - What a repair notice means and what to do is in the [user guide, repairs](GUIDE.md#9-repairs).
 - The *Decision reason* sensor says in plain words why Thriftherm does what it does.
-- For a bug report: Settings → Devices & services → Thriftherm → ⋮ → *Download diagnostics*. The file holds configuration, current state and learned values, and nothing is removed from it. Look through it before posting it and attach it to an [issue](https://github.com/alpha-uniform/thriftherm/issues).
+- For a bug report: Settings → Devices & services → Thriftherm → ⋮ → *Download diagnostics*. The file holds configuration, current state and learned values; only the people whose arrival ends away mode are left out. Look through it before posting it and attach it to an [issue](https://github.com/alpha-uniform/thriftherm/issues).

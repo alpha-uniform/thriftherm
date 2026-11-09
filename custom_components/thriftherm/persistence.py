@@ -94,6 +94,9 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
         if data.get(key) in allowed:
             setattr(coord, key, data[key])
     coord.control_memory = ControlMemory.from_storage(data.get("control_memory"))
+    # the rooms on the frost list before the restart keep their degree of hysteresis (review 2026-11-09)
+    keys = {room.key for room in coord.builder.rooms}
+    coord._frost_rooms = tuple(key for key, _ in coord.control_memory.frost_since if key in keys)
     coord.boiler_memory = BoilerMemory.from_storage(data.get("boiler_memory"))
     coord.gas_split = GasSplit.from_storage(data.get("gas_split"))
     coord.pump_share = PumpShare.from_storage(data.get("boiler_pump_share"))

@@ -338,6 +338,7 @@ HEAT_PUMP_AUTO: Final = "auto"
 HEAT_PUMP_HEATING_IDLE: Final = "heating_idle"
 HEAT_PUMP_HEATING_WARMING_UP: Final = "heating_warming_up"
 HEAT_PUMP_HEATING_STABLE: Final = "heating_stable"
+HEAT_PUMP_DEFROSTING: Final = "defrosting"  # a defrost and the stop after it, part of the run (engines/heat_pump_tracking.py)
 HEAT_PUMP_RUN_STATES: Final = [
     HEAT_PUMP_UNAVAILABLE,
     HEAT_PUMP_OFF,
@@ -347,4 +348,5 @@ HEAT_PUMP_RUN_STATES: Final = [
     HEAT_PUMP_HEATING_IDLE,
     HEAT_PUMP_HEATING_WARMING_UP,
     HEAT_PUMP_HEATING_STABLE,
+    HEAT_PUMP_DEFROSTING,
 ]

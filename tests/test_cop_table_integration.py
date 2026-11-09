@@ -31,9 +31,9 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     yield
 
 
-def learned_band(coordinator, outdoor: float, cop: float) -> None:
+def learned_band(coordinator, outdoor: float, cop: float, ts: float = 0.0) -> None:
     hours = COP_BAND_LEARNED_S / 3600.0 + 0.1
-    coordinator.cop_map.add_interval(outdoor, 310.0 * cop * hours, 310.0 * hours, hours * 3600.0, 0.0)
+    coordinator.cop_map.add_interval(outdoor, 310.0 * cop * hours, 310.0 * hours, hours * 3600.0, ts)
 
 
 def heating(hass: HomeAssistant) -> None:
@@ -109,7 +109,10 @@ async def test_a_band_counts_for_the_learning_runs_from_its_hours(hass: HomeAssi
     coordinator.cop_map.add_interval(4.0, 310.0 * 3.8, 310.0, 3600.0, 0.0)
     await coordinator.async_refresh()
     assert seen[-1] is False
-    learned_band(coordinator, 4.0, 3.8)
+    learned_band(coordinator, 4.0, 3.8)  # run in last in 1970: open to a learning run again (review 2026-11-08)
+    await coordinator.async_refresh()
+    assert seen[-1] is False and coordinator.cop_map.learned(4.0, 1.0)
+    learned_band(coordinator, 4.0, 3.8, time.time())
     await coordinator.async_refresh()
     assert seen[-1] is True
 
