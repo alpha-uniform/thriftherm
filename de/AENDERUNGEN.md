@@ -6,25 +6,16 @@ Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei 
 
 ## 0.7.3 – 2026-11-09
 
-- Behoben: Fehlalarme für stumme Heizkörperthermostate (18 in einer Woche, ein Bad stundenlang kalt); als stumm gilt eines jetzt nur, wenn es einen Sollwert nicht binnen 30 Minuten beantwortet (hinter Better Thermostat: bis sich ein Ventil dahinter meldet), 30 Minuten nicht verfügbar ist oder sich 6 Stunden nicht gemeldet hat.
-- Behoben: Ohne zentrale Heizung war die Wärmepumpe in *Abwesend* und im Sommerbetrieb aus, ein Raum konnte auf 4 °C fallen; jetzt hält sie Abwesenheits- und Frostschutztemperatur und heizt einen Raum unter der Frostgrenze in jedem Modus.
-- Neu: Mit Therme oder Fernwärme ist die Wärmepumpe die Reserve für den Frostschutz und heizt einen ihrer Räume, der nach 30 Minuten noch unter der Frostgrenze liegt.
-- Behoben: Eine Wärmepumpe, die noch auf den 30 °C des Schnell-Aufheizens oder dem Sollwert einer Trocknung stand, heizte weiter, wenn die Steuerung auf *Nur planen* oder *Aus* ging oder der Eintrag deaktiviert oder gelöscht wurde; jetzt geht sie auf ihren kleinsten Sollwert.
-- Behoben: Eine Therme über Entitäten konnte gesperrt bleiben, wenn die Rückgabe beim Beenden scheiterte (Gateway weg); sie wird nachgeholt, sobald die Entitäten zurück sind, und eine Reparaturmeldung sagt es.
-- Eine Wärmepumpe in *Heizen/Kühlen* (heat_cool) oder einem anderen eigenen Modus bleibt dir überlassen, wie in *Auto*.
-- Der Laufzustand der Wärmepumpe zeigt *Abtauen*; nach dem Abtauen oder einem Neustart geht der Lauf ohne neues Aufwärmen weiter.
-- Behoben: Lief die Wärmepumpe ohne Raum unter Soll durch, schaltete sie sich bei steigender Messung immer wieder selbst ab; jetzt folgt ihr Sollwert der steigenden Messung, ein Grad darunter, wie bei einem Raum unter Soll.
-- Behoben: Ein Thermostat in ganzen Grad, das schon 22 °C zeigte, bekam alle 5 Minuten 21,5 °C geschickt; jetzt geht der Wert noch einmal hinaus und gilt dann als seine Antwort.
-- Der *Entscheidungsgrund* wechselt viel seltener (seine Zahlen höchstens stündlich) und wird innerhalb von 255 Zeichen an einem ganzen Grund gekürzt.
-- Behoben: Nach einem Neustart zeigt der Sicherheitsstatus nicht mehr eine Minute lang *Eingeschränkt*.
-- Behoben: Außenfühler an ZHA oder Zigbee2MQTT, die in einer ruhigen Nacht schweigen, gelten nicht mehr als fehlend.
-- Behoben: Ein Zwischenstecker der Wärmepumpe, der in kW meldet, gab keinen COP; die Leistung wird jetzt in W, kW oder mW gelesen.
-- Die Diagnose lässt die Personen-Entitäten weg (sie tragen Vornamen); *Lernen zurücksetzen* ist nur noch für Administratoren.
-- Prüfungen: Wird Home Assistant nach der Einrichtung auf °F umgestellt, hält die Steuerung mit einer Reparaturmeldung still; der eBUS-Kreis wird geprüft; ein Raumthermostat, das die Wärmepumpe ist oder schon zu einem anderen Raum gehört, wird abgelehnt.
-- Lernen: Aufheizraten werden nicht mehr zu niedrig gelernt, eine COP-Stufe, die eine Woche nicht lief, wird neu geprüft, ein Lernlauf endet nicht mehr in einer Sperre, und ein zitternder Gaszähler zählt kein Gas doppelt.
-- Therme: Ein erhöhter Mindestvorlauf gilt sofort, und ein gescheiterter eBUS-Befehl wird im nächsten Zyklus wiederholt.
-- Karte: Räume und Warnungen bleiben aktuell, während die Modusliste offen ist, und sie sagt, wenn Thriftherm nicht geladen ist.
-- Standard-COP-Werte aktualisiert, neu auch für −2 bis 0 °C.
+- Behoben: Weniger Fehlalarme „Heizkörperthermostat antwortet nicht“; gemeldet wird nur noch, wenn ein Ventil wirklich nicht reagiert.
+- Neu: Die Wärmepumpe schützt ihre Räume vor Frost, ohne Zentralheizung sofort, sonst als Reserve nach 30 Minuten.
+- Behoben: Eine Wärmepumpe im Schnell-Aufheizen oder Trocknen heizte weiter, wenn man die Steuerung abschaltete.
+- Behoben: Eine Therme über Entitäten konnte nach dem Beenden gesperrt bleiben.
+- Behoben: Die Wärmepumpe schaltete sich beim Durchlaufen immer wieder selbst ab.
+- Die Wärmepumpe zeigt *Abtauen*, und ein eigener Modus wie *Heizen/Kühlen* bleibt dir überlassen.
+- Der *Entscheidungsgrund* wechselt viel seltener, und nach einem Neustart gibt es keine Warnung mehr.
+- Behoben: Ruhige Zigbee-Außenfühler, Stromzähler in kW und Thermostate in ganzen Grad.
+- Sicherer: Personen nicht mehr in der Diagnose, mehr Prüfungen beim Einrichten, kleinere Fehler bei Lernen, Therme und Karte.
+- Standard-COP-Werte aktualisiert.
 
 ## 0.7.2 – 2026-11-05
 

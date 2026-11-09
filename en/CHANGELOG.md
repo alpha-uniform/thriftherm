@@ -6,25 +6,16 @@ Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at ver
 
 ## 0.7.3 – 2026-11-09
 
-- Fixed: false alarms for silent radiator thermostats (18 in a week, a bathroom left cold for hours); one now counts as silent only when it does not answer a setpoint within 30 minutes (behind Better Thermostat: until a valve behind it reports), is unavailable for 30 minutes, or has not reported for 6 hours.
-- Fixed: without central heating the heat pump was off in *Away* and *Summer*, and a room could fall to 4 °C; it now holds the away and frost protection temperatures and heats a room below the frost limit in every mode.
-- New: with a boiler or district heating the heat pump is the frost reserve and heats a room of its own that is still below the frost limit after 30 minutes.
-- Fixed: a heat pump left at a quick heat-up's 30 °C or a drying's setpoint heated on when its control went to *Plan only* or *Off* or the entry was disabled or deleted; it now goes to its lowest setpoint.
-- Fixed: a boiler through entities could stay blocked when its hand-back failed as Thriftherm stopped (gateway away); the hand-back is made up once the entities are back, and a repair notice says so.
-- A heat pump in *Heat/Cool* (heat_cool) or another mode of its own is left to you, as in *Auto*.
-- The heat pump's run state shows *Defrosting*; after a defrost or a restart the run goes on without a new warm-up.
-- Fixed: a heat pump running through with no room short stopped itself again and again as its reading rose; its setpoint now follows the rising reading, a degree below it, as while a room is short.
-- Fixed: a thermostat in whole degrees already showing 22 °C got 21.5 °C sent every 5 minutes; it is sent once more and then taken as its answer.
-- The *Decision reason* changes far less often (its numbers once an hour at most) and is cut at a whole reason within 255 characters.
-- Fixed: after a restart the safety state no longer shows *Degraded* for a minute.
-- Fixed: outdoor sensors on ZHA or Zigbee2MQTT that stay quiet on a still night no longer count as missing.
-- Fixed: a heat pump plug reporting in kW gave no COP; power is now read in W, kW or mW.
-- Diagnostics leave out the person entities (they carry first names); *Reset learning* is for administrators only.
-- Checks: Home Assistant switched to °F after the setup stops the control with a repair notice; the eBUS circuit is checked; a room thermostat that is the heat pump or already another room's is refused.
-- Learning: heat-up rates are no longer learned too low, a COP step that has not run for a week is checked again, a learning run no longer ends in a lockout, and a jittering gas meter no longer counts gas twice.
-- Boiler: a raised minimum flow holds at once, and a failed eBUS command is sent again in the next cycle.
-- Card: rooms and warnings stay current while the mode list is open, and it says when Thriftherm is not loaded.
-- Default COP values updated, now also for −2 to 0 °C.
+- Fixed: fewer false alarms "radiator thermostat not responding"; it is reported only when a valve really does not react.
+- New: the heat pump protects its rooms from frost, at once without central heating, otherwise as a reserve after 30 minutes.
+- Fixed: a heat pump in a quick heat-up or a drying went on heating when its control was switched off.
+- Fixed: a boiler through entities could stay blocked after Thriftherm stopped.
+- Fixed: the heat pump kept stopping itself while it ran through.
+- The heat pump shows *Defrosting*, and a mode of its own such as *Heat/Cool* is left to you.
+- The *Decision reason* changes far less often, and a restart no longer brings a warning.
+- Fixed: quiet Zigbee outdoor sensors, power meters in kW and thermostats in whole degrees.
+- Safer: no person in the diagnostics, more checks during setup, smaller fixes in learning, boiler and card.
+- Default COP values updated.
 
 ## 0.7.2 – 2026-11-05
 
