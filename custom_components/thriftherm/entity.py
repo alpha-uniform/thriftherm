@@ -11,7 +11,7 @@ from homeassistant.components.number import NumberEntity
 from homeassistant.components.select import SelectEntity
 from homeassistant.components.sensor import SensorEntity
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import ChildDeviceInfo, DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -69,7 +69,7 @@ class ThrifthermEntity(CoordinatorEntity[ThrifthermCoordinator]):
         self.entity_id = f"{domain}.{prefix}{object_id}"
 
     @property
-    def device_info(self) -> DeviceInfo:
+    def device_info(self) -> DeviceInfo | ChildDeviceInfo:
         if self._room_key is None:
             return DeviceInfo(
                 identifiers={(DOMAIN, self._entry_id)},
@@ -77,18 +77,15 @@ class ThrifthermEntity(CoordinatorEntity[ThrifthermCoordinator]):
                 manufacturer="Thriftherm",
                 model="Heating control",
             )
-        info = DeviceInfo(
-            identifiers={(DOMAIN, f"{self._entry_id}_room_{self._room_key}")},
-            name=f"Thriftherm {self._room_name}",
-            manufacturer="Thriftherm",
-            model="Room",
-        )
-        if self.hass is not None:
-            # the hub device is created in async_setup_entry before any platform loads
-            hub = dr.async_get(self.hass).async_get_device_by_identifier((DOMAIN, self._entry_id), self._entry_id)
-            if hub is not None:
-                info["via_device_id"] = hub.id
-        return info
+        identifiers = {(DOMAIN, f"{self._entry_id}_room_{self._room_key}")}
+        # the hub device is created in async_setup_entry before any platform loads
+        hub = dr.async_get(self.hass).async_get_device_by_identifier((DOMAIN, self._entry_id), self._entry_id) if self.hass else None
+        if hub is not None:
+            # Home Assistant 2026.11 names each thing once: a child of "Thriftherm" called after its room alone.
+            # A room device from before (a device of its own, via_device to the hub) is converted in place: same id,
+            # own name and area kept.
+            return ChildDeviceInfo(identifiers=identifiers, name=self._room_name, parent_device_id=hub.id)
+        return DeviceInfo(identifiers=identifiers, name=f"Thriftherm {self._room_name}", manufacturer="Thriftherm", model="Room")
 
     @property
     def room(self):

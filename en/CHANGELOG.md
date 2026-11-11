@@ -4,6 +4,13 @@
 
 Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
 
+## 0.7.4 – 2026-11-12
+
+- Rooms are now child devices of "Thriftherm" and are named after the room alone ("Living room" instead of "Thriftherm Living room"), following the naming of Home Assistant 2026.11. Device ids, entity ids, your own names and areas stay.
+- Fixed: a room device renamed to just "Thriftherm" showed "Thriftherm" for every room in the card; it now takes the device's area or the room name.
+- New: switch *Room sensors report only on a change* (e.g. Shelly H&T): room temperatures hold up to the max. sensor age instead of 6 hours at most.
+- Default COP values updated.
+
 ## 0.7.3 – 2026-11-09
 
 - Fixed: fewer false alarms "radiator thermostat not responding"; it is reported only when a valve really does not react.

@@ -207,6 +207,8 @@ DEFAULT_SCHEDULE_WEEKEND: Final = "08:00-23:00"
 # Config keys – control parameters (all editable in options flow)
 # ---------------------------------------------------------------------------
 CONF_SENSOR_MAX_AGE_MIN: Final = "sensor_max_age_min"
+# room sensors that report only on a change (Shelly H&T: 1 K or 1 %): room temperatures hold up to the max. sensor age
+CONF_ROOM_SENSORS_ON_CHANGE: Final = "room_sensors_report_on_change"
 CONF_WINDOW_GRACE_S: Final = "window_grace_s"
 CONF_FROST_TEMP: Final = "frost_protection_temp"
 CONF_AWAY_TEMP: Final = "away_temp"
@@ -256,6 +258,7 @@ CONF_ROOM_ECHO_FILTER: Final = "room_echo_filter"  # ignore late radio echoes of
 # limit discards a working sensor and falls back to the thermostat's own
 # reading next to the radiator. A dead device shows up as unavailable anyway.
 DEFAULT_SENSOR_MAX_AGE_MIN: Final = 720
+DEFAULT_ROOM_SENSORS_ON_CHANGE: Final = False  # off: room temperatures hold six hours at most, as before 0.7.4
 DEFAULT_WINDOW_GRACE_S: Final = 90
 DEFAULT_FROST_TEMP: Final = 7.0
 DEFAULT_AWAY_TEMP: Final = 15.0

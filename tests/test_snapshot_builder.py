@@ -17,6 +17,8 @@ from custom_components.thriftherm.const import (
     CONF_HEAT_PUMP_OUTLET_TEMP,
     CONF_OUTDOOR_RH_SENSOR,
     CONF_ROOM_DRYING,
+    CONF_ROOM_SENSORS_ON_CHANGE,
+    CONF_SENSOR_MAX_AGE_MIN,
     CONF_WEATHER_ENTITY,
 )
 from custom_components.thriftherm.engines import room as room_engine
@@ -191,6 +193,33 @@ async def test_a_quiet_temperature_holds_while_its_device_reports(hass: HomeAssi
     hass.states.async_set("sensor.bath_rh", "52")
     reading = _build(builder).rooms["badezimmer"].temperature
     assert not reading.valid and reading.reason == "stale"
+
+
+async def test_room_sensors_that_report_only_on_change_hold_up_to_the_set_age(hass: HomeAssistant, freezer) -> None:
+    # 2026-11-11, issue #7: a Shelly H&T reports at 1 K or 1 % only, its whole device silent for 4.5 hours a night
+    _register_bath_sensor(hass)
+    freezer.move_to(START)
+    _set_states(hass)
+    hass.states.async_set("sensor.bath_temp", "19.65")
+    hass.states.async_set("sensor.bath_rh", "55")
+    default = _builder(hass)
+    builder = SnapshotBuilder(hass, {**default.config, CONF_ROOM_SENSORS_ON_CHANGE: True})
+    assert default.params.room_sensors_on_change is False  # off unless set: six hours as before
+
+    freezer.move_to(START + timedelta(hours=7))
+    assert not _build(default).rooms["badezimmer"].temperature.valid
+    reading = _build(builder).rooms["badezimmer"].temperature
+    assert reading.valid and reading.value == 19.65  # up to the max. sensor age, 12 hours by default
+
+    freezer.move_to(START + timedelta(hours=12, minutes=1))
+    assert _build(builder).rooms["badezimmer"].temperature.reason == "stale"
+
+    # a shorter max. sensor age still holds for it
+    short = SnapshotBuilder(hass, {**default.config, CONF_ROOM_SENSORS_ON_CHANGE: True, CONF_SENSOR_MAX_AGE_MIN: 180})
+    freezer.move_to(START + timedelta(hours=12, minutes=2))
+    hass.states.async_set("sensor.bath_temp", "20.0")
+    freezer.move_to(START + timedelta(hours=15, minutes=3))
+    assert _build(short).rooms["badezimmer"].temperature.reason == "stale"
 
 
 async def test_a_quiet_temperature_without_a_device_stays_stale(hass: HomeAssistant, freezer) -> None:

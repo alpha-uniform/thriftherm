@@ -89,6 +89,7 @@ from ..const import (
     CONF_ROOM_SETBACK_TEMP,
     CONF_ROOM_TEMP,
     CONF_ROOM_WINDOWS,
+    CONF_ROOM_SENSORS_ON_CHANGE,
     CONF_SENSOR_MAX_AGE_MIN,
     CONF_TREND_WEIGHT_H,
     CONF_WINDOW_GRACE_S,
@@ -134,6 +135,7 @@ from ..const import (
     DEFAULT_ROOM_SETBACK_TEMP,
     DEFAULT_SCHEDULE_WEEKDAY,
     DEFAULT_SCHEDULE_WEEKEND,
+    DEFAULT_ROOM_SENSORS_ON_CHANGE,
     DEFAULT_SENSOR_MAX_AGE_MIN,
     DEFAULT_TREND_WEIGHT_H,
     DEFAULT_WINDOW_GRACE_S,
@@ -217,6 +219,7 @@ def parameters_from_config(config: Mapping[str, Any]) -> Parameters:
 
     return Parameters(
         sensor_max_age_s=f(CONF_SENSOR_MAX_AGE_MIN, DEFAULT_SENSOR_MAX_AGE_MIN) * 60.0,
+        room_sensors_on_change=bool(config.get(CONF_ROOM_SENSORS_ON_CHANGE, DEFAULT_ROOM_SENSORS_ON_CHANGE)),
         window_grace_s=f(CONF_WINDOW_GRACE_S, DEFAULT_WINDOW_GRACE_S),
         frost_temp=f(CONF_FROST_TEMP, DEFAULT_FROST_TEMP),
         away_temp=f(CONF_AWAY_TEMP, DEFAULT_AWAY_TEMP),

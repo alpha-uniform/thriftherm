@@ -420,3 +420,24 @@ def test_a_room_with_a_limited_preheat_does_not_begin_early_with_another_rooms_r
     assert heat_call.join({"bad": setback}, {"bad": "idle"}, {"bad": 21.0}, NOW)["bad"].target == 21.0
     limited = replace(setback, short_preheat=True)
     assert heat_call.join({"bad": limited}, {"bad": "idle"}, {"bad": 21.0}, NOW)["bad"].target == 17.0
+
+
+# ------------------------------------------------------------------ a room sensor that reports only on a change
+def test_a_sensor_that_reports_only_on_a_change_keeps_its_room_calling_while_it_is_silent():
+    # 2026-11-11, issue #7: Vera's Shelly (1 K threshold) reported 19.65 and was silent for 4.5 hours. Its silence
+    # says the room is still below about 20.65: at 21 the heat was needed, a call cut after the planned warm-up left
+    # the room cooler at the comfort start. The option only lets the reading hold longer, it cuts no call.
+    from custom_components.thriftherm.models import SensorReading
+
+    params = replace(PARAMS, room_sensors_on_change=True)
+    start = datetime(2026, 11, 14, 9, 0, tzinfo=UTC)  # a Saturday: comfort 09:00-22:00
+    base = replace(room_state(room_config("vera")), heat_rate_k_h=0.43)
+    mem, states = CallMemory(), set()
+    for minute in range(0, 5 * 60 + 1, 5):
+        now = start + timedelta(minutes=minute)
+        state = replace(base, temperature=SensorReading("sensor.shelly_vera", 19.65, 2040.0 + minute * 60.0, True))
+        res = evaluate_room(state, now, "auto", params)
+        assert res.target == 21.0 and res.temperature == 19.65
+        call, mem = heat_call.update(res, mem, now.timestamp(), res.comfort_end_ts)
+        states.add(call)
+    assert states == {"calling"}  # beyond the planned warm-up (3.5 h) and the two hours alike

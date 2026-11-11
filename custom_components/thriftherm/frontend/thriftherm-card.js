@@ -85,6 +85,9 @@ function loadTexts(hass) {
 }
 
 // ------------------------------------------------------------------ finding Thriftherm's entities
+// the room in a device name: "Thriftherm Wohnzimmer" (before 0.7.4) and "Wohnzimmer" give the room, "Thriftherm" none
+const roomPart = (name) => (name || "").trim().replace(/^Thriftherm(\s+|$)/i, "").trim();
+
 function discover(hass) {
   const system = {};
   const rooms = [];
@@ -110,9 +113,11 @@ function discover(hass) {
       continue;
     }
     const device = hass.devices?.[deviceId];
-    const deviceName = device?.name_by_user || device?.name || "";
-    const name = deviceName.replace(/^Thriftherm\s+/i, "") || target.attributes.friendly_name || ids.room_target;
+    // Since Home Assistant 2026.11 a room device is a child of "Thriftherm" named after its room. A user who
+    // renames it to just "Thriftherm" gets the room from the device's area, else from the name Thriftherm gave it.
     const key = target.attributes.room_key;
+    const name =
+      roomPart(device?.name_by_user) || hass.areas?.[device?.area_id]?.name || roomPart(device?.name) || key;
     const entities = {};
     for (const k of ROOM_KEYS) if (ids[k]) entities[k.replace(/^room_/, "")] = ids[k];
     rooms.push({ key, name, ids: entities });
@@ -264,9 +269,12 @@ class ThrifthermCard extends HTMLElement {
     // a room waited for is looked for again when its target changes, not with every update: each look goes over
     // every entity of the installation (review 2026-11-08)
     const changed = this._model?.waiting.some((id, i) => this._hass.states[id] !== this._waitingStates[i]);
-    if (this._entities !== this._hass.entities || this._devices !== this._hass.devices || !this._model || changed) {
+    // the areas too: a room device called just "Thriftherm" takes its name from its area
+    const registries = this._entities !== this._hass.entities || this._devices !== this._hass.devices || this._areas !== this._hass.areas;
+    if (registries || !this._model || changed) {
       this._entities = this._hass.entities;
       this._devices = this._hass.devices;
+      this._areas = this._hass.areas;
       this._model = discover(this._hass);
       this._waitingStates = this._model.waiting.map((id) => this._hass.states[id]);
       const ids = this._watchedSystem();

@@ -329,7 +329,11 @@
               "internal_gain_threshold_w": "Internal gain threshold",
               "internal_gain_factor_per_w": "Internal gain demand reduction per W",
               "sensor_max_age_min": "Max. sensor age",
+              "room_sensors_report_on_change": "Room sensors report only on a change",
               "away_dewpoint_margin_k": "Away: dew-point margin for humidity guard"
+            },
+            "data_description": {
+              "room_sensors_report_on_change": "For sensors such as the Shelly H&T that report only at a change of 1 °C or 1 %. On: room temperatures hold up to the max. sensor age instead of six hours. Off for sensors that report every few minutes."
             }
           }
         }

@@ -848,7 +848,10 @@ async def test_entity_ids_are_english_on_a_german_installation(hass: HomeAssista
 
     boost = hass.states.get("button.thriftherm_badezimmer_quick_heat_up")
     assert boost is not None
-    assert boost.attributes["friendly_name"].endswith("Schnell aufheizen")  # still German to read
+    from homeassistant.helpers import entity_registry as er
+
+    # the entity's own name, not the friendly_name attribute Home Assistant phases out since 2026.11
+    assert er.async_get(hass).async_get(boost.entity_id).original_name == "Schnell aufheizen"  # still German to read
     assert hass.states.get("select.thriftherm_heat_pump_control") is not None
     assert hass.states.get("binary_sensor.thriftherm_badezimmer_window_open") is not None
     assert hass.states.get("number.thriftherm_wohnzimmer_comfort_temperature") is not None
@@ -1374,7 +1377,7 @@ async def test_a_deleted_room_takes_its_device_along(hass: HomeAssistant) -> Non
     entry = await _setup(hass)
     coordinator = entry.runtime_data
     dev_reg = dr.async_get(hass)
-    room_device = dev_reg.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}_room_wohnzimmer"), entry.entry_id)
+    room_device = dev_reg.async_get_child_device_by_identifier((DOMAIN, f"{entry.entry_id}_room_wohnzimmer"), entry.entry_id)
     assert room_device is not None
     coordinator.builder.rooms = tuple(r for r in coordinator.builder.rooms if r.key != "wohnzimmer")
     _remove_stale_registry_entries(hass, entry, coordinator)
@@ -1985,3 +1988,66 @@ async def test_a_unit_held_at_its_least_speed_is_left_as_it_is_when_the_control_
     coordinator.set_control_mode("shadow")
     await hass.async_block_till_done()
     assert set_temperature == []
+
+
+async def test_room_devices_are_child_devices_of_the_hub_named_after_the_room(hass: HomeAssistant) -> None:
+    """Home Assistant 2026.11 names each thing once: the room device is a child of "Thriftherm" called "Wohnzimmer"."""
+    from homeassistant.helpers import device_registry as dr, entity_registry as er
+
+    entry = await _setup(hass)
+    dev_reg = dr.async_get(hass)
+    hub = dev_reg.async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
+    room = dev_reg.async_get_child_device_by_identifier((DOMAIN, f"{entry.entry_id}_room_wohnzimmer"), entry.entry_id)
+    assert hub is not None and room is not None
+    assert room.parent_device_id == hub.id
+    assert room.name == "Wohnzimmer"
+    assert dev_reg.async_get_device_by_identifier((DOMAIN, f"{entry.entry_id}_room_wohnzimmer"), entry.entry_id) is None
+    target = er.async_get(hass).async_get("sensor.thriftherm_wohnzimmer_target_temperature")
+    assert target is not None and target.device_id == room.id
+
+
+async def test_a_room_device_from_before_becomes_a_child_device_and_keeps_its_id_and_name(hass: HomeAssistant) -> None:
+    """An update must not take away what the user gave the room device: its id (automations), own name and area."""
+    from homeassistant.helpers import device_registry as dr
+
+    entry = MockConfigEntry(domain=DOMAIN, data=_entry_data(), options={}, unique_id=DOMAIN, title="Thriftherm")
+    entry.add_to_hass(hass)
+    dev_reg = dr.async_get(hass)
+    hub = dev_reg.async_get_or_create(config_entry_id=entry.entry_id, identifiers={(DOMAIN, entry.entry_id)}, name="Thriftherm")
+    old = dev_reg.async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, f"{entry.entry_id}_room_wohnzimmer")},
+        name="Thriftherm Wohnzimmer",
+        manufacturer="Thriftherm",
+        model="Room",
+        via_device_id=hub.id,
+    )
+    dev_reg.async_update_device(old.id, name_by_user="Thriftherm", area_id="wohnzimmer")
+    # as after the restart that installs the update: the devices of the old run are no longer live
+    dev_reg.async_config_entry_unloaded(entry.entry_id)
+    _set_states(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    room = dev_reg.async_get_child_device_by_identifier((DOMAIN, f"{entry.entry_id}_room_wohnzimmer"), entry.entry_id)
+    assert room is not None and room.id == old.id
+    assert room.parent_device_id == hub.id
+    assert room.name_by_user == "Thriftherm" and room.area_id == "wohnzimmer"
+    assert room.name == "Wohnzimmer"
+
+
+async def test_a_room_child_device_of_a_deleted_room_is_cleaned_up_on_reload(hass: HomeAssistant) -> None:
+    from homeassistant.helpers import device_registry as dr
+
+    entry = await _setup(hass)
+    dev_reg = dr.async_get(hass)
+    hub = dev_reg.async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
+    gone = dev_reg.async_get_or_create_child(
+        config_entry_id=entry.entry_id, identifiers={(DOMAIN, f"{entry.entry_id}_room_gone")}, name="Gone", parent_device_id=hub.id
+    )
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert dev_reg.async_get(gone.id) is None
+    assert dev_reg.async_get_child_device_by_identifier((DOMAIN, f"{entry.entry_id}_room_badezimmer"), entry.entry_id) is not None

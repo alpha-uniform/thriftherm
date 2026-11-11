@@ -44,14 +44,15 @@ PARAMETER_DEFAULTS = {
     "window_grace_s": 90.0, "preheat_margin_min": 20.0, "default_heat_rate_radiator_k_h": 0.8,
     "room_allow_active_control": False, "room_echo_filter": True,
     "demand_full_delta_k": 2.0, "trend_weight_h": 0.5, "internal_gain_threshold_w": 150.0,
-    "internal_gain_factor_per_w": 0.001, "sensor_max_age_min": 720.0, "away_dewpoint_margin_k": 3.0,
+    "internal_gain_factor_per_w": 0.001, "sensor_max_age_min": 720.0, "room_sensors_report_on_change": False,
+    "away_dewpoint_margin_k": 3.0,
 }
 PARAMETER_SECTIONS = {
     "windows_preheat": ["window_grace_s", "preheat_margin_min", "default_heat_rate_radiator_k_h"],
     "release": ["room_allow_active_control", "room_echo_filter"],
     "expert": [
         "demand_full_delta_k", "trend_weight_h", "internal_gain_threshold_w", "internal_gain_factor_per_w",
-        "sensor_max_age_min", "away_dewpoint_margin_k",
+        "sensor_max_age_min", "room_sensors_report_on_change", "away_dewpoint_margin_k",
     ],
 }
 TUNING_DEFAULTS = {

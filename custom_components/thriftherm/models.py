@@ -254,6 +254,8 @@ class Prices:
 @dataclass(frozen=True)
 class Parameters:
     sensor_max_age_s: float = 43200.0
+    # room sensors report only on a change: their temperature holds up to `sensor_max_age_s`, not six hours
+    room_sensors_on_change: bool = False
     window_grace_s: float = 90.0
     frost_temp: float = 7.0
     away_temp: float = 15.0

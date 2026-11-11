@@ -329,7 +329,11 @@
               "internal_gain_threshold_w": "Schwelle interne Wärmegewinne",
               "internal_gain_factor_per_w": "Bedarfsreduktion je W interner Gewinne",
               "sensor_max_age_min": "Max. Sensoralter",
+              "room_sensors_report_on_change": "Raumfühler melden nur bei Änderung",
               "away_dewpoint_margin_k": "Abwesend: Taupunktabstand für Feuchteschutz"
+            },
+            "data_description": {
+              "room_sensors_report_on_change": "Für Fühler wie den Shelly H&T, die nur bei 1 °C oder 1 % Änderung melden. An: Raumtemperaturen gelten bis zum Max. Sensoralter statt sechs Stunden. Aus lassen bei Fühlern, die alle paar Minuten melden."
             }
           }
         }

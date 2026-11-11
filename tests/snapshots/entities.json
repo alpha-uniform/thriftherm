@@ -2,19 +2,20 @@
  "district": {
   "binary_sensor.thriftherm_badezimmer_heating_allowed": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Heating allowed",
+    "friendly_name": "Badezimmer Heating allowed",
     "icon": "mdi:radiator",
     "midea_allowed": true
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -29,18 +30,19 @@
   "binary_sensor.thriftherm_badezimmer_window_open": {
    "attributes": {
     "device_class": "window",
-    "friendly_name": "Thriftherm Badezimmer Window open",
+    "friendly_name": "Badezimmer Window open",
     "unknown": false
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -63,13 +65,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "problem",
@@ -86,13 +89,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -110,13 +114,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "problem",
@@ -136,13 +141,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -154,19 +160,20 @@
   },
   "binary_sensor.thriftherm_wohnzimmer_heating_allowed": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Heating allowed",
+    "friendly_name": "Wohnzimmer Heating allowed",
     "icon": "mdi:radiator",
     "midea_allowed": true
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -185,13 +192,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -203,18 +211,19 @@
   },
   "button.thriftherm_badezimmer_quick_heat_up": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Quick heat-up",
+    "friendly_name": "Badezimmer Quick heat-up",
     "icon": "mdi:fire"
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -234,13 +243,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -252,7 +262,7 @@
   },
   "number.thriftherm_badezimmer_comfort_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Comfort temperature",
+    "friendly_name": "Badezimmer Comfort temperature",
     "icon": "mdi:thermometer-high",
     "max": 28.0,
     "min": 10.0,
@@ -267,13 +277,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -287,7 +298,7 @@
   },
   "number.thriftherm_badezimmer_setback_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Setback temperature",
+    "friendly_name": "Badezimmer Setback temperature",
     "icon": "mdi:thermometer-low",
     "max": 25.0,
     "min": 5.0,
@@ -302,13 +313,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -322,7 +334,7 @@
   },
   "number.thriftherm_wohnzimmer_comfort_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Comfort temperature",
+    "friendly_name": "Wohnzimmer Comfort temperature",
     "icon": "mdi:thermometer-high",
     "max": 28.0,
     "min": 10.0,
@@ -337,13 +349,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -357,7 +370,7 @@
   },
   "number.thriftherm_wohnzimmer_setback_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Setback temperature",
+    "friendly_name": "Wohnzimmer Setback temperature",
     "icon": "mdi:thermometer-low",
     "max": 25.0,
     "min": 5.0,
@@ -372,13 +385,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -407,13 +421,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -448,13 +463,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -481,13 +497,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -516,13 +533,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -538,13 +556,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -562,13 +581,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -586,13 +606,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -608,7 +629,7 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Thriftherm Badezimmer Heat demand",
+    "friendly_name": "Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
@@ -619,13 +640,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -640,7 +662,7 @@
   "sensor.thriftherm_badezimmer_target_temperature": {
    "attributes": {
     "device_class": "temperature",
-    "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "friendly_name": "Badezimmer Target temperature",
     "next_change_ts": null,
     "next_target": null,
     "override_by": null,
@@ -658,13 +680,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -686,13 +709,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -714,13 +738,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -754,13 +779,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -789,13 +815,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -816,13 +843,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -847,13 +875,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -873,13 +902,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -934,13 +964,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -977,13 +1008,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -1009,13 +1041,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -1063,13 +1096,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -1090,13 +1124,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -1157,13 +1192,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -1185,13 +1221,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -1230,13 +1267,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -1267,13 +1305,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -1289,13 +1328,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1311,7 +1351,7 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Thriftherm Wohnzimmer Heat demand",
+    "friendly_name": "Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
@@ -1322,13 +1362,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1343,7 +1384,7 @@
   "sensor.thriftherm_wohnzimmer_target_temperature": {
    "attributes": {
     "device_class": "temperature",
-    "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "friendly_name": "Wohnzimmer Target temperature",
     "next_change_ts": null,
     "next_target": null,
     "override_by": null,
@@ -1361,13 +1402,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1389,13 +1431,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1411,19 +1454,20 @@
  "gas_heat_pump": {
   "binary_sensor.thriftherm_badezimmer_heating_allowed": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Heating allowed",
+    "friendly_name": "Badezimmer Heating allowed",
     "icon": "mdi:radiator",
     "midea_allowed": true
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1438,18 +1482,19 @@
   "binary_sensor.thriftherm_badezimmer_window_open": {
    "attributes": {
     "device_class": "window",
-    "friendly_name": "Thriftherm Badezimmer Window open",
+    "friendly_name": "Badezimmer Window open",
     "unknown": false
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1469,13 +1514,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "connectivity",
@@ -1494,13 +1540,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "running",
@@ -1517,13 +1564,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "running",
@@ -1544,13 +1592,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "problem",
@@ -1567,13 +1616,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -1591,13 +1641,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "problem",
@@ -1617,13 +1668,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -1635,19 +1687,20 @@
   },
   "binary_sensor.thriftherm_wohnzimmer_heating_allowed": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Heating allowed",
+    "friendly_name": "Wohnzimmer Heating allowed",
     "icon": "mdi:radiator",
     "midea_allowed": true
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1666,13 +1719,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -1684,18 +1738,19 @@
   },
   "button.thriftherm_badezimmer_quick_heat_up": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Quick heat-up",
+    "friendly_name": "Badezimmer Quick heat-up",
     "icon": "mdi:fire"
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1715,13 +1770,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -1733,7 +1789,7 @@
   },
   "number.thriftherm_badezimmer_comfort_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Comfort temperature",
+    "friendly_name": "Badezimmer Comfort temperature",
     "icon": "mdi:thermometer-high",
     "max": 28.0,
     "min": 10.0,
@@ -1748,13 +1804,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1768,7 +1825,7 @@
   },
   "number.thriftherm_badezimmer_setback_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Setback temperature",
+    "friendly_name": "Badezimmer Setback temperature",
     "icon": "mdi:thermometer-low",
     "max": 25.0,
     "min": 5.0,
@@ -1783,13 +1840,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1803,7 +1861,7 @@
   },
   "number.thriftherm_wohnzimmer_comfort_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Comfort temperature",
+    "friendly_name": "Wohnzimmer Comfort temperature",
     "icon": "mdi:thermometer-high",
     "max": 28.0,
     "min": 10.0,
@@ -1818,13 +1876,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1838,7 +1897,7 @@
   },
   "number.thriftherm_wohnzimmer_setback_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Setback temperature",
+    "friendly_name": "Wohnzimmer Setback temperature",
     "icon": "mdi:thermometer-low",
     "max": 25.0,
     "min": 5.0,
@@ -1853,13 +1912,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -1888,13 +1948,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -1921,13 +1982,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -1962,13 +2024,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -1995,13 +2058,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -2030,13 +2094,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -2052,13 +2117,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -2076,13 +2142,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -2100,13 +2167,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -2122,7 +2190,7 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Thriftherm Badezimmer Heat demand",
+    "friendly_name": "Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
@@ -2133,13 +2201,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -2154,7 +2223,7 @@
   "sensor.thriftherm_badezimmer_target_temperature": {
    "attributes": {
     "device_class": "temperature",
-    "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "friendly_name": "Badezimmer Target temperature",
     "next_change_ts": null,
     "next_target": null,
     "override_by": null,
@@ -2172,13 +2241,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -2200,13 +2270,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -2225,7 +2296,7 @@
     "device_class": "enum",
     "echo_ignored_at": null,
     "echo_ignored_value": null,
-    "friendly_name": "Thriftherm Badezimmer Thermostat plan",
+    "friendly_name": "Badezimmer Thermostat plan",
     "icon": "mdi:thermostat",
     "options": [
      "set",
@@ -2246,13 +2317,14 @@
     ]
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -2277,13 +2349,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -2341,13 +2414,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -2363,13 +2437,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -2391,13 +2466,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -2421,13 +2497,14 @@
     "state_class": "total_increasing"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -2443,13 +2520,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "power",
@@ -2469,13 +2547,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -2509,13 +2588,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -2544,13 +2624,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -2571,13 +2652,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -2602,13 +2684,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -2633,13 +2716,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -2659,13 +2743,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -2720,13 +2805,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -2763,13 +2849,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -2795,13 +2882,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -2849,13 +2937,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -2876,13 +2965,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -2943,13 +3033,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -2971,13 +3062,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -3016,13 +3108,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -3053,13 +3146,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -3075,13 +3169,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3097,7 +3192,7 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Thriftherm Wohnzimmer Heat demand",
+    "friendly_name": "Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
@@ -3108,13 +3203,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3129,7 +3225,7 @@
   "sensor.thriftherm_wohnzimmer_target_temperature": {
    "attributes": {
     "device_class": "temperature",
-    "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "friendly_name": "Wohnzimmer Target temperature",
     "next_change_ts": null,
     "next_target": null,
     "override_by": null,
@@ -3147,13 +3243,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3175,13 +3272,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3197,19 +3295,20 @@
  "gas_heat_pump_released": {
   "binary_sensor.thriftherm_badezimmer_heating_allowed": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Heating allowed",
+    "friendly_name": "Badezimmer Heating allowed",
     "icon": "mdi:radiator",
     "midea_allowed": true
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3224,18 +3323,19 @@
   "binary_sensor.thriftherm_badezimmer_window_open": {
    "attributes": {
     "device_class": "window",
-    "friendly_name": "Thriftherm Badezimmer Window open",
+    "friendly_name": "Badezimmer Window open",
     "unknown": false
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3255,13 +3355,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "connectivity",
@@ -3280,13 +3381,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "running",
@@ -3303,13 +3405,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "running",
@@ -3330,13 +3433,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "problem",
@@ -3353,13 +3457,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -3377,13 +3482,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "problem",
@@ -3403,13 +3509,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -3421,19 +3528,20 @@
   },
   "binary_sensor.thriftherm_wohnzimmer_heating_allowed": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Heating allowed",
+    "friendly_name": "Wohnzimmer Heating allowed",
     "icon": "mdi:radiator",
     "midea_allowed": true
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3452,13 +3560,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -3470,18 +3579,19 @@
   },
   "button.thriftherm_badezimmer_quick_heat_up": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Quick heat-up",
+    "friendly_name": "Badezimmer Quick heat-up",
     "icon": "mdi:fire"
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3501,13 +3611,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -3519,7 +3630,7 @@
   },
   "number.thriftherm_badezimmer_comfort_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Comfort temperature",
+    "friendly_name": "Badezimmer Comfort temperature",
     "icon": "mdi:thermometer-high",
     "max": 28.0,
     "min": 10.0,
@@ -3534,13 +3645,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3554,7 +3666,7 @@
   },
   "number.thriftherm_badezimmer_setback_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Setback temperature",
+    "friendly_name": "Badezimmer Setback temperature",
     "icon": "mdi:thermometer-low",
     "max": 25.0,
     "min": 5.0,
@@ -3569,13 +3681,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3589,7 +3702,7 @@
   },
   "number.thriftherm_wohnzimmer_comfort_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Comfort temperature",
+    "friendly_name": "Wohnzimmer Comfort temperature",
     "icon": "mdi:thermometer-high",
     "max": 28.0,
     "min": 10.0,
@@ -3604,13 +3717,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3624,7 +3738,7 @@
   },
   "number.thriftherm_wohnzimmer_setback_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Setback temperature",
+    "friendly_name": "Wohnzimmer Setback temperature",
     "icon": "mdi:thermometer-low",
     "max": 25.0,
     "min": 5.0,
@@ -3639,13 +3753,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3676,13 +3791,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -3711,13 +3827,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -3752,13 +3869,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -3787,13 +3905,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -3822,13 +3941,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -3844,13 +3964,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3868,13 +3989,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3892,13 +4014,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3914,7 +4037,7 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Thriftherm Badezimmer Heat demand",
+    "friendly_name": "Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
@@ -3925,13 +4048,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3946,7 +4070,7 @@
   "sensor.thriftherm_badezimmer_target_temperature": {
    "attributes": {
     "device_class": "temperature",
-    "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "friendly_name": "Badezimmer Target temperature",
     "next_change_ts": null,
     "next_target": null,
     "override_by": null,
@@ -3964,13 +4088,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -3992,13 +4117,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -4017,7 +4143,7 @@
     "device_class": "enum",
     "echo_ignored_at": null,
     "echo_ignored_value": null,
-    "friendly_name": "Thriftherm Badezimmer Thermostat plan",
+    "friendly_name": "Badezimmer Thermostat plan",
     "icon": "mdi:thermostat",
     "options": [
      "set",
@@ -4038,13 +4164,14 @@
     ]
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -4069,13 +4196,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -4133,13 +4261,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -4155,13 +4284,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -4183,13 +4313,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -4213,13 +4344,14 @@
     "state_class": "total_increasing"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -4235,13 +4367,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "power",
@@ -4261,13 +4394,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -4301,13 +4435,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -4336,13 +4471,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -4363,13 +4499,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -4394,13 +4531,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -4425,13 +4563,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -4451,13 +4590,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -4512,13 +4652,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -4555,13 +4696,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -4587,13 +4729,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -4641,13 +4784,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -4668,13 +4812,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -4735,13 +4880,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -4763,13 +4909,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -4808,13 +4955,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -4845,13 +4993,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -4867,13 +5016,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -4889,7 +5039,7 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Thriftherm Wohnzimmer Heat demand",
+    "friendly_name": "Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
@@ -4900,13 +5050,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -4921,7 +5072,7 @@
   "sensor.thriftherm_wohnzimmer_target_temperature": {
    "attributes": {
     "device_class": "temperature",
-    "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "friendly_name": "Wohnzimmer Target temperature",
     "next_change_ts": null,
     "next_target": null,
     "override_by": null,
@@ -4939,13 +5090,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -4967,13 +5119,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -4989,19 +5142,20 @@
  "gas_only": {
   "binary_sensor.thriftherm_badezimmer_heating_allowed": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Heating allowed",
+    "friendly_name": "Badezimmer Heating allowed",
     "icon": "mdi:radiator",
     "midea_allowed": true
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5016,18 +5170,19 @@
   "binary_sensor.thriftherm_badezimmer_window_open": {
    "attributes": {
     "device_class": "window",
-    "friendly_name": "Thriftherm Badezimmer Window open",
+    "friendly_name": "Badezimmer Window open",
     "unknown": false
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5047,13 +5202,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "connectivity",
@@ -5072,13 +5228,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "running",
@@ -5095,13 +5252,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "running",
@@ -5121,13 +5279,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -5139,19 +5298,20 @@
   },
   "binary_sensor.thriftherm_wohnzimmer_heating_allowed": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Heating allowed",
+    "friendly_name": "Wohnzimmer Heating allowed",
     "icon": "mdi:radiator",
     "midea_allowed": true
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5170,13 +5330,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -5194,13 +5355,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -5212,7 +5374,7 @@
   },
   "number.thriftherm_badezimmer_comfort_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Comfort temperature",
+    "friendly_name": "Badezimmer Comfort temperature",
     "icon": "mdi:thermometer-high",
     "max": 28.0,
     "min": 10.0,
@@ -5227,13 +5389,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5247,7 +5410,7 @@
   },
   "number.thriftherm_badezimmer_setback_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Setback temperature",
+    "friendly_name": "Badezimmer Setback temperature",
     "icon": "mdi:thermometer-low",
     "max": 25.0,
     "min": 5.0,
@@ -5262,13 +5425,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5282,7 +5446,7 @@
   },
   "number.thriftherm_wohnzimmer_comfort_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Comfort temperature",
+    "friendly_name": "Wohnzimmer Comfort temperature",
     "icon": "mdi:thermometer-high",
     "max": 28.0,
     "min": 10.0,
@@ -5297,13 +5461,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5317,7 +5482,7 @@
   },
   "number.thriftherm_wohnzimmer_setback_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Setback temperature",
+    "friendly_name": "Wohnzimmer Setback temperature",
     "icon": "mdi:thermometer-low",
     "max": 25.0,
     "min": 5.0,
@@ -5332,13 +5497,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5367,13 +5533,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -5406,13 +5573,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -5439,13 +5607,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -5474,13 +5643,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -5496,13 +5666,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5520,13 +5691,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5544,13 +5716,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5566,7 +5739,7 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Thriftherm Badezimmer Heat demand",
+    "friendly_name": "Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
@@ -5577,13 +5750,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5598,7 +5772,7 @@
   "sensor.thriftherm_badezimmer_target_temperature": {
    "attributes": {
     "device_class": "temperature",
-    "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "friendly_name": "Badezimmer Target temperature",
     "next_change_ts": null,
     "next_target": null,
     "override_by": null,
@@ -5616,13 +5790,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5644,13 +5819,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -5675,13 +5851,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -5739,13 +5916,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -5761,13 +5939,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -5789,13 +5968,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -5819,13 +5999,14 @@
     "state_class": "total_increasing"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -5841,13 +6022,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "power",
@@ -5872,13 +6054,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -5899,13 +6082,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -5930,13 +6114,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -5997,13 +6182,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -6025,13 +6211,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -6070,13 +6257,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -6107,13 +6295,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -6129,13 +6318,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6151,7 +6341,7 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Thriftherm Wohnzimmer Heat demand",
+    "friendly_name": "Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
@@ -6162,13 +6352,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6183,7 +6374,7 @@
   "sensor.thriftherm_wohnzimmer_target_temperature": {
    "attributes": {
     "device_class": "temperature",
-    "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "friendly_name": "Wohnzimmer Target temperature",
     "next_change_ts": null,
     "next_target": null,
     "override_by": null,
@@ -6201,13 +6392,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6229,13 +6421,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6251,19 +6444,20 @@
  "heat_pump_only": {
   "binary_sensor.thriftherm_badezimmer_heating_allowed": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Heating allowed",
+    "friendly_name": "Badezimmer Heating allowed",
     "icon": "mdi:radiator",
     "midea_allowed": true
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6278,18 +6472,19 @@
   "binary_sensor.thriftherm_badezimmer_window_open": {
    "attributes": {
     "device_class": "window",
-    "friendly_name": "Thriftherm Badezimmer Window open",
+    "friendly_name": "Badezimmer Window open",
     "unknown": false
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6312,13 +6507,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "problem",
@@ -6335,13 +6531,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -6359,13 +6556,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "problem",
@@ -6385,13 +6583,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -6403,19 +6602,20 @@
   },
   "binary_sensor.thriftherm_wohnzimmer_heating_allowed": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Heating allowed",
+    "friendly_name": "Wohnzimmer Heating allowed",
     "icon": "mdi:radiator",
     "midea_allowed": true
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6434,13 +6634,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -6452,18 +6653,19 @@
   },
   "button.thriftherm_badezimmer_quick_heat_up": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Quick heat-up",
+    "friendly_name": "Badezimmer Quick heat-up",
     "icon": "mdi:fire"
    },
    "capabilities": null,
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6483,13 +6685,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -6501,7 +6704,7 @@
   },
   "number.thriftherm_badezimmer_comfort_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Comfort temperature",
+    "friendly_name": "Badezimmer Comfort temperature",
     "icon": "mdi:thermometer-high",
     "max": 28.0,
     "min": 10.0,
@@ -6516,13 +6719,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6536,7 +6740,7 @@
   },
   "number.thriftherm_badezimmer_setback_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Badezimmer Setback temperature",
+    "friendly_name": "Badezimmer Setback temperature",
     "icon": "mdi:thermometer-low",
     "max": 25.0,
     "min": 5.0,
@@ -6551,13 +6755,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6571,7 +6776,7 @@
   },
   "number.thriftherm_wohnzimmer_comfort_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Comfort temperature",
+    "friendly_name": "Wohnzimmer Comfort temperature",
     "icon": "mdi:thermometer-high",
     "max": 28.0,
     "min": 10.0,
@@ -6586,13 +6791,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6606,7 +6812,7 @@
   },
   "number.thriftherm_wohnzimmer_setback_temperature": {
    "attributes": {
-    "friendly_name": "Thriftherm Wohnzimmer Setback temperature",
+    "friendly_name": "Wohnzimmer Setback temperature",
     "icon": "mdi:thermometer-low",
     "max": 25.0,
     "min": 5.0,
@@ -6621,13 +6827,14 @@
     "step": 0.5
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6656,13 +6863,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -6695,13 +6903,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -6728,13 +6937,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -6763,13 +6973,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -6785,13 +6996,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6809,13 +7021,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6833,13 +7046,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6855,7 +7069,7 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Thriftherm Badezimmer Heat demand",
+    "friendly_name": "Badezimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
@@ -6866,13 +7080,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6887,7 +7102,7 @@
   "sensor.thriftherm_badezimmer_target_temperature": {
    "attributes": {
     "device_class": "temperature",
-    "friendly_name": "Thriftherm Badezimmer Target temperature",
+    "friendly_name": "Badezimmer Target temperature",
     "next_change_ts": null,
     "next_target": null,
     "override_by": null,
@@ -6905,13 +7120,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6933,13 +7149,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_badezimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Badezimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -6970,13 +7187,14 @@
    },
    "capabilities": null,
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -6997,13 +7215,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -7023,13 +7242,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": null,
@@ -7084,13 +7304,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -7127,13 +7348,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -7159,13 +7381,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -7213,13 +7436,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -7240,13 +7464,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -7307,13 +7532,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -7335,13 +7561,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {
     "sensor": {
@@ -7380,13 +7607,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -7417,13 +7645,14 @@
     ]
    },
    "device": {
+    "child": false,
     "identifiers": [
      "thriftherm/ENTRY"
     ],
     "manufacturer": "Thriftherm",
     "model": "Heating control",
     "name": "Thriftherm",
-    "via": null
+    "parent": null
    },
    "options": {},
    "original_device_class": "enum",
@@ -7439,13 +7668,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -7461,7 +7691,7 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Thriftherm Wohnzimmer Heat demand",
+    "friendly_name": "Wohnzimmer Heat demand",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
@@ -7472,13 +7702,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -7493,7 +7724,7 @@
   "sensor.thriftherm_wohnzimmer_target_temperature": {
    "attributes": {
     "device_class": "temperature",
-    "friendly_name": "Thriftherm Wohnzimmer Target temperature",
+    "friendly_name": "Wohnzimmer Target temperature",
     "next_change_ts": null,
     "next_target": null,
     "override_by": null,
@@ -7511,13 +7742,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },
@@ -7539,13 +7771,14 @@
     "state_class": "measurement"
    },
    "device": {
+    "child": true,
     "identifiers": [
      "thriftherm/ENTRY_room_wohnzimmer"
     ],
-    "manufacturer": "Thriftherm",
-    "model": "Room",
-    "name": "Thriftherm Wohnzimmer",
-    "via": [
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
      "thriftherm/ENTRY"
     ]
    },

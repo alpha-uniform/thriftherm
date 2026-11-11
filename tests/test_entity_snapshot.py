@@ -63,13 +63,16 @@ def _collect(hass: HomeAssistant, entry: MockConfigEntry) -> dict[str, Any]:
         dev = dev_reg.async_get(device_id) if device_id else None
         if dev is None:
             return None
-        via = dev_reg.async_get(dev.via_device_id) if dev.via_device_id else None
+        # a room device is a child of the hub since 0.7.4: no manufacturer, model or via_device of its own
+        parent_id = getattr(dev, "parent_device_id", None) or getattr(dev, "via_device_id", None)
+        parent = dev_reg.async_get(parent_id) if parent_id else None
         return {
             "identifiers": sorted("/".join(i).replace(entry.entry_id, "ENTRY") for i in dev.identifiers),
             "name": dev.name,
-            "manufacturer": dev.manufacturer,
-            "model": dev.model,
-            "via": None if via is None else sorted("/".join(i).replace(entry.entry_id, "ENTRY") for i in via.identifiers),
+            "manufacturer": getattr(dev, "manufacturer", None),
+            "model": getattr(dev, "model", None),
+            "child": hasattr(dev, "parent_device_id"),
+            "parent": None if parent is None else sorted("/".join(i).replace(entry.entry_id, "ENTRY") for i in parent.identifiers),
         }
 
     out: dict[str, Any] = {}

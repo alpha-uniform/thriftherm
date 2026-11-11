@@ -282,6 +282,8 @@ Du legst einen Raum pro Seite an. Mit dem Haken **Weiteren Raum hinzufügen** ko
 
 Der Raum ist warm, *wenn* eine Komfortzeit beginnt: Thriftherm fängt rechtzeitig vorher an zu heizen.
 
+**Fühler, die nur bei Änderung melden** (z. B. Shelly H&T: erst ab 1 °C oder 1 %): Normalerweise gilt eine Raumtemperatur höchstens 6 Stunden. Schalte dann unter *Optionen → Regelparameter → Für Fortgeschrittene* **Raumfühler melden nur bei Änderung** ein. Raumtemperaturen gelten dann bis zum *Max. Sensoralter*. Bei Fühlern, die alle paar Minuten melden, bleibt der Schalter aus.
+
 Nur wenn eine Wärmepumpe eingerichtet ist, zeigt das Formular zusätzlich *Wird von der Wärmepumpe beheizt*, *Bad-Trocknung mit der Wärmepumpe* und *Trocknung nach dem Duschen von selbst starten*. Die Bad-Trocknung läuft über die Wärmepumpe, ohne sie erscheint keins der Felder. Mit ihr bekommt der Raum den Knopf *Jetzt trocknen*; ist der dritte Schalter aus, trocknet nur der Knopf. Sie braucht außerdem *Wird von der Wärmepumpe beheizt* und den Raumfeuchtesensor, sonst lehnt das Formular sie ab.
 
 **Prüfen:** Nach dem letzten Raum zeigt *Einstellungen → Geräte & Dienste* **Thriftherm**. Sein Gerät zeigt *Thermensteuerung* und *Raumsteuerung* auf **Nur planen**.
@@ -364,6 +366,8 @@ Keine ebusd-Werte, eine Therme, die den Sollwert nicht annimmt, ein Thermostat, 
 ### 9.1 Die Thriftherm-Karte
 
 Thriftherm bringt eine eigene Karte mit. Sie kommt mit der Integration, du musst nichts weiter installieren. Die Karte findet deine Räume selbst.
+
+Jeder Raum ist ein Untergerät von *Thriftherm* und heißt wie der Raum. Die Karte zeigt diesen Namen; benennst du das Gerät um, zeigt sie deinen Namen, und heißt es nur „Thriftherm“, den Bereich des Geräts.
 
 <img alt="Die Thriftherm-Karte mit Beispieldaten" width="380" src="../images/card_de.png">
 

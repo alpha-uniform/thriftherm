@@ -214,8 +214,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
             await parked[1]()  # this run never starts: the unit is left to nobody, as on a disable
         raise
     entry.runtime_data = coordinator
-    # Room devices point at the hub via via_device_id. Platforms load concurrently, so the
-    # hub must exist before any of them, or a room device registered first loses the link.
+    # Room devices are child devices of the hub. Platforms load concurrently, so the hub must
+    # exist before any of them, or a room device registered first has no parent.
     # Its firmware field shows the installed version: which package runs was not to be seen anywhere.
     dr.async_get(hass).async_get_or_create(
         config_entry_id=entry.entry_id,
@@ -257,12 +257,14 @@ def _remove_stale_registry_entries(hass: HomeAssistant, entry: ThrifthermConfigE
             ent_reg.async_remove(reg_entry.entity_id)
     rooms = {r.key for r in coordinator.builder.rooms}
     dev_reg = dr.async_get(hass)
-    for device in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+    # room devices are child devices since 0.7.4; one left from before may still be a device of its own
+    devices = [*dr.async_entries_for_config_entry(dev_reg, entry.entry_id), *dr.async_child_entries_for_config_entry(dev_reg, entry.entry_id)]
+    for device in devices:
         if not _device_still_provided(entry, device, rooms):
             dev_reg.async_remove_device(device.id)  # our room devices belong to this entry alone
 
 
-def _device_still_provided(entry: ThrifthermConfigEntry, device: dr.DeviceEntry, rooms: set[str]) -> bool:
+def _device_still_provided(entry: ThrifthermConfigEntry, device: dr.DeviceEntry | dr.ChildDeviceEntry, rooms: set[str]) -> bool:
     for domain, identifier in device.identifiers:
         if domain != DOMAIN:
             continue

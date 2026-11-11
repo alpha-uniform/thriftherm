@@ -719,3 +719,42 @@ def test_a_room_restored_after_a_restart_is_looked_for_again_when_its_target_cha
     """)
 
     assert result == {"waiting": 0, "roomsBefore": ["wohnzimmer"], "rooms": ["badezimmer", "wohnzimmer"]}
+
+
+def test_the_room_name_follows_the_naming_of_home_assistant_2026_11() -> None:
+    """Since 2026.11 a room device is named once, for what it is: the card must not show "Thriftherm" as the room.
+
+    A room device is a child of the hub and carries the room name alone; a user who renames it to "Thriftherm"
+    after the new convention gets the room from its area, else from the name Thriftherm gave it.
+    """
+    result = _run_card("""
+      const names = (devices, areas = {}) => discover({ ...makeHass(), devices, areas }).rooms.map((r) => r.name).sort();
+      console.log(JSON.stringify({
+        child: names({ badezimmer: { name: "Badezimmer" }, wohnzimmer: { name: "Wohnzimmer" } }),
+        legacy: names({ badezimmer: { name: "Thriftherm Badezimmer" }, wohnzimmer: { name: "Thriftherm Wohnzimmer" } }),
+        by_area: names({ badezimmer: { name: "Badezimmer", name_by_user: "Thriftherm", area_id: "bad" },
+                         wohnzimmer: { name: "Wohnzimmer", name_by_user: "Thriftherm" } }, { bad: { name: "Bad oben" } }),
+        own: names({ badezimmer: { name: "Badezimmer", name_by_user: "Duschbad" }, wohnzimmer: { name: "Wohnzimmer", name_by_user: "  " } }),
+      }));
+    """)
+
+    assert result["child"] == ["Badezimmer", "Wohnzimmer"]
+    assert result["legacy"] == ["Badezimmer", "Wohnzimmer"]
+    assert result["by_area"] == ["Bad oben", "Wohnzimmer"]
+    assert result["own"] == ["Duschbad", "Wohnzimmer"]
+
+
+def test_a_renamed_area_reaches_a_room_that_takes_its_name_from_the_area() -> None:
+    """A room device called just "Thriftherm" is named after its area: renaming the area must show without a reload."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const base = makeHass();
+      const devices = { ...base.devices, badezimmer: { name: "Badezimmer", name_by_user: "Thriftherm", area_id: "bad" } };
+      await shown(main, { ...base, devices, areas: { bad: { name: "Bad" } } });
+      main.hass = { ...base, devices, areas: { bad: { name: "Duschbad" } } };
+      await tick(20);
+      console.log(JSON.stringify({ names: main._model.rooms.map((r) => r.name).sort() }));
+    """)
+
+    assert result["names"] == ["Duschbad", "Wohnzimmer"]

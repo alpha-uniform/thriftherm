@@ -369,7 +369,7 @@ def test_without_own_measurements_the_shipped_map_of_the_model_counts():
 
     portasplit = cop_profiles.profile("midea_portasplit")
     empty = CopMap()
-    assert empty.estimate(3.0, 1.0, portasplit) == (3.39, "profile")  # the bin measured on the model
+    assert empty.estimate(3.0, 1.0, portasplit) == (3.53, "profile")  # the bin measured on the model
     assert empty.estimate(13.0, 1.0, portasplit) == (4.59, "profile")
     cold, basis = empty.estimate(-8.0, 1.0, portasplit)  # beyond what was measured: the curve, calibrated by the model
     assert basis == "profile" and cold < prior_cop(-8.0) and cold > prior_cop(-8.0) * 0.5

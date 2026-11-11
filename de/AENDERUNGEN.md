@@ -4,6 +4,13 @@
 
 Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
 
+## 0.7.4 – 2026-11-12
+
+- Die Räume sind jetzt Untergeräte von „Thriftherm“ und heißen nur noch nach dem Raum („Wohnzimmer“ statt „Thriftherm Wohnzimmer“), nach der Namensregel von Home Assistant 2026.11. Geräte-IDs, Entity-IDs, eigene Namen und Bereiche bleiben.
+- Behoben: Hieß ein Raumgerät nur „Thriftherm“, zeigte die Karte bei jedem Raum „Thriftherm“; sie nimmt dann den Bereich des Geräts oder den Raumnamen.
+- Neu: Schalter *Raumfühler melden nur bei Änderung* (z. B. Shelly H&T): Raumtemperaturen gelten bis zum Max. Sensoralter statt höchstens 6 Stunden.
+- Standard-COP-Werte aktualisiert.
+
 ## 0.7.3 – 2026-11-09
 
 - Behoben: Weniger Fehlalarme „Heizkörperthermostat antwortet nicht“; gemeldet wird nur noch, wenn ein Ventil wirklich nicht reagiert.

@@ -282,6 +282,8 @@ You add one room per page. Tick **Add another room** to get the next page; submi
 
 The room is warm *when* a comfort time starts: Thriftherm starts heating early enough.
 
+**Sensors that report only on a change** (e.g. Shelly H&T: only at 1 °C or 1 %): normally a room temperature holds for 6 hours at most. Then switch on **Room sensors report only on a change** under *Options → Control parameters → Advanced*. Room temperatures then hold up to the *Max. sensor age*. With sensors that report every few minutes, leave it off.
+
 Only with a heat pump set up does the form also show *Heated by the heat pump*, *Bathroom drying with the heat pump* and *Start the drying by itself after a shower*. Bathroom drying runs on the heat pump, so without one none of the fields appears. With it the room gets the button *Dry now*; with the third switch off, only the button dries. It also needs *Heated by the heat pump* switched on and the room humidity sensor; the form refuses it otherwise.
 
 **Check:** after the last room *Settings → Devices & services* lists **Thriftherm**. Its device shows *Boiler control* and *Room control* set to **Plan only**.
@@ -364,6 +366,8 @@ No ebusd values, a boiler that does not take the setpoint, a thermostat that han
 ### 9.1 The Thriftherm card
 
 Thriftherm brings a card of its own. It comes with the integration, there is nothing else to install. The card finds your rooms by itself.
+
+Each room is a child device of *Thriftherm* named after the room. The card shows that name; rename the device and it shows yours, and if it is called just "Thriftherm", the device's area.
 
 <img alt="The Thriftherm card with sample data" width="380" src="../images/card_en.png">
 

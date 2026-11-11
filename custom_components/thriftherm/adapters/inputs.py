@@ -533,9 +533,13 @@ class SnapshotBuilder:
         """A room temperature, still valid while its device keeps reporting other values.
 
         A device paired with ZHA is alive as well while ZHA has seen it within the same age (see `ZHA`).
-        The reading keeps its own age, and a day without a change is too long either way.
+        The reading keeps its own age, and a day without a change is too long either way. Six hours at most,
+        unless the room sensors report only on a change (option): then up to the max. sensor age.
         """
-        return self._read_quiet_temperature(entity_id, now, min(self.params.sensor_max_age_s, ROOM_TEMP_MAX_AGE_S))
+        max_age = self.params.sensor_max_age_s
+        if not self.params.room_sensors_on_change:
+            max_age = min(max_age, ROOM_TEMP_MAX_AGE_S)
+        return self._read_quiet_temperature(entity_id, now, max_age)
 
     def _read_quiet_temperature(
         self, entity_id: str | None, now: datetime, max_age: float, value_range: tuple[float, float] = RANGE_ROOM_TEMP,
