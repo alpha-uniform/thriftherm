@@ -95,6 +95,7 @@ Damit lief die getestete Installation. Andere Geräte gehen genauso, solange sie
 |--------|----------------------------|--------|-----------|
 | Vaillant atmoTEC plus VCW 194/4-5 | `bai` / `bai.308523` | geprüft, Schreibtest bestanden | Entwickler |
 | Vaillant atmoTEC pro VUW PL 240/3-3M | `bai` / `bai.308523` | vom Besitzer geprüft, Schreibtest bestanden, Rückfall zum Drehknopf nach rund 15 min | [jwarzecha](https://github.com/jwarzecha) ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)) |
+| Vaillant VCW DE 244/4-5-HL R1 (2011, Teillast auf 10 kW) | noch offen | im Betrieb geprüft mit eBUS Adapter Shield C5: Heizsperre und Freigabe werden angenommen (Brenner startet eine Minute nach der Freigabe) | [elektroduell](https://github.com/elektroduell) ([#7](https://github.com/alpha-uniform/thriftherm/issues/7)) |
 
 Jede Therme kommt als Profil dazu: welche ebusd-Nachrichten ihre Werte liefern und welche Nachricht den Sollwert annimmt. Ich kann nur die Therme bei mir zu Hause testen. Jede weitere Therme kommt über Daten dazu, die ihre Besitzer teilen – **deine Therme kann die nächste sein**: Öffne ein [Issue mit Thermendaten](https://github.com/alpha-uniform/thriftherm/issues/new?template=boiler_data.yml) und nenne Modell, ebusd-Definition und was dir aufgefallen ist. Wer Daten beisteuert, wird auf Wunsch in der Tabelle oben genannt; ohne Angabe bleibt der Eintrag anonym.
 
