@@ -5,6 +5,7 @@
 **English** | [Deutsch](README.md)
 
 [![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5)](https://hacs.xyz)
+[![Downloads](https://img.shields.io/github/downloads/alpha-uniform/thriftherm/total?label=Downloads)](https://github.com/alpha-uniform/thriftherm/releases)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/alphauniform)
 
 **Demand-based heating for Home Assistant.** Thriftherm heats every room to its schedule and gives your gas boiler the controller it previously lacked. It also works with district heating, and a heat pump can join in: an air conditioner in heating mode such as the **Midea PortaSplit**, which Thriftherm controls and whose COP it measures.

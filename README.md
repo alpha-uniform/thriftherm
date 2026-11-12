@@ -5,6 +5,7 @@
 [English](README.en.md) | **Deutsch**
 
 [![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5)](https://hacs.xyz)
+[![Downloads](https://img.shields.io/github/downloads/alpha-uniform/thriftherm/total?label=Downloads)](https://github.com/alpha-uniform/thriftherm/releases)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/alphauniform)
 
 **Bedarfsgerecht heizen mit Home Assistant.** Thriftherm heizt jeden Raum nach seinem Zeitplan und gibt deiner Gastherme eine Regelung, die ihr bisher fehlte. Mit Fernwärme geht es auch, und eine Wärmepumpe kann dazukommen: eine Klimaanlage im Heizbetrieb wie die **Midea PortaSplit**, die Thriftherm steuert und deren COP es misst.
