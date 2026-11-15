@@ -318,7 +318,7 @@ class CopMap:
                 old = LegacyBin.from_dict(value)
                 if as_float(old.mean) is not None:
                     cm.legacy[int(key)] = old
-            except (AttributeError, TypeError, ValueError):
+            except (AttributeError, TypeError, ValueError, OverflowError):  # a count of "inf" among them
                 continue
         for key, value in as_dict(data.get("bands")).items():
             try:
@@ -452,8 +452,140 @@ class CoolRateStats:
     def from_storage(cls, data: dict | None) -> CoolRateStats:
         cs = cls()
         rates = as_dict(as_dict(data).get("rates"))
-        cs.rates = {str(k): as_floats(v)[-COOL_KEEP:] for k, v in rates.items() if isinstance(v, list)}
+        # only what `_close` would have kept: a store is taken as little on trust as a measurement (review 2026-11-13)
+        for room, stored in rates.items():
+            kept = [k for k in as_floats(stored) if COOL_K_MIN <= k <= COOL_K_MAX][-COOL_KEEP:]
+            if kept:
+                cs.rates[str(room)] = kept
         return cs
+
+
+# ---------------------------------------------------------------------------
+# How fast the air conditioner cools a room (docs/PHASE12_COOLING.md §20.3)
+# ---------------------------------------------------------------------------
+# A rate in K/h, not a coefficient: at its least speed the unit takes out about the same heat whatever the weather,
+# as far as that can be told before a summer of data. The difference indoors - outdoors is kept alongside, to be used
+# once there is a summer to judge it by (from 2027). Pre-cooling plans with the median from three episodes on.
+AC_COOL_MIN_S = 30 * 60.0
+AC_COOL_MIN_DROP_K = 0.3
+AC_COOL_RATE_RANGE = (0.1, 3.0)  # K/h; outside it a sensor jumped or a window stood open unseen
+AC_COOL_KEEP = 10
+AC_COOL_USED_FROM = 3
+AC_COOL_END_RISE_K = 0.2  # this far above its lowest point the room warms again: the episode ended there
+AC_COMPRESSOR_SETTLE_S = 600.0  # the first ten minutes of a run cool harder than the least speed
+
+
+def ac_cool_learnable(
+    *, own_cool_run: bool, resting: bool, lifted: bool, compressor_ran_s: float | None, override: bool,
+    window_open: bool, cheap_power: bool,
+) -> bool:
+    """Only our own run in cool at the least speed teaches: not resting, not turned up, its compressor ten minutes on,
+    no cooling target by hand in the room, the window shut, and no cheap power cooling deeper than planned."""
+    return (
+        own_cool_run and not resting and not lifted and not override and not window_open and not cheap_power
+        and compressor_ran_s is not None and compressor_ran_s >= AC_COMPRESSOR_SETTLE_S
+    )
+
+
+@dataclass
+class AcCoolEpisode:
+    start_ts: float
+    start_temp: float
+    low_ts: float
+    low_temp: float
+    gradient_sum: float = 0.0
+    gradient_samples: int = 0
+
+
+@dataclass
+class AcCoolRateStats:
+    """Median cooling rate per room (K/h) at the least speed, from the last episodes."""
+
+    rates: dict[str, list[float]] = field(default_factory=dict)
+    gradients: dict[str, list[float | None]] = field(default_factory=dict)  # mean indoors - outdoors, per rate
+    episodes: dict[str, AcCoolEpisode] = field(default_factory=dict)
+
+    def observe(self, room: str, ts: float, temp: float | None, outdoor: float | None, learnable: bool) -> float | None:
+        """Feed one sample. Returns a newly learned rate when an episode closes."""
+        ep = self.episodes.get(room)
+        if temp is None or not learnable:
+            return self._close(room, ep)
+        if ep is None:
+            self.episodes[room] = ep = AcCoolEpisode(ts, temp, ts, temp)
+        elif temp >= ep.low_temp + AC_COOL_END_RISE_K:  # warming again: the fall ended at its lowest point
+            learned = self._close(room, ep)
+            self.episodes[room] = ep = AcCoolEpisode(ts, temp, ts, temp)
+            self._gradient(ep, temp, outdoor)
+            return learned
+        elif temp < ep.low_temp:
+            ep.low_ts, ep.low_temp = ts, temp
+        self._gradient(ep, temp, outdoor)
+        return None
+
+    @staticmethod
+    def _gradient(ep: AcCoolEpisode, temp: float, outdoor: float | None) -> None:
+        if outdoor is not None:
+            ep.gradient_sum += temp - outdoor
+            ep.gradient_samples += 1
+
+    def _close(self, room: str, ep: AcCoolEpisode | None) -> float | None:
+        if ep is None:
+            return None
+        del self.episodes[room]
+        duration = ep.low_ts - ep.start_ts
+        drop = ep.start_temp - ep.low_temp
+        if duration < AC_COOL_MIN_S or drop < AC_COOL_MIN_DROP_K:
+            return None
+        rate = drop / (duration / 3600.0)
+        if not AC_COOL_RATE_RANGE[0] <= rate <= AC_COOL_RATE_RANGE[1]:
+            return None
+        gradient = round(ep.gradient_sum / ep.gradient_samples, 2) if ep.gradient_samples else None
+        rates, gradients = self.rates.setdefault(room, []), self.gradients.setdefault(room, [])
+        rates.append(round(rate, 3))
+        gradients.append(gradient)
+        del rates[:-AC_COOL_KEEP]
+        del gradients[:-AC_COOL_KEEP]
+        return rate
+
+    def rate(self, room: str) -> float | None:
+        """The median from three episodes on; before that None, and the default of 0.5 K/h holds."""
+        lst = self.rates.get(room)
+        return round(median(lst), 3) if lst and len(lst) >= AC_COOL_USED_FROM else None
+
+    def forget(self, rooms: Iterable[str] | None = None) -> None:
+        if rooms is None:
+            self.rates.clear()
+            self.gradients.clear()
+            self.episodes.clear()
+            return
+        for room in rooms:
+            self.rates.pop(room, None)
+            self.gradients.pop(room, None)
+            self.episodes.pop(room, None)
+
+    def to_dict(self) -> dict[str, dict]:
+        return {room: {"k_per_h": self.rate(room), "episodes": len(lst)} for room, lst in self.rates.items()}
+
+    def to_storage(self) -> dict:
+        return {"rates": self.rates, "gradients": self.gradients}
+
+    @classmethod
+    def from_storage(cls, data: object) -> AcCoolRateStats:
+        raw = as_dict(data)
+        stored_gradients = as_dict(raw.get("gradients"))
+        out = cls()
+        for room, stored in as_dict(raw.get("rates")).items():
+            values = stored if isinstance(stored, list) else []
+            grads = stored_gradients.get(room)
+            grads = grads if isinstance(grads, list) and len(grads) == len(values) else [None] * len(values)
+            kept = [
+                (r, as_float(g)) for v, g in zip(values, grads, strict=True)
+                if (r := as_float(v)) is not None and AC_COOL_RATE_RANGE[0] <= r <= AC_COOL_RATE_RANGE[1]
+            ][-AC_COOL_KEEP:]
+            if kept:
+                out.rates[str(room)] = [r for r, _ in kept]
+                out.gradients[str(room)] = [g for _, g in kept]
+        return out
 
 
 # ---------------------------------------------------------------------------
@@ -637,12 +769,18 @@ class HeatRateStats:
             for source, values in by_source.items():
                 if source not in HEAT_SOURCES or not isinstance(values, list):
                     continue
-                kept = as_floats(values)[-HEAT_RATE_KEEP:]
-                if not kept:
-                    continue
                 grads = grads_by_source.get(source)
                 grads = [as_float(x) for x in grads] if isinstance(grads, list) else []
-                # older stores have no gradients: pad them
-                hs.rates.setdefault(room, {})[source] = kept
-                hs.gradients.setdefault(room, {})[source] = ([None] * max(0, len(kept) - len(grads)) + grads)[-HEAT_RATE_KEEP:]
+                # older stores have no gradients: pad them, so each entry has its own, paired before anything goes
+                grads = ([None] * max(0, len(values) - len(grads)) + grads)[-len(values):] if values else []
+                # Only what `observe` would have kept (review 2026-11-13): a stored rate of 0 or below planned every
+                # preheat at its margin alone. A rate that goes, or is no number, takes its gradient along.
+                pairs = [
+                    (r, g) for r, g in ((as_float(v), g) for v, g in zip(values, grads, strict=True))
+                    if r is not None and HEAT_RATE_MIN <= r <= HEAT_RATE_MAX
+                ][-HEAT_RATE_KEEP:]
+                if not pairs:
+                    continue
+                hs.rates.setdefault(room, {})[source] = [r for r, _ in pairs]
+                hs.gradients.setdefault(room, {})[source] = [g for _, g in pairs]
         return hs

@@ -42,23 +42,24 @@ def test_short_window_turns_quantisation_into_a_sawtooth():
     assert max(values) - min(values) > 0.28
 
 
-def test_ninety_minute_window_tracks_the_real_drift():
-    history = staircase(drift_k_per_h=0.2, minutes=240)
+@pytest.mark.parametrize(
+    ("drift", "low", "high", "max_swing"),
+    [
+        pytest.param(0.2, 0.1, 0.3, 0.15, id="tracks_the_real_drift"),
+        pytest.param(2.0, 1.8, 2.2, 0.4, id="a_fast_rise_is_not_flattened_away"),  # 0.4: what its range allows anyway
+    ],
+)
+def test_ninety_minute_window_tracks_the_drift(drift, low, high, max_swing):
+    history = staircase(drift_k_per_h=drift, minutes=240)
     values = _sweep(history, window_s=5400.0, min_span_s=1800.0)
-    assert all(0.1 < v < 0.3 for v in values), (min(values), max(values))
-    assert max(values) - min(values) < 0.15
+    assert all(low < v < high for v in values), (min(values), max(values))
+    assert max(values) - min(values) < max_swing
 
 
 def test_a_genuinely_flat_room_still_reads_zero():
     history = staircase(drift_k_per_h=0.0, minutes=240)
     values = _sweep(history, window_s=5400.0, min_span_s=1800.0)
     assert all(v == pytest.approx(0.0, abs=1e-9) for v in values)
-
-
-def test_a_fast_rise_is_not_flattened_away():
-    history = staircase(drift_k_per_h=2.0, minutes=240)
-    values = _sweep(history, window_s=5400.0, min_span_s=1800.0)
-    assert all(1.8 < v < 2.2 for v in values), (min(values), max(values))
 
 
 def test_too_short_a_span_reports_nothing_rather_than_a_guess():

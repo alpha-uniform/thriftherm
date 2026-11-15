@@ -117,6 +117,44 @@ async def _setup(hass: HomeAssistant, options: dict | None = None) -> MockConfig
     return entry
 
 
+@pytest.mark.parametrize("switched_off", [True, False])
+async def test_the_retired_option_for_a_curve_per_room_is_dropped_from_a_stored_entry(
+    hass: HomeAssistant, hass_storage, switched_off: bool
+) -> None:
+    """Decided 2026-11-13: every room has its own line of the heating curve, always. Switched off, nothing lowered a
+    cycling boiler's common correction any more. What an entry still holds of the option goes as it loads, at the
+    same configuration version, so nobody is kept from going back a version.
+
+    Whoever had it switched off heated on the common correction, and the lines learned before stayed in the store
+    unused, often the very ones the option was switched off for: they are forgotten once, so the flow stays as it was
+    (review 2026-11-13: a line of +8 K came back and the flow went from 43.5 to 49.5 °C)."""
+    from custom_components.thriftherm.const import CONFIG_VERSION, STORAGE_KEY, STORAGE_VERSION
+    from custom_components.thriftherm.engines.boiler_load import LoadLine
+    from custom_components.thriftherm.engines.boiler_memory import BoilerMemory
+    from custom_components.thriftherm.models import Parameters
+
+    _set_states(hass)
+    kept = {**_entry_data(), "boiler_allow_active_control": True, "heat_pump_cooling_allowed": True}  # a hidden option too
+    stored = {**kept, "boiler_load_model": not switched_off}
+    entry = MockConfigEntry(domain=DOMAIN, data={}, options=stored, version=CONFIG_VERSION, unique_id=DOMAIN, title="Thriftherm")
+    entry.add_to_hass(hass)
+    memory = BoilerMemory(offset_k=2.0, slope_k=0.5, lines={"single:badezimmer": LoadLine(level_k=8.0, last_step_ts=1.0)})
+    key = f"{STORAGE_KEY}.{entry.entry_id}"
+    data = {"boiler_memory": memory.to_storage()}
+    hass_storage[key] = {"version": STORAGE_VERSION, "minor_version": 1, "key": key, "data": data}
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    assert dict(entry.options) == kept and entry.version == CONFIG_VERSION  # everything else stays
+    assert not hasattr(Parameters(), "boiler_load_model")
+    learned = entry.runtime_data.boiler_memory
+    assert (learned.offset_k, learned.slope_k) == (2.0, 0.5)  # the common correction is where every room starts
+    assert set(learned.lines) == (set() if switched_off else {"single:badezimmer"})
+    lines = hass_storage[key]["data"]["boiler_memory"]["lines"]
+    assert set(lines) == (set() if switched_off else {"single:badezimmer"})  # and it is stored so
+    assert hass.states.get("sensor.thriftherm_learning_state").attributes["curve_by_load"] is not None  # a curve per room
+
+
 async def test_setup_creates_entities_and_observes(hass: HomeAssistant) -> None:
     await _setup(hass)
 
@@ -869,6 +907,29 @@ async def test_boiler_learning_waits_for_active_boiler_control(hass: HomeAssista
     assert "boiler_control_not_active" in state.attributes["paused_because"]
 
 
+async def test_without_an_outdoor_temperature_the_heating_curve_learns_nothing(hass: HomeAssistant) -> None:
+    """Review of the curve learning, finding 6: with no outdoor temperature a step would be split between level and
+    slope as if it were mild, at a temperature there never was. A missing sensor pauses the learning already, as
+    "safety restricted"; once the last known value has run out too (six hours), the pause names its cause, and it
+    holds whatever the safety makes of the missing sensor."""
+    entry = await _setup(hass, options={"boiler_allow_active_control": True})
+    coordinator = entry.runtime_data
+    coordinator.set_boiler_control_mode("active")
+    coordinator._last_target_change_ts = 0.0
+    hass.states.async_set("sensor.outdoor", "unavailable")
+    await coordinator.async_refresh()
+    # the last known value stands in; a sensor that is away degrades the safety, which pauses the learning by itself
+    assert coordinator.data["outdoor_c"] == 4.0 and coordinator.data["learning_blocked_by"] == ["safety_degraded"]
+    assert "outdoor_temperature_unknown" not in coordinator.data["learning_blocked_by"]
+    coordinator._last_outdoor = None  # six hours later, or never known
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert coordinator.data["outdoor_c"] is None
+    assert "outdoor_temperature_unknown" in coordinator.data["learning_blocked_by"]
+    state = hass.states.get("sensor.thriftherm_learning_state")
+    assert state.state == "paused" and "outdoor_temperature_unknown" in state.attributes["paused_because"]
+
+
 async def test_learning_without_a_burner_run_says_why_it_waits(hass: HomeAssistant) -> None:
     """Nothing blocks the learning, but it only learns from a running burner (shown since 2026-10-03)."""
     entry = await _setup(hass, options={"boiler_allow_active_control": True})
@@ -1023,6 +1084,51 @@ async def test_the_learning_state_says_which_change_paused_it(hass: HomeAssistan
     assert attrs["setpoint_changed_in"] == ["Wohnzimmer"]
     until = dt_util.parse_datetime(attrs["paused_until"])
     assert 19 * 60 < (until - dt_util.utcnow()).total_seconds() <= 20 * 60
+
+
+async def test_the_boiler_control_is_told_how_long_each_rooms_target_has_stood(hass: HomeAssistant, monkeypatch) -> None:
+    """The curve learns from a room only once its target has stood for the trend's 90 minutes (boiler_load.counts)."""
+    from custom_components.thriftherm import coordinator as coordinator_module
+
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    seen: list[dict[str, float | None]] = []
+    decide = coordinator_module.boiler_control.decide
+
+    calls: list[dict] = []
+
+    def watched(inp, mem):
+        seen.append({r.key: r.target_steady_s for r in inp.rooms})
+        calls.append({r.key: (r.calling_s, r.last_call) for r in inp.rooms})
+        return decide(inp, mem)
+
+    monkeypatch.setattr(coordinator_module.boiler_control, "decide", watched)
+    await coordinator.async_refresh()
+    # what a room's call says reaches the boiler control too: how long it has run, and the last one that ended
+    from custom_components.thriftherm.models import EndedCall
+
+    assert all((calls[-1][key][0] is not None) == mem.calling for key, mem in coordinator.call_memory.items())
+    ended = EndedCall(1.0, 2.0, 20.7, 20.9)
+    coordinator.call_memory = {key: replace(mem, last=ended) for key, mem in coordinator.call_memory.items()}
+    await coordinator.async_refresh()
+    assert all(last == ended for _, last in calls[-1].values())
+    # seen for the first time nobody knows since when: counted from then
+    assert all(steady is not None and 0.0 <= steady < 60.0 for steady in seen[-1].values())
+    long_ago = {key: replace(mem, target_since_ts=mem.target_since_ts - 7200.0) for key, mem in coordinator.call_memory.items()}
+    coordinator.call_memory = long_ago  # the targets have stood for two hours
+    await hass.services.async_call(
+        "number", "set_value", {"entity_id": "number.thriftherm_wohnzimmer_comfort_temperature", "value": 20.0}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert seen[-1]["wohnzimmer"] < 60.0 and seen[-1]["badezimmer"] > 5400.0
+
+    # a restart, or saving the options, does not start the 90 minutes over
+    await coordinator.async_save_store(force=True)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    monkeypatch.setattr(coordinator_module.boiler_control, "decide", watched)
+    await entry.runtime_data.async_refresh()
+    assert seen[-1]["badezimmer"] > 5400.0 and seen[-1]["wohnzimmer"] < 60.0
 
 
 _HA_ATTRIBUTES = {"friendly_name", "icon", "device_class", "unit_of_measurement", "state_class", "options", "supported_features", "restored", "min", "max", "step", "mode"}
@@ -1402,23 +1508,27 @@ async def test_the_curve_per_load_class_is_shown_recorded_and_kept(hass: HomeAss
     assert coordinator.load_log and len(coordinator.load_log[-1]) == 10  # one compact row per cycle
     assert coordinator.load_log[-1][5:7] == [2, 2] and coordinator.load_log[-1][9] == [2.5, 1.5]  # target minus actual
 
+    found = LoadLine(level_k=2.0, hours=30.0, calm_hours=4.0, found=True)
     lines = {
-        "majority": LoadLine(level_k=2.0, hours=30.0, calm_hours=4.0, found=True),
-        "single": LoadLine(level_k=5.0, hours=12.0),
+        "majority:badezimmer": found,
+        "majority:wohnzimmer": found,
+        "single:badezimmer": LoadLine(level_k=5.0, hours=12.0),
     }
     coordinator.boiler_memory = replace(coordinator.boiler_memory, offset_k=9.0, lines=lines)
     await coordinator.async_refresh()
     await hass.async_block_till_done()
     attrs = hass.states.get("sensor.thriftherm_learning_state").attributes
-    assert attrs["heating_curve_offset_k"] == 2.0  # the majority's own line, not the common 9 K nor the bathroom's 5 K
-    assert attrs["curve_by_load"]["majority"]["found"] is True and attrs["curve_by_load"]["single"]["level_k"] == 5.0
+    # the rooms' lines for the majority, not the common 9 K nor the bathroom's 5 K alone
+    assert attrs["heating_curve_offset_k"] == 2.0
+    by_load = attrs["curve_by_load"]
+    assert by_load["majority:badezimmer"]["found"] is True and by_load["single:badezimmer"]["level_k"] == 5.0
 
     await coordinator.async_save_store(force=True)
     stored = hass_storage[f"thriftherm.learning.{entry.entry_id}"]["data"]
-    assert stored["boiler_memory"]["lines"]["single"]["level_k"] == 5.0 and stored["boiler_load_log"]
+    assert stored["boiler_memory"]["lines"]["single:badezimmer"]["level_k"] == 5.0 and stored["boiler_load_log"]
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
-    assert entry.runtime_data.boiler_memory.lines["majority"].calm_hours >= 4.0
+    assert entry.runtime_data.boiler_memory.lines["majority:badezimmer"].calm_hours >= 4.0
     assert len(entry.runtime_data.load_log) >= len(stored["boiler_load_log"])
 
 

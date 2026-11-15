@@ -27,12 +27,6 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 
 
 # ------------------------------------------------------------------ pure engines
-def test_without_an_outdoor_temperature_the_curve_uses_its_middle():
-    # the cold point (55 °C) would heat as in deep winter just because a sensor died
-    assert curve_flow(None, PARAMS) == pytest.approx((PARAMS.boiler_curve_flow_cold + PARAMS.boiler_curve_flow_warm) / 2)
-    assert curve_flow(-10.0, PARAMS) == PARAMS.boiler_curve_flow_cold
-
-
 def test_one_room_sensor_missing_degrades_but_keeps_control(two_rooms):
     two_rooms["badezimmer"] = room_state(two_rooms["badezimmer"].config, temp=None, trv_local=19.5)
     snap = snapshot(two_rooms)
@@ -483,6 +477,7 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
     boiler = boiler_control.BoilerMemory.from_storage(
         {
             "offset_k": "warm", "adjustments": [1.0, "x", None, *range(2, 14)], "last_adjust_reason": 5, "state": "block",
+            "adjustment_steps": [0.5] * 15,
             "last_flow": "35", "ramp_from": [], "burns": [[1, 61], ["a", 5], [9, 3], "x", [100, 160, 7]], "slope_k": "steep",
             "burn_starts": [1, 2], "burn_durations": [60],  # written by 0.5.4 and earlier: ignored
             "last_flow_ts": 5.0, "burn_since_ts": 7.0,  # written up to 0.6.0b2: ignored
@@ -490,11 +485,12 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
     )
     assert boiler.offset_k == 0.0 and boiler.last_adjust_reason is None and boiler.state == "block"
     assert boiler.adjustments == (1.0, *map(float, range(2, 14)))  # all of them, even beyond ten
+    assert boiler.adjustment_steps == (0.5,) * 13  # a step whose time is no number is none
     assert boiler.last_flow == 35.0 and boiler.ramp_from is None
     assert boiler.burns == ((1.0, 61.0),) and boiler.slope_k == 0.0  # only a whole (start, end) pair counts
     assert boiler_control.BoilerMemory.from_storage({"offset_k": None}).offset_k == 0.0
     assert list(boiler.to_storage()) == [
-        "offset_k", "slope_k", "adjustments", "adjustment_steps", "last_adjust_reason", "state", "state_since_ts",
+        "offset_k", "slope_k", "adjustments", "adjustment_steps", "last_adjust_reason", "calls", "state", "state_since_ts",
         "last_flow", "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "starts_day_ts", "burns", "starts_today",
         "burn_interrupted", "lines", "heat_up",
     ]
@@ -506,14 +502,15 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
         "last_command_ts": None, "last_hvac_mode": "heat", "last_target": 21.0, "learning_until_ts": None,
         "fan_until_ts": None, "manual_by": None, "manual_over": [], "fan_turned_up_from": None, "fan_turned_up_to": None,
         "lagging_since_ts": None, "boiler_helps": False, "resting": False, "lifted": False, "phase_since_ts": None,
-        "fan_normal": None, "drying_held": False, "frost_since": {},
+        "fan_normal": None, "drying_held": False, "frost_since": {}, "cool_lifted": False, "cool_floor_hold": False,
     }
     assert list(control.to_storage()) == [
         "learning_bins", "manual_until_ts", "manual_by", "manual_over", "running_since_ts", "stopped_since_ts",
         "last_command_ts", "last_hvac_mode", "last_target", "learning_until_ts",
         "fan_until_ts", "fan_turned_up_from", "fan_turned_up_to", "lagging_since_ts", "boiler_helps",
-        "resting", "lifted", "phase_since_ts", "fan_normal", "drying_held", "frost_since",
+        "resting", "lifted", "phase_since_ts", "fan_normal", "drying_held", "frost_since", "cool_lifted", "cool_floor_hold",
     ]
+    assert ControlMemory.from_storage({"cool_lifted": "yes", "cool_floor_hold": True}) == ControlMemory(cool_floor_hold=True)
     assert ControlMemory.from_storage({"last_target": "21.5", "learning_bins": [[1], ["x", 2], [3, "4"]]}) == ControlMemory(
         last_target=21.5, learning_bins=((3, 4.0),)
     )

@@ -1736,10 +1736,19 @@ def test_a_rest_that_ended_and_a_unit_that_stands_on_is_woken_five_minutes_after
     assert (cmd.action, cmd.target_temp, cmd.reason) == ("adjust", 20.0, "woken_unit_stands")
 
 
-def test_a_wake_does_not_wait_out_the_pace_of_an_adjustment():
-    mem = replace(LATCHED, last_target=18.0, last_command_ts=NOW - 400)  # a setpoint would be due only after ten minutes
-    cmd, _ = held([rr(temp=19.0)], mem, unit=stood_all_along(SELF_STOPPED, 17.5, 18.0))
-    assert (cmd.action, cmd.target_temp, cmd.reason) == ("adjust", 19.0, "woken_unit_stands")
+@pytest.mark.parametrize(
+    ("last_target", "sent_s_ago", "own", "woken_at"),
+    [
+        # a setpoint would be due only after ten minutes
+        pytest.param(18.0, 400, 17.5, 19.0, id="a_wake_does_not_wait_out_the_pace_of_an_adjustment"),
+        # Half a degree at a time from 19 with its reading at 20.5, three beeps could not have started it.
+        pytest.param(19.0, 1800, 20.5, 22.0, id="above_a_reading_that_rose_past_its_setpoint_at_once"),
+    ],
+)
+def test_a_unit_that_stands_is_woken_a_degree_and_a_half_above_its_reading(last_target, sent_s_ago, own, woken_at):
+    mem = replace(LATCHED, last_target=last_target, last_command_ts=NOW - sent_s_ago)
+    cmd, _ = held([rr(temp=19.0)], mem, unit=stood_all_along(SELF_STOPPED, own, last_target))
+    assert (cmd.action, cmd.target_temp, cmd.reason) == ("adjust", woken_at, "woken_unit_stands")
 
 
 def test_a_stop_of_its_own_gets_the_setpoint_of_a_start_before_it_is_woken():
@@ -1823,17 +1832,14 @@ def test_a_stop_its_samples_do_not_show_is_no_new_stop(oldest):
     assert (cmd.action, cmd.target_temp) == ("none", 19.0)
 
 
-def test_a_unit_that_stands_during_a_drying_with_a_scattered_sample_is_not_set_anew():
+@pytest.mark.parametrize(
+    ("own", "oldest"),
+    [pytest.param(17.0, 1739.995, id="with_a_scattered_sample"), pytest.param(19.0, 1800.0, id="every_half_hour")],
+)
+def test_a_unit_that_stands_during_a_drying_is_not_set_anew(own, oldest):
     drying = replace(LATCHED, last_target=21.0, last_command_ts=NOW - 7200, stop_noted_ts=NOW - 7000, drying_held=True)
-    cmd, _ = held([rr(temp=19.0, drying=True)], drying, unit=stood_all_along(SELF_STOPPED, 17.0, 21.0, oldest=1739.995))
+    cmd, _ = held([rr(temp=19.0, drying=True)], drying, unit=stood_all_along(SELF_STOPPED, own, 21.0, oldest=oldest))
     assert (cmd.action, cmd.target_temp) == ("none", 21.0)
-
-
-def test_a_unit_that_stands_is_set_above_a_reading_that_rose_past_its_setpoint_at_once():
-    """Half a degree at a time from 19 with its reading at 20.5, three beeps could not have started it."""
-    mem = replace(LATCHED, last_target=19.0, last_command_ts=NOW - 1800)
-    cmd, _ = held([rr(temp=19.0)], mem, unit=stood_all_along(SELF_STOPPED, 20.5, 19.0))
-    assert (cmd.action, cmd.target_temp, cmd.reason) == ("adjust", 22.0, "woken_unit_stands")
 
 
 def test_a_unit_that_is_off_is_not_set_higher_instead_of_being_started():
@@ -1849,12 +1855,6 @@ def test_a_unit_that_stands_with_no_room_short_is_left_to_stand(temp):
     mem = replace(LATCHED, last_target=18.0, last_command_ts=NOW - 7200)
     cmd, _ = held([rr(temp=temp)], mem, unit=stood_all_along(SELF_STOPPED, 17.5, 18.0))
     assert cmd.reason != "woken_unit_stands" and cmd.target_temp != 18.5
-
-
-def test_a_unit_that_stands_during_a_drying_is_not_set_anew_every_half_hour():
-    drying = replace(LATCHED, last_target=21.0, last_command_ts=NOW - 7200, stop_noted_ts=NOW - 7000, drying_held=True)
-    cmd, _ = held([rr(temp=19.0, drying=True)], drying, unit=stood_all_along(SELF_STOPPED, 19.0, 21.0))
-    assert (cmd.action, cmd.target_temp) == ("none", 21.0)
 
 
 def test_a_self_stop_is_answered_once():

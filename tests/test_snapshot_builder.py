@@ -546,6 +546,23 @@ async def test_a_thermostat_says_whether_its_valve_is_open(hass: HomeAssistant) 
     assert _build(builder).rooms["badezimmer"].thermostat_heating is None
 
 
+
+async def test_a_thermostat_blocked_by_better_thermostat_does_not_heat(hass: HomeAssistant) -> None:
+    """Issue #8: Better Thermostat 2.0 names in `heating_blocked_by` why it holds a valve shut (devices released, valve
+    maintenance, startup). It may say so before `hvac_action` leaves heating; such a room calls no boiler."""
+    _set_states(hass)
+    config = _entry_data()
+    config["rooms"][0]["climate_entity"] = "climate.bath_trv"
+    builder = SnapshotBuilder(hass, config)
+    seen = []
+    for blocked in ("valve_maintenance", "devices_released", "startup", None):
+        attrs = {"temperature": 21.0, "hvac_action": "heating", "heating_blocked_by": blocked}
+        hass.states.async_set("climate.bath_trv", "heat", attrs)
+        seen.append(_build(builder).rooms["badezimmer"].thermostat_heating)
+    assert seen == [False, False, False, True]
+    hass.states.async_set("climate.bath_trv", "heat", {"temperature": 21.0, "hvac_action": "heating"})
+    assert _build(builder).rooms["badezimmer"].thermostat_heating is True  # without the attribute as before
+
 async def test_the_next_change_of_a_schedule_helper_sees_a_block_at_another_temperature(hass: HomeAssistant, freezer) -> None:
     """The dashboard's next change: 12:00 to 21 °C, not the comfort end at 22:00 (review 2026-10-18)."""
     tuesday = datetime(2026, 10, 13, 11, 40, tzinfo=BERLIN)

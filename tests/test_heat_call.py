@@ -26,8 +26,13 @@ def rr(key="badezimmer", temp=20.0, target=21.0, reason="schedule_comfort", tren
     )
 
 
-def step(room, mem, now=NOW, end=None):
-    return heat_call.update(room, mem, now, end)
+def step(room, mem, now=NOW, end=None, **kw):
+    return heat_call.update(room, mem, now, end, **kw)
+
+
+def at_rest(mem: CallMemory) -> bool:
+    """No call runs and no stall holds; the target last seen and the last call that ended are kept."""
+    return replace(mem, target=None, last=None, target_since_ts=None) == CallMemory()
 
 
 # ------------------------------------------------------------------ hysteresis
@@ -39,7 +44,7 @@ def test_a_room_starts_calling_at_three_tenths_and_stops_at_one_tenth():
     state, mem = step(rr(temp=20.85), mem, NOW + 60)  # still 0.15 K below: keeps calling
     assert state == "calling" and mem.since_ts == NOW
     state, mem = step(rr(temp=20.9), mem, NOW + 120)
-    assert state == "idle" and mem == CallMemory()
+    assert state == "idle" and at_rest(mem)
 
 
 def test_a_lower_target_is_judged_again():
@@ -48,7 +53,7 @@ def test_a_lower_target_is_judged_again():
     _, mem = step(rr(temp=20.8, target=21.5, reason="override"), CallMemory(), NOW)
     assert mem.calling and mem.target == 21.5
     state, mem = step(rr(temp=20.8, target=21.0), mem, NOW + 60)
-    assert state == "idle" and mem == CallMemory()
+    assert state == "idle" and at_rest(mem)
     # still far enough below the lower target: a fresh call
     _, mem = step(rr(temp=20.4, target=21.5, reason="override"), CallMemory(), NOW)
     state, mem = step(rr(temp=20.4, target=21.0), mem, NOW + 60)
@@ -99,7 +104,7 @@ def test_quick_heat_up_ignores_stall_and_end_of_comfort():
 def test_no_call_in_the_last_half_hour_of_comfort():
     # 2026-09-25: a heating phase from 07:25:39 to 07:30:40, five minutes before the setback
     state, mem = step(rr(temp=20.0), CallMemory(calling=True, since_ts=NOW - 600), NOW, end=NOW + 25 * 60)
-    assert state == "comfort_ending" and mem == CallMemory()
+    assert state == "comfort_ending" and at_rest(mem)
     state, _ = step(rr(temp=20.0), CallMemory(), NOW, end=NOW + 45 * 60)
     assert state == "calling"
     # preheating and override are not a comfort window: no end rule
@@ -118,7 +123,7 @@ def test_a_comfort_block_that_ended_a_moment_ago_starts_no_call_while_its_helper
         res = evaluate_room(bath, end + late, "auto", PARAMS)
         assert (res.target, res.target_reason, res.comfort_end_ts) == (21.0, "schedule_comfort", end.timestamp())
         state, mem = heat_call.update(res, CallMemory(), (end + late).timestamp(), res.comfort_end_ts)
-        assert state == "comfort_ending" and mem == CallMemory()
+        assert state == "comfort_ending" and at_rest(mem)
 
 
 def test_a_comfort_end_long_past_a_new_block_or_a_quick_heat_up_still_calls():
@@ -158,14 +163,14 @@ def test_comfort_end_of_a_schedule_helper():
 # ------------------------------------------------------------------ other states
 def test_window_open_or_thermostat_off_never_calls():
     state, mem = step(rr(temp=18.0, allowed=False), CallMemory(calling=True, since_ts=NOW))
-    assert state == "not_allowed" and mem == CallMemory()
+    assert state == "not_allowed" and at_rest(mem)
 
 
 def test_without_a_temperature_the_room_does_not_call():
     # review 2026-11-08: the room's demand was to decide here, but without a temperature it has none
     # (room.demand); a demand handed in anyway is no reason to call
     state, mem = step(rr(temp=None, demand=0.4), CallMemory())
-    assert state == "idle" and mem == CallMemory()
+    assert state == "idle" and at_rest(mem)
     state, _ = step(rr(temp=None, demand=0.0), CallMemory())
     assert state == "idle"
 
@@ -441,3 +446,118 @@ def test_a_sensor_that_reports_only_on_a_change_keeps_its_room_calling_while_it_
         call, mem = heat_call.update(res, mem, now.timestamp(), res.comfort_end_ts)
         states.add(call)
     assert states == {"calling"}  # beyond the planned warm-up (3.5 h) and the two hours alike
+
+
+# ------------------------------------------------------------------ the call that ended, for the heating curve (2026-11-13)
+def _call(first, last, minutes, *between, mem=None, **kw):
+    """A call from the room `first` to the room `last` so many minutes later, with rooms seen in between."""
+    _, mem = step(first, mem or CallMemory(target=first.target), NOW, **kw)
+    for i, room in enumerate(between, 1):
+        _, mem = step(room, mem, NOW + i * 60, **kw)
+    return step(last, mem, NOW + minutes * 60, **kw)
+
+
+def test_a_call_that_ends_at_its_target_says_how_far_the_room_rose_and_how_long_it_took():
+    """What a cycling boiler's flow does shows in the pace of a holding call: from the call's start, three tenths
+    below a target that stands, to its end a tenth below. The 90 minute trend saw heat-ups only (2026-10-23)."""
+    state, mem = _call(rr(temp=20.7), rr(temp=20.9), 18, rr(temp=20.8))
+    assert state == "idle" and not mem.calling
+    assert mem.last == heat_call.EndedCall(NOW, NOW + 18 * 60, 20.7, 20.9)  # 0.2 K in 18 minutes: 0.67 K/h
+    assert mem.last.spoiled is None and mem.last.pace_k_per_h == pytest.approx(0.667, abs=1e-3)
+    assert _call(rr(temp=20.7), rr(temp=20.9), 60, rr(temp=20.8))[1].last.pace_k_per_h == pytest.approx(0.2)
+    # a sensor in steps of 0.2 K rises twice as far in a call: the pace is the same
+    assert _call(rr(temp=20.6), rr(temp=21.0), 36, rr(temp=20.8))[1].last.pace_k_per_h == pytest.approx(0.667, abs=1e-3)
+    # it stays until the next call ends, and a call in progress has none of its own yet
+    _, calling = step(rr(temp=20.7), mem, NOW + 3600)
+    assert calling.calling and calling.last == mem.last and calling.start_c == 20.7
+
+
+def test_a_call_that_is_one_step_of_the_sensor_has_no_pace():
+    """Review 2026-11-13: a sensor in steps of 0.2 K and a target of 20.9 °C. The step down to 20.6 starts the call, the
+    step up to 20.8 ends it: what lies between is how long the room was below 20.7, not a rise of 0.2 K."""
+    low = rr(temp=20.6, target=20.9)
+    state, mem = step(rr(temp=20.8, target=20.9), _call(low, low, 12, mem=CallMemory(target=20.9))[1], NOW + 780)
+    assert state == "idle" and mem.last.spoiled == "one_step"
+    assert _call(rr(temp=20.7), rr(temp=20.9), 18)[1].last.spoiled == "one_step"
+    _, running = step(rr(temp=20.8), step(rr(temp=20.7), CallMemory(target=21.0))[1], NOW + 300)
+    back = CallMemory.from_storage(running.to_storage())
+    assert step(rr(temp=20.9), back, NOW + 1080)[1].last.spoiled is None  # the readings are kept through a restart
+
+
+def test_a_call_that_began_with_a_new_target_or_far_below_it_is_a_heat_up_not_a_holding_call():
+    # the target went from 19 to 21 °C with the room at 19.6: what its rise says is the demand boost's
+    state, mem = _call(rr(temp=19.6), rr(temp=20.9), 60, rr(temp=20.2), mem=CallMemory(target=19.0))
+    assert state == "idle" and mem.last.spoiled == "target"
+    assert _call(rr(temp=20.7), rr(temp=20.9), 18, rr(temp=20.8), mem=CallMemory(target=20.5))[1].last.spoiled == "target"
+    # a kelvin below a target that stood
+    assert _call(rr(temp=20.0), rr(temp=20.9), 60, rr(temp=20.5))[1].last.spoiled == "heat_up"
+    assert _call(rr(temp=20.5), rr(temp=20.9), 30, rr(temp=20.7))[1].last.spoiled is None  # half a kelvin: a coarse sensor's step
+    # nothing known about the target before (the first cycle ever, or after an airing): no holding call either
+    assert _call(rr(temp=20.7), rr(temp=20.9), 18, rr(temp=20.8), mem=CallMemory())[1].last.spoiled == "target"
+    _, aired = step(rr(temp=20.4, allowed=False), CallMemory(target=21.0, target_since_ts=NOW - 9000))
+    assert aired.target is None and aired.target_since_ts is None  # after a window the 90 minutes start over as well
+    _, lower = step(rr(temp=20.2, target=20.5), step(rr(temp=20.7), CallMemory(target=21.0))[1], NOW + 600)
+    assert lower.calling and lower.spoiled == "target" and lower.target_since_ts == NOW + 600  # lowered, and still below
+
+
+@pytest.mark.parametrize(("between", "kw", "why"), [
+    (rr(temp=20.8, target=21.5), {}, "target"),  # the target moved while it called
+    (replace(rr(temp=20.8), boost_active=True, target_reason="boost"), {}, "boost"),
+    (replace(rr(temp=20.8), thermostat_heating=False), {}, "valve_shut"),
+    (rr(temp=20.8), {"helping": True}, "helped"),  # the heat pump heats the room as well
+])
+def test_a_call_in_which_something_else_moved_the_room_says_nothing(between, kw, why):
+    _, mem = step(rr(temp=20.7), CallMemory(target=21.0))
+    _, mem = heat_call.update(between, mem, NOW + 300, None, **kw)
+    target = between.target
+    _, mem = step(rr(temp=target - 0.05, target=target), mem, NOW + 18 * 60)
+    assert not mem.calling and mem.last.spoiled == why
+
+
+def test_how_long_a_rooms_target_has_stood_is_kept_with_its_call_and_through_a_restart():
+    """The heating curve learns from a room once its target has stood for 90 minutes (boiler_load.counts). Kept in
+    the coordinator alone, every restart and every save of the options cost those 90 minutes (review 2026-11-12)."""
+    _, mem = step(rr(temp=21.0), CallMemory())  # seen for the first time: counted from now
+    assert mem.target_since_ts == NOW
+    _, mem = step(rr(temp=20.7), mem, NOW + 600)  # a call begins, runs and ends: the target stands
+    _, mem = step(rr(temp=20.9), mem, NOW + 1200)
+    assert mem.target_since_ts == NOW and not mem.calling
+    _, ending = step(rr(temp=20.7), step(rr(temp=20.7), mem, NOW + 1300)[1], NOW + 1900, end=NOW + 2000)
+    assert (ending.target, ending.target_since_ts) == (21.0, NOW)  # nor does the end of comfort move it
+    back = CallMemory.from_storage(mem.to_storage())
+    assert back.target_since_ts == NOW and step(rr(temp=21.0), back, NOW + 7200)[1].target_since_ts == NOW
+    _, moved = step(rr(temp=21.0, target=21.5), back, NOW + 7200)  # the target moves
+    assert moved.target_since_ts == NOW + 7200
+    _, stalled = step(rr(temp=20.8, trend=0.0), step(rr(temp=20.7), mem, NOW + 2000)[1], NOW + 6000)
+    assert stalled.stalled_target == 21.0 and stalled.target_since_ts == NOW  # a stall does not move it
+    assert step(rr(temp=20.8, trend=0.0), stalled, NOW + 6060)[1].target_since_ts == NOW
+    # a stall stored before the target was kept with it: seen once, then it stands
+    old = CallMemory.from_storage({"stalled_target": 21.0})
+    _, first = step(rr(temp=20.8, trend=0.0), old, NOW)
+    _, second = step(rr(temp=20.8, trend=0.0), first, NOW + 60)
+    assert (first.target, second.target_since_ts) == (21.0, NOW) and second == first
+
+
+def test_a_call_that_does_not_end_at_its_target_has_no_pace():
+    _, mem = step(rr(temp=20.7), CallMemory(target=21.0))
+    state, shut = step(rr(temp=20.8, allowed=False), mem, NOW + 600)  # the window opens
+    assert state == "not_allowed" and shut.last.spoiled == "not_allowed"
+    state, stalled = step(rr(temp=20.8, trend=0.0), mem, NOW + 3700)
+    assert state == "stalled" and stalled.last.spoiled == "stalled"
+    state, ending = step(rr(temp=20.8), mem, NOW + 600, end=NOW + 900)  # the comfort window ends in five minutes
+    assert state == "comfort_ending" and ending.last.spoiled == "comfort_end"
+    state, lower = step(rr(temp=20.8, target=20.5), mem, NOW + 600)  # the target went down past the room
+    assert state == "idle" and lower.last.spoiled == "target"
+
+
+def test_a_call_keeps_where_it_began_through_a_restart():
+    _, mem = step(rr(temp=20.7), CallMemory(target=21.0))
+    back = CallMemory.from_storage(mem.to_storage())
+    assert (back.since_ts, back.start_c, back.spoiled, back.target) == (NOW, 20.7, None, 21.0)
+    _, back = step(rr(temp=20.8), back, NOW + 9 * 60)
+    assert step(rr(temp=20.9), back, NOW + 18 * 60)[1].last.pace_k_per_h == pytest.approx(0.667, abs=1e-3)
+    # stored before a call kept where it began: nobody knows how far the room rose
+    old = CallMemory.from_storage({"calling": True, "since_ts": NOW, "target": 21.0})
+    assert step(rr(temp=20.9), old, NOW + 18 * 60)[1].last is None
+    spoiled = CallMemory.from_storage(replace(mem, spoiled="helped").to_storage())
+    assert spoiled.spoiled == "helped" and CallMemory.from_storage({"spoiled": 5, "start_c": "x"}) == CallMemory()

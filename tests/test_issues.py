@@ -106,3 +106,57 @@ async def test_an_ignored_repair_survives_the_first_cycle_after_a_restart(hass: 
     await issues.async_sync(hass, restarted)
     assert registry.async_get_issue(DOMAIN, issue_id) is None  # decided: the boiler is back
 
+
+
+def test_frost_in_the_cooling_season_is_a_repair():
+    """The heat pump never heats in the cooling season (docs/PHASE12_COOLING.md §8): frost there needs a person."""
+    hass = SimpleNamespace(states=_States())
+    coord = _heat_pump_rooms("wohnzimmer", 0.9)
+    coord.cooling_season = True
+    coord.data = {"boiler": SimpleNamespace(available=True), "safety": SimpleNamespace(issues=(), frost_rooms=("wohnzimmer",))}
+    found = issues.detect(hass, coord)
+    assert found["frost_in_cooling_season"] == {"translation_key": "frost_in_cooling_season", "rooms": "Wohnzimmer"}
+    coord.cooling_season = False
+    assert "frost_in_cooling_season" not in issues.detect(hass, coord)
+
+
+def test_a_missing_cooling_schedule_is_a_repair(monkeypatch):
+    clock = [1_000_000.0]
+    monkeypatch.setattr(issues.time, "time", lambda: clock[0])
+    hass = SimpleNamespace(states=_States())
+    coord = _heat_pump_rooms("wohnzimmer", 0.9)
+    coord.builder.rooms[0].cooling_schedule_entity = "schedule.kuehlplan"
+    coord.cooling_allowed = False
+    issues.detect(hass, coord)
+    clock[0] += issues.SCHEDULE_MISSING_GRACE_S + 1
+    assert "cooling_schedule_missing_wohnzimmer" not in issues.detect(hass, coord)  # cooling not allowed: nothing to miss
+    coord.cooling_allowed = True
+    issues.detect(hass, coord)
+    clock[0] += issues.SCHEDULE_MISSING_GRACE_S + 1
+    found = issues.detect(hass, coord)
+    assert found["cooling_schedule_missing_wohnzimmer"]["entity_id"] == "schedule.kuehlplan"
+
+
+def test_two_rooms_whose_entities_collide_are_a_repair():
+    """Review 2026-11-13 (K13): the cooling comfort of "Bad" and the heating comfort of "Bad cool" get one unique id,
+    and Home Assistant drops one of the two entities. The form refuses such a name since; rooms that have it already
+    are told, where the other room exists. A room named so on its own collides with nothing and is left alone."""
+    hass = SimpleNamespace(states=_States())
+    coord = _coordinator(available=True)
+
+    def room(key: str, name: str):
+        plan = {"schedule_entity": None, "schedule_weekday": "06:00-22:00", "schedule_weekend": ""}
+        return SimpleNamespace(key=key, name=name, cooling_schedule_entity=None, served_by_heat_pump=key == "bad", **plan)
+
+    coord.builder.rooms = (
+        room("bad", "Bad"), room("bad_cool", "Bad cool"), room("keller_cool", "Keller cool"),
+        room("flur", "Flur"), room("flur_cool", "Flur cool"),
+    )
+    # Only where it really happens: the other room has cooling numbers once cooling is allowed and the heat pump
+    # serves it. Told without that, the repair asked to delete a room, and what it had learned, for nothing.
+    coord.cooling_allowed = False
+    assert not [key for key in issues.detect(hass, coord) if key.startswith("room_names_collide")]
+    coord.cooling_allowed = True
+    found = issues.detect(hass, coord)
+    assert found["room_names_collide_bad_cool"] == {"translation_key": "room_names_collide", "room": "Bad cool", "other": "Bad"}
+    assert "room_names_collide_keller_cool" not in found and "room_names_collide_flur_cool" not in found

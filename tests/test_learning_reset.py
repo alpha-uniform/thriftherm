@@ -26,16 +26,25 @@ def test_first_start_without_a_stored_basis_forgets_nothing() -> None:
     assert learning_reset.invalidated(None, learning_reset.basis(_entry_data())) == (set(), set())
 
 
-def test_unrelated_changes_keep_everything() -> None:
+@pytest.mark.parametrize(
+    ("changes", "scopes"),
+    [
+        pytest.param(
+            {"electricity_price": 0.5, "boiler_curve_flow_at_minus10": 55.0}, set(),  # 55 is the default
+            id="unrelated_changes_keep_everything",
+        ),
+        pytest.param(
+            {"midea_airflow_curve": "500:300,700:450"}, {"heat_pump"}, id="the_airflow_curve_invalidates_only_the_heat_pump"
+        ),
+        pytest.param({"boiler_curve_flow_at_minus10": 50.0}, {"boiler"}, id="heating_curve_invalidates_only_the_boiler"),
+        # audit 2026-09-28: the reset on 18.09. came from raising the minimum 30 -> 45 °C alone
+        pytest.param({"boiler_flow_min": 45.0, "boiler_flow_max": 55.0}, set(), id="flow_limits_keep_the_boiler_correction"),
+    ],
+)
+def test_a_changed_setting_invalidates_only_the_area_that_rests_on_it(changes, scopes) -> None:
     before = learning_reset.basis(_entry_data())
-    config = {**_entry_data(), "electricity_price": 0.5, "boiler_curve_flow_at_minus10": 55.0}  # 55 is the default
-    assert learning_reset.invalidated(before, learning_reset.basis(config)) == (set(), set())
-
-
-def test_the_airflow_curve_invalidates_only_the_heat_pump() -> None:
-    before = learning_reset.basis(_entry_data())
-    after = learning_reset.basis({**_entry_data(), "midea_airflow_curve": "500:300,700:450"})
-    assert learning_reset.invalidated(before, after) == ({"heat_pump"}, set())
+    after = learning_reset.basis({**_entry_data(), **changes})
+    assert learning_reset.invalidated(before, after) == (scopes, set())
 
 
 def test_the_duct_factor_invalidates_nothing_any_more() -> None:
@@ -70,19 +79,6 @@ def test_a_basis_stored_without_the_duct_factor_forgets_nothing() -> None:
     del values["duct_factor"]
     stored = {**current, "heat_pump": json.dumps(values, sort_keys=True)}
     assert learning_reset.invalidated(stored, current) == (set(), set())
-
-
-def test_heating_curve_invalidates_only_the_boiler() -> None:
-    before = learning_reset.basis(_entry_data())
-    after = learning_reset.basis({**_entry_data(), "boiler_curve_flow_at_minus10": 50.0})
-    assert learning_reset.invalidated(before, after) == ({"boiler"}, set())
-
-
-def test_flow_limits_keep_the_boiler_correction() -> None:
-    # audit 2026-09-28: the reset on 18.09. came from raising the minimum 30 -> 45 °C alone
-    before = learning_reset.basis(_entry_data())
-    after = learning_reset.basis({**_entry_data(), "boiler_flow_min": 45.0, "boiler_flow_max": 55.0})
-    assert learning_reset.invalidated(before, after) == (set(), set())
 
 
 def _with_flow_limits(basis: dict, curve_cold: float = 55.0) -> dict:
@@ -142,6 +138,34 @@ async def test_service_resets_only_the_chosen_area_and_keeps_run_state(hass: Hom
     assert hass.states.get("sensor.thriftherm_learning_state").attributes["last_reset"]["reason"] == "user"
 
 
+async def test_the_boilers_curve_can_be_reset_for_single_rooms(hass: HomeAssistant) -> None:
+    """Seen 2026-11-13: the bathroom's lines stood 10 K too high, and the only way down was to forget every room's."""
+    from custom_components.thriftherm.engines.boiler_load import LoadLine
+
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    cells = [f"{load}:{room}" for load in ("single", "few", "majority") for room in ("badezimmer", "wohnzimmer")]
+    lines = {cell: LoadLine(level_k=2.0) for cell in cells}
+    calls = (("badezimmer", 1.0, 18.0, 0.2, 0.7, 40.0, 1, "fast"), ("wohnzimmer", 2.0, 18.0, 0.2, 0.7, 40.0, 1, "fast"))
+    learned = replace(BoilerMemory(), offset_k=3.0, adjustments=(1.0,), adjustment_steps=(1.0,), lines=lines, calls=calls)
+    coordinator.boiler_memory = learned
+    from custom_components.thriftherm.models import EndedCall
+
+    ended = EndedCall(1.0, 2.0, 20.7, 20.9)  # what each room still shows of its last call must not come back
+    coordinator.call_memory = {key: replace(mem, last=ended) for key, mem in coordinator.call_memory.items()}
+
+    await hass.services.async_call(DOMAIN, SERVICE_RESET_LEARNING, {"scope": ["boiler"], "rooms": ["badezimmer"]}, blocking=True)
+    assert coordinator.call_memory["badezimmer"].last is None and coordinator.call_memory["wohnzimmer"].last == ended
+    mem = coordinator.boiler_memory
+    assert set(mem.lines) == {"single:wohnzimmer", "few:wohnzimmer", "majority:wohnzimmer"}
+    assert (mem.offset_k, mem.adjustments) == (3.0, (1.0,)) and mem.calls == calls[1:]  # the rest is as it was
+    assert coordinator.last_learning_reset["rooms"] == ["badezimmer"]
+
+    coordinator.boiler_memory = learned
+    await hass.services.async_call(DOMAIN, SERVICE_RESET_LEARNING, {"scope": ["boiler"]}, blocking=True)  # without rooms: all
+    assert coordinator.boiler_memory.lines == {} and coordinator.boiler_memory.offset_k == 0.0
+
+
 async def test_only_an_administrator_may_reset_the_learning(hass: HomeAssistant, hass_read_only_user) -> None:
     """Review 2026-11-08 (#12): a household account or a wall tablet's token wiped months of learning, with no undo."""
     from homeassistant.core import Context
@@ -187,8 +211,8 @@ async def test_service_resets_boiler_and_one_room(hass: HomeAssistant) -> None:
     _learned(coordinator)
 
     await hass.services.async_call(DOMAIN, SERVICE_RESET_LEARNING, {"scope": ["boiler", "rooms"], "rooms": ["wohnzimmer"]}, blocking=True)
-    assert coordinator.boiler_memory.offset_k == 0.0
-    assert coordinator.boiler_memory.adjustments == ()
+    # the rooms named narrow both areas: of the boiler's curve only that room's values go (see the test below)
+    assert coordinator.boiler_memory.offset_k == 3.0 and coordinator.boiler_memory.adjustments == (1.0, 2.0)
     assert coordinator.heat_rates.rates == {"badezimmer": {"heat_pump": [1.5]}}
     assert coordinator.control_memory.learning_bins == ((0, 1.0),)
 

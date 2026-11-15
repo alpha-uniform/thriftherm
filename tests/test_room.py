@@ -47,6 +47,18 @@ def test_trend_regression():
     assert room_engine.trend_k_per_h((), now) is None
 
 
+def test_the_room_says_how_long_ago_its_sensor_reported():
+    """The boiler's curve learns nothing from a room whose sensor was silent for the trend's window (issue #7)."""
+    now = datetime(2026, 11, 12, 6, 0)
+    cfg = room_config("bad")
+    quiet = replace(room_state(cfg, temp=20.0), temperature=reading(20.0, age_s=7300.0))
+    assert room_engine.evaluate_room(quiet, now, "auto", PARAMS).temperature_age_s == 7300.0
+    # the valve standing in for a sensor that is gone: nothing known about how old its value is
+    gone = reading(None, valid=False, age_s=90000.0, reason="stale")
+    valve = replace(room_state(cfg, temp=None, trv_local=20.5), temperature=gone)
+    assert room_engine.evaluate_room(valve, now, "auto", PARAMS).temperature_age_s is None
+
+
 def test_window_status_grace_and_unknown():
     assert room_engine.window_status((("b.w", "on", 120.0),), 90.0) == (True, False, 120.0)
     assert room_engine.window_status((("b.w", "on", 30.0),), 90.0) == (False, False, None)

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
+from dataclasses import replace
 
 import voluptuous as vol
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
@@ -33,6 +35,7 @@ from .const import (
     DEFAULT_DEFAULT_HEAT_RATE_HEAT_PUMP,
     DEFAULT_SYSTEM_TYPE,
     DOMAIN,
+    COOLING_PLATFORMS,
     PLATFORMS,
     SERVICE_BOOST,
     SERVICE_CLEAR_AWAY,
@@ -48,6 +51,8 @@ from .config_schema import known_keys
 from .coordinator import ThrifthermConfigEntry, ThrifthermCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+# the option for a heating curve of its own per room, gone since 2026-11-13 (see async_setup_entry)
+RETIRED_CURVE_PER_ROOM = "boiler_load_model"
 
 # hass.data key: entry id -> (heat pump climate, let-go) of an entry unloaded neither disabled nor yet deleted. A delete
 # carries it out, and so does the next run of a reload that does not go on with that unit actively or fails to start.
@@ -146,6 +151,11 @@ def _register_services(hass: HomeAssistant) -> None:
 OLD_DEFAULT_HEAT_RATE_HEAT_PUMP = 1.2
 
 
+def _platforms(coordinator: ThrifthermCoordinator) -> list[str]:
+    """The platforms of this entry: the climate platform only where cooling is allowed, so no one else loads it."""
+    return [*PLATFORMS, *(COOLING_PLATFORMS if coordinator.cooling_allowed else [])]
+
+
 async def async_migrate_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> bool:
     """Bring an older config entry up to the current schema.
 
@@ -199,6 +209,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
     coordinator = ThrifthermCoordinator(hass, entry)
     try:
         await coordinator.async_start()
+        if retired := sorted(set(entry.options) - set(known_keys(entry.options))):
+            # An option that is no more goes without a new configuration version: that would keep everybody from going
+            # back to the version before, for a key nothing reads. Dropped only once the start has got this far, so a
+            # start that fails finds it again.
+            if entry.options.get(RETIRED_CURVE_PER_ROOM) is False:
+                # The curve per room (always on since 2026-11-13) was switched off here: the boiler heated on the common
+                # correction, and the rooms' lines from before stayed in the store unused, often the very ones it was
+                # switched off for. They are forgotten, so the flow stays as it was and every room starts from that correction.
+                coordinator.boiler_memory = replace(coordinator.boiler_memory, lines={})
+                await coordinator.async_save_store(force=True)
+            hass.config_entries.async_update_entry(entry, options=known_keys(entry.options))
+            _LOGGER.info("Thriftherm dropped options that are no more: %s", retired)
         if parked is not None and not (
             coordinator.control_mode == CTRL_ACTIVE
             and coordinator.has_heat_pump
@@ -212,6 +234,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
     except Exception:
         if parked is not None:
             await parked[1]()  # this run never starts: the unit is left to nobody, as on a disable
+        elif coordinator.control_mode == CTRL_ACTIVE:
+            # After a restart of Home Assistant nothing is parked, and every new try of the setup begins with a new
+            # coordinator: a unit the last run left in a quick heat-up stayed at 30 °C for as long as the setup
+            # failed (review 2026-11-13). What the store says is let go of, and the store told so.
+            with suppress(Exception):
+                await _let_go_later(coordinator)()
         raise
     entry.runtime_data = coordinator
     # Room devices are child devices of the hub. Platforms load concurrently, so the hub must
@@ -225,7 +253,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
         model="Heating control",
         sw_version=version,
     )
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    await hass.config_entries.async_forward_entry_setups(entry, _platforms(coordinator))
     _remove_stale_registry_entries(hass, entry, coordinator)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     # The coordinator schedules its next cycle only while someone listens. With every entity
@@ -301,7 +329,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) 
         # learning and user state changed since the last periodic save must survive a restart
         await entry.runtime_data.async_save_store(force=True)
         await entry.runtime_data.async_release_boiler(final=True)
-    unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+    unloaded = await hass.config_entries.async_unload_platforms(entry, _platforms(entry.runtime_data))
     if unloaded and entry.disabled_by is not None:
         # disabled: no cycle checks the repairs any more (a reload keeps them, its first cycle syncs)
         issues.async_clear(hass)

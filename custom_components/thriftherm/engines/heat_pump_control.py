@@ -132,7 +132,7 @@ FAN_STRONGEST = ("full", "turbo", "max", "strong", "high")
 # targets that mean "nobody wants this room warm": the unit is not run for them. The night setback
 # is not among them: the rooms then decide at the setback temperature.
 HEAT_PUMP_COOLING_REASON = "heat_pump_cooling"
-RESTING_REASONS = ("mode_away", "away_humidity_guard", "mode_off_frost_protection", HEAT_PUMP_COOLING_REASON)
+RESTING_REASONS = ("mode_away", "away_humidity_guard", "mode_off_frost_protection", "cooling_season", HEAT_PUMP_COOLING_REASON)
 
 # ---- hold at minimum (measured on a PortaSplit 2026-10-20 to 2026-10-30, 148 compressor events) ----
 # Setpoint minus its own reading while the compressor runs. From -1.5 to -0.5 it held 24 Hz and 342 W;
@@ -211,6 +211,9 @@ SETTLED_RUN_S = 600.0
 # With a central heat source a served room on the frost list this long without a break is heated by the unit as without
 # one: district heating Thriftherm does not control may be off for the summer, a boiler may fail or stand on its own knob.
 FROST_RESERVE_S = 1800.0
+# After a change of season a start waits the minimum pause or the fan run-on, whichever is longer, and this
+# (docs/PHASE12_COOLING.md §2.5; engines/heat_pump_cooling.py the other way round).
+SEASON_SWITCH_PAUSE_EXTRA_S = 600.0
 
 # restored as they are, anything that is not a number becomes None
 _STORED_FLOATS = (
@@ -260,6 +263,11 @@ class ControlMemory:
     came_down_ts: float | None = None  # not stored: when a higher speed ended, to set the setpoint once more after `SETTLE_S`
     # since when each served room has been on the frost list without a break: (room, ts), for the frost reserve
     frost_since: tuple[tuple[str, float], ...] = ()
+    # cooling (engines/heat_pump_cooling.py): set lower for a room that stays too warm; resting for a room below the floor
+    cool_lifted: bool = False
+    cool_floor_hold: bool = False
+    cool_warm_since_ts: float | None = None  # not stored: since when a served room stays too warm
+    cool_blind_since_ts: float | None = None  # not stored: since when no room counts for a missing reading alone
 
     def to_storage(self) -> dict:
         # The run state is persisted too: after a restart mid-run the controller must
@@ -286,6 +294,8 @@ class ControlMemory:
             "fan_normal": self.fan_normal,
             "drying_held": self.drying_held,
             "frost_since": dict(self.frost_since),
+            "cool_lifted": self.cool_lifted,
+            "cool_floor_hold": self.cool_floor_hold,
         }
 
     @classmethod
@@ -296,7 +306,7 @@ class ControlMemory:
         for item in stored_bins if isinstance(stored_bins, (list, tuple)) else ():
             try:
                 bins.append((int(item[0]), float(item[1])))
-            except (TypeError, ValueError, IndexError):
+            except (TypeError, ValueError, LookupError, OverflowError):  # a mapping, a short list, "inf": dropped
                 continue
         mode = data.get("last_hvac_mode")
         by = data.get("manual_by")
@@ -319,6 +329,8 @@ class ControlMemory:
             lifted=data.get("lifted") is True,
             drying_held=data.get("drying_held") is True,
             frost_since=frost_since,
+            cool_lifted=data.get("cool_lifted") is True,
+            cool_floor_hold=data.get("cool_floor_hold") is True,
             **{key: as_float(data.get(key)) for key in _STORED_FLOATS},
         )
 
@@ -372,6 +384,8 @@ class ControlInputs:
     heat_pump_gone_s: float | None = None  # how long the unit has been away; None: not away, or not known how long
     # The safety fallback comes only from room temperatures that have not arrived since the start: no blocker then
     safety_pending: bool = False
+    # when the season was switched back to heating (docs/PHASE12_COOLING.md §2.5); None: no cooling, nothing to wait for
+    season_since_ts: float | None = None
 
 
 def to_step(value: float, step: float | None) -> float:
@@ -446,6 +460,19 @@ def stood_s(unit: HeatPumpState, now: float) -> float | None:
     return max(now - min(stood, default=now), 0.0)
 
 
+def ran_s(unit: HeatPumpState, mem: ControlMemory, now: float) -> float | None:
+    """How long its compressor has run: 0 while it stands. From the samples of the last half hour; a compressor that
+    ran all along ran at least that long. Where the unit shows no frequency, the run or rest of ours under way, None
+    where none was set (docs/PHASE12_COOLING.md §20.3)."""
+    if unit.compressor_hz is None:
+        return None if mem.phase_since_ts is None else max(now - mem.phase_since_ts, 0.0)
+    if unit.compressor_hz <= 0:
+        return 0.0
+    last_stood = max((s.ts for s in unit.history if s.compressor_hz is not None and s.compressor_hz <= 0), default=None)
+    ran = [s.ts for s in unit.history if s.compressor_hz and s.compressor_hz > 0 and (last_stood is None or s.ts > last_stood)]
+    return max(now - min(ran, default=now), 0.0)
+
+
 def stopped_ts(unit: HeatPumpState) -> float | None:
     """When its compressor stopped, as far as its samples show it: None where none shows it running.
 
@@ -467,7 +494,9 @@ def _held(value: float | None, unit: HeatPumpState, rooms: tuple[RoomResult, ...
     targets = [r.target for r in wanted_rooms(rooms)]
     if targets:
         top = min(top, max(targets) + LATCH_ABOVE_TARGET_MAX_K + lead)
-    return to_step(min(max(value, SETPOINT_MIN + step), top), unit.target_temp_step)
+    # ... and never below the lowest one for that: with every wanted target under 14 °C the cap went under what a unit
+    # takes, and "heat, 15 °C" was refused after its mode had gone out (review 2026-11-13)
+    return to_step(max(min(max(value, SETPOINT_MIN + step), top), SETPOINT_MIN), unit.target_temp_step)
 
 
 def latch_running(own: float | None, unit: HeatPumpState, rooms: tuple[RoomResult, ...]) -> float | None:
@@ -733,7 +762,7 @@ def differs(inp: ControlInputs, mem: ControlMemory) -> bool:
     unit = inp.heat_pump
     if (unit.hvac_mode or "off") != mem.last_hvac_mode:
         return True
-    if mem.last_hvac_mode != "heat" or mem.last_target is None or unit.target_temp is None:
+    if mem.last_hvac_mode not in ("heat", "cool") or mem.last_target is None or unit.target_temp is None:
         return False
     # half a step of the unit is its rounding of what was sent (21.5 °C sent before its step was known, 22 °C shown)
     off = abs(unit.target_temp - mem.last_target)
@@ -819,6 +848,36 @@ def _kind(blocker: str) -> str:
     return "error_code" if blocker.startswith("error_code_") else blocker
 
 
+def season_pause_s(params: Parameters) -> float:
+    """How long after a change of season no run of the new one starts (docs/PHASE12_COOLING.md §2.5)."""
+    return max(params.heat_pump_min_off_s, params.heat_pump_fan_run_on_s) + SEASON_SWITCH_PAUSE_EXTRA_S
+
+
+def fan_run_on(unit: HeatPumpState, mem: ControlMemory, now: float, active: bool) -> tuple[str | None, ControlMemory]:
+    """The fan run-on after a stop of ours, heating and cooling alike: "stop" (switch it off now), "wait" (it runs on),
+    or None (no run-on, or it is over and whose change ended it is judged by the caller)."""
+    if mem.fan_until_ts is None:
+        return None, mem
+    shown = unit.hvac_mode or "off"
+    ours = not active or shown == "fan_only"
+    settling = mem.last_command_ts is not None and now - mem.last_command_ts <= MANUAL_DETECT_GRACE_S
+    asked = hand.deliberate_since(unit.setting_change, mem.last_command_ts) is not None
+    if not ours and shown == "off" and (asked or not settling):
+        # switched off at the unit or in Home Assistant: where the run-on was heading anyway.
+        # Not while the unit may still be on its way into fan only and shows "off" in passing.
+        # A run-on carried over from before the control was switched (no command on record)
+        # leaves nothing behind: a unit started by hand later is then found and taken over.
+        return None, replace(mem, fan_until_ts=None, last_hvac_mode="off" if mem.last_command_ts is not None else None)
+    if not ours and (asked or not settling):
+        # another mode than ours: the run-on is over, and whose change it was is judged below
+        return None, replace(mem, fan_until_ts=None)
+    if now >= mem.fan_until_ts and (active or shown != "fan_only"):
+        return "stop", replace(mem, fan_until_ts=None, last_command_ts=now, last_hvac_mode="off")
+    # Also past its end while the control only plans and the unit really is in fan only:
+    # the "off" cannot go out now, and it is still owed once the control is active again.
+    return "wait", mem
+
+
 def decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, ControlMemory]:
     """The command for this cycle and the memory after it; the command also shows what the memory holds."""
     # Counted in every cycle, whatever is decided below: a room that leaves the frost list starts its half hour anew.
@@ -883,27 +942,11 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         kept = mem if starting or dropout else replace(mem, running_since_ts=None)
         return cmd(HEAT_PUMP_PLAN_HANDS_OFF, "none", "midea_unavailable"), kept
     # ---- the fan runs on after a stop of ours, then the unit is switched off --------------
-    if mem.fan_until_ts is not None:
-        shown = unit.hvac_mode or "off"
-        ours = not active or shown == "fan_only"
-        settling = mem.last_command_ts is not None and now - mem.last_command_ts <= MANUAL_DETECT_GRACE_S
-        asked = hand.deliberate_since(unit.setting_change, mem.last_command_ts) is not None
-        if not ours and shown == "off" and (asked or not settling):
-            # switched off at the unit or in Home Assistant: where the run-on was heading anyway.
-            # Not while the unit may still be on its way into fan only and shows "off" in passing.
-            # A run-on carried over from before the control was switched (no command on record)
-            # leaves nothing behind: a unit started by hand later is then found and taken over.
-            mem = replace(mem, fan_until_ts=None, last_hvac_mode="off" if mem.last_command_ts is not None else None)
-        elif not ours and (asked or not settling):
-            # another mode than ours: the run-on is over, and whose change it was is judged below
-            mem = replace(mem, fan_until_ts=None)
-        elif now >= mem.fan_until_ts and (active or shown != "fan_only"):
-            new = replace(mem, fan_until_ts=None, last_command_ts=now, last_hvac_mode="off")
-            return cmd(HEAT_PUMP_PLAN_OFF, "stop", "fan_run_on"), new
-        else:
-            # Also past its end while the control only plans and the unit really is in fan only:
-            # the "off" cannot go out now, and it is still owed once the control is active again.
-            return cmd(HEAT_PUMP_PLAN_OFF, "none", "fan_run_on", waiting="fan_run_on"), mem
+    step, mem = fan_run_on(unit, mem, now, active)
+    if step == "stop":
+        return cmd(HEAT_PUMP_PLAN_OFF, "stop", "fan_run_on"), mem
+    if step == "wait":
+        return cmd(HEAT_PUMP_PLAN_OFF, "none", "fan_run_on", waiting="fan_run_on"), mem
 
     def stop(reason: str, blockers=(), run_on: bool = True) -> tuple[HeatPumpCommand, ControlMemory]:
         new = replace(
@@ -925,6 +968,12 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
             new = replace(new, last_hvac_mode="fan_only", fan_until_ts=now + p.heat_pump_fan_run_on_s)
         return cmd(HEAT_PUMP_PLAN_OFF, "stop", reason, blockers=blockers, stop_to=new.last_hvac_mode), new
 
+    if mem.last_hvac_mode == "cool":
+        # A cooling run of ours from the cooling season (engines/heat_pump_cooling.py), also across a restart: ended, with
+        # its fan run-on, never taken for a hand. Found in another mode it is forgotten, and that mode is judged below.
+        if (unit.hvac_mode or "off") == "cool":
+            return stop("season_ended")
+        mem = replace(mem, last_hvac_mode=None, running_since_ts=None, resting=False, phase_since_ts=None)
     if active and mem.manual_until_ts is not None:
         # A further change during the time in hand renews it, as on a room thermostat; one after
         # its end is a new matter. Its end leaves nothing behind, whatever mode the unit is in.
@@ -1192,6 +1241,9 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
             return cmd(HEAT_PUMP_PLAN_OFF, "none", reason if need else "no_demand"), mem
         if mem.stopped_since_ts is not None and now - mem.stopped_since_ts < p.heat_pump_min_off_s:
             return cmd(HEAT_PUMP_PLAN_OFF, "none", reason, waiting="min_off_time"), mem
+        if inp.season_since_ts is not None and now - inp.season_since_ts < season_pause_s(p):
+            # back from cooling: the coil's cold leaves first, and a compressor does not turn round under load
+            return cmd(HEAT_PUMP_PLAN_OFF, "none", reason, waiting="season_switch_pause"), mem
         up = fan_up(load)
         if load == "boost":
             target = BOOST_C
@@ -1357,8 +1409,8 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         stood = stood_s(unit, now)
         if stood is not None and stood >= STAND_S:
             answered = max((ts for ts in (mem.last_command_ts, mem.stop_noted_ts) if ts is not None), default=None)
-            stop = stopped_ts(unit)
-            if answered is None or (stop is not None and stop > answered):
+            stopped_at = stopped_ts(unit)  # not `stop`: that is the function that stops the unit
+            if answered is None or (stopped_at is not None and stopped_at > answered):
                 target = drying_setpoint(own, unit, inp.rooms)
                 again = replace(mem, stop_noted_ts=now)
                 if goes_out(again, target):
@@ -1433,9 +1485,9 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
     # thermostat; its reading falling on while it stands is no new stop to be set lower for.
     stood = stood_s(unit, now)
     if need and stood is not None and stood >= STAND_S:
-        stop = stopped_ts(unit)
+        stopped_at = stopped_ts(unit)
         answered = max((ts for ts in (mem.last_command_ts, mem.stop_noted_ts) if ts is not None), default=None)
-        if answered is None or (stop is not None and stop > answered):
+        if answered is None or (stopped_at is not None and stopped_at > answered):
             target = latch_start(own, unit, inp.rooms)
             again = replace(mem, stop_noted_ts=now, above_cap_since_ts=None, reading_high_since_ts=None)
             if goes_out(again, target):
@@ -1449,8 +1501,8 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
         told = mem.last_target
         answered = max((ts for ts in (mem.last_command_ts, mem.stop_noted_ts) if ts is not None), default=None)
         wait = WAKE_HELPED_S if helps else WAKE_S
-        settled_since = answered is not None and (stop is None or stop <= answered) and now - answered >= wait
-        paused = stop is None or now - stop >= p.heat_pump_min_off_s
+        settled_since = answered is not None and (stopped_at is None or stopped_at <= answered) and now - answered >= wait
+        paused = stopped_at is None or now - stopped_at >= p.heat_pump_min_off_s
         # A planned run heats nothing and is not woken. "Warm up slower" chose the slow way: only from its comfort floor.
         short_by = SLOWER_FLOOR_K if inp.help_at_floor else LAG_BELOW_K
         short_now = gap is not None and gap <= -short_by and active and unit.hvac_mode == "heat"

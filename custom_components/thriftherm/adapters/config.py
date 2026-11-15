@@ -13,7 +13,6 @@ from ..const import (
     CONF_BOILER_FLOW_MIN,
     CONF_BOILER_HEAT_UP_RATE,
     CONF_BOILER_HOT_WATER_STANDBY,
-    CONF_BOILER_LOAD_MODEL,
     CONF_BOILER_SPREAD_MIN_ROOM_SHARE,
     DEFAULT_BOILER_CURVE_COLD,
     DEFAULT_BOILER_CURVE_WARM,
@@ -21,7 +20,6 @@ from ..const import (
     DEFAULT_BOILER_FLOW_MIN,
     DEFAULT_BOILER_HEAT_UP_RATE,
     DEFAULT_BOILER_HOT_WATER_STANDBY,
-    DEFAULT_BOILER_LOAD_MODEL,
     DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE,
     CONF_HEAT_PUMP_LEARNING_RUNS,
     CONF_HEAT_PUMP_FAN_STAGE,
@@ -84,6 +82,7 @@ from ..const import (
     CONF_ROOM_PREHEAT_MAX_MIN,
     CONF_ROOM_PRIORITY,
     CONF_ROOM_SCHEDULE_ENTITY,
+    CONF_ROOM_COOLING_SCHEDULE_ENTITY,
     CONF_ROOM_SCHEDULE_WEEKDAY,
     CONF_ROOM_SCHEDULE_WEEKEND,
     CONF_ROOM_SETBACK_TEMP,
@@ -182,6 +181,7 @@ def room_configs_from_config(rooms: list[Mapping[str, Any]]) -> tuple[RoomConfig
                 bathroom_drying=bool(raw.get(CONF_ROOM_DRYING, False)),
                 drying_automatic=bool(raw.get(CONF_ROOM_DRYING_AUTO, True)),
                 schedule_entity=raw.get(CONF_ROOM_SCHEDULE_ENTITY) or None,
+                cooling_schedule_entity=raw.get(CONF_ROOM_COOLING_SCHEDULE_ENTITY) or None,
                 preheat_max_s=_minutes_as_s(raw.get(CONF_ROOM_PREHEAT_MAX_MIN)),
             )
         )
@@ -264,5 +264,4 @@ def parameters_from_config(config: Mapping[str, Any]) -> Parameters:
         boiler_hot_water_standby=bool(config.get(CONF_BOILER_HOT_WATER_STANDBY, DEFAULT_BOILER_HOT_WATER_STANDBY)),
         boiler_heat_up_rate_k_h=max(f(CONF_BOILER_HEAT_UP_RATE, DEFAULT_BOILER_HEAT_UP_RATE), 0.0),
         boiler_spread_min_room_share=f(CONF_BOILER_SPREAD_MIN_ROOM_SHARE, DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE),
-        boiler_load_model=bool(config.get(CONF_BOILER_LOAD_MODEL, DEFAULT_BOILER_LOAD_MODEL)),
     )

@@ -2,7 +2,7 @@
 
 **English** | [Deutsch](../de/FUNKTIONSWEISE.md)
 
-For day-to-day use the [user guide](GUIDE.md) is enough. This page shows how Thriftherm decides internally.
+For day-to-day use the [user guide](GUIDE.md) is enough. This page shows how Thriftherm decides internally. Terms are explained in the [user guide, terms](GUIDE.md#terms).
 
 The numbers come from the code. "By default" means you can change it in the options. All other values are fixed.
 
@@ -13,14 +13,13 @@ The numbers come from the code. "By default" means you can change it in the opti
 - [Pre-heating](#pre-heating)
 - [Boiler control](#boiler-control)
 - [Heat-up speed](#heat-up-speed)
-- [Learning](#learning)
+- [Learning](#learning), with [How long learning takes](#how-long-learning-takes)
 - [Heat pump](#heat-pump)
 
 ## Away and planned return
 
-How to use it is in the [user guide, section 2](GUIDE.md#away-with-and-without-a-return). Here are the rules by which *Planned return* reads what you enter.
+How to use it, choosing *Away* again included, is in the [user guide](GUIDE.md#away-with-and-without-a-return). Here are the rules by which *Planned return* reads what you enter.
 
-- ***Away* again:** if *Away* with a return is already on, choosing *Away* again changes nothing. For away with no end, choose another mode first and then *Away* again, or call `thriftherm.set_away` with `clear_return_time: true`.
 - **The date first:** while nothing is planned, the time field takes nothing.
 - **A date alone is a placeholder:** until a time is picked, the return stands at 23:59 of the chosen day for the moment, today as on any later day. Another date takes the provisional 23:59 along. A provisional return does not pre-heat. Only the time you pick next counts, and the rooms are pre-heated for that. If you pick none, away still ends at 23:59.
 - **Changing the date when a time is already planned:** the new date keeps the planned time and counts at once. If you pick today and that time has already passed, it shows the provisional 23:59 again.
@@ -58,7 +57,7 @@ If the air in a room gets closer to its dew point than 3 degrees while you are a
 
 ## Changes by hand
 
-What a change by hand does and where you see it is in the [user guide, section 3](GUIDE.md#changes-by-hand). Here is how Thriftherm recognises one.
+What a change by hand does and where you see it is in the [user guide](GUIDE.md#changes-by-hand). Here is how Thriftherm recognises one.
 
 Thriftherm writes setpoints, so it has to know who changed one. Home Assistant says so itself: every change carries where it comes from.
 
@@ -71,7 +70,9 @@ Thriftherm writes setpoints, so it has to know who changed one. Home Assistant s
 
 A setpoint somebody else sets on a thermostat or on the heat pump starts a cycle at once, without waiting for the next one. An automation of your own to speed the display up is therefore not needed.
 
-**Echo filter:** Better Thermostat rewrites the valve setpoint every few seconds. When a Zigbee reply arrives late, Better Thermostat takes the old value for a turn of the knob. The echo filter (Options → Control parameters, on by default) recognises this: when Better Thermostat jumps to a value the valve already showed within the last minute and left again (e.g. 16 → 16.5 → 16), the jump is ignored and the planned setpoint is sent again. A real turn of the knob brings a new value and is taken over. The room's *Thermostat plan* sensor shows when an echo was last ignored.
+### Echo filter
+
+Better Thermostat rewrites the valve setpoint every few seconds. When a Zigbee reply arrives late, Better Thermostat takes the old value for a turn of the knob. The echo filter (Options → Control parameters, on by default) recognises this: when Better Thermostat jumps to a value the valve already showed within the last minute and left again (e.g. 16 → 16.5 → 16), the jump is ignored and the planned setpoint is sent again. A real turn of the knob brings a new value and is taken over. The room's *Thermostat plan* sensor shows when an echo was last ignored.
 
 ### Turning the knob of a valve behind a room thermostat
 
@@ -107,7 +108,7 @@ start = block start − (target − current) / heat-up rate − margin
 
 ## Boiler control
 
-How to use it is in the [user guide, section 5](GUIDE.md#5-boiler-control-own-boiler-on-ebusd).
+How to use it is in the [user guide](GUIDE.md#boiler-control).
 
 ### Flow
 
@@ -182,7 +183,7 @@ The last field of the ebusd message `Status01` is called the pump state, but it 
 
 ## Heat-up speed
 
-The setting is in the [user guide, heat-up speed](GUIDE.md#heat-up-speed).
+The setting is in the [user guide](GUIDE.md#heat-up-speed).
 
 **Why:** reported by a user on 2026-10-14: the living room raised from 20.5 to 23.5 °C, the flow stayed at 45 °C for 40 minutes, the boiler cycled with the return at 44 °C, and two hours later the room was at 22.2 °C.
 
@@ -217,7 +218,7 @@ The setting is in the [user guide, heat-up speed](GUIDE.md#heat-up-speed).
 
 ## Learning
 
-What is learned and where you see it is in the [user guide, section 6](GUIDE.md#6-learning).
+What is learned and where you see it is in the [user guide](GUIDE.md#learning).
 
 ### What is learned
 
@@ -231,7 +232,7 @@ What is learned and where you see it is in the [user guide, section 6](GUIDE.md#
 
 **At the flow minimum the curve does not learn upwards.** On a mild day the curve lies below the minimum, and the minimum is sent. A room that does not get there then needs more than the minimum; that says nothing about the curve on a cold day. A step used to raise the value by the whole gap up to the minimum: in the test of 2026-10-15 one step at 16 °C outside moved a value by 4.4 degrees, and after three steps the bedroom stood at 9.3 degrees more. Now the learning holds still there, and the learning state shows *A room does not get there, but the flow stands at its minimum*. If that lasts, the minimum is too low for this room, and you raise it in the boiler options.
 
-**At the limit of the correction** (±10 degrees for level or slope) a step goes only up to the limit, or it is dropped. The learning state then shows *Heating curve correction at its limit (level or slope, ±10 degrees each)* until no step has met the limit for an hour and 20 minutes. Which line it is shows in the attribute `curve_by_load`. If a single room stays there, the cause is usually not the curve but that room's radiator or hydraulics.
+**At the limit of the correction** (±10 degrees for level or slope) a step goes only up to the limit, or it is dropped. The learning state then shows *Heating curve correction at its limit (level or slope, ±10 degrees each)* until no step has met the limit for two hours and 10 minutes. Which line it is shows in the attribute `curve_by_load`. If a single room stays there, the cause is usually not the curve but that room's radiator or hydraulics.
 
 ### Level and slope
 
@@ -277,8 +278,13 @@ A room whose progress says nothing about the flow (see [Guards against learning 
 A cycling boiler never gives a settled spread. Then the rooms decide.
 
 - **Cycling** means: at least 3 burner starts in the last hour, and the finished burner runs last 5 minutes or less (median).
-- **Up by one step** when a called room lags and heating has been released for at least 30 minutes (reason *Boiler cycles and a room does not reach its target*). Lagging means: at least 0.2 degrees below target and rising more slowly than 0.2 degrees an hour. A room the stall rule has given up on counts too.
-- **Down** only when every called room warms up briskly: 0.5 degrees an hour or more.
+- **Up by one step** when a called room lags, its own call has run for at least 30 minutes and heating has been released for as long (reason *Boiler cycles and a room does not reach its target*). Lagging means: at least 0.2 degrees below target and rising more slowly than 0.2 degrees an hour. A room the stall rule has given up on counts too.
+- **Such a step is a trial.** Thriftherm notes how fast the room was rising at the step. If 90 minutes later the room still lags and does not rise at least 0.1 degrees an hour faster, the step is taken back, and for a day there is no further one for this room in this load class (learning state: *More flow did not help this room*). Then the radiator, the valve or the short burner run holds it back, not the curve. If it rises faster or lags no more, the step stays. With several rooms lagging the next one has its turn. Seen 2026-10-22: the bathroom stayed 0.9 degrees below target at a flow set to 40 as at 47 °C, and its value still went up to 10.8 degrees.
+- **If the step up did not help, less is tried.** Then the flow makes no difference to the room at this point of the curve. So Thriftherm takes a step down at once, on trial as well, though never below the common correction. If the room does not rise 0.1 degrees an hour slower afterwards, it stays; otherwise it is taken back (learning state: *Less flow left this room worse off*), and the value is not lowered again for a day. A value that is high only because more did not help comes down a step a day that way.
+- **Down by the calls.** A room that holds its target swings by a tenth or two; its trend over 90 minutes shows nothing. What the flow does for it shows in how fast a **holding call** gets it from 0.3 degrees below its target to it. Three such calls in a row at 0.6 degrees an hour or more lower the room's value by a step (reason *Boiler cycles*). For that the boiler must have been released and cycling all through the call, and no other room may have set the flow, neither by its value nor by its demand boost. Any slower call and any lagging start the count over, and so does a day without a brisk call.
+- **What is no holding call:** a call that began with a new target or more than 0.5 degrees below it (that is a heat-up), one with a quick heat-up, a valve shut or the heat pump helping, one that ended by a stall, a window or the end of comfort, the first after an airing, and one in which the sensor reported a single step only. It counts neither for nor against.
+- **This step is a trial too.** If the room lags within three hours after it, it is taken back instead of being answered by a new step up, and the value is not lowered again for a day. Seen in October 2026: five of six steps down were followed by a step up within hours.
+- **Call log:** each room's last ten calls are in the diagnostics (`boiler_memory.calls`: room, end, minutes, rise, pace, flow sent, burner starts of the last hour, verdict). They stay local.
 
 Measured 2026-10-10: at a 35 °C flow minimum instead of 45 °C the burner ran for only 41 s every 15 minutes instead of 62 s. The bathroom stayed 0.2 to 0.3 degrees below target for 14 hours. Less flow meant less heat there, not fewer starts.
 
@@ -299,10 +305,9 @@ Thriftherm therefore keeps three load classes: one room calls, a few, the majori
 
 **Starting without a value of its own:**
 
-- A class without a value of its own starts from the nearest class. Of two equally near, it takes the one with more rooms. If there is none, it starts from the common correction of before.
-- A room without a value of its own starts from the value its class had learned before there were values per room. So an update does not change the flow. It also takes over whether that value was found already and how long it has served.
-- If there is no such value, the room starts from its own value in the nearest class, for it is the same radiator.
-- Otherwise class and room take over the value only. They gather their hours and steps themselves.
+- A room without a value of its own takes its own value from the nearest class with **more** rooms, for it is the same radiator. Not the other way round: with one room calling the boiler cycles, and its flow averages far below the setpoint. What the room learned then would be too much among several rooms (seen 2026-11-12: 10.8 degrees more from the bathroom alone would have applied to the whole flat).
+- If there is none, the common correction applies. It also applies while no room has called since the release. Whoever had switched the values per room off before (the option is gone since 2026-11-13) has the correction learned there: every room starts from it and learns a value of its own from then on. Values per room from the time before are forgotten once at the first start, so the flow stays as it was.
+- The value stays borrowed until the room takes its first step of its own: if its source changes or is reset, it follows. Each room gathers its own hours and whether its value was found.
 
 ### Found values
 
@@ -320,17 +325,19 @@ Without this rule the learning answers every small deviation and the flow keeps 
 
 - only in *Active* mode;
 - at the earliest 10 minutes after the burner starts, and from at least 10 samples;
-- never while hot water is made, a setpoint changed in the last 20 minutes, a quick heat-up, a drying or a heat-up on an extra ([heat-up speed](#heat-up-speed)) runs, or the safety state is not OK.
+- never while hot water is made, a setpoint changed in the last 20 minutes, a quick heat-up, a drying, a heat-up on an extra ([heat-up speed](#heat-up-speed)) or a pre-heating with *Longest preheat* runs, during a boiler fault, without an outdoor temperature, or while the safety state is not OK.
 
 After each such pause the learning waits a full review window of 20 minutes and counts only the burner runs of that time. What came before belonged to another setpoint, a drying or the boiler's own knob.
 
 **Waiting time and daily allowances** are shared by all classes and rooms:
 
-- at least 45 minutes since the last step before a step up, an hour before a step down;
+- at least 90 minutes since the last step before a step up, an hour before a step down. That is how far back the rooms' trend looks: earlier it does not show yet what the last step did (seen 2026-10-22: 1, 2 and 4 degrees more within two and a half hours);
 - per day at most 10 degrees up and 4 degrees down.
 
-**Rooms that do not count as "not getting there":**
+**Rooms whose progress says nothing about the flow**, neither for more nor for less (the rules on the spread hold regardless):
 
+- **A room whose target changed within the last 90 minutes.** Its trend still holds the time before, and it is heating up, not holding. The heating curve is for holding; heating up is what the demand boost and the [heat-up speed](#heat-up-speed) are for. The time outlasts a restart and saving the options; after an open window it starts over. A comfort block shorter than 90 minutes with its preheat therefore never raises the curve; its holding calls can still lower it.
+- **A room whose sensor has not reported for 90 minutes.** A sensor that reports only on a change of about a degree (a Shelly H&T, say) shows a flat line for hours and then jumps. The flat line is silence, not a room standing still ([#7](https://github.com/alpha-uniform/thriftherm/issues/7)).
 - **A room in a quick heat-up:** a wish for a while says nothing about the heating curve, which is to hold the temperatures planned.
 - **A room with a change by hand while it is still heating up to it.** Once it is within 1 degree and holds there, it counts like any room; otherwise a household that heats by hand only would never teach anything. Seen 2026-10-13: four rooms set 3 degrees above their temperature for a test drove the correction of most rooms from 1 to 8.5 degrees in three hours.
 - **A room whose thermostat says it is not heating right now** (Better Thermostat and Versatile Thermostat say so). Its valve is shut although the room is below target, and a hotter flow would only shut it sooner.
@@ -339,7 +346,7 @@ After each such pause the learning waits a full review window of 20 minutes and 
 
 Steps grow with certainty: coarse first, then fine.
 
-- **A step up after a step up** doubles: 1, 2, 4 degrees, no more.
+- **A step up after a step up** doubles: 1, 2 degrees, no more.
 - **A step against the one before** halves, down to 0.5 degrees.
 - **A step down after a step down** is the first step again. Steps down never grow: comfort comes before saving.
 - Within a load class the last step of that class counts. A step the bathroom alone took says nothing about the next one for the whole flat.
@@ -348,9 +355,25 @@ Steps grow with certainty: coarse first, then fine.
 
 Measured 2026-10-11: with fixed steps of 1 degree, four a day, the correction stood at 4 degrees more after eight hours, and the bathroom was still 0.6 degrees below target. The flow minimum there was 10 degrees too low for the bathroom alone.
 
+### How long learning takes
+
+The overview is in the [user guide](GUIDE.md#how-long-learning-takes). Here is the reckoning behind it. It follows from the rules above, not from a whole measured season.
+
+**Heating curve, upwards.** A room that lags gets a step 30 minutes after its call began at the earliest, and its target must have stood for 90 minutes. The steps grow 1, 2, 2, 2 degrees, 90 minutes apart: a curve 7 degrees too low is caught up in about 6 hours this way; there are never more than 10 degrees a day.
+
+**Heating curve, downwards.** At most 4 degrees a day, an hour apart. If the boiler runs through, the spread decides every 20 minutes. If it cycles, each step needs three brisk holding calls in a row; on the test installation a call took 1 to 1.5 hours, and about five came in ten hours. That is one or two steps a day, so a curve 4 to 6 degrees too high needs 2 to 6 heating days. Whether holding calls reach the needed 0.6 degrees an hour at all is the biggest uncertainty: if not, the curve of a cycling boiler hardly sinks.
+
+**Found.** A value counts as found after three judged hours of operation without a lagging room and without a step. For the frequent load class that can be expected after about one to two weeks of heating season. Rare load classes gather their hours slowly: on the test installation, after two months "one room" had 109 hours of operation, "a few" 8 and "the majority" 0.3.
+
+**Slope.** On mild days a step goes almost entirely into the level ([level and slope](#level-and-slope)). The slope learns only on days well below 0 °C; in a mild winter only in the next season.
+
+**Heat-up rate and cool-down coefficient.** Both apply from the first valid value; the median of the last ten counts. With a setback there are one or two heat-up periods and one cool-down period a day: a first value after one or two days, reliable with three values after two to four days, the full series after one to two weeks. A room with a fixed target swings by only 0.2 to 0.4 degrees and never reaches the rise of 0.5 degrees: it keeps the default heat-up rate. Cooling down is learned only when it is at least 5 degrees warmer inside than outside, so mostly not above about 16 °C outside.
+
+**COP map.** A band of 2 degrees outdoor temperature is known after 3 hours of running at least power. If the weather stays in one band 4 to 8 hours a day and the heat pump runs for half of that, that is 1 to 3 days. A band in which the central heating is cheaper learns only through learning runs of one hour, at most one a day: at least 3 days with suitable weather, realistically 1 to 3 weeks. The frequent bands (about 0 to 12 °C) are thus known after 2 to 4 weeks, frost bands only in frost. Until then the neighbouring band or the adjusted starting curve applies; it is adjusted from the first known band on.
+
 ## Heat pump
 
-How to use it is in the [user guide, section 7](GUIDE.md#7-heat-pump-optional).
+How to use it is in the [user guide](GUIDE.md#heat-pump-optional).
 
 ### Measuring the COP
 
@@ -386,7 +409,7 @@ From 3 hours of run time a step counts as known. Until then what is known next t
 
 ### Frost protection
 
-Without central heating (set up with *None – heat pump and room control only*) the heat pump is the only heat Thriftherm controls. It then holds the away temperature in away mode and the frost protection temperature in summer mode, and it heats a served room below the frost protection temperature in every mode, with the window open, with the outdoor temperature unknown or below the minimum and with dear heat too, until the room is 1 degree above.
+Without central heating (set up with *None – heat pump and room control only*) the heat pump is the only heat Thriftherm controls. It then holds the away temperature in away mode and the frost protection temperature in the mode *Off (frost protection only)*, and it heats a served room below the frost protection temperature in every mode, with the window open, with the outdoor temperature unknown or below the minimum and with dear heat too, until the room is 1 degree above.
 
 With a boiler or district heating it is the reserve: a served room that has been below the frost limit for 30 minutes without a break is heated by it the same way (*Frost protection: central heating not enough*). A central heating switched off for the summer, on its own knob or failed would otherwise let the room go on cooling. A restart does not start the 30 minutes anew. Icing, error codes and the safety fallback still stop it, and in *Plan only* nothing is sent.
 
@@ -430,7 +453,12 @@ How it runs:
 - **Holding:** once the compressor runs, its own reading rises by about 1.5 degrees, and the setpoint then sits about a degree below it. There it stays: a new target of the rooms sends nothing, so the unit rarely beeps. It is set anew only when the unit stops by itself while a room is below its target, when its reading stays more than half a degree below the setpoint for 10 minutes, or once 15 minutes after a higher speed, then downwards only. With its reading 1.5 degrees above the setpoint for 5 minutes, a room short or not (at 2 degrees without the 5 minutes, at the earliest 10 minutes after the last setpoint), it goes to a degree below the reading, not while the heat pump runs higher: about 1.75 degrees above its setpoint the unit stops by itself otherwise, seen 2026-10-31 five times in 46 minutes as the office warmed. Never during a defrost and for 15 minutes after it.
 - **If it stands on:** with a room 0.2 degrees below its target and its compressor still not running 5 minutes after the last setpoint, the setpoint goes to 1.5 degrees above its own reading, not before the minimum pause; with the heating helping already only after half an hour, with *Warm up slower* only 0.5 degrees below the target. 15 minutes after the start it is set a degree below its reading again. That can make its start harder for a minute to three (measured on 2026-11-03 and 2026-11-04: 28 to 67 Hz). After a longer rest half a degree above often does not start it: in the night to 2026-11-03 it stood for four hours, on the morning of 2026-11-04 for 26 minutes.
 - **Resting:** with the coldest served room half a degree above its target, the setpoint goes to 17 °C (*Rooms warm: the compressor rests*), after the minimum run time at the earliest. The unit stays in heating and only its fan runs: out of heating it starts gently again, out of off or fan only it starts at 60 to 79 Hz. At the target it heats again, after the minimum pause at the earliest. Where the unit reads below 19 °C with its compressor running (1.5 degrees less standing), or when the compressor still runs 15 minutes after the resting setpoint, it is switched off.
-- **If a room lags** (0.2 degrees below its target and rising more slowly than 0.3 degrees an hour for 10 minutes, or not making its preheat in time; a preheating room is judged only from half an hour after its preheat began, at its pace since), the central heating (boiler or district heating) helps until every room is at its target (attribute `boiler_helps`). Only rooms whose radiator may heat count, so not one whose thermostat is switched off by hand; that one gets no help and reaches its target later. The heat pump's rooms call it from 0.2 degrees below target. The heat pump stays at its minimum, as above it its heat costs more than the boiler's. That is the default of the option *When the heat pump alone is not enough*. With *Heat pump runs higher*, or in the mode *Heat pump only* (except with *Warm up slower* or *Heat pump alone*), its setpoint goes up half a degree every 10 minutes instead, 1.5 degrees above its own reading at most, and stays there until every room is at its target; its COP drops meanwhile. Then the setpoint goes straight back to a degree below its reading. With *Warm up slower* it stays at its minimum, never runs higher, and the rooms take longer; the central heating helps only once a room is half a degree below its target (also in the setback), or a preheat is projected to be half a degree short of its comfort start, and then until every room is there. In the simulation of ten recorded days the rooms sat 0.13-0.18 degrees below target on average that way instead of 0.3-0.6 without that help (up to 1.7 in frost), for about 7 cents a day less than *Boiler or district heating helps*, with 2-4 boiler runs of about 40 minutes a day instead of 5-9 short ones. In the mode *Heat pump only* nothing helps then. With *Heat pump alone* it stays at its minimum as well, and while it is the cheaper source its rooms do not call the boiler: they do not heat along, do not set the flow and teach the heating curve nothing. The boiler goes on heating the other rooms; while it runs for one of them, a room below its target takes some of that heat through its open valve. If the heat pump is dearer or blocked, the boiler heats all rooms. With district heating this means least power only, as there is nothing to block. Without central heating (set up with *None – heat pump and room control only*) it always runs higher, whatever is set. A room a little short that does not lag does not raise it.
+- **If a room lags** (0.2 degrees below its target and rising more slowly than 0.3 degrees an hour for 10 minutes, or not making its preheat in time; a preheating room is judged only from half an hour after its preheat began, at its pace since), the option *When the heat pump alone is not enough* decides. Only rooms whose radiator may heat count, so not one whose thermostat is switched off by hand; that one gets no help and reaches its target later. A room a little short that does not lag sets nothing off.
+  - *Boiler or district heating helps* (default): the central heating helps until every room is at its target (attribute `boiler_helps`). The heat pump's rooms call it from 0.2 degrees below target. The heat pump stays at its minimum, as above it its heat costs more than the boiler's.
+  - *Heat pump runs higher*, and likewise in the mode *Heat pump only* (except with *Warm up slower* or *Heat pump alone*): its setpoint goes up half a degree every 10 minutes, 1.5 degrees above its own reading at most, and stays there until every room is at its target; its COP drops meanwhile. Then the setpoint goes straight back to a degree below its reading.
+  - *Warm up slower*: it stays at its minimum, never runs higher, and the rooms take longer. The central heating helps only once a room is half a degree below its target (also in the setback), or a preheat is projected to be half a degree short of its comfort start, and then until every room is there. In the simulation of ten recorded days the rooms sat 0.13-0.18 degrees below target on average that way instead of 0.3-0.6 without that help (up to 1.7 in frost), for about 7 cents a day less than *Boiler or district heating helps*, with 2-4 boiler runs of about 40 minutes a day instead of 5-9 short ones. In the mode *Heat pump only* nothing helps then.
+  - *Heat pump alone*: it stays at its minimum as well, and while it is the cheaper source its rooms do not call the boiler: they do not heat along, do not set the flow and teach the heating curve nothing. The boiler goes on heating the other rooms; while it runs for one of them, a room below its target takes some of that heat through its open valve. If the heat pump is dearer or blocked, the boiler heats all rooms. With district heating this means least power only, as there is nothing to block.
+  - Without central heating (set up with *None – heat pump and room control only*) it always runs higher, whatever is set.
 - **Letting go:** when its control goes to *Plan only* or *Off*, or Thriftherm is disabled or deleted, a unit left at 30 °C or a drying's setpoint is set to its lowest setpoint, where it rests; one at its least power or set by somebody meanwhile stays as it is. On a reload that goes on actively nothing changes.
 - **More power** comes only from *Quick heat-up* (30 °C, fan high), a little more while drying (see above). Afterwards its reading falls with its power: 15 minutes later the setpoint is set once more from it, downwards only.
 - **Fan:** otherwise it runs at the *Fan stage in normal operation* (default *Auto*; *Full* is the unit's strongest stage, a stage it does not have counts as *Auto*). Measured on 2026-10-13, *Full* gave about 7 % more heat than *Auto* at the same power, and *Auto* turns slower than *Silent* at low load; more air also carries more heat through the ducts into the rooms. It is louder for that. Drying and quick heat-up give the stage back afterwards. If the unit still has the stage it was given last, it gets a newly chosen one once; a stage chosen by hand stays.

@@ -6,6 +6,7 @@ from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import SEASON_AUTO
 from .coordinator import ThrifthermConfigEntry, ThrifthermCoordinator
 from .entity import SettingEntity
 
@@ -17,7 +18,49 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, a
         entities.append(ControlSelect(coordinator, "boiler_control", "mdi:water-boiler", "boiler_"))
     if coordinator.has_heat_pump:
         entities.append(ControlSelect(coordinator, "midea_control", "mdi:heat-pump-outline", ""))
+    if coordinator.cooling_allowed:
+        entities.append(SeasonSelect(coordinator))
     async_add_entities(entities)
+
+
+class SeasonSelect(SettingEntity, SelectEntity):
+    """Heating, cooling or automatic (docs/PHASE12_COOLING.md §2, §20.2). Cooling only where the unit offers it.
+
+    The state is the choice; the attribute `season` is the season in force, which automatic decides.
+    """
+
+    _attr_translation_key = "season"
+    _attr_icon = "mdi:sun-snowflake-variant"
+
+    def __init__(self, coordinator: ThrifthermCoordinator) -> None:
+        super().__init__(coordinator, "season")
+        self.suggest_english_entity_id()
+
+    @property
+    def options(self) -> list[str]:
+        offered = self.coordinator.seasons
+        # the choice in force stays shown, also where the unit no longer offers cooling
+        chosen = self.coordinator.season_choice
+        return offered if chosen in offered else [*offered, chosen]
+
+    @property
+    def current_option(self) -> str:
+        return self.coordinator.season_choice
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        coord = self.coordinator
+        return {
+            "season": coord.season,
+            "since": coord.season_since_ts,
+            "unit_can_cool": coord.unit_can_cool,
+            "reason": coord.season_reason,
+            "verdicts": coord.season_verdicts if coord.season_choice == SEASON_AUTO else None,
+        }
+
+    async def async_select_option(self, option: str) -> None:
+        await self.coordinator.async_set_season(option)
+        self.async_write_ha_state()
 
 
 class ModeSelect(SettingEntity, SelectEntity):

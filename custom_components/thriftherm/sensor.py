@@ -166,6 +166,8 @@ def _learning_attrs(d: Data) -> dict[str, Any]:
         "setpoint_changed_in": [(d.get("room_names") or {}).get(k, k) for k in d.get("setpoint_changed_in") or []],
         "room_heat_up_rates": d.get("heat_rates"),
         "room_cooling_rates": d.get("cool_rates"),
+        # how fast the air conditioner cools its rooms: only where cooling is allowed (docs/PHASE12_COOLING.md §20.3)
+        **({"room_ac_cool_rates": d["ac_cool_rates"]} if d.get("ac_cool_rates") is not None else {}),
         "room_heating_power_k_h": d.get("heating_power"),
         "cop_bins": len(d.get("cop_map") or {}),
         "cop_basis": d.get("expected_cop_basis"),
@@ -475,6 +477,8 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
             # what the schedule does next, for a dashboard: changes only when a block begins or ends
             "next_change_ts": r.next_change_ts,
             "next_target": r.next_target,
+            # a room the heat pump may cool (docs/PHASE12_COOLING.md): its cooling target and why
+            **({"cool_target": r.cool_target, "cool_reason": r.cool_target_reason} if r.cool_target_reason is not None else {}),
         },
     ),
     _room_desc(

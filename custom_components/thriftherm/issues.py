@@ -16,6 +16,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.util import dt as dt_util
 
+from .config_schema import ROOM_KEY_RESERVED_ENDING
 from .const import CONF_HEAT_PUMP_ROOM, DOMAIN
 from .engines import boiler as boiler_engine
 
@@ -60,7 +61,20 @@ def detect(
     found: dict[str, dict[str, str]] = {}
     data = data if data is not None else (coordinator.data or {})
 
+    # the rooms that have cooling numbers (number.py): only their ids can collide with another room's
+    cooled = {
+        room.key: room.name
+        for room in coordinator.builder.rooms
+        if getattr(coordinator, "cooling_allowed", False) and getattr(room, "served_by_heat_pump", False)
+    }
     for room in coordinator.builder.rooms:
+        other = room.key[: -len(ROOM_KEY_RESERVED_ENDING)] if room.key.endswith(ROOM_KEY_RESERVED_ENDING) else None
+        if other in cooled:
+            # set up before the form refused such a name: the cooling comfort of the one and the heating comfort of
+            # the other get the same unique id, and one of the two entities is missing (review 2026-11-13)
+            found[f"room_names_collide_{room.key}"] = {
+                "translation_key": "room_names_collide", "room": room.name, "other": cooled[other],
+            }
         missing = bool(room.schedule_entity) and hass.states.get(room.schedule_entity) is None
         if _sustained(coordinator, f"schedule_missing_{room.key}", missing, SCHEDULE_MISSING_GRACE_S, pending):
             # the helper was deleted or renamed: the room silently falls back to
@@ -72,8 +86,22 @@ def detect(
             }
         elif not missing and not room.schedule_entity and not room.schedule_weekday and not room.schedule_weekend:
             found[f"no_schedule_{room.key}"] = {"translation_key": "no_schedule", "room": room.name}
+        # a cooling schedule that is gone: the room is cooled to its comfort all day (docs/PHASE12_COOLING.md §3.2)
+        cooling_entity = getattr(room, "cooling_schedule_entity", None)
+        gone = bool(cooling_entity) and getattr(coordinator, "cooling_allowed", False) and hass.states.get(cooling_entity) is None
+        if _sustained(coordinator, f"cooling_schedule_missing_{room.key}", gone, SCHEDULE_MISSING_GRACE_S, pending):
+            found[f"cooling_schedule_missing_{room.key}"] = {
+                "translation_key": "cooling_schedule_missing", "room": room.name, "entity_id": cooling_entity,
+            }
 
     safety = data.get("safety")
+    frost = tuple(getattr(safety, "frost_rooms", ()) or ()) if safety is not None else ()
+    if frost and getattr(coordinator, "cooling_season", False):
+        # The heat pump never heats in the cooling season, and without a boiler nothing does (§8): a person has to look.
+        names = {room.key: room.name for room in coordinator.builder.rooms}
+        found["frost_in_cooling_season"] = {
+            "translation_key": "frost_in_cooling_season", "rooms": ", ".join(names.get(key, key) for key in frost),
+        }
     if safety is not None and "temperature_unit_not_celsius" in safety.issues:
         found["temperature_unit_not_celsius"] = {"translation_key": "temperature_unit_not_celsius"}
 

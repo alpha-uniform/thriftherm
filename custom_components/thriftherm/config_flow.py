@@ -13,28 +13,11 @@ from homeassistant.helpers import selector
 
 from . import boiler_profiles, learning_reset, texts
 from .adapters import ebusd_detect
-from .adapters.inputs import driven_by
 from .adapters.config import system_type_from_config
-from .const import (
-    CONFIG_VERSION,
-    CONF_BOILER_FILL_DECLINED,
-    CONF_BOILER_PROFILE,
-    CONF_HEAT_PUMP_CLIMATE,
-    CONF_HEAT_PUMP_ROOM,
-    CONF_ROOMS,
-    CONF_ROOM_COMFORT_TEMP,
-    CONF_ROOM_KEY,
-    CONF_ROOM_SETBACK_TEMP,
-    DEFAULT_ROOM_COMFORT_TEMP,
-    DEFAULT_ROOM_SETBACK_TEMP,
-    DOMAIN,
-    SYSTEM_GAS,
-)
-
+from .adapters.inputs import driven_by
 from .config_schema import (
     BOILER_KEYS,
     HEAT_PUMP_KEYS,
-    HEAT_PUMP_TUNING_KEYS,
     OUTDOOR_KEYS,
     PARAMETER_KEYS,
     PRICE_KEYS,
@@ -42,6 +25,7 @@ from .config_schema import (
     SYSTEM_KEYS,
     flatten_sections,
     has_heat_pump,
+    keys_of,
     known_keys,
     merge_present,
     merge_step,
@@ -49,15 +33,31 @@ from .config_schema import (
     room_options,
     schema_boiler,
     schema_heat_pump,
-    schema_outdoor,
     schema_heat_pump_tuning,
+    schema_outdoor,
     schema_parameters,
     schema_prices,
     schema_room,
     schema_system,
     validate_boiler,
     validate_heat_pump,
+    validate_heat_pump_tuning,
     validate_room,
+)
+from .const import (
+    CONF_BOILER_FILL_DECLINED,
+    CONF_BOILER_PROFILE,
+    CONF_HEAT_PUMP_CLIMATE,
+    CONF_HEAT_PUMP_ROOM,
+    CONF_ROOM_COMFORT_TEMP,
+    CONF_ROOM_KEY,
+    CONF_ROOM_SETBACK_TEMP,
+    CONF_ROOMS,
+    CONFIG_VERSION,
+    DEFAULT_ROOM_COMFORT_TEMP,
+    DEFAULT_ROOM_SETBACK_TEMP,
+    DOMAIN,
+    SYSTEM_GAS,
 )
 
 
@@ -263,7 +263,11 @@ class ThrifthermOptionsFlow(OptionsFlow):
         return self._simple_step("outdoor", user_input, schema_outdoor, OUTDOOR_KEYS)
 
     async def async_step_midea_tuning(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return self._simple_step("midea_tuning", user_input, schema_heat_pump_tuning, HEAT_PUMP_TUNING_KEYS)
+        # the keys of the form as shown: cooling settings stored while cooling is hidden are left alone
+        return self._simple_step(
+            "midea_tuning", user_input, schema_heat_pump_tuning, keys_of(schema_heat_pump_tuning),
+            validate=validate_heat_pump_tuning,
+        )
 
     async def async_step_parameters(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         return self._simple_step("parameters", user_input, schema_parameters, PARAMETER_KEYS)
@@ -358,18 +362,27 @@ class ThrifthermOptionsFlow(OptionsFlow):
             return
         defaults = {CONF_ROOM_COMFORT_TEMP: DEFAULT_ROOM_COMFORT_TEMP, CONF_ROOM_SETBACK_TEMP: DEFAULT_ROOM_SETBACK_TEMP}
         if any(float(after.get(key, default)) != float(before.get(key, default)) for key, default in defaults.items()):
-            coordinator.room_temps.pop(self._room_key, None)
+            # the heating pair only: the cooling targets set on the dashboard are no field of this form
+            for kind in ("comfort", "setback"):
+                coordinator.room_temps.get(self._room_key, {}).pop(kind, None)
 
     async def async_step_room(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         rooms: list[dict[str, Any]] = list(self._config.get(CONF_ROOMS, []))
-        current = next((r for r in rooms if r[CONF_ROOM_KEY] == self._room_key), {}) if self._room_key else {}
-        current = self._in_force(current)
+        stored = next((r for r in rooms if r[CONF_ROOM_KEY] == self._room_key), {}) if self._room_key else {}
+        current = self._in_force(stored)
+        heat_pump = has_heat_pump(self._config)
         errors: dict[str, str] = {}
         if user_input is not None:
             others = [r for r in rooms if r[CONF_ROOM_KEY] != self._room_key]
-            errors = validate_room(user_input, others, self._config.get(CONF_HEAT_PUMP_CLIMATE), self._drives)
+            errors = validate_room(user_input, others, self._config.get(CONF_HEAT_PUMP_CLIMATE), self._drives, self._room_key)
             if not errors:
-                room = room_from_input(user_input, key=self._room_key)
+                # What the form does not show stays as it is stored: the cooling schedule while cooling is hidden,
+                # "served by the heat pump" and the drying while no heat pump is entered. Built from the answer
+                # alone, saving a room for any other reason dropped them (review 2026-11-13). A field that is
+                # shown and was emptied is left out of the answer, and goes.
+                shown = keys_of(lambda cur: schema_room(cur, allow_add_another=False, heat_pump=heat_pump))
+                hidden = {k: v for k, v in stored.items() if k not in shown}
+                room = {**hidden, **room_from_input(user_input, key=self._room_key)}
                 if self._room_key is None:
                     rooms.append(room)
                 else:
@@ -378,7 +391,7 @@ class ThrifthermOptionsFlow(OptionsFlow):
                 return self._save({CONF_ROOMS: rooms})
         return self.async_show_form(
             step_id="room",
-            data_schema=schema_room(user_input or current, allow_add_another=False, heat_pump=has_heat_pump(self._config)),
+            data_schema=schema_room(user_input or current, allow_add_another=False, heat_pump=heat_pump),
             errors=errors,
             description_placeholders={"count": str(len(rooms))},
         )

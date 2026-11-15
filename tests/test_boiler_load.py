@@ -17,7 +17,6 @@ from .test_boiler_control import NOW, corr, feed, heating_memory, rr
 from .test_boiler_control import inp as _inp
 
 KEYS = ("badezimmer", "schlafzimmer", "wohnzimmer", "kuche", "arbeitszimmer")
-COMMON = replace(PARAMS, boiler_load_model=False)  # one common correction for all load classes, as before
 
 
 def inp(*args, **kwargs):
@@ -30,6 +29,11 @@ def flat(calling: int, *, demand: float = 0.2, trend: float | None = None, other
         replace(rr(key=key, demand=demand if i < calling else 0.0, trend=trend), boiler_call="calling" if i < calling else others)
         for i, key in enumerate(KEYS)
     ]
+
+
+def seeded(load_class: str, level_k: float, **line) -> dict[str, LoadLine]:
+    """A line with this value for every room in the class."""
+    return {load.room_cell(load_class, key): LoadLine(level_k=level_k, **line) for key in KEYS}
 
 
 def feed_with(params, rooms, mem=None, *, flow=45.0, ret=42.0, samples=22, start=NOW, outdoor=5.0):
@@ -60,8 +64,8 @@ def test_the_majority_is_more_than_half_of_the_rooms():
     assert load.majority_from(4, 1.0) == 4 and load.majority_from(0, 0.5) == 1  # all of them at most, one at least
     assert load.majority_from(5, 0.2) == 2 and load.majority_from(5, 0.0) == 1
 
-    # four rooms: two of them run on the line of a few, three on the majority's, which was stored before
-    lines = load.lines_from_storage({"few": {"level_k": 1.0, "hours": 5.0}, "majority": {"level_k": 3.0, "hours": 5.0}})
+    # four rooms: two of them run on the line of a few, three on the majority's
+    lines = {**seeded("few", 1.0, hours=5.0), **seeded("majority", 3.0, hours=5.0)}
     cmd, _ = decide(inp(flat(2)[:4], mode="active"), replace(heating_memory(), lines=lines))
     assert (cmd.calling_rooms, cmd.rooms_total, cmd.load_class, cmd.offset_k) == (2, 4, "few", 1.0)
     assert cmd.spread_rule == "active"  # the spread still judges with half of the rooms calling
@@ -168,7 +172,7 @@ def test_a_step_only_moves_the_load_class_it_was_taken_in():
     assert correction(mem, 5.0, "majority:badezimmer") == pytest.approx(-1.0)
     assert (mem.offset_k, mem.slope_k) == (0.0, 0.0)  # the common correction is left alone
     bath = flat(1, demand=0.5, trend=0.1)  # then the bathroom alone, not getting there
-    for minute in range(11, 60):
+    for minute in range(11, 110):  # a step up waits 90 minutes after any step
         cmd, mem = decide(inp(bath, mode="active", now=now + minute * 60, flow=45.0, ret=42.0, burner=True), mem)
     assert cmd.load_class == "single" and mem.last_adjust_reason == "rooms_slow"
     # it started from its own -1 K among the flat (the same radiator) and went up by a first step
@@ -180,19 +184,18 @@ def test_a_step_only_moves_the_load_class_it_was_taken_in():
     assert cmd.offset_k == 0.0  # what is shown is the correction in use
 
 
-def test_a_class_without_a_value_starts_from_its_nearest_neighbour():
-    assert load.line_of({}, "few", 2.0, 1.0) == LoadLine(level_k=2.0, slope_k=1.0)  # nothing known: the common correction
-    lines = {"single": LoadLine(level_k=5.0, hours=9.0), "majority": LoadLine(level_k=1.0, slope_k=0.5, hours=20.0)}
-    assert load.line_of(lines, "single", 9.0, 9.0) is lines["single"]
-    few = load.line_of(lines, "few", 9.0, 9.0)
-    # both are one step away: the one with more rooms (review 2026-10-11: starting "few" from the bathroom's value
-    # was the measured problem again), and none of its hours
-    assert (few.level_k, few.slope_k, few.hours) == (1.0, 0.5, 0.0)
-    only = {"majority": lines["majority"]}
-    assert load.line_of(only, "single", 9.0, 9.0).level_k == 1.0 and load.line_of(only, "few", 9.0, 9.0).slope_k == 0.5
+def test_a_line_nothing_is_known_for_starts_from_the_common_correction():
+    assert load.line_of({}, "few:kuche", 2.0, 1.0) == LoadLine(level_k=2.0, slope_k=1.0, borrowed=True)
+    lines = {"majority:kuche": LoadLine(level_k=1.0, slope_k=0.5, hours=20.0)}
+    assert load.line_of(lines, "majority:kuche", 9.0, 9.0) is lines["majority:kuche"]
     mem = BoilerMemory(offset_k=9.0, lines=lines)
-    assert [correction(mem, 15.0, c) for c in (None, "single", "few", "majority")] == [9.0, 5.0, 1.0, 1.0]
-    assert correction(mem, -10.0, "majority") == 1.5  # each line has its own slope
+    cells = (None, "single:kuche", "majority:kuche", "single:badezimmer")
+    assert [correction(mem, 15.0, c) for c in cells] == [9.0, 1.0, 1.0, 9.0]
+    assert correction(mem, -10.0, "majority:kuche") == 1.5  # each line has its own slope
+    # a line of a class without a room (stored for four days in October 2026, by no release) is none
+    stored = {"majority": {"level_k": 4.0}, "majority:kuche": {"level_k": 1.0}}
+    assert load.lines_from_storage(stored).keys() == {"majority:kuche"}
+    assert load.deciding_cell(lines, "majority", (), 9.0, 9.0, 0.0) is None  # no room has called: the common correction
 
 
 def test_operation_is_booked_to_the_class_and_gaps_are_not_operation():
@@ -299,7 +302,7 @@ def test_a_new_class_has_to_hold_before_it_counts():
     assert load.settled_class("single", "few", NOW, "majority", NOW + 600) == ("majority", None, None)
     assert load.settled_class("single", "majority", NOW, None, NOW + 60) == ("single", None, None)  # no room calls: it stays
 
-    lines = {"few": LoadLine(level_k=0.0, hours=5.0), "majority": LoadLine(level_k=4.0, hours=5.0)}
+    lines = {**seeded("few", 0.0, hours=5.0), **seeded("majority", 4.0, hours=5.0)}
     mem = replace(heating_memory(), lines=lines, last_flow=40.0)
     seen = set()
     for minute in range(30):  # half an hour with a third room calling on and off
@@ -316,29 +319,30 @@ def test_a_new_class_has_to_hold_before_it_counts():
     assert cmd.plan == "block" and mem.class_in_use is None  # blocked: no class is in use
 
 
-def test_switched_off_there_is_one_common_correction_as_before():
-    lines = {"single": LoadLine(level_k=5.0, hours=9.0)}
-    mem = replace(heating_memory(), offset_k=2.0, lines=lines)
-    cmd, mem2, _ = feed_with(COMMON, flat(3), mem)
-    assert cmd.curve_by_load is None and cmd.load_class == "majority"  # the class is still shown, its line is not used
-    assert mem2.offset_k + mem2.slope_k * 0.4 == pytest.approx(1.0) and mem2.lines == lines  # the step went to the common one
-    cmd, _ = decide(inp(flat(1), mode="active", params=COMMON), mem)
-    assert cmd.offset_k == 2.0
-    cmd, _ = decide(inp(flat(1), mode="active"), mem)  # and switched on again every line is where it was
-    assert cmd.offset_k == 5.0
+def test_a_common_correction_learned_without_a_curve_per_room_is_where_every_room_starts():
+    """Until 2026-11-13 the curve per room could be switched off, and one common correction was learned for all.
+    That correction stays: a room without a value of its own borrows it, so the flow is as it was, and what the
+    room learns from then on is its own."""
+    mem = replace(heating_memory(), offset_k=2.0)
+    cmd, _ = decide(inp(flat(1), mode="active"), mem)
+    assert cmd.offset_k == 2.0 and cmd.curve_by_load == {}
+    cmd, mem2, _ = feed_with(PARAMS, flat(3), mem)  # a small spread with the majority calling: a step down
+    assert (mem2.offset_k, mem2.slope_k) == (2.0, 0.0)  # of the room's own line, not of the common correction
+    assert correction(mem2, 5.0, "majority:badezimmer") == pytest.approx(1.0)
+    assert not mem2.lines["majority:badezimmer"].borrowed and cmd.load_class == "majority"
 
 
-def test_switched_off_a_flow_the_demand_boost_holds_at_its_maximum_is_not_raised_further():
+def test_a_flow_the_demand_boost_holds_at_its_maximum_is_not_raised_further():
     """The curve's 55 °C and the boost of 8 K ask for 63 °C: the flow stands at 60, a step would move nothing."""
     room = [replace(rr(demand=1.0, temp=18.0, target=20.0, trend=0.5), boiler_call="calling")]
-    cmd, mem, _ = feed_with(COMMON, room, flow=60.0, ret=40.0, outdoor=-10.0)
-    assert cmd.flow_setpoint == COMMON.boiler_flow_max
+    cmd, mem, _ = feed_with(PARAMS, room, flow=60.0, ret=40.0, outdoor=-10.0)
+    assert cmd.flow_setpoint == PARAMS.boiler_flow_max
     assert mem.adjustments == () and (mem.offset_k, mem.slope_k) == (0.0, 0.0)
 
 
-def test_switched_off_a_slow_room_on_a_flow_its_boost_lifts_above_the_minimum_raises_the_curve():
+def test_a_slow_room_on_a_flow_its_boost_lifts_above_the_minimum_raises_the_curve():
     """The curve's 33 °C lies below the minimum of 35, but with the boost of 4.8 K the flow sent is 38 °C."""
-    params = replace(COMMON, boiler_flow_min=35.0)
+    params = replace(PARAMS, boiler_flow_min=35.0)
     room = [replace(rr(demand=0.6, temp=19.4, target=20.0, trend=0.05), boiler_call="calling")]
     before, _ = decide(inp(room, mode="active", params=params, outdoor=12.0), heating_memory())
     assert before.flow_setpoint == 38.0
@@ -347,41 +351,36 @@ def test_switched_off_a_slow_room_on_a_flow_its_boost_lifts_above_the_minimum_ra
 
 
 def test_the_safe_flow_limits_hold_for_every_line():
-    lines = {"majority": LoadLine(level_k=10.0, slope_k=10.0, hours=30.0)}
+    lines = seeded("majority", 10.0, slope_k=10.0, hours=30.0)
     mem = replace(heating_memory(), lines=lines, last_flow=60.0)
     cmd, _ = decide(inp(flat(3, demand=1.0), mode="active", outdoor=-10.0), mem)
     assert cmd.offset_k == 20.0 and cmd.flow_setpoint == PARAMS.boiler_flow_max
-    lines = {"majority": LoadLine(level_k=-10.0, slope_k=-10.0, hours=30.0)}
+    lines = seeded("majority", -10.0, slope_k=-10.0, hours=30.0)
     cmd, _ = decide(inp(flat(3, demand=0.0), mode="active", outdoor=15.0), replace(heating_memory(), lines=lines))
     assert cmd.flow_setpoint == PARAMS.boiler_flow_min
     # and a step never puts a line beyond what the flow can follow
     on = inp(flat(3), mode="active", outdoor=15.0)
-    at_max = {"majority": LoadLine(level_k=10.0)}
-    assert learning.apply(on, BoilerMemory(lines=at_max), 1, "rooms_lagging", "majority").lines == at_max
+    at_max = {"majority:kuche": LoadLine(level_k=10.0)}
+    assert learning.apply(on, BoilerMemory(lines=at_max), 1, "rooms_lagging", "majority:kuche").lines == at_max
 
 
 # ------------------------------------------------------------------ storage
 def test_lines_survive_a_restart_and_what_was_stored_before_is_kept():
-    lines = {"single": LoadLine(level_k=3.8, slope_k=0.97, hours=2.5, lag_hours=1.7, calm_hours=0.4, found=True,
-                                last_step_k=2.0, last_step_ts=NOW - 60, asked=1, asked_since_ts=NOW)}
-    back = BoilerMemory.from_storage(BoilerMemory(offset_k=1.0, lines=lines).to_storage())
-    assert back.lines["single"] == replace(lines["single"], asked=0, asked_since_ts=None)  # a request starts over
+    line = LoadLine(level_k=3.8, slope_k=0.97, hours=2.5, lag_hours=1.7, calm_hours=0.4, found=True,
+                    last_step_k=2.0, last_step_ts=NOW - 60, asked=1, asked_since_ts=NOW)
+    back = BoilerMemory.from_storage(BoilerMemory(offset_k=1.0, lines={"single:kuche": line}).to_storage())
+    assert back.lines == {"single:kuche": replace(line, asked=0, asked_since_ts=None)}  # a request starts over
     assert back.offset_k == 1.0
 
     before = {"offset_k": 2.0, "adjustments": [1.0, 2.0], "burn_starts": [1.0], "burn_durations": [60.0]}
     old = BoilerMemory.from_storage(before)  # stored before there were classes at all
-    assert old.offset_k == 2.0 and old.lines == {} and correction(old, 15.0, "single") == 2.0
-
-    # "cells" were stored for nine hours on 2026-10-11, between two commits and by no release: they are ignored
-    cells = {"single/mild": {"hours": 2.6, "lag_hours": 1.85, "level_k": 2.83, "slope_k": 0.77}}
-    unreleased = BoilerMemory.from_storage({"offset_k": 3.8, "slope_k": 0.97, "cells": cells})
-    assert (unreleased.offset_k, unreleased.slope_k, unreleased.lines) == (3.8, 0.97, {})
+    assert old.offset_k == 2.0 and old.lines == {} and correction(old, 15.0, "single:kuche") == 2.0
 
     broken = BoilerMemory.from_storage({"lines": {
-        "single": {"level_k": "x", "slope_k": float("nan"), "hours": -3, "calm_hours": float("inf")},
-        "nonsense": {"hours": 5}, "few": 7,
+        "single:kuche": {"level_k": "x", "slope_k": float("nan"), "hours": -3, "calm_hours": float("inf")},
+        "nonsense": {"hours": 5}, "few:kuche": 7,
     }})
-    assert broken.lines == {"single": LoadLine(), "few": LoadLine()}
+    assert broken.lines == {"single:kuche": LoadLine(), "few:kuche": LoadLine()}
     assert BoilerMemory.from_storage({"lines": "x"}).lines == {}
 
 
@@ -410,17 +409,17 @@ def test_a_room_exactly_two_tenths_below_target_lags():
 
 def test_a_found_line_goes_on_asking_while_another_guard_stops_its_step():
     """Granted by its hold but stopped by the cooldown of another class's step, the line forgot that it was asked;
-    the asking lapsed and started over, and the step came at minute 111 instead of 85."""
+    the asking lapsed and started over, and the step came after the cooldown had ended and not with it."""
     mem = BoilerMemory(lines={"single": LoadLine(level_k=2.0, found=True)})
     on = inp(flat(1), mode="active")
     minute = 0
     while mem.lines["single"].found and minute < 240:
-        if minute == 40:  # another class takes a step: 45 minutes without a step up for any class
-            mem = replace(mem, adjustments=(NOW + 40 * 60,), adjustment_steps=(1.0,))
-        if not 21 <= minute < 50:  # ... and is in use from minute 21 to 50, when nothing asks this line
-            mem = learning.apply(replace(on, now_ts=NOW + minute * 60), mem, 1, "rooms_lagging", "single")
+        if minute == 44:  # another class takes a step a minute before the hold is over: 90 minutes without a step up
+            mem = replace(mem, adjustments=(NOW + 44 * 60,), adjustment_steps=(1.0,))
+        mem = learning.apply(replace(on, now_ts=NOW + minute * 60), mem, 1, "rooms_lagging", "single")
         minute += 1
-    assert minute - 1 == 85 and mem.lines["single"].last_step_ts == NOW + 85 * 60
+    # as the cooldown ends; forgotten, the asking lapsed at minute 90 and its 45 minutes ended a minute later
+    assert minute - 1 == 134 and mem.lines["single"].last_step_ts == NOW + 134 * 60
 
     cooling = BoilerMemory(adjustments=(NOW - 60,), adjustment_steps=(1.0,))
     assert learning.apply(on, cooling, 1, "rooms_lagging", "single") is cooling  # a class without a line gets none this way
@@ -473,8 +472,8 @@ def test_a_room_that_does_not_get_there_raises_its_own_line_from_the_flow_that_w
     lines = {"few:wohnzimmer": LoadLine(level_k=3.0, hours=5.0), "few:kuche": LoadLine(level_k=0.0, hours=5.0)}
     rooms = calling("kuche", "wohnzimmer", temperature=19.0, trend_k_per_h=0.0, demand=0.5)
     on = inp(rooms, mode="active")
-    assert learning.step_cell(on, load.calling_rooms(on.rooms), 1, "rooms_lagging", "few:wohnzimmer") == "few:kuche"
-    assert learning.step_cell(on, load.calling_rooms(on.rooms), -1, "spread_small", "few:wohnzimmer") == "few:wohnzimmer"
+    behind = learning.step_room(on, BoilerMemory(lines=lines), load.calling_rooms(on.rooms), "rooms_lagging", "few:wohnzimmer")
+    assert behind.key == "kuche"
     after = learning.apply(on, BoilerMemory(lines=lines), 1, "rooms_lagging", "few:kuche", "few:wohnzimmer")
     # the kitchen lagged at the living room's +3 K: one step from there, not from its own 0
     assert correction(after, 5.0, "few:kuche") == pytest.approx(4.0) and correction(after, 5.0, "few:wohnzimmer") == 3.0
@@ -506,17 +505,104 @@ def test_a_step_down_leaves_no_room_that_wants_heat_above_it():
     assert mem.last_adjust_reason == "spread_small"
     assert [correction(mem, 5.0, f"majority:{key}") for key in KEYS[:4]] == pytest.approx([2.0, 1.0, 2.0, 6.0])
     assert mem.lines["majority:badezimmer"].hours > 5.0  # capped, not stepped: its bookkeeping goes on
+    # a line that started from another's value and is capped keeps the cap: the value is its own from then on
+    started = {key: line for key, line in lines.items() if key != "majority:badezimmer"}  # the bathroom at the common 2.5 K
+    _, mem, _ = feed_with(PARAMS, flat(3), replace(heating_memory(), lines=started, offset_k=2.5))
+    assert correction(mem, 5.0, "majority:badezimmer") == pytest.approx(2.0) and not mem.lines["majority:badezimmer"].borrowed
+    assert correction(BoilerMemory.from_storage(mem.to_storage()), 5.0, "majority:badezimmer") == pytest.approx(2.0)
 
 
 def test_a_room_without_a_line_starts_from_what_is_nearest_to_it():
-    lines = {"majority": LoadLine(level_k=4.0, hours=5.0), "single": LoadLine(level_k=6.0), "few:kuche": LoadLine(level_k=2.0)}
-    # a class's line learned before there were rooms: the update keeps the flow
-    assert load.line_of(lines, "majority:kuche", 0.0, 0.0) == LoadLine(level_k=4.0)  # its value, none of its hours
-    assert load.line_of(lines, "single:kuche", 0.0, 0.0).level_k == 6.0
-    assert load.line_of(lines, "few:wohnzimmer", 0.0, 0.0).level_k == 4.0  # no line for "few": the nearest class's
-    mine = {"few:kuche": LoadLine(level_k=2.0), "majority:kuche": LoadLine(level_k=-1.0)}
+    mine = {"few:kuche": LoadLine(level_k=2.0, hours=5.0), "majority:kuche": LoadLine(level_k=-1.0)}
+    assert load.line_of(mine, "single:kuche", 0.0, 0.0) == LoadLine(level_k=2.0, borrowed=True)  # its value, none of its hours
     assert load.line_of(mine, "single:kuche", 0.0, 0.0).level_k == 2.0  # its own radiator in the nearest class
     assert load.line_of(mine, "single:badezimmer", 0.5, 0.0).level_k == 0.5  # nothing known: the common correction
+
+
+def test_a_room_whose_sensor_has_not_reported_within_the_trends_window_says_nothing_about_the_flow():
+    """Issue #7 (2026-11-12): room sensors that report on a change of about a degree only (Shelly H&T). The room's
+    curve stood flat for hours and then jumped (bathroom 04:00 to 08:00, the nursery two hours into its comfort), so
+    its trend read 0.0 K/h: "does not rise", and the curve went up, while nobody knew what the room did."""
+    behind = replace(rr(temp=20.5, target=21.0, trend=0.0), boiler_call="calling")
+    assert load.lagging((behind,)) and load.lagging((replace(behind, temperature_age_s=5400.0),))
+    assert not load.lagging((replace(behind, temperature_age_s=5401.0),))
+
+
+def test_a_room_lags_only_once_its_own_call_has_run_half_an_hour():
+    """Review 2026-11-13: with another room keeping the boiler released, every call began as "lagging": three tenths
+    below target and a trend of 0 over the 90 minutes before. The curve went up for it, and its brisk calls counted
+    for nothing."""
+    behind = replace(rr(temp=20.7, target=21.0, trend=0.0), boiler_call="calling")
+    assert load.lagging((behind,))  # nothing known about its call: as before
+    assert not load.lagging((replace(behind, calling_s=600.0),)) and load.lagging((replace(behind, calling_s=1800.0),))
+    assert load.lagging((replace(behind, boiler_call="stalled", calling_s=None),))  # given up on: it is the evidence
+    # and a room that lags starts the count of its brisk calls over
+    lines = {"single:kuche": LoadLine(fast_calls=2, fast_call_ts=NOW)}
+    assert load.observe(lines, "single:kuche", 0.1, True, 0.0, 0.0)["single:kuche"].fast_calls == 0
+    assert load.observe(lines, "single:kuche", 0.1, False, 0.0, 0.0)["single:kuche"].fast_calls == 2
+
+
+def test_what_a_room_learned_alone_is_not_taken_over_where_more_rooms_call():
+    """Seen 2026-11-12: the bathroom's +10.8 K, learned while it called alone and the boiler cycled (its flow then
+    averages far below what is set), stood in "majority:badezimmer" too, and would have set the flow for the whole flat.
+    The other way round holds: what a radiator needed with the boiler running through, it needs alone at least."""
+    alone = {"single:badezimmer": LoadLine(level_k=9.66, slope_k=3.27, last_step_k=0.5, last_step_ts=NOW)}
+    assert load.line_of(alone, "few:badezimmer", 0.5, 0.0).level_k == 0.5
+    assert load.line_of(alone, "majority:badezimmer", 0.5, 0.0).level_k == 0.5
+    among = {"majority:badezimmer": LoadLine(level_k=2.0), "few:badezimmer": LoadLine(level_k=3.0)}
+    assert load.line_of(among, "single:badezimmer", 0.0, 0.0).level_k == 3.0  # the nearest class with more rooms
+    assert load.line_of({"majority:badezimmer": LoadLine(level_k=2.0)}, "single:badezimmer", 0.0, 0.0).level_k == 2.0
+
+
+def test_a_line_without_a_value_of_its_own_follows_where_it_starts_from_until_it_takes_a_step():
+    """Seen 2026-11-12: booked once, a line kept the value it had started from for good ("majority:badezimmer" at
+    9.64/3.22 after 0.1 h and no step); neither a step nor a reset of the line it came from reached it any more."""
+    lines = {"majority:kuche": LoadLine(level_k=2.0, last_step_k=1.0, last_step_ts=NOW)}
+    lines = load.observe(lines, "single:kuche", 1.0, False, 0.0, 0.0)
+    assert lines["single:kuche"].hours == 1.0 and lines["single:kuche"].borrowed
+    assert load.line_of(lines, "single:kuche", 0.0, 0.0).level_k == 2.0
+    moved = {**lines, "majority:kuche": load.stepped(lines["majority:kuche"], 3.0, 0.5, 1.0, NOW)}
+    follows = load.line_of(moved, "single:kuche", 0.0, 0.0)
+    assert (follows.level_k, follows.slope_k, follows.hours, follows.borrowed) == (3.0, 0.5, 1.0, True)  # its own hours
+    gone = {key: line for key, line in lines.items() if key != "majority:kuche"}
+    assert load.line_of(gone, "single:kuche", 0.5, 0.0).level_k == 0.5
+    assert load.summary(moved, 0.0, 0.0, 0.0)["single:kuche"]["level_k"] == 3.0  # what is shown is what is used
+    # a line that only booked hours is no value for others to start from
+    assert load.line_of(lines, "single:wohnzimmer", 0.5, 0.0).level_k == 0.5
+    assert load.line_of({"few": lines["single:kuche"]}, "single", 0.5, 0.0).level_k == 0.5
+
+    own = load.stepped(follows, 3.5, 0.5, 0.5, NOW)  # its first step: from then on the value is its own
+    assert not own.borrowed
+    kept = {**moved, "single:kuche": own, "majority:kuche": LoadLine(level_k=-4.0)}
+    assert load.line_of(kept, "single:kuche", 0.0, 0.0).level_k == 3.5
+    back = BoilerMemory.from_storage(BoilerMemory(lines=moved | {"few:kuche": own}).to_storage()).lines
+    assert back["single:kuche"].borrowed and not back["few:kuche"].borrowed and not back["majority:kuche"].borrowed
+
+
+def test_a_stored_line_that_never_took_a_step_gives_up_the_value_it_was_stored_with():
+    """The test installation's store of 2026-11-12, cut down: the lines written before a line knew whether its value was its own."""
+    def stored(level, slope, hours, stamp, step=0.5):
+        return {"level_k": level, "slope_k": slope, "hours": hours, "lag_hours": 0.0, "calm_hours": 0.0, "found": False,
+                "last_step_k": step if stamp else 0, "last_step_ts": stamp}
+
+    mem = BoilerMemory.from_storage({"lines": {
+        "single:badezimmer": stored(9.657, 3.273, 93.26, 1793587683.6),
+        "few:badezimmer": stored(9.644, 3.217, 4.33, 1793025794.2),
+        "majority:badezimmer": stored(9.644, 3.217, 0.1, None),  # the value of "few", and never a step
+        "majority:kuche": stored(0.0, 0.0, 0.1, None),
+    }})
+    assert correction(mem, 6.0, "majority:badezimmer") == 0.0 and mem.lines["majority:badezimmer"].hours == 0.1
+    assert not mem.lines["majority:kuche"].borrowed
+    # Any other line without a step keeps what it was stored with: a step down of the line that set the flow
+    # lowered the other rooms' lines to it without a step of their own, and those values were learned.
+    capped = BoilerMemory.from_storage({"offset_k": 4.0, "lines": {
+        "majority:kuche": stored(-1.0, 0.0, 30.0, 1793587683.6, step=-1.0),
+        "majority:wohnzimmer": stored(-1.0, 0.0, 30.0, None),
+        "few:wohnzimmer": stored(-1.0, 0.0, 2.0, None),
+    }})
+    assert [correction(capped, 6.0, f"{c}:wohnzimmer") for c in ("majority", "few", "single")] == [-1.0, -1.0, -1.0]
+    assert correction(mem, 6.0, "single:badezimmer") == pytest.approx(9.657 + 3.273 * 0.36)
+    assert correction(mem, 6.0, "few:badezimmer") == pytest.approx(9.644 + 3.217 * 0.36)
 
 
 def test_the_lines_of_the_rooms_are_stored_and_the_rooms_of_a_call_are_not():
@@ -525,7 +611,7 @@ def test_the_lines_of_the_rooms_are_stored_and_the_rooms_of_a_call_are_not():
     assert "cell_rooms" not in stored
     back = BoilerMemory.from_storage({**stored, "lines": {**stored["lines"], "nonsense:kuche": {"hours": 1.0}}})
     assert back.lines == lines and back.cell_rooms == ()
-    assert load.summary(lines, 0.0).keys() == {"few:kuche", "majority:wohnzimmer"}
+    assert load.summary(lines, 0.0, 0.0, 0.0).keys() == {"few:kuche", "majority:wohnzimmer"}
 
 
 def test_each_room_books_its_own_operation_with_whether_it_got_there():
@@ -546,7 +632,9 @@ def test_a_room_whose_progress_says_nothing_is_not_found_by_calm_time():
                for r in flat(1)]
     shut = [replace(r, temperature=r.target - 0.5, trend_k_per_h=0.0, thermostat_heating=False) if r.key == "badezimmer" else r
             for r in flat(1)]
-    for rooms in (by_hand, shut):
+    moved = [replace(r, target_steady_s=600.0) if r.key == "badezimmer" else r for r in flat(1)]  # its target, lately
+    silent = [replace(r, temperature_age_s=7200.0) if r.key == "badezimmer" else r for r in flat(1)]  # its sensor
+    for rooms in (by_hand, shut, moved, silent):
         mem = heating_memory(start=NOW - 3600)
         for minute in range(200):
             _, mem = decide(inp(rooms, mode="active", now=NOW + minute * 60, learning=True), replace(mem, adjustments=()))
@@ -554,11 +642,16 @@ def test_a_room_whose_progress_says_nothing_is_not_found_by_calm_time():
         assert bath.hours > 3.0 and bath.calm_hours == 0.0 and not bath.found
 
 
-def test_a_class_line_found_before_there_were_rooms_stays_found_for_its_rooms():
-    lines = {"majority": LoadLine(level_k=4.0, hours=30.0, calm_hours=5.0, found=True)}
-    seeded = load.line_of(lines, "majority:kuche", 0.0, 0.0)
-    assert (seeded.level_k, seeded.found, seeded.calm_hours, seeded.hours) == (4.0, True, 5.0, 0.0)
-    assert not load.line_of({"few:kuche": LoadLine(level_k=1.0, found=True)}, "single:kuche", 0.0, 0.0).found
+def test_only_the_value_is_taken_from_another_line_not_that_it_was_found():
+    lines = {"majority:kuche": LoadLine(level_k=4.0, hours=30.0, calm_hours=5.0, found=True)}
+    start = load.line_of(lines, "few:kuche", 0.0, 0.0)
+    assert (start.level_k, start.found, start.calm_hours, start.hours) == (4.0, False, 0.0, 0.0)
+    # Review 2026-11-12: nor is a borrowed value found by the hours of the line that borrows it. Found at +4 K it
+    # stayed found when its source went to -2 K, and its own first step waited out a hold for a value it never served.
+    served = load.observe(lines, "few:kuche", 5.0, False, 0.0, 0.0)
+    assert served["few:kuche"].calm_hours == 5.0 and not served["few:kuche"].found
+    own = load.observe({"few:kuche": LoadLine(level_k=4.0)}, "few:kuche", 5.0, False, 0.0, 0.0)
+    assert own["few:kuche"].found
 
 
 def test_a_room_catching_up_with_another_line_stays_within_the_bound():

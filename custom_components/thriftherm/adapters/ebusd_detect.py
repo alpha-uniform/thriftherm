@@ -141,7 +141,11 @@ def _gas_meter(hass: HomeAssistant, registry: er.EntityRegistry) -> dict[str, st
         if device_class == "gas" and unit == "m³" and attrs.get("state_class") in ("total_increasing", "total"):
             volume.append(state.entity_id)
         elif unit == "m³/h" and device_class in (None, "gas", "volume_flow_rate"):
-            flow.append(state.entity_id)
+            # A ventilation's air flow and a heat meter's water come in m³/h as well: only what says it is gas, by its
+            # device class, its id or its name (review 2026-11-13: the house's only m³/h sensor was proposed).
+            named = f"{state.entity_id} {attrs.get('friendly_name') or ''}".lower()
+            if device_class == "gas" or "gas" in named:
+                flow.append(state.entity_id)
     found: dict[str, str] = {}
     if len(volume) == 1:
         found[CONF_GAS_VOLUME] = volume[0]

@@ -43,13 +43,21 @@ class BoilerMemory:
     hot_water_before_guess_ts: float | None = None  # hot_water_seen_ts before that guess; not stored
     warm_start_ts: float | None = None  # last burn of the boiler's warm start (engines/boiler_control.py); not stored
     # --- what was learned: the curve's level, and what it needs on top towards the cold point. This is
-    # the common correction; with a curve per load class each class has a line of its own (`lines`).
+    # the common correction, where a room without a value of its own starts; each room has a line of its own
+    # within each load class (`lines`).
     offset_k: float = 0.0  # level: added at every outdoor temperature
     slope_k: float = 0.0  # slope: added in full at -10 °C, not at all at +15 °C
-    adjustments: tuple[float, ...] = ()  # timestamps of the corrections
-    adjustment_steps: tuple[float, ...] = ()  # and by how much each moved the flow (signed K); older ones had 1 K
+    adjustments: tuple[float, ...] = ()  # timestamps of the learning steps
+    adjustment_steps: tuple[float, ...] = ()  # and by how much each moved the flow (signed K)
     last_adjust_reason: str | None = None
     limit_cut_ts: float | None = None  # the last step the ±10 K limit swallowed or cut short; shown, not stored
+    # The rooms' last calls that ended (boiler_learning.count_calls), for the diagnostics: the room, when it ended,
+    # its minutes, the room's rise (K) and pace (K/h), the flow sent, the burner's starts in it, and the verdict
+    # ("fast", "slow", or why it says nothing about the flow).
+    calls: tuple[tuple, ...] = ()
+    # rooms that called in this release while another room's line or boosts set the flow (not stored): what their
+    # calls say is about that flow, not about their own line
+    outvoted: tuple[str, ...] = ()
     # --- evidence of the heating run in progress
     heating_since_ts: float | None = None
     spread_ema: float | None = None
@@ -81,7 +89,7 @@ class BoilerMemory:
         # A burn in progress is left out as well: nobody saw the burner while Home Assistant was away.
         # Restored, a burn was closed at the first cycle after the stop: six hours away gave a burn of
         # six hours and a burner share of 1.0, and a short restart stretched a burn of one minute
-        # (review 2026-10-13). A store that still holds `burn_since_ts` or `last_flow_ts` is read without them.
+        # (review 2026-10-13).
         # Only that a burn was on is kept, as `burn_interrupted`: a start is counted as its burn ends, so
         # without it a burn that ended while Home Assistant was away would never be counted.
         return {
@@ -90,6 +98,7 @@ class BoilerMemory:
             "adjustments": list(self.adjustments[-ADJUSTMENTS_STORED:]),
             "adjustment_steps": list(self.adjustment_steps[-ADJUSTMENTS_STORED:]),
             "last_adjust_reason": self.last_adjust_reason,
+            "calls": [list(call) for call in self.calls],
             "state": self.state,
             **{key: getattr(self, key) for key in _STORED_FLOATS},
             "burns": [list(burn) for burn in self.burns],
@@ -112,14 +121,27 @@ class BoilerMemory:
             if len(pair) == 2 and pair[1] >= pair[0]:
                 burns.append((pair[0], pair[1]))
         starts = as_float(data.get("starts_today"))
+        calls = []
+        for row in data.get("calls") if isinstance(data.get("calls"), list) else []:
+            if not isinstance(row, list) or len(row) != 8 or not isinstance(row[0], str) or not isinstance(row[7], str):
+                continue
+            numbers = [None if v is None else as_float(v) for v in row[1:7]]
+            if all(v is None or isfinite(v) for v in numbers) and None not in (numbers[0], numbers[1], numbers[2], numbers[5]):
+                calls.append((row[0], *numbers[:5], int(numbers[5]), row[7]))
+        # a step is its time and its size, paired from the newest: one that lacks either is none
+        times, sizes = (v if isinstance(v, list) else [] for v in (data.get("adjustments"), data.get("adjustment_steps")))
+        steps = [(as_float(t), as_float(s)) for t, s in zip(reversed(times), reversed(sizes), strict=False)]
+        steps = [(t, s) for t, s in reversed(steps) if t is not None and s is not None and isfinite(t) and isfinite(s)]
+        steps = steps[-ADJUSTMENTS_STORED:]
         level = offset if offset is not None and isfinite(offset) else 0.0
         slope = slope if slope is not None and isfinite(slope) else 0.0
         return cls(
             offset_k=level,
             slope_k=slope,
-            adjustments=tuple(as_floats(data.get("adjustments"))),
-            adjustment_steps=tuple(s for s in as_floats(data.get("adjustment_steps")) if isfinite(s))[-ADJUSTMENTS_STORED:],
+            adjustments=tuple(t for t, _ in steps),
+            adjustment_steps=tuple(s for _, s in steps),
             last_adjust_reason=reason if isinstance(reason, str) else None,
+            calls=tuple(calls),
             state=state if state in (BOILER_PLAN_HEAT, BOILER_PLAN_BLOCK) else None,
             burns=tuple(burns),
             starts_today=int(starts) if starts is not None and isfinite(starts) and starts > 0 else 0,
@@ -191,8 +213,8 @@ def curve_flow(outdoor_c: float | None, p: Parameters, limited: bool = True) -> 
 def correction(mem: BoilerMemory, outdoor_c: float | None, load: str | None = None) -> float:
     """What the learning adds to the curve at this outdoor temperature: level plus its share of the slope.
 
-    With a load class (how many rooms call) it is that class's own line; one that has none
-    yet starts from the nearest class that has, else from the common correction.
+    With `load`, a room within a load class, it is that line's (`boiler_load.line_of`); without, the
+    common correction.
     """
     cold = cold_weight(outdoor_c)
     if load is None:

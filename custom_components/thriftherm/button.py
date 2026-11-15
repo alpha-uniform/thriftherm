@@ -62,6 +62,11 @@ class BoostButton(SettingEntity, ButtonEntity):
         super().__init__(coordinator, "boost", room_key)
         self.suggest_english_entity_id()
 
+    @property
+    def available(self) -> bool:
+        # In the cooling season nothing heats (docs/PHASE12_COOLING.md §2.3)
+        return not self.coordinator.cooling_season
+
     async def async_press(self) -> None:
         await self.coordinator.async_boost(self._room_key, None)
 

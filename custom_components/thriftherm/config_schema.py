@@ -11,7 +11,29 @@ from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 from homeassistant.util import slugify
 
+from . import const
 from .const import (
+    CHEAP_POWER_DOMAINS,
+    CONF_COOL_AWAY_TEMP,
+    CONF_COOLING_CHEAP_POWER_ENTITY,
+    CONF_COOLING_CHEAP_POWER_K,
+    CONF_COOLING_SEASON_FROM_C,
+    CONF_COOLING_SEASON_VETO_C,
+    CONF_HEATING_SEASON_FROM_C,
+    CONF_COOL_FLOOR_TEMP,
+    CONF_HEAT_PUMP_COOL_FAN_STAGE,
+    CONF_HEAT_PUMP_COOL_SHORTFALL,
+    CONF_HEAT_PUMP_COOLING_ALLOWED,
+    CONF_ROOM_COOLING_SCHEDULE_ENTITY,
+    COOL_FAN_STAGE_CHOICES,
+    COOL_SHORTFALL_CHOICES,
+    COOL_SHORTFALL_LIFT,
+    DEFAULT_COOL_AWAY_TEMP,
+    DEFAULT_COOLING_CHEAP_POWER_K,
+    DEFAULT_COOLING_SEASON_FROM_C,
+    DEFAULT_COOLING_SEASON_VETO_C,
+    DEFAULT_HEATING_SEASON_FROM_C,
+    DEFAULT_COOL_FLOOR_TEMP,
     CONF_AWAY_DEWPOINT_MARGIN,
     CONF_AWAY_RETURN_PERSONS,
     CONF_AWAY_TEMP,
@@ -84,7 +106,6 @@ from .const import (
     CONF_BOILER_FLOW_MIN,
     CONF_BOILER_HEAT_UP_RATE,
     CONF_BOILER_HOT_WATER_STANDBY,
-    CONF_BOILER_LOAD_MODEL,
     CONF_BOILER_SPREAD_MIN_ROOM_SHARE,
     CONF_HEAT_PUMP_ALLOW_ACTIVE,
     CONF_ROOM_ALLOW_ACTIVE,
@@ -174,7 +195,6 @@ from .const import (
     DEFAULT_BOILER_FLOW_MIN,
     DEFAULT_BOILER_HEAT_UP_RATE,
     DEFAULT_BOILER_HOT_WATER_STANDBY,
-    DEFAULT_BOILER_LOAD_MODEL,
     DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE,
     DEFAULT_HEAT_PUMP_ALLOW_ACTIVE,
     DEFAULT_ROOM_ALLOW_ACTIVE,
@@ -353,7 +373,6 @@ def schema_boiler(cur: Mapping[str, Any]) -> vol.Schema:
             ),
             _req(CONF_BOILER_HOT_WATER_STANDBY, cur, DEFAULT_BOILER_HOT_WATER_STANDBY): selector.BooleanSelector(),
             _req(CONF_BOILER_SPREAD_MIN_ROOM_SHARE, cur, DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE): _number(0, 1, 0.05),
-            _req(CONF_BOILER_LOAD_MODEL, cur, DEFAULT_BOILER_LOAD_MODEL): selector.BooleanSelector(),
             _req(CONF_BOILER_ALLOW_ACTIVE, cur, DEFAULT_BOILER_ALLOW_ACTIVE): selector.BooleanSelector(),
         }
     )
@@ -428,6 +447,7 @@ SECTION_RELEASE = "release"
 SECTION_EXPERT = "expert"
 SECTION_SWITCHING = "switching"
 SECTION_DRYING = "drying"
+SECTION_COOLING = "cooling"
 SECTION_COP = "cop"
 SECTION_ICING = "icing"
 
@@ -474,8 +494,12 @@ def schema_parameters(cur: Mapping[str, Any]) -> vol.Schema:
     )
 
 
-def schema_heat_pump_tuning(cur: Mapping[str, Any]) -> vol.Schema:
-    """How the heat pump is run: only offered once a heat pump is configured."""
+def schema_heat_pump_tuning(cur: Mapping[str, Any], cooling: bool | None = None) -> vol.Schema:
+    """How the heat pump is run: only offered once a heat pump is configured.
+
+    The cooling section shows while cooling is no preview any more (`cooling` None) or when asked for.
+    """
+    shown = const.COOLING_PREVIEW if cooling is None else cooling
     return vol.Schema(
         {
             _req(CONF_HEAT_PUMP_ALLOW_ACTIVE, cur, DEFAULT_HEAT_PUMP_ALLOW_ACTIVE): selector.BooleanSelector(),
@@ -504,6 +528,36 @@ def schema_heat_pump_tuning(cur: Mapping[str, Any]) -> vol.Schema:
                     _req(CONF_HEAT_PUMP_LEARNING_RUNS, cur, DEFAULT_HEAT_PUMP_LEARNING_RUNS): selector.BooleanSelector(),
                 }
             ),
+            # cooling with the heat pump (docs/PHASE12_COOLING.md): off unless asked for, the heating stays as it is;
+            # not offered at all while it is a preview (const.COOLING_PREVIEW)
+            **({vol.Required(SECTION_COOLING): _section(
+                {
+                    _req(CONF_HEAT_PUMP_COOLING_ALLOWED, cur, False): selector.BooleanSelector(),
+                    _req(CONF_COOL_AWAY_TEMP, cur, DEFAULT_COOL_AWAY_TEMP): _number(20, 32, 0.5, "°C"),
+                    _req(CONF_COOL_FLOOR_TEMP, cur, DEFAULT_COOL_FLOOR_TEMP): _number(16, 26, 0.5, "°C"),
+                    _req(CONF_HEAT_PUMP_COOL_SHORTFALL, cur, COOL_SHORTFALL_LIFT): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=list(COOL_SHORTFALL_CHOICES),
+                            translation_key="heat_pump_cool_shortfall",
+                            mode=selector.SelectSelectorMode.LIST,
+                        )
+                    ),
+                    _req(CONF_HEAT_PUMP_COOL_FAN_STAGE, cur, "auto"): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=list(COOL_FAN_STAGE_CHOICES),
+                            translation_key="heat_pump_cool_fan_stage",
+                            mode=selector.SelectSelectorMode.DROPDOWN,
+                        )
+                    ),
+                    # stage 2 (docs/PHASE12_COOLING.md §20): cheap power, and the automatic season's fallback and veto
+                    _opt(CONF_COOLING_CHEAP_POWER_ENTITY, cur): _entity(list(CHEAP_POWER_DOMAINS)),
+                    _req(CONF_COOLING_CHEAP_POWER_K, cur, DEFAULT_COOLING_CHEAP_POWER_K): _number(0.5, 3, 0.5, "°C"),
+                    _req(CONF_COOLING_SEASON_FROM_C, cur, DEFAULT_COOLING_SEASON_FROM_C): _number(10, 30, 0.5, "°C"),
+                    _req(CONF_HEATING_SEASON_FROM_C, cur, DEFAULT_HEATING_SEASON_FROM_C): _number(5, 25, 0.5, "°C"),
+                    _req(CONF_COOLING_SEASON_VETO_C, cur, DEFAULT_COOLING_SEASON_VETO_C): _number(0, 25, 0.5, "°C"),
+                },
+                collapsed=True,
+            )} if shown else {}),
             vol.Required(SECTION_DRYING): _section(
                 {
                     _req(CONF_DRYING_TARGET_TEMP, cur, DEFAULT_DRYING_TARGET_TEMP): _number(18, 26, 0.5, "°C"),
@@ -538,7 +592,8 @@ def schema_heat_pump_tuning(cur: Mapping[str, Any]) -> vol.Schema:
 
 
 PARAMETER_KEYS = keys_of(schema_parameters)
-HEAT_PUMP_TUNING_KEYS = keys_of(schema_heat_pump_tuning)
+# the cooling keys count while hidden too: a stored value is no leftover
+HEAT_PUMP_TUNING_KEYS = keys_of(lambda cur: schema_heat_pump_tuning(cur, cooling=True))
 
 # every top-level key the integration reads; anything else in a stored entry is a leftover
 CONFIG_KEYS = frozenset(
@@ -587,6 +642,7 @@ def schema_room(cur: Mapping[str, Any], allow_add_another: bool, heat_pump: bool
     fields.update({
         _opt(CONF_ROOM_GAIN_SENSORS, cur): _entity("sensor", multiple=True),
         _opt(CONF_ROOM_SCHEDULE_ENTITY, cur): _entity("schedule"),
+        **({_opt(CONF_ROOM_COOLING_SCHEDULE_ENTITY, cur): _entity("schedule")} if heat_pump and const.COOLING_PREVIEW else {}),
         _opt(CONF_ROOM_PREHEAT_MAX_MIN, cur): _number(0, 720, 5, "min"),
         _req(CONF_ROOM_COMFORT_TEMP, cur, DEFAULT_ROOM_COMFORT_TEMP): _number(*ROOM_TEMP_RANGES["comfort"], 0.5, "°C"),
         _req(CONF_ROOM_SETBACK_TEMP, cur, DEFAULT_ROOM_SETBACK_TEMP): _number(*ROOM_TEMP_RANGES["setback"], 0.5, "°C"),
@@ -598,16 +654,21 @@ def schema_room(cur: Mapping[str, Any], allow_add_another: bool, heat_pump: bool
     return vol.Schema(fields)
 
 
+# The keys of a room's cooling numbers begin with "cool_" (number.py): a room key that ends so collides with them.
+ROOM_KEY_RESERVED_ENDING = "_cool"
+
+
 def validate_room(
     user_input: Mapping[str, Any],
     existing: Iterable[Mapping[str, Any]] = (),
     heat_pump_climate: str | None = None,
     drives: Callable[[str], Iterable[str]] = lambda _: (),
+    room_key: str | None = None,
 ) -> dict[str, str]:
     """Check one room; pass the other rooms, so its name stays unique (also when one is renamed).
 
     `drives` names the entities a room thermostat drives besides itself (Better Thermostat, Versatile
-    Thermostat: adapters.inputs.driven_by).
+    Thermostat: adapters.inputs.driven_by). `room_key` is the key of a room that exists already, None for a new one.
     """
     existing = list(existing)
     errors: dict[str, str] = {}
@@ -621,6 +682,13 @@ def validate_room(
     slug = slugify(str(user_input[CONF_ROOM_NAME]))
     if any(slug in (r[CONF_ROOM_KEY], slugify(str(r.get(CONF_ROOM_NAME, "")))) for r in existing):
         errors[CONF_ROOM_NAME] = "duplicate_room"
+    elif room_key is None and slug.endswith(ROOM_KEY_RESERVED_ENDING):
+        # A new room takes its key from its name. "Bad cool" would give its heating comfort the unique id of the
+        # cooling comfort of "Bad", and Home Assistant drops one of the two (review 2026-11-13). A room that has
+        # such a key already keeps it; a repair tells where it really collides (issues.py).
+        errors[CONF_ROOM_NAME] = "room_name_ends_in_cool"
+    elif room_key is None and any(r[CONF_ROOM_KEY] == slug + ROOM_KEY_RESERVED_ENDING for r in existing):
+        errors[CONF_ROOM_NAME] = "room_name_before_cool"  # the same collision, from the other side
     if user_input.get(CONF_ROOM_DRYING):
         # drying heats with the heat pump and starts on a rise in humidity; without either it silently never runs
         if not user_input.get(CONF_ROOM_HEAT_PUMP):
@@ -639,6 +707,19 @@ def validate_room(
 
 
 _EBUS_CIRCUIT = re.compile(r"[A-Za-z0-9_.-]+")
+
+
+def validate_heat_pump_tuning(user_input: Mapping[str, Any]) -> dict[str, str]:
+    """The automatic season's fallback (docs/PHASE12_COOLING.md §20.5): cooling from at least 2 °C above heating from,
+    the veto at most at heating from. Nothing to check while cooling is hidden."""
+    cooling_from = user_input.get(CONF_COOLING_SEASON_FROM_C)
+    heating_from = user_input.get(CONF_HEATING_SEASON_FROM_C)
+    veto = user_input.get(CONF_COOLING_SEASON_VETO_C)
+    if cooling_from is not None and heating_from is not None and float(cooling_from) < float(heating_from) + 2.0:
+        return {"base": "season_means_too_close"}
+    if veto is not None and heating_from is not None and float(veto) > float(heating_from):
+        return {"base": "season_veto_above_heating"}
+    return {}
 
 
 def validate_boiler(user_input: Mapping[str, Any]) -> dict[str, str]:

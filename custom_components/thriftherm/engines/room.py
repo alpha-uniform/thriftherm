@@ -23,6 +23,7 @@ from ..const import MODE_AWAY, MODE_OFF
 from ..models import DryingState, Parameters, RoomConfig, RoomResult, RoomState, ScheduleState, TimeWindow
 from . import psychrometrics as psy
 from .heat_call import COMFORT_END_GUARD_S
+from .safety import FROST_HYSTERESIS_K
 from .schedule_week import level_at, next_block_start
 
 _LAST_MINUTE = time(23, 59)  # how the form says "to the end of the day" (models.TimeWindow)
@@ -55,7 +56,7 @@ TREND_WINDOW_S = 5400.0  # trend_k_per_h
 # A preheat's pace needs readings over this long since it began: half an hour less a few samples, when
 # heat_pump_control.behind first judges it.
 PACE_MIN_SPAN_S = 1500.0
-# A valve that is silent takes no commands either: its room must not call the boiler (GUIDE §9).
+# A valve that is silent takes no commands either: its room must not call the boiler (GUIDE, "Silent thermostats").
 # Silent is a valve that did not answer a setpoint sent to it, or one its integration calls
 # unavailable. Time without a report alone says little: Zigbee2MQTT and ZHA leave no trace in Home
 # Assistant while a valve reports what it had. One hour took healthy valves for lost (2026-10-10),
@@ -606,6 +607,11 @@ def thermostat_is_silent(state: RoomState, now_ts: float) -> bool:
     return silent_s is not None and silent_s > THERMOSTAT_SILENT_S
 
 
+# A room on the frost list is heated to this far above where it leaves the list: aimed at that point itself, a valve
+# that shuts a tenth early (its own reading at the radiator) held the room just below it, and the boiler released.
+FROST_TARGET_ABOVE_K = 0.5
+
+
 def evaluate_room(
     state: RoomState,
     now: datetime,
@@ -614,8 +620,16 @@ def evaluate_room(
     away_return_ts: float | None = None,
     heat_pump_heat_possible: bool = True,
     heat_pump_cooling: bool = False,
+    cooling_season: bool = False,
+    frost: bool = False,
 ) -> RoomResult:
+    """`frost`: the room was on the frost list in the last cycle (engines/safety.py)."""
     cfg = state.config
+    if cooling_season:
+        # The heating side holds the frost protection only (docs/PHASE12_COOLING.md §2.3): no override, no quick heat-up,
+        # whatever asks for heat, or a radiator would heat while the air conditioner cools.
+        mode = MODE_OFF
+        state = replace(state, override=None, boost_until_ts=None)
     issues: list[str] = []
     now_ts = now.timestamp()
 
@@ -640,6 +654,8 @@ def evaluate_room(
         abs_hum = psy.absolute_humidity_g_m3(own_temp, rh)
 
     target, target_reason, preheat_ts = target_temperature(state, now, mode, params, temp, dew_point, away_return_ts)
+    if cooling_season:
+        target_reason = "cooling_season"
     preheat_for_ts: float | None = None
     if target_reason == "schedule_preheat":
         start = next_comfort_start(cfg, now, state.schedule)
@@ -666,7 +682,13 @@ def evaluate_room(
     # (engines/safety.py) and still applies.
     cooled = heat_pump_cooling and cfg.served_by_heat_pump
     if cooled:
-        target, target_reason = min(target, cfg.setback_temp), "heat_pump_cooling"
+        # in the cooling season the radiator is at the frost limit, not at setback, and the reason says so
+        target, target_reason = min(target, cfg.setback_temp), "cooling_season" if cooling_season else "heat_pump_cooling"
+    # Never a target below the frost limit, whatever asks for one (a setback, an away temperature or an override set
+    # below it), and a room on the frost list is heated to where it leaves the list. Given the limit only, its valve
+    # shut at the limit, the room never left the list, and the boiler stayed released for it against a shut valve
+    # (review 2026-11-13).
+    target = max(target, params.frost_temp + (FROST_HYSTERESIS_K + FROST_TARGET_ABOVE_K if frost else 0.0))
 
     # radiator / Better Thermostat: never with an open window, and not while the thermostat
     # is switched off by hand - its valve is shut, so the boiler would only heat the pipes.
@@ -715,6 +737,7 @@ def evaluate_room(
         short_preheat=cfg.preheat_max_s is not None,
         thermostat_heating=state.thermostat_heating,
         temperature_entity=temp_entity,
+        temperature_age_s=state.temperature.age_s if state.temperature.value_or_none is not None else None,
         schedule_entity=cfg.schedule_entity,
         next_change_ts=next_ts,
         next_target=next_target,

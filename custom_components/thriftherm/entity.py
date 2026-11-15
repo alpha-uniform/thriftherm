@@ -6,6 +6,7 @@ from typing import Any
 
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.components.button import ButtonEntity
+from homeassistant.components.climate import ClimateEntity
 from homeassistant.components.datetime import DateTimeEntity
 from homeassistant.components.number import NumberEntity
 from homeassistant.components.select import SelectEntity
@@ -18,10 +19,10 @@ from .const import DOMAIN
 from .coordinator import ThrifthermCoordinator
 from .entity_ids import OBJECT_IDS
 
-
 _PLATFORMS = (
     (BinarySensorEntity, "binary_sensor"),
     (ButtonEntity, "button"),
+    (ClimateEntity, "climate"),
     (DateTimeEntity, "datetime"),
     (NumberEntity, "number"),
     (SelectEntity, "select"),

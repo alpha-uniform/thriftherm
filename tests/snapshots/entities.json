@@ -943,7 +943,8 @@
      "heat",
      "off",
      "hands_off",
-     "disabled"
+     "disabled",
+     "cool"
     ],
     "quick_heat_up_until": {},
     "reason": "manual_mode_fan_only",
@@ -960,7 +961,8 @@
      "heat",
      "off",
      "hands_off",
-     "disabled"
+     "disabled",
+     "cool"
     ]
    },
    "device": {
@@ -2784,7 +2786,8 @@
      "heat",
      "off",
      "hands_off",
-     "disabled"
+     "disabled",
+     "cool"
     ],
     "quick_heat_up_until": {},
     "reason": "manual_mode_fan_only",
@@ -2801,7 +2804,8 @@
      "heat",
      "off",
      "hands_off",
-     "disabled"
+     "disabled",
+     "cool"
     ]
    },
    "device": {
@@ -4631,7 +4635,8 @@
      "heat",
      "off",
      "hands_off",
-     "disabled"
+     "disabled",
+     "cool"
     ],
     "quick_heat_up_until": {},
     "reason": "manual_mode_fan_only",
@@ -4648,7 +4653,8 @@
      "heat",
      "off",
      "hands_off",
-     "disabled"
+     "disabled",
+     "cool"
     ]
    },
    "device": {
@@ -7283,7 +7289,8 @@
      "heat",
      "off",
      "hands_off",
-     "disabled"
+     "disabled",
+     "cool"
     ],
     "quick_heat_up_until": {},
     "reason": "manual_mode_fan_only",
@@ -7300,7 +7307,8 @@
      "heat",
      "off",
      "hands_off",
-     "disabled"
+     "disabled",
+     "cool"
     ]
    },
    "device": {

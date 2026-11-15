@@ -6,6 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "thriftherm"
 PLATFORMS: Final = ["sensor", "binary_sensor", "select", "button", "number", "datetime"]
+COOLING_PLATFORMS: Final = ["climate"]  # only where cooling is allowed: the room climate (docs/PHASE12_COOLING.md §3.6)
 STORAGE_KEY: Final = "thriftherm.learning"
 STORAGE_VERSION: Final = 1
 # Minor: an older version with the same major version still loads the store (see persistence.migrate_store).
@@ -47,7 +48,10 @@ HEAT_PUMP_PLAN_HEAT: Final = "heat"
 HEAT_PUMP_PLAN_OFF: Final = "off"
 HEAT_PUMP_PLAN_HANDS_OFF: Final = "hands_off"
 HEAT_PUMP_PLAN_DISABLED: Final = "disabled"
-HEAT_PUMP_PLANS: Final = [HEAT_PUMP_PLAN_HEAT, HEAT_PUMP_PLAN_OFF, HEAT_PUMP_PLAN_HANDS_OFF, HEAT_PUMP_PLAN_DISABLED]
+HEAT_PUMP_PLAN_COOL: Final = "cool"  # cooling, docs/PHASE12_COOLING.md
+HEAT_PUMP_PLANS: Final = [
+    HEAT_PUMP_PLAN_HEAT, HEAT_PUMP_PLAN_OFF, HEAT_PUMP_PLAN_HANDS_OFF, HEAT_PUMP_PLAN_DISABLED, HEAT_PUMP_PLAN_COOL
+]
 
 # Boiler control (Phase 8): same three control modes as the Midea
 BOILER_PLAN_HEAT: Final = "heat"
@@ -144,7 +148,6 @@ CONF_BOILER_FLOW_MAX: Final = "boiler_flow_max"
 CONF_BOILER_HOT_WATER_STANDBY: Final = "boiler_hot_water_standby"
 CONF_BOILER_HEAT_UP_RATE: Final = "boiler_heat_up_rate_k_h"
 CONF_BOILER_SPREAD_MIN_ROOM_SHARE: Final = "boiler_spread_min_room_share"
-CONF_BOILER_LOAD_MODEL: Final = "boiler_load_model"
 CONF_BOILER_ALLOW_ACTIVE: Final = "boiler_allow_active_control"
 
 DEFAULT_BOILER_EBUS_CIRCUIT: Final = "bai"
@@ -155,7 +158,6 @@ DEFAULT_BOILER_FLOW_MAX: Final = 60.0  # below d.71 (75 °C)
 DEFAULT_BOILER_HOT_WATER_STANDBY: Final = True  # what the boiler does without us
 DEFAULT_BOILER_HEAT_UP_RATE: Final = 0.0  # off: the flow as before, curve and demand boost
 DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE: Final = 0.5
-DEFAULT_BOILER_LOAD_MODEL: Final = True
 DEFAULT_BOILER_ALLOW_ACTIVE: Final = False
 
 # ---------------------------------------------------------------------------
@@ -249,6 +251,26 @@ CONF_BOOST_DURATION_MIN: Final = "boost_duration_min"
 CONF_HEAT_PUMP_LEARNING_RUNS: Final = "midea_learning_runs"
 CONF_HEAT_PUMP_ALLOW_ACTIVE: Final = "midea_allow_active_control"
 CONF_HEAT_PUMP_SHORTFALL: Final = "heat_pump_shortfall"  # when the heat pump alone is not enough
+# cooling with the heat pump (docs/PHASE12_COOLING.md)
+# Hidden until it is measured on a real unit in summer 2027: no option, no entity, a stored option has no effect.
+COOLING_PREVIEW: Final = False
+CONF_HEAT_PUMP_COOLING_ALLOWED: Final = "heat_pump_cooling_allowed"
+CONF_COOL_AWAY_TEMP: Final = "cool_away_temp"
+CONF_COOL_FLOOR_TEMP: Final = "cool_floor_temp"
+CONF_HEAT_PUMP_COOL_SHORTFALL: Final = "heat_pump_cool_shortfall"  # a room that stays too warm: turned up, or quiet
+CONF_HEAT_PUMP_COOL_FAN_STAGE: Final = "heat_pump_cool_fan_stage"
+CONF_ROOM_COOLING_SCHEDULE_ENTITY: Final = "cooling_schedule_entity"
+# stage 2 (docs/PHASE12_COOLING.md §20): cheap power, and the season chosen by how the rooms behave without heating or cooling
+CONF_COOLING_CHEAP_POWER_ENTITY: Final = "cooling_cheap_power_entity"
+CONF_COOLING_CHEAP_POWER_K: Final = "cooling_cheap_power_k"
+CONF_COOLING_SEASON_FROM_C: Final = "cooling_season_from_c"
+CONF_HEATING_SEASON_FROM_C: Final = "heating_season_from_c"
+CONF_COOLING_SEASON_VETO_C: Final = "cooling_season_veto_c"
+DEFAULT_COOLING_CHEAP_POWER_K: Final = 1.0
+DEFAULT_COOLING_SEASON_FROM_C: Final = 18.0
+DEFAULT_HEATING_SEASON_FROM_C: Final = 14.0
+DEFAULT_COOLING_SEASON_VETO_C: Final = 12.0
+CHEAP_POWER_DOMAINS: Final = ["binary_sensor", "input_boolean", "switch"]
 CONF_HEAT_PUMP_FAN_STAGE: Final = "heat_pump_fan_stage"  # its fan stage in normal operation
 CONF_ROOM_ALLOW_ACTIVE: Final = "room_allow_active_control"
 CONF_ROOM_ECHO_FILTER: Final = "room_echo_filter"  # ignore late radio echoes of Better Thermostat
@@ -306,6 +328,18 @@ SHORTFALL_SLOWER: Final = "slower"
 SHORTFALL_ALONE: Final = "alone"
 SHORTFALL_CHOICES: Final = (SHORTFALL_BOILER_HELPS, SHORTFALL_LIFT, SHORTFALL_SLOWER, SHORTFALL_ALONE)
 DEFAULT_HEAT_PUMP_SHORTFALL: Final = SHORTFALL_BOILER_HELPS
+COOL_SHORTFALL_LIFT: Final = "lift"
+COOL_SHORTFALL_QUIET: Final = "quiet"
+COOL_SHORTFALL_CHOICES: Final = (COOL_SHORTFALL_LIFT, COOL_SHORTFALL_QUIET)
+COOL_FAN_STAGE_CHOICES: Final = ("auto", "silent", "low", "medium", "high", "full")
+DEFAULT_COOL_AWAY_TEMP: Final = 29.0
+DEFAULT_COOL_FLOOR_TEMP: Final = 20.0
+DEFAULT_COOL_COMFORT_TEMP: Final = 25.0
+DEFAULT_COOL_OUTSIDE_TEMP: Final = 28.0
+COOL_TEMP_RANGES: Final = {"cool_comfort": (20.0, 30.0), "cool_outside": (20.0, 32.0)}
+SEASON_HEATING: Final = "heating"
+SEASON_COOLING: Final = "cooling"
+SEASON_AUTO: Final = "auto"  # a choice, never the season in force: heating or cooling by how the rooms behave (§20.2)
 # The heat pump's fan stage in normal operation; "full" is its strongest, however the unit names it.
 FAN_STAGE_CHOICES: Final = ("auto", "low", "medium", "high", "full")
 DEFAULT_HEAT_PUMP_FAN_STAGE: Final = "auto"

@@ -66,6 +66,7 @@ OBJECT_IDS: Final[dict[str, dict[str, str]]] = {
         "midea_control": "heat_pump_control",
         "boiler_control": "boiler_control",
         "room_control": "room_control",
+        "season": "season",
     },
     "button": {
         "room_boost": "quick_heat_up",
@@ -78,5 +79,10 @@ OBJECT_IDS: Final[dict[str, dict[str, str]]] = {
     "number": {
         "room_comfort_temp": "comfort_temperature",
         "room_setback_temp": "setback_temperature",
+        "room_cool_comfort_temp": "cooling_comfort_temperature",
+        "room_cool_outside_temp": "cooling_outside_schedule_temperature",
+    },
+    "climate": {
+        "room_climate": "room_climate",
     },
 }

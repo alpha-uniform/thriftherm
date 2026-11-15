@@ -98,7 +98,7 @@ Bei einer Therme über Entitäten (Vorschau) ist das anders: Stürzt Home Assist
 
 Ein Fenster ist offen, oder das Thermostat des Raums ist ausgeschaltet. Schließ das Fenster oder stell das Thermostat wieder auf *Heizen*.
 
-Hat ein Heizkörperthermostat einen Sollwert eine halbe Stunde lang nicht beantwortet, ist es eine halbe Stunde lang nicht verfügbar oder hat es sich sechs Stunden lang nicht gemeldet, fordert der Raum ebenfalls keine Wärme an. Dazu erscheint eine Reparaturmeldung. Sieh in Zigbee2MQTT oder ZHA nach seinem *Zuletzt gesehen*; mit ZHA zählt es auch als Meldung.
+Auch ein [stummes Heizkörperthermostat](ANLEITUNG.md#stumme-thermostate) (Sollwert eine halbe Stunde nicht beantwortet, eine halbe Stunde nicht verfügbar oder sechs Stunden ohne Meldung) fordert keine Wärme an. Dazu erscheint eine Reparaturmeldung. Sieh in Zigbee2MQTT oder ZHA nach seinem *Zuletzt gesehen*; mit ZHA zählt es auch als Meldung.
 
 ### Ein Raum steht auf 15 °C
 
@@ -110,11 +110,7 @@ Eine Änderung von Hand wird zur vorübergehenden Übersteuerung, standardmäßi
 
 ### Übersteuerungen, obwohl niemand am Thermostat war
 
-Better Thermostat schreibt den Sollwert des Heizkörperthermostats alle paar Sekunden neu. Kommt über Zigbee eine Antwort verspätet an, hält Better Thermostat den alten Wert für einen Dreh am Thermostat.
-
-Das erkennt der **Echo-Filter** (Optionen → *Regelparameter*, Abschnitt *Freigaben*, standardmäßig an). Springt Better Thermostat auf einen Wert, den das Thermostat in der letzten Minute schon hatte und wieder verlassen hatte (zum Beispiel 16 → 16,5 → 16), wird das ignoriert und der geplante Sollwert neu gesendet. Ein echter Dreh bringt einen neuen Wert und wird übernommen.
-
-Wann zuletzt ein Echo ignoriert wurde, zeigt der Sensor *Thermostat-Plan* des Raums.
+Meist ein verspätetes Funk-Echo: Better Thermostat schreibt den Sollwert alle paar Sekunden neu, und eine verspätete Antwort über Zigbee hält es für einen Dreh am Thermostat. Das fängt der **Echo-Filter** ab (Optionen → *Regelparameter*, Abschnitt *Freigaben*, standardmäßig an; [so arbeitet er](FUNKTIONSWEISE.md#echo-filter)). Prüfe, ob er eingeschaltet ist. Wann zuletzt ein Echo ignoriert wurde, zeigt der Sensor *Thermostat-Plan* des Raums.
 
 ### Ein Raum braucht nach dem Hochstellen sehr lange
 
@@ -132,6 +128,14 @@ Der *Lernstatus* zeigt dann *Heizkurven-Korrektur an ihrer Grenze*, und im Attri
 
 Prüf zuerst, ob das Ventil ganz öffnet und der Heizkörper entlüftet ist. Bleibt es dabei, stell das Soll des Raums etwas niedriger oder ersetz den Heizkörper durch einen größeren. Über die 10 Grad geht die Korrektur nie hinaus, und der höhere Vorlauf, solange der Raum ruft, kostet nur wenig Gas.
 
+### Der Lernstatus zeigt „Wartet auf Heizlauf“
+
+Das ist kein Fehler. Gelernt wird nur, während die Therme für die Heizung brennt oder taktet und die Thermensteuerung *Aktiv* ist; ohne Außentemperatur lernt die Heizkurve nichts. Den genauen Grund nennt das Attribut *Pausiert weil*. Wie lange das Lernen insgesamt dauert: [Anleitung, Wie lange das Lernen dauert](ANLEITUNG.md#wie-lange-das-lernen-dauert).
+
+### Die Aufheizrate eines Raums bleibt beim Startwert
+
+Ein Raum lernt seine Aufheizrate aus Phasen, in denen er mindestens 30 Minuten lang um mindestens 0,5 Grad steigt, bei geschlossenem Fenster. Ein Raum ohne Absenkung pendelt nur um ein, zwei Zehntel und lernt sie deshalb nie; er bleibt bei der *Start-Aufheizrate*. Das schadet nicht, es betrifft nur, wie früh er vorheizt.
+
 ### Ein Thermostat nimmt keine Sollwerte an
 
 Das Thermostat hängt. Nimm die Batterie heraus und setz sie wieder ein, und aktualisiere die Firmware.
@@ -144,7 +148,7 @@ Direkt nach einem Neustart zeigt *Therme-Steuerbefehl* *Warte auf Raumdaten*. Th
 
 ### Der Temperaturtrend ist nach einem Neustart leer
 
-Der Trend braucht etwa 30 Minuten Messwerte. Bei einer neuen Installation ist der Sensor ausgeschaltet, bis du ihn einschaltest ([Anleitung, Wichtige Anzeigen](ANLEITUNG.md#8-wichtige-anzeigen)).
+Der Trend braucht etwa 30 Minuten Messwerte. Bei einer neuen Installation ist der Sensor ausgeschaltet, bis du ihn einschaltest ([Anleitung, Wichtige Anzeigen](ANLEITUNG.md#wichtige-anzeigen)).
 
 ### Vorlauf und Rücklauf ändern sich nur alle paar Minuten
 
@@ -171,6 +175,6 @@ Fehlt die Karte trotzdem, zeigt der Browser meist noch eine Startseite von vor d
 
 ## Nichts davon passt
 
-- Was eine Reparaturmeldung bedeutet und was du tun kannst, steht in der [Anleitung, Reparaturmeldungen](ANLEITUNG.md#9-reparaturmeldungen).
+- Was eine Reparaturmeldung bedeutet und was du tun kannst, steht in der [Anleitung, Reparaturmeldungen](ANLEITUNG.md#reparaturmeldungen).
 - Der Sensor *Entscheidungsgrund* sagt in Worten, warum Thriftherm tut, was es tut.
 - Für einen Fehlerbericht: Einstellungen → Geräte & Dienste → Thriftherm → ⋮ → *Diagnose herunterladen*. Die Datei enthält Konfiguration, aktuellen Zustand und Lernwerte; nur die Personen, deren Ankunft *Abwesend* beendet, fehlen darin. Sieh sie vor dem Veröffentlichen durch und hänge sie an ein [Issue](https://github.com/alpha-uniform/thriftherm/issues) an.

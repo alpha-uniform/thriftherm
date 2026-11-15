@@ -4,6 +4,37 @@
 
 Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
 
+## 0.7.5 – 2026-11-15
+
+- The operating mode *Summer* is now called *Off (frost protection only)*.
+- The docs are reordered, explain the terms and say how long learning takes.
+- Fixed: the boiler's heating curve went up and down because it was lowered in the middle of a heat-up; it now learns only from rooms whose target has stood for 90 minutes.
+- Fixed: steps up came faster than their effect could be measured; now 90 minutes apart and 2 degrees at most.
+- Fixed: with a cycling boiler a room's value kept rising although more flow did not help; a step without effect is now taken back after 90 minutes, and the learning state says so.
+- Fixed: what a room had learned alone also applied with several rooms calling and stayed there for good.
+- Fixed: room sensors that report only on larger changes (a Shelly H&T, say) raised the heating curve because their flat line read as "room does not rise" ([#7](https://github.com/alpha-uniform/thriftherm/issues/7)).
+- Fixed: with Better Thermostat 2.0 a room it blocks (valve maintenance, devices released, startup) could still call the boiler; it no longer does, and a change is heard at once ([#8](https://github.com/alpha-uniform/thriftherm/issues/8)).
+
+- The learning state *Paused* is now called *Waiting for a heating run*; without an outdoor temperature the heating curve learns nothing.
+- Fixed: a room below the frost limit kept the boiler released for good; it is now heated to 1 degree above the limit, and no room target is below the frost limit any more.
+- Fixed: a heat pump in a quick heat-up or a drying heated on when the control was set to *Plan only* just while a command went out, or when the evaluation failed.
+- Fixed: switching the control off left the heat pump's fan turned up, and a fan run-on kept running.
+- Fixed: with room targets below 14 °C the heat pump was sent setpoints below 17 °C.
+- Fixed: cooling by hand in summer spoiled the learned heat loss of the rooms.
+- Fixed: gas meters that report only every few minutes had half of their gas put to "unassigned"; meters in litres are converted, other units refused.
+- Fixed: the room form dropped "served by the heat pump" while no heat pump was entered.
+- Fixed: a return at exactly 00:00, set in the card, became "23:59, provisional".
+- A gas meter with a flow sensor no longer starts a cycle of its own every few seconds while the burner runs.
+- A new room must not end in "cool"; stored learning values that cannot be right are dropped at the start.
+- A cycling boiler's heating curve now comes down when a room reaches its target briskly three times in a row; a step down that leaves the room lagging is taken back.
+- When more flow did not help a room, Thriftherm tries less: a value learned too high comes down again by itself.
+- *Reset learning* applies to single rooms for the boiler too (`scope: ["boiler"]`, `rooms: […]`); a reset of boiler and rooms with a list of rooms now resets only these rooms for the boiler.
+- After a restart or saving the options the heating curve goes on learning at once instead of after 90 minutes.
+- Diagnostics: each room's last ten calls with duration, rise and verdict.
+- The option *A heating curve of its own per room* is gone, every room always has a value of its own; whoever had switched it off starts from the common correction learned so far, and older values per room are forgotten once.
+
+- Default COP values updated.
+
 ## 0.7.4 – 2026-11-12
 
 - Rooms are now child devices of "Thriftherm" and are named after the room alone ("Living room" instead of "Thriftherm Living room"), following the naming of Home Assistant 2026.11. Device ids, entity ids, your own names and areas stay.

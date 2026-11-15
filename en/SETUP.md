@@ -33,7 +33,7 @@ Have district heating or no own boiler? Skip steps 2 and 6; the setup dialog lea
 | Window contacts | optional | heating in a room pauses while its window is open |
 | Humidity sensors | optional | protection against damp while you are away |
 | Radiator thermostats with **Better Thermostat** | optional | needed if Thriftherm should set the room temperatures; without them the boiler control still works |
-| Gas meter reading | optional | total volume (m³) and current flow (m³/h), if your gas meter is in Home Assistant |
+| Gas meter reading | optional | total volume (m³ or litres) and current flow (m³/h or L/min), if your gas meter is in Home Assistant. A sensor in another unit (kWh, say) is not read |
 | Outdoor temperature sensor | optional | otherwise a weather entity is used |
 
 **A central room controller on the eBUS terminal has to go.** If a room controller is already connected to your boiler's eBUS terminal, disconnect it; the eBUS adapter goes on the same terminal. Thriftherm takes over the controller's job, and two controllers on the eBUS would keep overwriting each other's setpoints.
@@ -55,14 +55,14 @@ The first setup step asks which heating you have. The dialog leaves out the step
 | Learned heat-up and cool-down rate per room | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Targets written to the thermostats; turning one by hand becomes a temporary override | – | ✓ | ✓ | – | ✓ |
 | Quick heat-up button per room | – | ✓ | ✓ | ✓ | ✓ |
-| Frost protection, also in summer mode | ✓ | ✓ | ✓ | – | ✓ |
+| Frost protection, also in the mode *Off* | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **Boiler** | | | | | |
 | Flow temperature from heating curve, room demand and flow/return spread | ✓ | ✓ | ✓ | – | – |
 | Heating blocked when no room needs heat; hot water untouched | ✓ | ✓ | ✓ | – | – |
 | Learned heating curve correction per room: the room that needs the most sets the flow | ✓ | ✓ | ✓ | – | – |
 | Heat-up speed of your choice: more flow for a room that warms up too slowly, learned per room | ✓ | ✓ | ✓ | – | – |
 | Hot water recognition: learning pauses after a shower | ✓ | ✓ | ✓ | – | – |
-| Summer mode over eBUS: heating off, hot water keeps working | ✓ | ✓ | ✓ | – | – |
+| Heating off over eBUS (mode *Off (frost protection only)*), hot water keeps working | ✓ | ✓ | ✓ | – | – |
 | Fallback to the boiler's knob if Home Assistant stops | ✓ | ✓ | ✓ | – | – |
 | **Heat pump** | | | | | |
 | Heat pump control: slow at a high COP, full power for quick heat-up | – | – | ✓ | ✓ | ✓² |
@@ -81,8 +81,8 @@ The first setup step asks which heating you have. The dialog leaves out the step
 **Good to know:**
 
 - **A heat pump without a boiler works.** Choose *None – heat pump and room control only* in the first setup step.
-- **Bathroom drying needs the heat pump.** It dries with the heat pump's warm air, only in a room the heat pump heats. Details are in the [user guide, section 7](GUIDE.md#7-heat-pump-optional).
-- **Everything in the boiler rows needs an own boiler on ebusd**, or as a preview a boiler through two entities as with OpenTherm ([step 4.3a](#43a-a-boiler-without-ebusd-through-entities-preview)). That covers flow temperature, heating block, learned heating curve, hot water recognition, summer mode over eBUS and the knob fallback. With district heating or without a boiler, nothing is ever sent over eBUS.
+- **Bathroom drying needs the heat pump.** It dries with the heat pump's warm air, only in a room the heat pump heats. Details are in the [user guide, heat pump](GUIDE.md#heat-pump-optional).
+- **Everything in the boiler rows needs an own boiler on ebusd**, or as a preview a boiler through two entities as with OpenTherm ([step 4.3a](#43a-a-boiler-without-ebusd-through-entities-preview)). That covers flow temperature, heating block, learned heating curve, hot water recognition, heating off over eBUS and the knob fallback (only over ebusd, see 4.3a). With district heating or without a boiler, nothing is ever sent over eBUS.
 
 ### With district heating
 
@@ -214,13 +214,12 @@ The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fill
 | Heating curve: flow temperature at -10 °C outdoor | start with the default 55 °C |
 | Heating curve: flow temperature at +15 °C outdoor | start with the default 30 °C |
 | Minimum flow temperature | **about 45 °C for a non-condensing boiler, about 30 °C for a condensing boiler** |
-| Maximum flow temperature | your knob setting from step 6 (for example 55 °C) or a bit lower; higher values have no effect because the knob is the upper limit |
+| Maximum flow temperature | 60 °C by default. Better your knob setting from step 6 (for example 55 °C) or a bit lower; higher values have no effect because the knob is the upper limit |
 | Heat-up speed (°C per hour, 0 = off) | start with 0. If a room warms up too slowly after you raise it, set 0.5 to 2; more speed burns more gas ([guide, heat-up speed](GUIDE.md#heat-up-speed)) |
 | Share of rooms that must call before the spread judges the curve | keep the default 0.5 |
-| A heating curve of its own per room, for one room, a few rooms and the majority calling | leave it on |
 | Release active boiler control (otherwise plan only) | **leave off for now** – you switch it on in step 7 |
 
-**Why the minimum depends on the boiler type:** a condensing boiler gains from a low flow, but a non-condensing boiler hardly saves anything there, and with short burner runs the heat may not reach distant radiators – see the [user guide, section 5](GUIDE.md#5-boiler-control-own-boiler-on-ebusd).
+**Why the minimum depends on the boiler type:** a condensing boiler gains from a low flow, but a non-condensing boiler hardly saves anything there, and with short burner runs the heat may not reach distant radiators – see the [user guide, boiler control](GUIDE.md#boiler-control).
 
 The heating curve does not have to be perfect: Thriftherm learns a correction on top, for level and slope each up to ±10 degrees. The form only refuses a curve that is lower at -10 °C than at +15 °C, and a minimum above the maximum.
 
@@ -259,7 +258,7 @@ Once a heat pump is set up, *Configure* has the further entry **Heat pump: fine 
 | Outdoor humidity sensor | optional |
 | Weather entity (fallback) | your weather entity, for example the one Home Assistant created at installation (often *Forecast Home*) |
 
-Select at least one outdoor sensor or the weather entity – the heating curve needs the outdoor temperature.
+Select at least one outdoor sensor or the weather entity – the heating curve needs the outdoor temperature. If the source fails, Thriftherm takes the next one; if all are missing, it keeps the last value for up to six hours. The *Outdoor temperature (selected source)* sensor shows which source is in use.
 
 ### 4.6 Rooms
 
@@ -273,16 +272,16 @@ You add one room per page. Tick **Add another room** to get the next page; submi
 | Room humidity sensor | optional |
 | Window / door contacts | optional, all contacts of the room |
 | Thermostat (TRV or Better Thermostat) | the room's **Better Thermostat** entity. No Better Thermostat yet? Leave it empty and add it later (options → *Rooms* → room → *Edit*) |
-| Power sensors of internal heat sources | optional, leave empty |
+| Power sensors of internal heat sources | optional, otherwise leave empty: the power of devices that heat the room as well (a computer, say). Above 150 W every further watt lowers the room's heat demand by 0.1 % (*Control parameters → Advanced*: *Internal gain threshold*, *Internal gain demand reduction per W*) |
 | Weekly schedule helper (optional; replaces the comfort windows below) | a Home Assistant schedule helper whose blocks are the comfort times |
 | Longest preheat | optional, for a room wanted only briefly ([details](GUIDE.md#pre-heating)) |
 | Comfort temperature | temperature while the room is in use, for example 20 °C |
 | Setback temperature | temperature outside the comfort times, for example 17 °C; never above comfort |
-| Comfort windows Mon–Fri / Sat–Sun | times as `HH:MM-HH:MM`, several separated by commas, for example `06:00-08:00,17:00-22:00` |
+| Comfort windows Mon–Fri / Sat–Sun | times as `HH:MM-HH:MM`, several separated by commas, for example `06:00-08:00,17:00-22:00`. The defaults are 06:00-22:00 and 08:00-23:00 |
 
 The room is warm *when* a comfort time starts: Thriftherm starts heating early enough.
 
-**Sensors that report only on a change** (e.g. Shelly H&T: only at 1 °C or 1 %): normally a room temperature holds for 6 hours at most. Then switch on **Room sensors report only on a change** under *Options → Control parameters → Advanced*. Room temperatures then hold up to the *Max. sensor age*. With sensors that report every few minutes, leave it off.
+**Sensors that report only on a change** (e.g. Shelly H&T: only at 1 °C or 1 %): normally an unchanged value holds for 6 hours at most, as long as the device reports nothing else (if it still reports the humidity, say, up to a day). Then switch on **Room sensors report only on a change** under *Options → Control parameters → Advanced*. Room temperatures then hold up to the *Max. sensor age*. With sensors that report every few minutes, leave it off.
 
 Only with a heat pump set up does the form also show *Heated by the heat pump*, *Bathroom drying with the heat pump* and *Start the drying by itself after a shower*. Bathroom drying runs on the heat pump, so without one none of the fields appears. With it the room gets the button *Dry now*; with the third switch off, only the button dries. It also needs *Heated by the heat pump* switched on and the room humidity sensor; the form refuses it otherwise.
 
@@ -300,24 +299,16 @@ For each room:
 4. In Thriftherm, select this Better Thermostat as the room's thermostat (options → *Rooms* → room → *Edit*), if you left it empty in step 4.6.
 5. If turning the knob on a valve is to count as a change by hand, switch **off** the room's **Child lock** switch in Better Thermostat. With it on, Better Thermostat sets the valve back, and the turn does not count.
 
-A thermostat you switch **off** by hand is left alone by Thriftherm, and that room no longer calls the boiler.
+A thermostat you switch **off** by hand is left alone by Thriftherm, and that room no longer calls the boiler. How Thriftherm deals with the thermostats day to day: [user guide, room thermostats](GUIDE.md#room-thermostats).
 
 ### Versatile Thermostat instead of Better Thermostat (preview)
 
-> **Preview.** Built from Versatile Thermostat's documentation and tested with imitated states, not yet with a real installation.
-
-A room's thermostat can also be the climate entity of [Versatile Thermostat](https://github.com/jmcollin78/versatile_thermostat). Thriftherm only writes its target temperature.
-
-- **Its own rules stay with Versatile Thermostat.** When it lowers the target by itself because a window is open, it sheds load or is in safety mode, Thriftherm does not take that for a change by hand and does not write against it; Versatile Thermostat restores the requested value afterwards. The room shows *The thermostat applies a rule of its own* meanwhile.
-- **If it switches itself off with a window open,** that counts like a thermostat switched off: the room does not call the boiler.
-- **Leave Versatile Thermostat's "central boiler" feature off** while Thriftherm controls the boiler. Otherwise two controllers switch the same boiler.
-- **Presets (comfort, eco, boost) and presence** in Versatile Thermostat change the target as a request. Thriftherm reads that like a change by hand and turns it into an override. So keep the schedule in Thriftherm, not there.
-- Thriftherm finds the valves behind Versatile Thermostat by itself and reports one that goes silent.
+A room's thermostat can also be the climate entity of [Versatile Thermostat](https://github.com/jmcollin78/versatile_thermostat). Important when setting it up: Versatile Thermostat's "central boiler" feature stays off while Thriftherm controls the boiler, and you keep the schedule in Thriftherm. What else applies: [user guide, Versatile Thermostat](GUIDE.md#versatile-thermostat-instead-of-better-thermostat-preview).
 
 ## 6. At the boiler
 
 1. **Turn the front knob to the highest flow temperature you want to allow**, for example 55 °C. The knob stays the upper limit, and it is what the boiler falls back to if Home Assistant stops. Do not turn it to the left stop: on the tested boiler that is summer mode and blocks heating whatever Thriftherm sends.
-2. **Check the pump mode once.** With the factory setting the pump may stop together with the burner: the boiler cycles all day, but the radiators far down the circuit stay cold. Why this happens: [user guide, section 5](GUIDE.md#why-the-pump-mode-matters).
+2. **Check the pump mode once.** With the factory setting the pump may stop together with the burner: the boiler cycles all day, but the radiators far down the circuit stay cold. Why this happens: [user guide, pump mode](GUIDE.md#why-the-pump-mode-matters).
    - Vaillant: d.18 = 0 "post-run" is the factory setting – the pump runs only with the burner, plus a short overrun. d.18 = 1 "permanent" – the pump runs while heating is released and stops when Thriftherm blocks heating.
    - Change it in the boiler's service menu, or once via ebusd (message `HcPumpMode`, values `post_run`, `permanent`, `winter`).
    - Check your boiler's manual first; other makes use other codes.
@@ -343,7 +334,8 @@ If something looks wrong, adjust it in the options before going active.
 1. Switch the Better Thermostat entities to **heat**.
 2. Thriftherm → *Configure* → **Gas boiler and gas meter**: switch on *Release active boiler control (otherwise plan only)*. Submit.
 3. Thriftherm → *Configure* → **Control parameters**, section *Releases*: switch on *Release active room control (write setpoints to the thermostats)*. Submit.
-4. On the Thriftherm device, set **Boiler control** and **Room control** to **Active**.
+4. With a heat pump: Thriftherm → *Configure* → **Heat pump: fine tuning**: switch on *Release active control (otherwise plan only)*. Submit.
+5. On the Thriftherm device, set **Boiler control** and **Room control** (with a heat pump also **Heat pump control**) to **Active**.
 
 **Check after a few minutes:**
 
@@ -355,7 +347,7 @@ If something looks wrong, adjust it in the options before going active.
 
 **Optional:** for *Away* to end when somebody comes home, choose the people (`person.*`) under Thriftherm → *Configure* → **Control parameters** at *Away ends when one of these people comes home*. Their location in Home Assistant has to be right, for instance through the Companion App.
 
-Everything about daily use – modes, schedules, away mode, learning – is in the [user guide](GUIDE.md).
+From now on Thriftherm learns: the heating curve per room in the first one to two weeks of heating season, the heat-up rates after a few days with a setback ([how long what takes](GUIDE.md#how-long-learning-takes)). Everything about daily use – modes, schedules, away mode, learning – is in the [user guide](GUIDE.md).
 
 ## 8. Troubleshooting
 
@@ -388,7 +380,7 @@ room_order: [badezimmer, wohnzimmer]  # optional, the other rooms follow
 What the card shows, from top to bottom:
 
 - **The heat source in one sentence**, e.g. "Heat pump is heating", below it the cost per kWh of heat. A tap opens the comparison of boiler and heat pump: what each does and why, flow setpoint or COP, cost, the COP from which the heat pump pays off, and what the learning of the heating curve does right now.
-- **Notes, only when there are some:** safety restricted, heat pump blocked (only in a mode that uses it, so not in *Central heating only* or *Summer (heating off)*), window open, changed by hand (with *Back to automatic*).
+- **Notes, only when there are some:** safety restricted, heat pump blocked (only in a mode that uses it, so not in *Central heating only* or *Off (frost protection only)*), window open, frost protection in a room, changed by hand (with *Back to automatic*), heat pump changed by hand, thermostat does not report.
 - **One row per room:** measured temperature, target and the reason. Small icons show whether the boiler or the heat pump heats the room right now, whether it was changed by hand or a window is open. A tap on the room opens an info line (the schedule's next change with the target after it, and the trend once the room's *Temperature trend* sensor is enabled), *Now* (change the target by hand; it holds as long as any change by hand), comfort, setback, *Quick heat-up*, in the bathroom *Dry now*, *Schedule* (opens the room's schedule helper when it has one) and *Back to automatic* while anything by hand is on: a change, *Quick heat-up* or *Dry now*.
 - **Operating mode**, in *Away* with the return.
 

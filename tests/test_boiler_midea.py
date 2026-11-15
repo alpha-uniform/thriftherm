@@ -14,6 +14,7 @@ def test_boiler_heating_active_and_power_estimate():
     assert res.delta_t_k == pytest.approx(7.0)
     # 860 l/h * 4186 J/kgK * 7 K / 3600 ≈ 7000 W
     assert res.thermal_power_estimate_w == pytest.approx(7000, rel=0.01)
+    assert res.pump_running is None  # without the pump entity Status01 still decides
     assert res.gas_power_w == pytest.approx(12889, rel=0.001)
     assert res.gas_energy_kwh == pytest.approx(1074.1, abs=0.1)
 

@@ -32,10 +32,20 @@ Viele Thermen laufen ohne echten Regler. Dann hält die Therme ihren Heizkreis d
 - **Heizbetrieb gesperrt, wenn kein Raum Wärme braucht.** Warmwasser bleibt unberührt und folgt weiter dem Drehknopf.
 - **Aufheiztempo nach Wunsch** in Grad pro Stunde. Mehr Tempo kostet mehr Gas.
 - **Warmwasser erkannt:** Nach dem Duschen pausiert das Lernen eine Stunde, damit Duschwasser die Heizkurve nicht verstellt.
-- **Sommerbetrieb über eBUS:** Die Heizung ist aus, Warmwasser läuft weiter, und der Drehknopf kann aufgedreht bleiben.
+- **Heizung aus über eBUS** (Modus *Aus (nur Frostschutz)*): Die Heizung ist aus, Warmwasser läuft weiter, und der Drehknopf kann aufgedreht bleiben.
 - **Sicherer Rückfall:** Fällt Home Assistant aus, regelt die Therme nach 9 bis 16 Minuten wieder nach ihrem Drehknopf. Der Knopf bleibt immer die Obergrenze.
 
 Jede Entscheidung hat einen Grund, den du in Home Assistant nachlesen kannst. Fehlen Daten der Therme, sendet Thriftherm nichts, und die Therme läuft über ihren Drehknopf.
+
+## Wie lange Thriftherm lernt
+
+Vom ersten Tag an heizt Thriftherm mit Startwerten: deiner Heizkurve, einer typischen Aufheizrate und einer COP-Kurve nach Datenblatt. Was es dazulernt, kommt nur aus echten Heizläufen und mit *Aktiv*:
+
+- **Heizkurve je Raum:** erste Korrekturen am ersten Heiztag, stabil nach etwa 1 bis 2 Wochen Heizsaison. Die Steigung für kalte Tage lernt es erst bei Frost.
+- **Aufheizraten:** nach 1 bis 2 Tagen mit Absenkung ein erster Wert, nach 1 bis 2 Wochen ein sicherer.
+- **COP-Kennfeld der Wärmepumpe:** die häufigen Außentemperaturen nach 2 bis 4 Wochen, Frost erst bei Frost.
+
+Die Zeiten sind aus den Regeln abgeschätzt und hängen vom Wetter ab ([Einzelheiten](de/ANLEITUNG.md#wie-lange-das-lernen-dauert)).
 
 ## Schnellstart
 
@@ -53,7 +63,7 @@ An Therme und Thermostate werden keine Befehle gesendet, bis du selbst auf *Akti
 ## Dokumentation
 
 - [Einrichtung](de/EINRICHTUNG.md): Schritt für Schritt von null bis *Aktiv*
-- [Anleitung](de/ANLEITUNG.md): der Alltag mit Modi, Temperaturen, Diensten, Lernen und Reparaturmeldungen
+- [Anleitung](de/ANLEITUNG.md): der Alltag mit Modi, Temperaturen, Thermostaten, Lernen samt Lerndauer, Diensten, Reparaturmeldungen und einer Liste der Fachbegriffe
 - [Funktionsweise](de/FUNKTIONSWEISE.md): wie Thriftherm entscheidet, mit Schwellen, Lernschritten und Regeln
 - [Fehlersuche](de/FEHLERSUCHE.md): wenn etwas nicht klappt, geordnet nach dem, was du siehst
 - [Weniger ebusd-Werte abfragen](de/EBUSD.md): optional, für frischere Werte von Vorlauf und Rücklauf
@@ -119,8 +129,8 @@ Die vollständige Liste steht in der [Einrichtungsanleitung, Schritt 1](de/EINRI
 
 ```bash
 python3 -m venv .venv
-./.venv/bin/pip install pytest pytest-asyncio pytest-homeassistant-custom-component
-./.venv/bin/pytest -q
+./.venv/bin/pip install pytest pytest-asyncio pytest-homeassistant-custom-component pytest-xdist
+./.venv/bin/pytest -q -n auto
 ```
 
 Die Engines unter `custom_components/thriftherm/engines/` sind reines Python ohne Home-Assistant-Importe und durch Unit-Tests abgedeckt (etwa 90 % Zeilen- und Zweigabdeckung).
@@ -135,6 +145,7 @@ Die **Heating Heroes** stehen hier:
 
 - **David** – der erste Kaffee, und zwei Ideen, die jetzt drin sind: das Gas getrennt nach Heizung und Warmwasser zu zählen, auch ohne Gaszähler, und die Abfrageliste von ebusd zu kürzen, damit die wichtigen Werte öfter kommen. Danke!
 - **[jwarzecha](https://github.com/jwarzecha)** – ein Kaffee, die Idee, dass die Therme nur kommt, wenn auch das Thermostat heizen will ([#3](https://github.com/alpha-uniform/thriftherm/issues/3)), und die Daten einer Vaillant atmoTEC pro ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)). Danke!
+- **[elektroduell](https://github.com/elektroduell)** – Kaffees, die Daten seiner Vaillant VCW mit eBUS Adapter Shield C5 und die Shelly-Fühler, die nur bei einer Änderung melden: Daraus wurden der Schalter *Raumfühler melden nur bei Änderung* ([#7](https://github.com/alpha-uniform/thriftherm/issues/7)) und ein Heizkurven-Lernen, das solche Fühler nicht mehr falsch liest. Danke!
 
 ## Lizenz
 

@@ -195,15 +195,13 @@ async def test_during_a_hold_the_heat_pump_heats_its_rooms_even_if_gas_is_cheape
     assert command.target_temp != 17.0  # no rest for gas cheaper
 
 
-@pytest.mark.parametrize("released", [False, True])
-async def test_only_a_boiler_really_held_back_makes_the_heat_pump_heat_at_any_price(hass: HomeAssistant, released: bool) -> None:
+async def test_a_boiler_released_before_the_fault_is_not_held_back_so_the_heat_pump_goes_by_price(hass: HomeAssistant) -> None:
     coordinator = await _running_unit(hass, "boiler_helps", electricity_price=2.0)
     hass.states.async_set("sensor.bath_temp", "19.0")
     hass.states.async_set("sensor.flow", "95.0", {"unit_of_measurement": "°C"})
-    state = "heat" if released else "block"
-    coordinator.boiler_memory = replace(bm.BoilerMemory(), state=state, state_since_ts=0.0)
+    coordinator.boiler_memory = replace(bm.BoilerMemory(), state="heat", state_since_ts=0.0)
     await coordinator.async_refresh()
-    assert (coordinator.data["midea_command"].reason == "boiler_fault_hold") is not released
+    assert coordinator.data["midea_command"].reason != "boiler_fault_hold"
 
 
 async def test_a_boiler_in_shadow_is_not_held_back_so_the_heat_pump_goes_by_price(hass: HomeAssistant) -> None:

@@ -37,6 +37,6 @@ jobs:
         with:
           python-version: "3.14"
       - name: Install test dependencies
-        run: pip install -U pytest-homeassistant-custom-component
+        run: pip install -U pytest-homeassistant-custom-component pytest-xdist
       - name: Run tests
-        run: pytest -q
+        run: pytest -q -n auto  # in parallel: 8 s instead of 30

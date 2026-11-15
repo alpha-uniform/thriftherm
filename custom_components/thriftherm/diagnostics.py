@@ -32,7 +32,10 @@ def _command(obj: Any) -> dict[str, Any] | None:
 
 
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> dict[str, Any]:
-    coordinator = entry.runtime_data
+    coordinator = getattr(entry, "runtime_data", None)
+    if coordinator is None:
+        # not loaded (its setup failed, or it is disabled): what there is, instead of an AttributeError
+        return {"loaded": False, "entry": {"version": entry.version, "state": str(entry.state)}}
     data = coordinator.data or {}
     rooms = data.get("rooms") or {}
     return {
@@ -46,6 +49,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: Thrifth
             "has_boiler": coordinator.has_boiler,
             "has_heat_source": coordinator.has_heat_source,
             "has_midea": coordinator.has_heat_pump,
+            "cooling_allowed": coordinator.cooling_allowed,
             "rooms": [r.key for r in coordinator.builder.rooms],
         },
         "control": {
@@ -53,6 +57,14 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: Thrifth
             "midea_control": coordinator.control_mode,
             "boiler_control": coordinator.boiler_control_mode,
             "room_control": coordinator.room_control_mode,
+            "season": coordinator.season,
+            "season_since_ts": coordinator.season_since_ts,
+            "season_choice": coordinator.season_choice,
+            "season_reason": coordinator.season_reason,
+            "season_verdicts": coordinator.season_verdicts,
+            "season_free_run": coordinator.free_run.to_storage(),
+            "season_outdoor_hourly": coordinator.outdoor_hours.to_storage(),
+            "unit_modes_seen": list(coordinator.unit_modes_seen),
             "setmode_topic": coordinator.boiler_setmode_topic if coordinator.has_boiler else None,
         },
         "plans": {
@@ -66,6 +78,9 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: Thrifth
                 "target_reason": getattr(result, "target_reason", None),
                 "demand": getattr(result, "demand", None),
                 "heating_allowed": getattr(result, "heating_allowed", None),
+                "cool_target": getattr(result, "cool_target", None),
+                "cool_target_reason": getattr(result, "cool_target_reason", None),
+                "cooling_allowed": getattr(result, "cooling_allowed", None),
                 "issues": list(getattr(result, "issues", ()) or ()),
             }
             for key, result in rooms.items()
@@ -75,6 +90,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: Thrifth
             "cop_map_by_outdoor_temp": data.get("cop_map"),  # with the COP of each band, for the shipped map (docs/PUBLISHING.md)
             "heat_rates": coordinator.heat_rates.to_dict(),
             "cool_rates": coordinator.cool_rates.to_dict(),
+            "ac_cool_rates": coordinator.ac_cool_rates.to_dict(),
             "boiler_memory": coordinator.boiler_memory.to_storage(),
             # ts, outdoor, flow, return, spread, rooms calling, rooms able, burner share, curve correction used,
             # target minus actual per room

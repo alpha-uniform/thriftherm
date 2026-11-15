@@ -54,7 +54,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from ..models import RoomResult
+from ..models import EndedCall, RoomResult
 
 CALL_ON_K = 0.3
 CALL_OFF_K = 0.1
@@ -66,6 +66,9 @@ HELP_STALL_S = 7200.0
 STALL_BAND_K = 0.3
 STALL_RATE_K_H = 0.15
 STALL_RELEASE_K = 0.5
+# A call that begins further below its target than this is a heat-up, not the holding of a temperature: the
+# hysteresis starts a call at CALL_ON_K, a sensor in steps of 0.2 K a step later.
+HOLD_START_K = 0.5
 COMFORT_END_GUARD_S = 1800.0
 SHORT_PREHEAT_NEW_CALL_S = 300.0  # a release holds this long (MIN_STATE_S): begun later it outlasts the block
 # seen 2026-10-21 22:00 and 2026-10-22 07:30: one schedule helper switched 15 ms before another, and the
@@ -98,11 +101,25 @@ class CallMemory:
     stalled_target: float | None = None  # the target at which a stall was accepted
     target: float | None = None  # the target the running call is heading for
     stalled_helped: bool = False  # the stall was accepted while the boiler helped: its help going on does not end it
+    # For the boiler's heating curve (boiler_learning.count_calls): the room's temperature when the running call
+    # began, why the call says nothing about the flow (see `EndedCall`), and the last call that ended (not stored).
+    # Between calls `target` is the target last seen, so a call that begins with a new one is told apart.
+    start_c: float | None = None
+    spoiled: str | None = None
+    last: EndedCall | None = None
+    # the reading last seen in the running call and how often it changed: a call that is one step of the sensor
+    # (down to start it, up to end it) says how long the room was below a threshold, not how fast it rose
+    seen_c: float | None = None
+    readings: int = 0
+    # since when the room's target has stood as it is (None: not seen yet, or heating not allowed): the heating
+    # curve learns from a room once it has for the trend's 90 minutes, and a restart must not start them over
+    target_since_ts: float | None = None
 
     def to_storage(self) -> dict:
         return {
             "calling": self.calling, "since_ts": self.since_ts, "stalled_target": self.stalled_target, "target": self.target,
-            "stalled_helped": self.stalled_helped,
+            "stalled_helped": self.stalled_helped, "start_c": self.start_c, "spoiled": self.spoiled,
+            "target_since_ts": self.target_since_ts, "seen_c": self.seen_c, "readings": self.readings,
         }
 
     @classmethod
@@ -120,7 +137,21 @@ class CallMemory:
             stalled_target=number("stalled_target"),
             target=number("target"),
             stalled_helped=data.get("stalled_helped") is True,
+            start_c=number("start_c"),
+            target_since_ts=number("target_since_ts"),
+            seen_c=number("seen_c"),
+            readings=int(number("readings") or 0),
+            spoiled=data.get("spoiled") if isinstance(data.get("spoiled"), str) else None,
         )
+
+
+def _ended(mem: CallMemory, room: RoomResult, now_ts: float, why: str | None = None) -> EndedCall | None:
+    """The running call as one that ends now (`why`: other than by reaching its target); else the last one before."""
+    if not mem.calling or mem.since_ts is None or mem.start_c is None or room.temperature is None:
+        return mem.last
+    one_step = mem.readings + (room.temperature != mem.seen_c) < 2
+    spoiled = why or mem.spoiled or ("one_step" if one_step else None)
+    return EndedCall(mem.since_ts, now_ts, mem.start_c, room.temperature, spoiled)
 
 
 def update(
@@ -128,7 +159,8 @@ def update(
 ) -> tuple[str, CallMemory]:
     """The room's call state after this cycle; `helping`: the boiler adds the peak for the heat pump in this room."""
     if not room.heating_allowed:
-        return CALL_NOT_ALLOWED, CallMemory()
+        # no target is kept: the call after an airing is a recovery, not the holding of a temperature
+        return CALL_NOT_ALLOWED, CallMemory(last=_ended(mem, room, now_ts, "not_allowed"))
     if room.temperature is None:
         # A cycle without a reading tells nothing about the call, so the memory waits for the next one:
         # after a restart the sensors report one by one, and a stall or a running call must outlast that.
@@ -136,6 +168,8 @@ def update(
         # fallback on it that stood here never called (review 2026-11-08).
         return CALL_IDLE, mem
 
+    stood = mem.target_since_ts if mem.target == room.target and mem.target_since_ts is not None else now_ts
+    mem = replace(mem, target_since_ts=stood)
     deficit = round(room.target - room.temperature, 2)  # sensors report tenths: 21.0 - 20.9 must be 0.1
     urgent = any(room.target_reason.startswith(r) or room.target_reason.endswith("+" + r) for r in _URGENT_REASONS)
 
@@ -145,7 +179,7 @@ def update(
     if mem.stalled_target is not None and released:
         mem = replace(mem, stalled_target=None, stalled_helped=False)
     if mem.stalled_target is not None:
-        return CALL_STALLED, replace(mem, calling=False, since_ts=None)
+        return CALL_STALLED, replace(mem, calling=False, since_ts=None, target=room.target)
 
     if not urgent and room.target_reason in _COMFORT_REASONS and comfort_end_ts is not None:
         left = comfort_end_ts - now_ts
@@ -158,14 +192,16 @@ def update(
         elif room.short_preheat:
             guard = 0.0 if mem.calling else SHORT_PREHEAT_NEW_CALL_S
         if -COMFORT_END_PASSED_S <= left < guard:
-            return CALL_COMFORT_ENDING, CallMemory()
+            ended = _ended(mem, room, now_ts, "comfort_end")
+            return CALL_COMFORT_ENDING, CallMemory(target=room.target, last=ended, target_since_ts=stood)
 
     if mem.calling and mem.target is not None and room.target < mem.target:
-        mem = CallMemory()  # the target went down: start over as if the call were new
+        # the target went down: start over as if the call were new
+        mem = CallMemory(target=mem.target, last=_ended(mem, room, now_ts, "target"), target_since_ts=stood)
     on, off = (HELP_ON_K, 0.0) if helping else (CALL_ON_K, CALL_OFF_K)
     calling = deficit > off if mem.calling else deficit >= on
     if not calling:
-        return CALL_IDLE, CallMemory()
+        return CALL_IDLE, CallMemory(target=room.target, last=_ended(mem, room, now_ts), target_since_ts=stood)
     since = mem.since_ts if mem.calling and mem.since_ts is not None else now_ts
     if (
         not urgent
@@ -175,8 +211,26 @@ def update(
         and room.trend_k_per_h is not None
         and room.trend_k_per_h < STALL_RATE_K_H
     ):
-        return CALL_STALLED, CallMemory(stalled_target=room.target, stalled_helped=helping)
-    memory = CallMemory(calling=True, since_ts=since, target=room.target)
+        ended = _ended(mem, room, now_ts, "stalled")
+        return CALL_STALLED, CallMemory(
+            stalled_target=room.target, stalled_helped=helping, target=room.target, last=ended, target_since_ts=stood
+        )
+    # what the call's pace will say about the flow: nothing, once anything but the radiator moved the room
+    moved = None if mem.target == room.target else "target"
+    if mem.calling:
+        start_c, spoiled, readings = mem.start_c, mem.spoiled or moved, mem.readings + (room.temperature != mem.seen_c)
+    else:
+        start_c, spoiled, readings = room.temperature, moved or ("heat_up" if deficit > HOLD_START_K else None), 0
+    if urgent:
+        spoiled = spoiled or "boost"
+    elif helping:
+        spoiled = spoiled or "helped"
+    elif room.thermostat_heating is False:
+        spoiled = spoiled or "valve_shut"
+    memory = CallMemory(
+        calling=True, since_ts=since, target=room.target, start_c=start_c, spoiled=spoiled, last=mem.last,
+        target_since_ts=stood, seen_c=room.temperature, readings=readings,
+    )
     if room.thermostat_heating is False:
         return CALL_THERMOSTAT_IDLE, memory
     return CALL_CALLING, memory

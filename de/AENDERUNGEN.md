@@ -4,6 +4,36 @@
 
 Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
 
+## 0.7.5 – 2026-11-15
+
+- Der Betriebsmodus *Sommerbetrieb* heißt jetzt *Aus (nur Frostschutz)*.
+- Die Doku ist neu geordnet, erklärt die Fachbegriffe und sagt, wie lange das Lernen dauert.
+- Behoben: Die Heizkurve der Therme pendelte, weil sie mitten im Aufheizen gesenkt wurde; sie lernt jetzt nur von Räumen, deren Soll seit 90 Minuten steht.
+- Behoben: Schritte nach oben kamen schneller, als ihre Wirkung messbar war; jetzt mit 90 Minuten Abstand und höchstens 2 Grad.
+- Behoben: Bei taktender Therme stieg der Wert eines Raums immer weiter, obwohl mehr Vorlauf nicht half; ein Schritt ohne Wirkung wird jetzt nach 90 Minuten zurückgenommen, und der Lernstatus sagt es.
+- Behoben: Was ein Raum allein gelernt hatte, galt auch mit mehreren Räumen und blieb dort für immer stehen.
+- Behoben: Raumfühler, die nur bei größeren Änderungen melden (etwa Shelly H&T), hoben die Heizkurve an, weil ihre flache Linie als „Raum steigt nicht“ galt ([#7](https://github.com/alpha-uniform/thriftherm/issues/7)).
+- Behoben: Mit Better Thermostat 2.0 konnte ein Raum, den BT sperrt (Ventilwartung, freigegebene Geräte, Start), noch die Therme rufen; das tut er nicht mehr, und ein Wechsel wird sofort gehört ([#8](https://github.com/alpha-uniform/thriftherm/issues/8)).
+- Der Lernstatus *Pausiert* heißt jetzt *Wartet auf Heizlauf*; ohne Außentemperatur lernt die Heizkurve nichts.
+- Behoben: Ein Raum unter der Frostgrenze hielt die Therme dauerhaft freigegeben; er wird jetzt bis 1 Grad über die Grenze geheizt, und kein Raumziel liegt mehr unter der Frostgrenze.
+- Behoben: Eine Wärmepumpe im Schnell-Aufheizen oder Trocknen heizte weiter, wenn die Steuerung genau während eines Befehls auf *Nur planen* gestellt wurde oder die Auswertung ausfiel.
+- Behoben: Beim Abschalten der Steuerung blieb der hochgedrehte Lüfter der Wärmepumpe stehen, und ein Lüfternachlauf lief weiter.
+- Behoben: Bei Raumzielen unter 14 °C bekam die Wärmepumpe Sollwerte unter 17 °C.
+- Behoben: Wer im Sommer von Hand kühlte, verfälschte den gelernten Wärmeverlust der Räume.
+- Behoben: Gaszähler, die nur alle paar Minuten melden, landeten zur Hälfte in „nicht zugeordnet“; Zähler in Litern werden umgerechnet, andere Einheiten abgelehnt.
+- Behoben: Das Raumformular löschte „von der Wärmepumpe versorgt“, wenn gerade keine Wärmepumpe eingetragen war.
+- Behoben: Eine Rückkehr um genau 00:00, in der Karte eingestellt, wurde zu „23:59, vorläufig“.
+- Ein Gaszähler mit Durchfluss-Sensor löst beim Brennen nicht mehr alle paar Sekunden einen eigenen Zyklus aus.
+- Ein neuer Raum darf nicht auf „cool“ enden; unplausible gespeicherte Lernwerte werden beim Start verworfen.
+- Die Heizkurve einer taktenden Therme sinkt jetzt, wenn ein Raum sein Soll dreimal in Folge zügig erreicht; ein Schritt nach unten, nach dem der Raum hängt, wird zurückgenommen.
+- Hat mehr Vorlauf einem Raum nicht geholfen, probiert Thriftherm weniger: Ein zu hoch gelernter Wert kommt so von selbst wieder herunter.
+- *Lernen zurücksetzen* gilt bei der Therme auch für einzelne Räume (`scope: ["boiler"]`, `rooms: […]`); wer bisher Therme und Räume mit einer Raumliste zurücksetzte, setzt bei der Therme jetzt nur noch diese Räume zurück.
+- Nach einem Neustart oder dem Speichern der Optionen lernt die Heizkurve sofort weiter statt erst nach 90 Minuten.
+- Diagnose: die letzten zehn Rufe je Raum mit Dauer, Anstieg und Urteil.
+- Die Option *Eigene Heizkurve je Raum* entfällt, jeder Raum hat immer seinen eigenen Wert; wer sie abgeschaltet hatte, startet von der bisher gelernten gemeinsamen Korrektur, ältere Werte je Raum werden dabei einmal verworfen.
+
+- Standard-COP-Werte aktualisiert.
+
 ## 0.7.4 – 2026-11-12
 
 - Die Räume sind jetzt Untergeräte von „Thriftherm“ und heißen nur noch nach dem Raum („Wohnzimmer“ statt „Thriftherm Wohnzimmer“), nach der Namensregel von Home Assistant 2026.11. Geräte-IDs, Entity-IDs, eigene Namen und Bereiche bleiben.

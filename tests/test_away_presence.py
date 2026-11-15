@@ -73,11 +73,21 @@ async def test_a_person_coming_home_ends_away_as_a_planned_return_does(hass: Hom
     assert hass.states.get("sensor.thriftherm_wohnzimmer_target_temperature").attributes["reason"] != "mode_away"
 
 
-async def test_coming_home_from_a_zone_counts_too(hass: HomeAssistant, freezer) -> None:
-    await _start(hass, freezer, [ALEX], alex="Arbeit")
+@pytest.mark.parametrize(
+    ("persons", "where", "arriving", "mode"),
+    [
+        pytest.param([ALEX], {"alex": "Arbeit"}, ALEX, "auto", id="coming_home_from_a_zone_counts_too"),
+        pytest.param([ALEX, SAM], {"alex": "not_home", "sam": "not_home"}, SAM, "auto", id="one_of_two_people_is_enough"),
+        pytest.param(None, {"alex": "not_home"}, ALEX, "away", id="without_chosen_people_nobody_ends_away"),
+    ],
+)
+async def test_only_one_of_the_chosen_people_coming_home_ends_away(
+    hass: HomeAssistant, freezer, persons, where, arriving, mode
+) -> None:
+    await _start(hass, freezer, persons, **where)
     await _away(hass)
-    await _goes(hass, ALEX, "home")
-    assert _mode(hass) == "auto"
+    await _goes(hass, arriving, "home")
+    assert _mode(hass) == mode
 
 
 async def test_a_person_still_home_when_away_begins_does_not_end_it(hass: HomeAssistant, freezer) -> None:
@@ -90,13 +100,6 @@ async def test_a_person_still_home_when_away_begins_does_not_end_it(hass: HomeAs
     assert _mode(hass) == "away"
 
     await _goes(hass, ALEX, "home")  # back after leaving: that is an arrival
-    assert _mode(hass) == "auto"
-
-
-async def test_one_of_two_people_coming_home_is_enough(hass: HomeAssistant, freezer) -> None:
-    await _start(hass, freezer, [ALEX, SAM], alex="not_home", sam="not_home")
-    await _away(hass)
-    await _goes(hass, SAM, "home")
     assert _mode(hass) == "auto"
 
 
@@ -146,13 +149,6 @@ async def test_a_restart_takes_the_people_as_they_are(hass: HomeAssistant, freez
     await _goes(hass, ALEX, "not_home")
     await _goes(hass, ALEX, "home")
     assert _mode(hass) == "auto"
-
-
-async def test_without_chosen_people_nobody_ends_away(hass: HomeAssistant, freezer) -> None:
-    await _start(hass, freezer, None, alex="not_home")
-    await _away(hass)
-    await _goes(hass, ALEX, "home")
-    assert _mode(hass) == "away"
 
 
 async def test_people_leaving_never_start_away(hass: HomeAssistant, freezer) -> None:

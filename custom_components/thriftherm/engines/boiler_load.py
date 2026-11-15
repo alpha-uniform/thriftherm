@@ -7,20 +7,20 @@ mean little without the number of rooms that called for heat.
 Two things follow
 * **The spread rule.** The spread only judges the curve while a fair share of the rooms that
   can take heat call (`spread_rule`). Below that, only the progress of the calling rooms counts.
-* **A curve per load class.** The operation is sorted into three classes: one room calls, a
-  few, or the majority, which is more than the share of the spread rule (`majority_from`; with
-  half: three of four or five rooms, two of two or three). Each class has its own correction
-  of the heating curve, a level and a slope, so six numbers describe which flow suits which
-  outdoor temperature and which number of rooms. A learning step only moves the class it was
-  taken in: what the bathroom alone taught no longer shifts the flow for the whole flat
+* **A curve per load class and room.** The operation is sorted into three classes: one room
+  calls, a few, or the majority, which is more than the share of the spread rule
+  (`majority_from`; with half: three of four or five rooms, two of two or three). Within a
+  class each room has its own correction of the heating curve (a line: a level and a slope),
+  and the room that needs the most sets the flow. A learning step only moves the line it was
+  taken for: what the bathroom alone taught does not shift the flow for the whole flat
   (measured 2026-10-11: one room calling drove the common correction to +4 K, and three rooms
   then started from it).
 
 Kept simple on purpose
-* Three lines, not a grid of cells by outdoor band: a line has no edge at which the flow
-  jumps, and it learns from mild and cold weather alike.
-* A class without a value of its own starts from the nearest class that has one, else from
-  the common correction.
+* Lines, not a grid of cells by outdoor band: a line has no edge at which the flow jumps, and
+  it learns from mild and cold weather alike.
+* A line without a value of its own borrows one until its first step (`line_of`): the same
+  room's where more rooms call, else the common correction.
 * A value may be **found**: once the rooms of a class have reached their targets for some
   hours without a step, it stays put, and only evidence that lasts moves it again. Without
   this the learning answers every small deviation and the flow keeps going up and down.
@@ -37,6 +37,7 @@ from math import ceil, floor, isfinite
 from ..models import RoomResult
 from .common import as_dict, as_float
 from .heat_call import CALL_CALLING, CALL_STALLED
+from .room import TREND_WINDOW_S
 
 CLASS_SINGLE = "single"
 CLASS_FEW = "few"
@@ -49,9 +50,11 @@ SPREAD_RULE_BLOCKED = "blocked_few_rooms"
 
 # The rooms' verdict, the same evidence the cycling rule of the learning uses (measured 2026-10-10).
 LAG_DEFICIT_K = 0.2  # a called room still this far below target ...
-LAG_RATE_K_H = 0.2  # ... and rising more slowly than this: it does not get there (the learning's SLOW_RATE_K_H)
+LAG_RATE_K_H = 0.2  # ... and rising more slowly than this: it does not get there
+# ... once its own call has run this long. A call begins three tenths below target with a trend of 0 over the 90
+# minutes before: with another room keeping the boiler released, every call began as "lagging" (review 2026-11-13).
+LAG_MIN_CALL_S = 1800.0
 HAND_HOLD_BAND_K = 1.0  # a target set by hand counts once the room is this close to it: holding, not heating up
-BRISK_RATE_K_H = 0.5  # every calling room rises at least this fast: less would do
 MAX_GAP_S = 300.0  # a longer gap between two cycles (restart, outage) is not counted as operation
 
 # A value that was found. First values, to be reviewed against the recorded cycles.
@@ -68,7 +71,7 @@ DWELL_S = 600.0
 
 @dataclass(frozen=True)
 class LoadLine:
-    """The correction of the heating curve for one load class, and how well it has served."""
+    """The correction of the heating curve for one room within a load class, and how well it has served."""
 
     level_k: float = 0.0  # added at every outdoor temperature
     slope_k: float = 0.0  # added in full at -10 °C, not at all at +15 °C
@@ -78,6 +81,15 @@ class LoadLine:
     found: bool = False  # it has served for `FOUND_AFTER_H` since its last step: only lasting evidence moves it
     last_step_k: float = 0.0  # the last learning step taken in this class (signed), and when: the next
     last_step_ts: float | None = None  # one doubles or halves by it, whatever the other classes did since
+    # A step up for a room a cycling boiler did not get there is a trial, and so is every step down of such a
+    # boiler (boiler_learning.review_trials): how fast the room rose then (K/h; None: it did not lag), and the
+    # line's level and slope before it. None: no step is under review.
+    trial: tuple[float | None, float, float] | None = None
+    no_help_ts: float | None = None  # the last step up that left the room rising no faster was taken back then
+    no_less_ts: float | None = None  # the last step down that left the room worse off was taken back then
+    fast_calls: int = 0  # holding calls in a row that got the room to its target briskly (boiler_learning.count_calls)
+    fast_call_ts: float | None = None  # ... and when the last of them ended: a day on, the count starts over
+    borrowed: bool = False  # its value is not its own yet: `line_of` takes it from where the line starts
     asked: int = 0  # the direction the learning asks a found value to move in (not stored)
     asked_since_ts: float | None = None
     asked_last_ts: float | None = None
@@ -96,6 +108,12 @@ class LoadLine:
             "found": self.found,
             "last_step_k": self.last_step_k,
             "last_step_ts": self.last_step_ts,
+            "trial": None if self.trial is None else list(self.trial),
+            "no_help_ts": self.no_help_ts,
+            "no_less_ts": self.no_less_ts,
+            "fast_calls": self.fast_calls,
+            "fast_call_ts": self.fast_call_ts,
+            "borrowed": self.borrowed,
         }
 
     @classmethod
@@ -106,7 +124,16 @@ class LoadLine:
             value = as_float(data.get(key))
             return value if value is not None and isfinite(value) and (signed or value >= 0) else 0.0
 
-        stamp = as_float(data.get("last_step_ts"))
+        def stamp_of(key: str) -> float | None:
+            value = as_float(data.get(key))
+            return value if value is not None and isfinite(value) else None
+
+        raw = data.get("trial")
+        trial = [None if v is None else as_float(v) for v in raw] if isinstance(raw, list) and len(raw) == 3 else []
+        # the room's rise may be None (a step down for brisk calls), the line before the step may not
+        whole = len(trial) == 3 and (raw[0] is None or trial[0] is not None) and None not in trial[1:]
+        whole = whole and all(isfinite(v) for v in trial if v is not None)
+        calls = as_float(data.get("fast_calls"))
         return cls(
             level_k=number("level_k", signed=True),
             slope_k=number("slope_k", signed=True),
@@ -115,7 +142,13 @@ class LoadLine:
             calm_hours=number("calm_hours"),
             found=data.get("found") is True,
             last_step_k=number("last_step_k", signed=True),
-            last_step_ts=stamp if stamp is not None and isfinite(stamp) else None,
+            last_step_ts=stamp_of("last_step_ts"),
+            trial=(trial[0], trial[1], trial[2]) if whole else None,
+            no_help_ts=stamp_of("no_help_ts"),
+            no_less_ts=stamp_of("no_less_ts"),
+            fast_calls=int(calls) if calls is not None and isfinite(calls) and calls > 0 else 0,
+            fast_call_ts=stamp_of("fast_call_ts"),
+            borrowed=data.get("borrowed") is True,
         )
 
 
@@ -123,8 +156,21 @@ Lines = Mapping[str, LoadLine]
 
 
 def lines_from_storage(data: object) -> dict[str, LoadLine]:
-    """Stored lines; anything that is not one of the three classes or a room within one is dropped."""
-    return {key: LoadLine.from_storage(value) for key, value in as_dict(data).items() if class_of(key) in CLASSES}
+    """Stored lines; anything that is not a room within one of the three classes is dropped.
+
+    A store from before lines knew whether their value was their own kept every line with the value it had
+    started from. One that never took a step and holds exactly what the same room's line has where fewer rooms
+    call took it from there, the way `_start` has closed: it gives the value up (seen 2026-11-12:
+    "majority:badezimmer" with the +10.8 K of "few:badezimmer"). Every other line keeps what it was stored with.
+    """
+    stored = {key: as_dict(value) for key, value in as_dict(data).items() if ROOM_MARK in key and class_of(key) in CLASSES}
+    lines = {key: LoadLine.from_storage(value) for key, value in stored.items()}
+    for key, line in lines.items():
+        lighter = (lines.get(room_cell(other, room_of(key))) for other in CLASSES[: CLASSES.index(class_of(key))])
+        taken = any(o and o.last_step_ts is not None and (o.level_k, o.slope_k) == (line.level_k, line.slope_k) for o in lighter)
+        if "borrowed" not in stored[key] and line.last_step_ts is None and taken:
+            lines[key] = replace(line, borrowed=True, found=False, calm_hours=0.0)
+    return lines
 
 
 def lines_to_storage(lines: Lines) -> dict:
@@ -145,15 +191,17 @@ def room_of(cell: str | None) -> str | None:
     return cell.split(ROOM_MARK, 1)[1] if cell is not None and ROOM_MARK in cell else None
 
 
-def deciding_cell(lines: Lines, load: str, rooms: Iterable[str], level_k: float, slope_k: float, cold_weight: float) -> str:
-    """Of the rooms that call, the line that asks for the highest flow; the class's own without rooms.
+def deciding_cell(
+    lines: Lines, load: str, rooms: Iterable[str], level_k: float, slope_k: float, cold_weight: float
+) -> str | None:
+    """Of the rooms that call, the line that asks for the highest flow; None without rooms: the common correction.
 
     There is one flow for all radiators. The room whose radiator is the smallest for its losses
     needs the most, and it sets the flow; the others take less through their valves. Which room
     that is depends on the radiator, the walls and the windows, not on the room's size: on the test
     day of 2026-10-13 the small kitchen stopped rising while the living room went on.
     """
-    best, best_k = load, None
+    best, best_k = None, None
     for room in sorted(rooms):
         cell = room_cell(load, room)
         line = line_of(lines, cell, level_k, slope_k)
@@ -259,6 +307,10 @@ def counts(r: RoomResult) -> bool:
     """Whether a room's progress says anything about the flow (see `lagging_rooms`)."""
     if not r.heating_allowed or r.boost_active or r.thermostat_heating is False or r.temperature is None:
         return False
+    if r.target_steady_s is not None and r.target_steady_s < TREND_WINDOW_S:
+        return False
+    if r.temperature_age_s is not None and r.temperature_age_s > TREND_WINDOW_S:
+        return False
     return r.target_reason != "override" or round(r.target - r.temperature, 2) <= HAND_HOLD_BAND_K
 
 
@@ -266,6 +318,13 @@ def lagging_rooms(rooms: tuple[RoomResult, ...]) -> list[RoomResult]:
     """Rooms that are called for, stay below target and barely rise (a stalled one included).
 
     What is no evidence that the flow is too low:
+    * a room whose target moved within the trend's 90 minutes. The trend still holds the time before, flat or
+      falling, so the room reads as not rising while it has only begun to (seen 2026-10-22: target 21 °C from
+      03:07, a step up at 04:11). The curve is for holding a temperature; heating up to one is the demand
+      boost's and the heat-up extra's;
+    * a room whose sensor has not reported within those 90 minutes. One that reports on a change of about a
+      degree only (issue #7, Shelly H&T) stood flat for four hours and then jumped: a trend of 0.0 K/h that
+      is silence, and nobody knows what the room did;
     * a quick heat-up: it is a wish for a while;
     * a target set by hand that the room is still heating up to. Seen 2026-10-13: four rooms set 3 K
       above their temperature for a test drove the correction for most rooms from +1 K to +8.5 K in
@@ -284,6 +343,7 @@ def lagging_rooms(rooms: tuple[RoomResult, ...]) -> list[RoomResult]:
         and round(r.target - r.temperature, 2) >= LAG_DEFICIT_K
         and r.trend_k_per_h is not None
         and r.trend_k_per_h < LAG_RATE_K_H
+        and (r.calling_s is None or r.calling_s >= LAG_MIN_CALL_S)
     ]
 
 
@@ -296,45 +356,37 @@ def lagging(rooms: tuple[RoomResult, ...]) -> bool:
 # The lines
 # ---------------------------------------------------------------------------
 def line_of(lines: Lines, load: str, level_k: float, slope_k: float) -> LoadLine:
-    """The class's line; one it does not have yet starts from the nearest class that has, else from the common correction."""
-    own = lines.get(load)
-    if own is not None:
-        return own
-    if ROOM_MARK in load:
-        # A room without a line of its own in this class starts from its value only (hours and steps
-        # are its own): the class's line where one was learned before there were rooms, so that an
-        # update keeps the flow; else the room's own line in the nearest class, for it is the same
-        # radiator; else what a class without a line starts from.
-        group, room = class_of(load), room_of(load)
-        start = lines.get(group)
-        if start is not None:
-            # what the class had found holds for its rooms: an update does not unfind it
-            return LoadLine(level_k=start.level_k, slope_k=start.slope_k, found=start.found, calm_hours=start.calm_hours)
-        else:
-            index = CLASSES.index(group)
-            own_elsewhere = sorted(
-                (abs(CLASSES.index(other) - index), -CLASSES.index(other))
-                for other in CLASSES
-                if other != group and room_cell(other, room) in lines
-            )
-            if own_elsewhere:
-                start = lines[room_cell(CLASSES[-own_elsewhere[0][1]], room)]
-            else:
-                start = line_of(lines, group, level_k, slope_k)
-        return LoadLine(level_k=start.level_k, slope_k=start.slope_k)
-    index = CLASSES.index(load)
-    # of two neighbours equally near, the one with more rooms: a single room's value is the odd one out
-    known = sorted((abs(CLASSES.index(other) - index), -CLASSES.index(other)) for other in lines if other in CLASSES)
-    if known:
-        start = lines[CLASSES[-known[0][1]]]
-        return LoadLine(level_k=start.level_k, slope_k=start.slope_k)  # its value only: the hours and steps are its own
-    return LoadLine(level_k=level_k, slope_k=slope_k)
+    """The line in use for a load class or a room within it.
+
+    One without a value of its own (`borrowed`, or not kept yet) takes it from where it starts (`_start`), each
+    time it is asked: its hours and whether it was found are its own, its value follows the line it comes from
+    until its first step. Kept with the value instead, it stood for good (seen 2026-11-12: "majority:badezimmer"
+    at +10.8 K after 0.1 h and no step), and neither a step nor a reset of the other line reached it.
+    """
+    kept = lines.get(load)
+    if kept is not None and not kept.borrowed:
+        return kept
+    start = _start(lines, load)
+    level, slope = (level_k, slope_k) if start is None else (start.level_k, start.slope_k)
+    return replace(kept or LoadLine(), level_k=level, slope_k=slope, borrowed=True, found=False)
+
+
+def _start(lines: Lines, load: str) -> LoadLine | None:
+    """The line a room's line without a value of its own takes it from; None: the common correction.
+
+    The same room's line where more rooms call, the nearest first: it is the same radiator. Only that way
+    round: alone the boiler cycles and its flow averages far below what is set, so what a room learned alone
+    is too much among others.
+    """
+    room = room_of(load)
+    heavier = () if room is None else CLASSES[CLASSES.index(class_of(load)) + 1:]
+    return next((line for other in heavier if (line := lines.get(room_cell(other, room))) and not line.borrowed), None)
 
 
 def observe(
     lines: Lines, load: str | None, hours: float, lag: bool, level_k: float, slope_k: float, judged: bool = True
 ) -> dict[str, LoadLine]:
-    """Book one cycle of released heating to its class: its hours, and whether its rooms got there.
+    """Book one cycle of released heating to a line: its hours, and whether its room got there.
 
     `judged` says a verdict was possible in this cycle: a room called and had been given time.
     Only such time counts towards "found" (review 2026-10-11: a bathroom calling 25 minutes at
@@ -349,8 +401,10 @@ def observe(
         line,
         hours=line.hours + hours,
         lag_hours=line.lag_hours + (hours if lag else 0.0),
+        fast_calls=0 if lag else line.fast_calls,
         calm_hours=calm,
-        found=line.found or calm >= FOUND_AFTER_H,  # a lagging room does not unfind it: that takes a step
+        # a lagging room does not unfind it: that takes a step; and a borrowed value is not this line's to find
+        found=not line.borrowed and (line.found or calm >= FOUND_AFTER_H),
     )
     return out
 
@@ -380,20 +434,21 @@ def stepped(line: LoadLine, level_k: float, slope_k: float, moved_k: float, now_
     """The line after a learning step: its new value, and it has to prove itself again."""
     return replace(
         line, level_k=level_k, slope_k=slope_k, calm_hours=0.0, found=False, last_step_k=moved_k, last_step_ts=now_ts,
-        asked=0, asked_since_ts=None, asked_last_ts=None,
+        trial=None, no_help_ts=None, fast_calls=0, borrowed=False, asked=0, asked_since_ts=None, asked_last_ts=None,
     )
 
 
-def summary(lines: Lines, cold_weight: float) -> dict[str, dict]:
-    """The classes and the rooms with a line of their own, for the display."""
-    return {
-        load: {
-            "correction_k": round(lines[load].level_k + lines[load].slope_k * cold_weight, 2),
-            "level_k": round(lines[load].level_k, 2),
-            "slope_k": round(lines[load].slope_k, 2),
-            "found": lines[load].found,
-            "hours": round(lines[load].hours, 1),
-            "lag_share": round(lines[load].lag_share, 2),
+def summary(lines: Lines, cold_weight: float, level_k: float, slope_k: float) -> dict[str, dict]:
+    """The rooms' lines, each with the value in use, for the display."""
+    out = {}
+    for load in sorted(lines):
+        line = line_of(lines, load, level_k, slope_k)
+        out[load] = {
+            "correction_k": round(line.level_k + line.slope_k * cold_weight, 2),
+            "level_k": round(line.level_k, 2),
+            "slope_k": round(line.slope_k, 2),
+            "found": line.found,
+            "hours": round(line.hours, 1),
+            "lag_share": round(line.lag_share, 2),
         }
-        for load in (*(c for c in CLASSES if c in lines), *sorted(k for k in lines if ROOM_MARK in k))
-    }
+    return out

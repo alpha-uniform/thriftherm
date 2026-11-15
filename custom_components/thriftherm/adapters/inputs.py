@@ -6,6 +6,7 @@ Every value is validated here so the engines can trust `SensorReading.valid`.
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from collections import deque
@@ -54,6 +55,7 @@ from ..const import (
 from ..engines import psychrometrics as psy
 from ..engines.cop import RH_MAX_AGE_S
 from ..engines.room import WINDOW_CLOSED_STATES, WINDOW_OPEN_STATES
+from ..engines.room_cooling import CoolSchedule
 from ..engines.safety import HEAT_PUMP_DROPOUT_S
 from ..engines.schedule_week import block_starting, comfort_run_end, next_level_change
 
@@ -189,11 +191,18 @@ def whole_number(value: str | None) -> int | None:
 
 
 # a power sensor's unit -> its factor to W; None: no unit given, taken as W
+_LOGGER = logging.getLogger(__name__)
+
 _POWER_UNITS: dict[str | None, float] = {None: 1.0, "": 1.0, "W": 1.0, "kW": 1000.0, "mW": 0.001, "MW": 1e6}
 # units written by hand (LocalTuya, Tasmota, MQTT templates), in any case; "mw" is milli or mega, and no unit
 _POWER_UNITS_ANY_CASE: dict[str, float] = {
     "w": 1.0, "watt": 1.0, "watts": 1.0, "kw": 1000.0, "kilowatt": 1000.0, "kilowatts": 1000.0,
 }
+
+
+# A gas meter's reading in m³ and a gas flow in m³/h, by the unit the sensor names; none is taken as that, as before.
+_GAS_VOLUME_UNITS: dict[str, float] = {"m³": 1.0, "m3": 1.0, "m^3": 1.0, "l": 0.001, "dm³": 0.001, "dm3": 0.001}
+_GAS_FLOW_UNITS: dict[str, float] = {"m³/h": 1.0, "m3/h": 1.0, "m^3/h": 1.0, "l/min": 0.06, "l/h": 0.001}
 
 
 def _power_factor(unit: object) -> float | None:
@@ -304,6 +313,7 @@ class SnapshotBuilder:
         self._abs_hum_history: dict[str, deque[tuple[float, float]]] = {
             r.key: deque(maxlen=400) for r in self.rooms if r.bathroom_drying and r.served_by_heat_pump and r.drying_automatic
         }
+        self._wrong_units: set[tuple[str | None, Any]] = set()  # warned about once: (entity, unit)
         self._compressor_started_at: datetime | None = None
         self._heat_pump_gone_since: datetime | None = None  # while its climate entity is away
         self._outlet_history: deque[tuple[float, float]] = deque(maxlen=120)
@@ -359,9 +369,35 @@ class SnapshotBuilder:
         unit = None if state is None else state.attributes.get("unit_of_measurement")
         factor = _power_factor(unit)
         if factor is None:
+            # Whatever else is wrong with it: a number in another unit is no power, also once it has gone quiet. Named
+            # only while it was fresh, 8 VA counted as 8 W from the plug six minutes later (review 2026-11-13).
             reading = self.read_number(entity_id, RANGE_POWER_W, now, max_age_s)
-            return replace(reading, valid=False, reason="wrong_unit", unit=str(unit)) if reading.valid else reading
+            return reading if reading.value is None else replace(reading, valid=False, reason="wrong_unit", unit=str(unit))
         reading = self.read_number(entity_id, (RANGE_POWER_W[0] / factor, RANGE_POWER_W[1] / factor), now, max_age_s)
+        return reading if reading.value is None else replace(reading, value=reading.value * factor)
+
+    def read_in_unit(
+        self, entity_id: str | None, rng: tuple[float, float], now: datetime, units: Mapping[str, float], max_age_s: float | None
+    ) -> SensorReading:
+        """A reading in the unit of `units` whose factor is 1, whatever of them the sensor reports in.
+
+        A sensor in another unit is no reading ("wrong_unit"): a gas meter in kWh was taken as m³ and multiplied by
+        the calorific value once more, one in litres counted a thousandfold (review 2026-11-13). One without a unit
+        is taken as it is, as before.
+        """
+        state = self._get(entity_id)
+        unit = None if state is None else state.attributes.get("unit_of_measurement")
+        factor = 1.0 if unit in (None, "") else units.get(str(unit).strip().lower())
+        if factor is None:
+            reading = self.read_number(entity_id, rng, now, max_age_s)
+            if reading.value is None:
+                return reading
+            if (entity_id, unit) not in self._wrong_units:
+                self._wrong_units.add((entity_id, unit))
+                known = " / ".join(units)
+                _LOGGER.warning("thriftherm: %s reports in %s, which is none of %s: not read", entity_id, unit, known)
+            return replace(reading, valid=False, reason="wrong_unit", unit=str(unit))
+        reading = self.read_number(entity_id, (rng[0] / factor, rng[1] / factor), now, max_age_s)
         return reading if reading.value is None else replace(reading, value=reading.value * factor)
 
     def _unchanged_s(self, reading: SensorReading, now: datetime) -> float | None:
@@ -649,6 +685,28 @@ class SnapshotBuilder:
         following = None if week is None else block_starting(week, schedule.next_start)
         return None if following is None else following[1]
 
+    def cool_schedule(self, cfg: RoomConfig) -> CoolSchedule | None:
+        """The room's cooling schedule helper: its week where it tells its blocks, else its state and next start.
+
+        None without one, or while it is unavailable: the cooling comfort then holds all day (engines/room_cooling.py).
+        """
+        if not cfg.cooling_schedule_entity:
+            return None
+        state = self._get(cfg.cooling_schedule_entity)
+        if state is None or state.state in BAD_STATES:
+            return None
+        week = self._schedule_blocks(cfg.cooling_schedule_entity)
+        if week is not None:
+            return CoolSchedule(week=week)
+        raw = state.attributes.get("next_event")
+        parsed = None if raw is None else dt_util.parse_datetime(str(raw))
+        active = state.state == "on"
+        return CoolSchedule(
+            active=active,
+            temperature=self.read_attr_float(state, "temperature"),
+            next_start=None if parsed is None or active else dt_util.as_local(parsed),
+        )
+
     def _schedule_state(self, cfg: RoomConfig) -> ScheduleState | None:
         """State of the assigned schedule helper: active block, its temperature, next start."""
         if not cfg.schedule_entity:
@@ -712,6 +770,10 @@ class SnapshotBuilder:
         # the valve is open; a plain valve may say it as well. Anything else is no answer.
         action = None if trv_mode is None or climate is None else climate.attributes.get("hvac_action")
         heating = True if action in ("heating", "preheating") else (False if action in ("idle", "off") else None)
+        # Better Thermostat 2.0 names why it holds the valve shut (devices released, valve maintenance, startup),
+        # sometimes before `hvac_action` leaves heating (issue #8). Without the attribute nothing changes.
+        if heating is not None and climate is not None and climate.attributes.get("heating_blocked_by") not in (None, "", "none"):
+            heating = False
         own_target = trv_mode is not None and climate is not None and applies_own_target(climate.attributes)
         schedule = self._schedule_state(cfg)
 
@@ -789,7 +851,7 @@ class SnapshotBuilder:
         error_code = attrs.get("error_code")
         try:
             error_code = None if error_code is None else int(error_code)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):  # "inf" is no error code, and must not end the cycle
             error_code = None
 
         plug_power = self.read_power(cfg.get(CONF_HEAT_PUMP_POWER), now, max_age_s=PLUG_POWER_MAX_AGE_S)
@@ -862,8 +924,8 @@ class SnapshotBuilder:
         max_age = 0.0 if cfg.get(CONF_BOILER_SIGNAL) else 6 * 3600.0
         # The meter publishes changes only, so an idle 0 stands for hours and age alone says nothing.
         # A flow above 0 left hanging would mean "burning" for good (hot water guess, learning pause).
-        gas_volume = self.read_number(cfg.get(CONF_GAS_VOLUME), (0.0, 1e7), now, max_age_s=0)
-        gas_flow = self.read_number(cfg.get(CONF_GAS_FLOW), RANGE_GAS_FLOW_M3H, now, max_age_s=0)
+        gas_volume = self.read_in_unit(cfg.get(CONF_GAS_VOLUME), (0.0, 1e7), now, _GAS_VOLUME_UNITS, max_age_s=0)
+        gas_flow = self.read_in_unit(cfg.get(CONF_GAS_FLOW), RANGE_GAS_FLOW_M3H, now, _GAS_FLOW_UNITS, max_age_s=0)
         # no meter reading (age None) cannot speak for the flow: 1.2 m³/h still meant "burning" after 10 h
         # Whether a value moved goes by its last change, not its last report: a meter that sends its
         # unchanged reading every minute (force_update, Modbus, REST) kept a flow of 1.2 valid for good
@@ -997,6 +1059,8 @@ class SnapshotBuilder:
                 watched.add(cfg.climate_entity)
             if cfg.schedule_entity:
                 watched.add(cfg.schedule_entity)
+            if cfg.cooling_schedule_entity:
+                watched.add(cfg.cooling_schedule_entity)
         # The gas meter and the pump say when the burner runs. A short burn lasts about
         # as long as one update cycle, so waiting for the next cycle loses it - and a lost
         # burn is a lost cycling signal. Both are quiet while the burner is off.

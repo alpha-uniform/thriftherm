@@ -1,6 +1,8 @@
 from dataclasses import replace
 from datetime import datetime
 
+import pytest
+
 from custom_components.thriftherm.engines import room as room_engine, safety
 
 from .conftest import MISSING, PARAMS, boiler_state, heat_pump_state, reading, room_config, room_state, snapshot
@@ -19,24 +21,21 @@ def test_all_ok(two_rooms):
     assert res.issues == ()
 
 
-def test_single_sensor_failure_degrades_not_fallback():
+@pytest.mark.parametrize(
+    ("living_temp", "state", "issue"),
+    [
+        pytest.param(18.0, "degraded", "room_temperature_missing:badezimmer", id="single_sensor_failure_degrades_not_fallback"),
+        pytest.param(None, "fallback", "all_room_temperatures_missing", id="all_sensors_missing_is_fallback"),
+    ],
+)
+def test_one_missing_room_temperature_degrades_and_all_missing_is_fallback(living_temp, state, issue):
     bath = room_config("badezimmer", heat_pump=True)
     living = room_config("wohnzimmer")
-    rooms = {"badezimmer": room_state(bath, temp=None), "wohnzimmer": room_state(living, temp=18.0)}
+    rooms = {"badezimmer": room_state(bath, temp=None), "wohnzimmer": room_state(living, temp=living_temp)}
     snap = snapshot(rooms)
     res = safety.evaluate(snap, _rooms_results(snap))
-    assert res.state == "degraded"
-    assert "room_temperature_missing:badezimmer" in res.issues
-
-
-def test_all_sensors_missing_is_fallback():
-    bath = room_config("badezimmer", heat_pump=True)
-    living = room_config("wohnzimmer")
-    rooms = {"badezimmer": room_state(bath, temp=None), "wohnzimmer": room_state(living, temp=None)}
-    snap = snapshot(rooms)
-    res = safety.evaluate(snap, _rooms_results(snap))
-    assert res.state == "fallback"
-    assert "all_room_temperatures_missing" in res.issues
+    assert res.state == state
+    assert issue in res.issues
 
 
 def test_frost_rooms_detected(two_rooms):

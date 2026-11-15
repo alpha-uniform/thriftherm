@@ -114,6 +114,18 @@ def payload(flow: float, disable_hc: bool, disable_hwc_load: bool = False) -> st
     return f"auto;{flow:.1f};-;-;{1 if disable_hc else 0};0;{1 if disable_hwc_load else 0};0;0;0"
 
 
+def _gas_burns(gas_w: float | None) -> bool:
+    return gas_w is not None and gas_w > HOT_WATER_GAS_W
+
+
+def _in_overrun(reported_mode: str | None, gas_w: float | None) -> bool:
+    """The boiler says it runs its pump on or waits out its burner lockout after a heating run, and no gas burns.
+
+    With gas burning the code lags behind a new start; without a gas meter the code alone decides.
+    """
+    return reported_mode == BOILER_REPORTS_HEATING_AFTER and not _gas_burns(gas_w)
+
+
 def hot_water_suspected(
     flow_c: float | None,
     return_c: float | None,
@@ -142,9 +154,8 @@ def hot_water_suspected(
         return True
     if reported_mode in (BOILER_REPORTS_HEATING, BOILER_REPORTS_FAULT):
         return False
-    burning = gas_w is not None and gas_w > HOT_WATER_GAS_W
-    if reported_mode == BOILER_REPORTS_HEATING_AFTER and not burning:
-        # overrun after a heating run; with gas burning the code lags behind a new start
+    burning = _gas_burns(gas_w)
+    if _in_overrun(reported_mode, gas_w):
         return False
     if heating_blocked and burning:
         return True
@@ -174,17 +185,7 @@ def _heating_after_all(inp: BoilerInputs, mem: BoilerMemory, now: float) -> bool
     seen = mem.hot_water_seen_ts
     if not mem.hot_water_guessed or seen is None or now - seen > HOT_WATER_RETRACT_S:
         return False
-    burning = inp.gas_power_w is not None and inp.gas_power_w > HOT_WATER_GAS_W
-    return inp.reported_mode == BOILER_REPORTS_HEATING or (inp.reported_mode == BOILER_REPORTS_HEATING_AFTER and not burning)
-
-
-def _in_lockout(inp: BoilerInputs) -> bool:
-    """The boiler says it runs its pump on or waits out its burner lockout after a heating run, and no gas burns.
-
-    With gas burning the code lags behind a new start; without a gas meter the code alone decides.
-    """
-    burning = inp.gas_power_w is not None and inp.gas_power_w > HOT_WATER_GAS_W
-    return inp.reported_mode == BOILER_REPORTS_HEATING_AFTER and not burning
+    return inp.reported_mode == BOILER_REPORTS_HEATING or _in_overrun(inp.reported_mode, inp.gas_power_w)
 
 
 def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerMemory]:
@@ -255,7 +256,7 @@ def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerM
     return replace(cmd, hot_water=recent, hot_water_seen_ts=mem.hot_water_seen_ts, warm_start=warm), mem
 
 
-NO_CLASS = {"class_in_use": None, "class_candidate": None, "class_candidate_since_ts": None, "cell_rooms": ()}
+NO_CLASS = {"class_in_use": None, "class_candidate": None, "class_candidate_since_ts": None, "cell_rooms": (), "outvoted": ()}
 
 
 def _boosts(mem: BoilerMemory, calling: list) -> dict[str, float]:
@@ -272,9 +273,8 @@ def _need(inp: BoilerInputs, mem: BoilerMemory, boosts: dict[str, float], cell: 
     """
     base = correction(mem, inp.outdoor_c, cell)
     best, set_by = base, load.room_of(cell)
-    group = load.class_of(cell) if load.room_of(cell) is not None else None
     for r in load.wanting_rooms(inp.rooms):
-        line = base if group is None else correction(mem, inp.outdoor_c, load.room_cell(group, r.key))
+        line = base if cell is None else correction(mem, inp.outdoor_c, load.room_cell(load.class_of(cell), r.key))
         if line + boosts.get(r.key, 0.0) > best + 1e-9:
             best, set_by = line + boosts.get(r.key, 0.0), r.key
     return best, set_by
@@ -286,28 +286,26 @@ def _book_operation(inp: BoilerInputs, mem: BoilerMemory, cell: str | None) -> B
     gap = 0.0 if mem.lines_seen_ts is None else now - mem.lines_seen_ts
     if not inp.learning_allowed or not 0.0 < gap <= load.MAX_GAP_S:
         return replace(mem, lines_seen_ts=now if inp.learning_allowed else None)
-    released_for = 0.0 if mem.state_since_ts is None else now - mem.state_since_ts
-    given_time = released_for >= learning.LAG_MIN_HEAT_S
+    given_time = learning.given_time(mem, now)
     calling = load.calling_rooms(inp.rooms)
     behind = {r.key for r in load.lagging_rooms(inp.rooms)} if given_time else set()
     judged = given_time and bool(calling)
     hours = gap / 3600.0
-    if load.room_of(cell) is not None:
-        # Each room that wants heat books the time to its own line, with whether it got there. A room
-        # whose progress says nothing (a wish by hand still far off, its valve shut) books no verdict:
-        # it would count as calm and its line as found.
-        lines = mem.lines
-        for r in load.wanting_rooms(inp.rooms):
-            own = load.room_cell(load.class_of(cell), r.key)
-            lines = load.observe(lines, own, hours, r.key in behind, mem.offset_k, mem.slope_k, judged and load.counts(r))
-    else:
-        lines = load.observe(mem.lines, cell, hours, bool(behind), mem.offset_k, mem.slope_k, judged)
+    # Each room that wants heat books the time to its own line, with whether it got there. A room
+    # whose progress says nothing (a wish by hand still far off, its valve shut) books no verdict:
+    # it would count as calm and its line as found. While no room has called since the release there is no line to book to.
+    lines = mem.lines
+    for r in load.wanting_rooms(inp.rooms) if cell is not None else ():
+        own = load.room_cell(load.class_of(cell), r.key)
+        lines = load.observe(lines, own, hours, r.key in behind, mem.offset_k, mem.slope_k, judged and load.counts(r))
     return replace(mem, lines=lines, lines_seen_ts=now)
 
 
-def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bool = False) -> tuple[BoilerCommand, BoilerMemory]:
+def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bool) -> tuple[BoilerCommand, BoilerMemory]:
     p = inp.params
     now = inp.now_ts
+    # the calls that ended, judged by the class, the rooms and the plan of the cycle before, in which they still ran
+    mem = learning.count_calls(inp, mem)
     # only rooms that call count: one hanging below target (stalled), at the end of its comfort
     # period or merely heating along does not ask the boiler for anything
     heating_rooms = load.calling_rooms(inp.rooms)
@@ -320,8 +318,9 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
     mem = replace(mem, class_in_use=in_use, class_candidate=candidate, class_candidate_since_ts=candidate_since)
     cold = cold_weight(inp.outdoor_c)
     # The line that is used and learned: within the load class each room has a line of its own, and
-    # of the rooms that call the one that needs the most sets the flow. None: one common correction.
-    cell = in_use if p.boiler_load_model else None
+    # of the rooms that call the one that needs the most sets the flow. None: no room has called since the release,
+    # and the common correction holds.
+    cell = in_use
     if cell is not None:
         wanting = load.wanting_rooms(inp.rooms)
         if heating_rooms and wanting:
@@ -329,7 +328,7 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
         cell = load.deciding_cell(mem.lines, cell, mem.cell_rooms, mem.offset_k, mem.slope_k, cold)
 
     def command(plan: str, send: bool, text: str | None, flow: float | None, disable: bool, reason: str, *, curve=None, blockers=(), waiting=None) -> BoilerCommand:
-        # what is shown is the line in use: the class's own, or the common correction
+        # what is shown is the line in use: that of the room that sets the flow, or the common correction
         if flow_cell:
             shown = load.line_of(mem.lines, flow_cell, mem.offset_k, mem.slope_k)
         else:
@@ -358,7 +357,7 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
             spread_rule=load.spread_rule(len(heating_rooms), able, share) if plan == BOILER_PLAN_HEAT else None,
             load_class=in_use,
             flow_set_by=set_by,
-            curve_by_load=load.summary(mem.lines, cold) if p.boiler_load_model else None,
+            curve_by_load=load.summary(mem.lines, cold, mem.offset_k, mem.slope_k),
             heat_up_k=(
                 {room: round(s.extra_k, 1) for room, s in mem.heat_up.items() if s.extra_k > 0.0} or None
                 if p.boiler_heat_up_rate_k_h > 0.0
@@ -444,15 +443,18 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
         # The learning moves the line of the room that sets the flow: a step on another's would not
         # move the flow at all (review 2026-10-14: three steps up left it where it was for two hours).
         _, set_by = _need(inp, mem, boosts, cell)
-        if load.room_of(cell) is not None and set_by is not None:
+        if cell is not None and set_by is not None:
             flow_cell = load.room_cell(load.class_of(cell), set_by)
         mem = _book_operation(taught, mem, cell)
         mem = learning.learn(taught, mem, heating_rooms, heating_run, flow_cell, boosts)
-        if load.room_of(cell) is not None:
+        if cell is not None:
             cell = load.deciding_cell(mem.lines, load.class_of(cell), mem.cell_rooms, mem.offset_k, mem.slope_k, cold)
         need, set_by = _need(inp, mem, boosts, cell)
-        if load.room_of(cell) is not None and set_by is not None:
+        if cell is not None and set_by is not None:
             flow_cell = load.room_cell(load.class_of(cell), set_by)
+        others = {r.key for r in heating_rooms if r.key != set_by}
+        if others - set(mem.outvoted):
+            mem = replace(mem, outvoted=tuple(sorted({*mem.outvoted, *others})))
         flow = asked = curve + need
         if frost:
             flow = max(flow, 40.0)
@@ -466,7 +468,8 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
         # one: the window of the rise starts when the rise is sent, or 8 K clicked in the lockout would go
         # out at once after it. Nor is it a flow held for the heat-up: it waits one lockout at most, and a
         # heat-up whose every review saw one would never be given more.
-        lockout_since = (now if mem.lockout_since_ts is None else mem.lockout_since_ts) if _in_lockout(inp) else None
+        in_overrun = _in_overrun(inp.reported_mode, inp.gas_power_w)
+        lockout_since = (now if mem.lockout_since_ts is None else mem.lockout_since_ts) if in_overrun else None
         mem = replace(mem, lockout_since_ts=lockout_since)
         quick = any(r.boost_active for r in heating_rooms)
         holding = lockout_since is not None and now - lockout_since < LOCKOUT_HOLD_MAX_S and not (frost or quick)

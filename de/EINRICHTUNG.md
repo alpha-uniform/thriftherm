@@ -33,7 +33,7 @@ Fernwärme oder keine eigene Therme? Dann überspringst du die Schritte 2 und 6;
 | Fensterkontakte | optional | solange ein Fenster offen ist, pausiert das Heizen in diesem Raum |
 | Feuchtesensoren | optional | Schutz gegen Feuchte, während du weg bist |
 | Heizkörperthermostate mit **Better Thermostat** | optional | nötig, wenn Thriftherm die Raumtemperaturen vorgeben soll; ohne sie funktioniert die Thermensteuerung trotzdem |
-| Gaszähler-Werte | optional | Gesamtvolumen (m³) und Momentanfluss (m³/h), falls dein Gaszähler in Home Assistant ist |
+| Gaszähler-Werte | optional | Gesamtvolumen (m³ oder Liter) und Momentanfluss (m³/h oder L/min), falls dein Gaszähler in Home Assistant ist. Ein Sensor in einer anderen Einheit (etwa kWh) wird nicht gelesen |
 | Außentemperaturfühler | optional | sonst dient eine Wetter-Entität |
 
 **Ein zentraler Raumregler an der eBUS-Klemme muss weichen.** Hängt an der eBUS-Klemme deiner Therme schon ein Raumregler, klemmst du ihn ab; an dieselbe Klemme kommt der eBUS-Adapter. Thriftherm übernimmt die Aufgabe des Reglers, und zwei Regler am eBUS würden sich gegenseitig die Vorgaben überschreiben.
@@ -55,14 +55,14 @@ Im ersten Einrichtungsschritt wählst du, welche Heizung du hast. Schritte, die 
 | Gelernte Aufheiz- und Abkühlrate je Raum | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Sollwerte an die Thermostate; Drehen von Hand wird zur vorübergehenden Übersteuerung | – | ✓ | ✓ | – | ✓ |
 | Knopf „Schnell aufheizen“ je Raum | – | ✓ | ✓ | ✓ | ✓ |
-| Frostschutz, auch im Sommerbetrieb | ✓ | ✓ | ✓ | – | ✓ |
+| Frostschutz, auch im Modus *Aus* | ✓ | ✓ | ✓ | ✓ | ✓ |
 | **Therme** | | | | | |
 | Vorlauf aus Heizkurve, Wärmebedarf der Räume und Spreizung Vorlauf/Rücklauf | ✓ | ✓ | ✓ | – | – |
 | Heizbetrieb gesperrt, wenn kein Raum Wärme braucht; Warmwasser unberührt | ✓ | ✓ | ✓ | – | – |
 | Gelernte Korrektur der Heizkurve je Raum: Der Raum, der am meisten braucht, bestimmt den Vorlauf | ✓ | ✓ | ✓ | – | – |
 | Aufheiztempo nach Wunsch: mehr Vorlauf für einen Raum, der zu langsam warm wird, gelernt je Raum | ✓ | ✓ | ✓ | – | – |
 | Warmwasser-Erkennung: Das Lernen pausiert nach dem Duschen | ✓ | ✓ | ✓ | – | – |
-| Sommerbetrieb über eBUS: Heizung aus, Warmwasser läuft weiter | ✓ | ✓ | ✓ | – | – |
+| Heizung aus über eBUS (Modus *Aus (nur Frostschutz)*), Warmwasser läuft weiter | ✓ | ✓ | ✓ | – | – |
 | Rückfall auf den Drehknopf der Therme, wenn Home Assistant ausfällt | ✓ | ✓ | ✓ | – | – |
 | **Wärmepumpe** | | | | | |
 | Steuerung der Wärmepumpe: langsam mit hohem COP, volle Leistung bei „Schnell aufheizen“ | – | – | ✓ | ✓ | ✓² |
@@ -81,8 +81,8 @@ Im ersten Einrichtungsschritt wählst du, welche Heizung du hast. Schritte, die 
 **Gut zu wissen:**
 
 - **Eine Wärmepumpe ohne Therme funktioniert.** Im ersten Einrichtungsschritt *Keine – nur Wärmepumpe und Raumsteuerung* wählen.
-- **Bad-Trocknung braucht die Wärmepumpe.** Sie trocknet mit der warmen Luft der Wärmepumpe, nur in einem Raum, den die Wärmepumpe beheizt. Einzelheiten stehen in der [Anleitung, Abschnitt 7](ANLEITUNG.md#7-wärmepumpe-optional).
-- **Alles in den Therme-Zeilen braucht eine eigene Therme über ebusd**, oder als Vorschau eine Therme über zwei Entitäten wie bei OpenTherm ([Schritt 4.3a](#43a-therme-ohne-ebusd-über-entitäten-vorschau)). Das betrifft Vorlauf, Heizsperre, gelernte Heizkurve, Warmwasser-Erkennung, Sommerbetrieb über eBUS und den Rückfall auf den Drehknopf. Bei Fernwärme oder ohne Therme wird nie etwas über eBUS gesendet.
+- **Bad-Trocknung braucht die Wärmepumpe.** Sie trocknet mit der warmen Luft der Wärmepumpe, nur in einem Raum, den die Wärmepumpe beheizt. Einzelheiten stehen in der [Anleitung, Wärmepumpe](ANLEITUNG.md#wärmepumpe-optional).
+- **Alles in den Therme-Zeilen braucht eine eigene Therme über ebusd**, oder als Vorschau eine Therme über zwei Entitäten wie bei OpenTherm ([Schritt 4.3a](#43a-therme-ohne-ebusd-über-entitäten-vorschau)). Das betrifft Vorlauf, Heizsperre, gelernte Heizkurve, Warmwasser-Erkennung, Heizung aus über eBUS und den Rückfall auf den Drehknopf (den gibt es nur über ebusd, siehe 4.3a). Bei Fernwärme oder ohne Therme wird nie etwas über eBUS gesendet.
 
 ### Bei Fernwärme
 
@@ -214,13 +214,12 @@ Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme un
 | Heizkurve: Vorlauf bei -10 °C außen | mit dem Standardwert 55 °C beginnen |
 | Heizkurve: Vorlauf bei +15 °C außen | mit dem Standardwert 30 °C beginnen |
 | Minimale Vorlauftemperatur | **etwa 45 °C bei einer Heizwerttherme, etwa 30 °C bei einem Brennwertgerät** |
-| Maximale Vorlauftemperatur | deine Drehknopf-Stellung aus Schritt 6 (zum Beispiel 55 °C) oder etwas darunter; höhere Werte wirken nicht, denn der Knopf ist die Obergrenze |
+| Maximale Vorlauftemperatur | Standard 60 °C. Besser deine Drehknopf-Stellung aus Schritt 6 (zum Beispiel 55 °C) oder etwas darunter; höhere Werte wirken nicht, denn der Knopf ist die Obergrenze |
 | Aufheiztempo (Grad pro Stunde, 0 = aus) | mit 0 beginnen. Wird dir ein Raum nach dem Hochstellen zu langsam warm, 0,5 bis 2 einstellen; mehr Tempo kostet mehr Gas ([Anleitung, Aufheiztempo](ANLEITUNG.md#aufheiztempo)) |
 | Anteil der Räume, die anfordern müssen, bevor die Spreizung die Kurve bewertet | den Standardwert 0,5 lassen |
-| Eigene Heizkurve je Raum, für einen Raum, wenige Räume und die Mehrheit | eingeschaltet lassen |
 | Aktive Thermensteuerung freigeben (sonst nur planen) | **vorerst aus lassen** – das schaltest du in Schritt 7 ein |
 
-**Warum das Minimum vom Gerätetyp abhängt:** Ein Brennwertgerät profitiert von niedrigem Vorlauf, ein Heizwertgerät spart dort kaum etwas, und bei kurzen Brennerläufen kommt die Wärme womöglich nicht bis zu den fernen Heizkörpern – siehe [Anleitung, Abschnitt 5](ANLEITUNG.md#5-thermensteuerung-eigene-therme-über-ebusd).
+**Warum das Minimum vom Gerätetyp abhängt:** Ein Brennwertgerät profitiert von niedrigem Vorlauf, ein Heizwertgerät spart dort kaum etwas, und bei kurzen Brennerläufen kommt die Wärme womöglich nicht bis zu den fernen Heizkörpern – siehe [Anleitung, Thermensteuerung](ANLEITUNG.md#thermensteuerung).
 
 Die Heizkurve muss nicht perfekt sein: Thriftherm lernt eine Korrektur dazu, für Höhe und Steigung je bis zu ±10 Grad. Das Formular lehnt nur eine Kurve ab, die bei -10 °C niedriger liegt als bei +15 °C, und ein Minimum über dem Maximum.
 
@@ -259,7 +258,7 @@ Ist eine Wärmepumpe eingerichtet, gibt es unter *Konfigurieren* den zusätzlich
 | Außenfeuchtesensor | optional |
 | Wetter-Entität (Fallback) | deine Wetter-Entität, zum Beispiel die, die Home Assistant bei der Installation angelegt hat (oft *Forecast Home*) |
 
-Wähle mindestens einen Außenfühler oder die Wetter-Entität – die Heizkurve braucht die Außentemperatur.
+Wähle mindestens einen Außenfühler oder die Wetter-Entität – die Heizkurve braucht die Außentemperatur. Fällt die Quelle aus, nimmt Thriftherm die nächste; fehlen alle, hält es den letzten Wert bis zu sechs Stunden. Welche Quelle gerade gilt, zeigt der Sensor *Außentemperatur (gewählte Quelle)*.
 
 ### 4.6 Räume
 
@@ -273,16 +272,16 @@ Du legst einen Raum pro Seite an. Mit dem Haken **Weiteren Raum hinzufügen** ko
 | Raumfeuchtesensor | optional |
 | Fenster-/Türkontakte | optional, alle Kontakte des Raums |
 | Thermostat (TRV oder Better Thermostat) | die **Better-Thermostat**-Entität des Raums. Noch kein Better Thermostat? Leer lassen und später ergänzen (Optionen → *Räume* → Raum → *Bearbeiten*) |
-| Leistungssensoren interner Wärmequellen | optional, leer lassen |
+| Leistungssensoren interner Wärmequellen | optional, sonst leer lassen: Leistung von Geräten, die den Raum mitheizen (etwa ein Rechner). Über 150 W senkt jedes weitere Watt den Heizbedarf des Raums um 0,1 % (*Regelparameter → Für Fortgeschrittene*: *Schwelle interne Wärmegewinne*, *Bedarfsreduktion je W interner Gewinne*) |
 | Zeitplan-Helfer (optional; ersetzt die Komfortfenster unten) | ein Zeitplan-Helfer von Home Assistant, dessen Blöcke die Komfortzeiten sind |
 | Längstes Vorheizen | optional, für einen Raum, den du nur kurz warm brauchst ([Einzelheiten](ANLEITUNG.md#vorheizen)) |
 | Komforttemperatur | Temperatur, wenn der Raum genutzt wird, zum Beispiel 20 °C |
 | Absenktemperatur | Temperatur außerhalb der Komfortzeiten, zum Beispiel 17 °C; nie über der Komforttemperatur |
-| Komfortzeiten Mo–Fr / Sa–So | Zeiten als `HH:MM-HH:MM`, mehrere mit Komma getrennt, zum Beispiel `06:00-08:00,17:00-22:00` |
+| Komfortzeiten Mo–Fr / Sa–So | Zeiten als `HH:MM-HH:MM`, mehrere mit Komma getrennt, zum Beispiel `06:00-08:00,17:00-22:00`. Vorgegeben sind 06:00-22:00 und 08:00-23:00 |
 
 Der Raum ist warm, *wenn* eine Komfortzeit beginnt: Thriftherm fängt rechtzeitig vorher an zu heizen.
 
-**Fühler, die nur bei Änderung melden** (z. B. Shelly H&T: erst ab 1 °C oder 1 %): Normalerweise gilt eine Raumtemperatur höchstens 6 Stunden. Schalte dann unter *Optionen → Regelparameter → Für Fortgeschrittene* **Raumfühler melden nur bei Änderung** ein. Raumtemperaturen gelten dann bis zum *Max. Sensoralter*. Bei Fühlern, die alle paar Minuten melden, bleibt der Schalter aus.
+**Fühler, die nur bei Änderung melden** (z. B. Shelly H&T: erst ab 1 °C oder 1 %): Normalerweise gilt ein unveränderter Wert höchstens 6 Stunden, solange das Gerät nichts anderes meldet (meldet es noch etwa die Feuchte, bis zu einem Tag). Schalte dann unter *Optionen → Regelparameter → Für Fortgeschrittene* **Raumfühler melden nur bei Änderung** ein. Raumtemperaturen gelten dann bis zum *Max. Sensoralter*. Bei Fühlern, die alle paar Minuten melden, bleibt der Schalter aus.
 
 Nur wenn eine Wärmepumpe eingerichtet ist, zeigt das Formular zusätzlich *Wird von der Wärmepumpe beheizt*, *Bad-Trocknung mit der Wärmepumpe* und *Trocknung nach dem Duschen von selbst starten*. Die Bad-Trocknung läuft über die Wärmepumpe, ohne sie erscheint keins der Felder. Mit ihr bekommt der Raum den Knopf *Jetzt trocknen*; ist der dritte Schalter aus, trocknet nur der Knopf. Sie braucht außerdem *Wird von der Wärmepumpe beheizt* und den Raumfeuchtesensor, sonst lehnt das Formular sie ab.
 
@@ -300,24 +299,16 @@ Für jeden Raum:
 4. In Thriftherm dieses Better Thermostat als Thermostat des Raums wählen (Optionen → *Räume* → Raum → *Bearbeiten*), falls du es in Schritt 4.6 leer gelassen hast.
 5. Soll ein Dreh am Drehknopf des Ventils als Handänderung zählen, in Better Thermostat den Schalter **Kindersicherung** des Raums **ausschalten**. Ist er an, setzt Better Thermostat das Ventil zurück, und der Dreh zählt nicht.
 
-Ein Thermostat, das du von Hand **ausschaltest**, lässt Thriftherm in Ruhe, und dieser Raum fordert die Therme nicht mehr an.
+Ein Thermostat, das du von Hand **ausschaltest**, lässt Thriftherm in Ruhe, und dieser Raum fordert die Therme nicht mehr an. Wie Thriftherm im Alltag mit den Thermostaten umgeht: [Anleitung, Raumthermostate](ANLEITUNG.md#raumthermostate).
 
 ### Versatile Thermostat statt Better Thermostat (Vorschau)
 
-> **Vorschau.** Nach der Dokumentation von Versatile Thermostat gebaut und mit nachgestellten Zuständen getestet, noch nicht mit einer echten Installation.
-
-Als Thermostat eines Raums kannst du auch die Klima-Entität von [Versatile Thermostat](https://github.com/jmcollin78/versatile_thermostat) wählen. Thriftherm schreibt ihr nur die Solltemperatur.
-
-- **Eigene Regeln bleiben bei Versatile Thermostat.** Senkt es den Sollwert selbst ab, weil ein Fenster offen ist, es Last abwirft oder im Sicherheitsmodus ist, hält Thriftherm das nicht für eine Änderung von Hand und schreibt auch nicht dagegen; Versatile Thermostat stellt den angeforderten Wert danach selbst wieder her. Der Raum zeigt solange *Das Thermostat wendet eine eigene Regel an*.
-- **Schaltet es sich bei offenem Fenster aus,** gilt das wie ein ausgeschaltetes Thermostat: Der Raum fordert die Therme nicht an.
-- **Die Funktion „Zentralheizung“ von Versatile Thermostat ausgeschaltet lassen,** wenn Thriftherm die Therme steuert. Sonst schalten zwei an derselben Therme.
-- **Voreinstellungen (Komfort, Eco, Boost) und Anwesenheit** in Versatile Thermostat verstellen den Sollwert als Anforderung. Das liest Thriftherm wie eine Änderung von Hand und macht daraus eine Übersteuerung. Den Zeitplan führst du deshalb in Thriftherm, nicht dort.
-- Die Ventile hinter Versatile Thermostat findet Thriftherm selbst und meldet, wenn eines verstummt.
+Als Thermostat eines Raums kannst du auch die Klima-Entität von [Versatile Thermostat](https://github.com/jmcollin78/versatile_thermostat) wählen. Wichtig beim Einrichten: Die Funktion „Zentralheizung“ von Versatile Thermostat bleibt ausgeschaltet, wenn Thriftherm die Therme steuert, und den Zeitplan führst du in Thriftherm. Was sonst gilt: [Anleitung, Versatile Thermostat](ANLEITUNG.md#versatile-thermostat-statt-better-thermostat-vorschau).
 
 ## 6. An der Therme
 
 1. **Den Drehknopf auf die höchste Vorlauftemperatur stellen, die du zulassen willst**, zum Beispiel 55 °C. Der Knopf bleibt die Obergrenze und ist das, worauf die Therme zurückfällt, wenn Home Assistant ausfällt. Nicht an den linken Anschlag drehen: An der getesteten Therme ist das Sommerbetrieb und sperrt die Heizung, egal was Thriftherm sendet.
-2. **Einmal den Pumpenmodus prüfen.** Mit der Werkseinstellung bleibt die Pumpe womöglich zusammen mit dem Brenner stehen: Die Therme taktet den ganzen Tag, aber die Heizkörper weit hinten im Kreis bleiben kalt. Warum das passiert: [Anleitung, Abschnitt 5](ANLEITUNG.md#warum-der-pumpenmodus-zählt).
+2. **Einmal den Pumpenmodus prüfen.** Mit der Werkseinstellung bleibt die Pumpe womöglich zusammen mit dem Brenner stehen: Die Therme taktet den ganzen Tag, aber die Heizkörper weit hinten im Kreis bleiben kalt. Warum das passiert: [Anleitung, Pumpenmodus](ANLEITUNG.md#warum-der-pumpenmodus-zählt).
    - Vaillant: d.18 = 0 „Nachlauf“ ist die Werkseinstellung – die Pumpe läuft nur mit dem Brenner, plus kurzem Nachlauf. d.18 = 1 „durchlaufend“ – die Pumpe läuft, solange der Heizbetrieb freigegeben ist, und steht, wenn Thriftherm den Heizbetrieb sperrt.
    - Ändern im Servicemenü der Therme oder einmalig über ebusd (Nachricht `HcPumpMode`, Werte `post_run`, `permanent`, `winter`).
    - Vorher in die Anleitung der Therme schauen; andere Hersteller nutzen andere Codes.
@@ -343,7 +334,8 @@ Sieht etwas falsch aus, in den Optionen anpassen, bevor du aktiv schaltest.
 1. Die Better-Thermostat-Entitäten auf **Heizen** schalten.
 2. Thriftherm → *Konfigurieren* → **Gastherme und Gaszähler**: *Aktive Thermensteuerung freigeben (sonst nur planen)* einschalten. Absenden.
 3. Thriftherm → *Konfigurieren* → **Regelparameter**, Abschnitt *Freigaben*: *Aktive Raumsteuerung freigeben (Sollwerte an die Thermostate schreiben)* einschalten. Absenden.
-4. Am Thriftherm-Gerät **Thermensteuerung** und **Raumsteuerung** auf **Aktiv** stellen.
+4. Mit Wärmepumpe: Thriftherm → *Konfigurieren* → **Wärmepumpe: Feineinstellung**: *Aktive Steuerung freigeben (sonst nur planen)* einschalten. Absenden.
+5. Am Thriftherm-Gerät **Thermensteuerung** und **Raumsteuerung** (mit Wärmepumpe auch **Wärmepumpen-Steuerung**) auf **Aktiv** stellen.
 
 **Nach ein paar Minuten prüfen:**
 
@@ -355,7 +347,7 @@ Sieht etwas falsch aus, in den Optionen anpassen, bevor du aktiv schaltest.
 
 **Optional:** Soll *Abwesend* enden, wenn jemand heimkommt, unter Thriftherm → *Konfigurieren* → **Regelparameter** bei *Abwesend endet, wenn eine dieser Personen heimkommt* die Personen (`person.*`) wählen. Ihr Standort muss in Home Assistant stimmen, etwa über die Companion App.
 
-Alles zum Alltag – Modi, Zeitpläne, Abwesenheit, Lernen – steht in der [Anleitung](ANLEITUNG.md).
+Ab jetzt lernt Thriftherm: die Heizkurve je Raum in den ersten ein bis zwei Wochen Heizsaison, die Aufheizraten nach wenigen Tagen mit Absenkung ([wie lange was dauert](ANLEITUNG.md#wie-lange-das-lernen-dauert)). Alles zum Alltag – Modi, Zeitpläne, Abwesenheit, Lernen – steht in der [Anleitung](ANLEITUNG.md).
 
 ## 8. Wenn etwas nicht klappt
 
@@ -388,7 +380,7 @@ room_order: [badezimmer, wohnzimmer]  # optional, die übrigen Räume folgen
 Was die Karte zeigt, von oben nach unten:
 
 - **Wärmequelle in einem Satz**, z. B. „Wärmepumpe heizt“, darunter die Kosten je kWh Wärme. Ein Tipp öffnet den Vergleich von Therme und Wärmepumpe: was jede tut und warum, Vorlauf-Soll bzw. COP, Kosten, ab welchem COP sich die Wärmepumpe lohnt, und was das Lernen der Heizkurve gerade macht.
-- **Hinweise, nur wenn es welche gibt:** Sicherheit eingeschränkt, Wärmepumpe gesperrt (nur in einer Betriebsart, die sie nutzt, also nicht bei *Nur Heizung* oder *Sommerbetrieb*), Fenster offen, von Hand geändert (mit *Zurück zur Automatik*).
+- **Hinweise, nur wenn es welche gibt:** Sicherheit eingeschränkt, Wärmepumpe gesperrt (nur in einem Betriebsmodus, der sie nutzt, also nicht bei *Nur Heizung* oder *Aus (nur Frostschutz)*), Fenster offen, Frostschutz in einem Raum, von Hand geändert (mit *Zurück zur Automatik*), Wärmepumpe von Hand geändert, Thermostat meldet sich nicht.
 - **Eine Zeile je Raum:** gemessene Temperatur, Soll und der Grund. Kleine Symbole zeigen, ob die Therme oder die Wärmepumpe gerade für den Raum heizt, ob von Hand geändert wurde oder ein Fenster offen ist. Ein Tipp auf den Raum öffnet eine Infozeile (der nächste Wechsel laut Zeitplan mit dem Soll danach, und der Trend, wenn der Sensor *Temperaturtrend* des Raums aktiviert ist), *Jetzt* (das Soll von Hand ändern, es gilt so lange wie jede Änderung von Hand), Komfort, Absenkung, *Schnell aufheizen*, im Bad *Jetzt trocknen*, *Zeitplan* (öffnet den Zeitplan-Helfer des Raums, wenn er einen hat) und *Zurück zur Automatik*, solange etwas von Hand läuft: eine Änderung, *Schnell aufheizen* oder *Jetzt trocknen*.
 - **Betriebsmodus**, im Modus *Abwesend* mit der Rückkehr.
 
@@ -412,7 +404,7 @@ Ohne Kopfzeile (`header: false`, im Editor das Häkchen *Kopfzeile*) zeigt die K
 
 ### 9.3 Beispiel-Dashboard aus Standard-Karten (optional)
 
-Wer lieber nur Standard-Karten von Home Assistant nimmt, findet ein fertiges Dashboard in [`dashboards/thriftherm.yaml`](../dashboards/thriftherm.yaml). Es zeigt zuerst, was gerade heizt und warum.
+Wer lieber nur Standard-Karten von Home Assistant nimmt, findet ein fertiges Dashboard in [`dashboards/thriftherm.yaml`](../dashboards/thriftherm.yaml) (englische Beschriftung: [`dashboards/thriftherm.en.yaml`](../dashboards/thriftherm.en.yaml)). Es zeigt zuerst, was gerade heizt und warum.
 
 1. Einstellungen > Dashboards > *Dashboard hinzufügen* > *Neues Dashboard von Grund auf*.
 2. Dashboard öffnen, Stift oben rechts, dann ⋮ > *Raw-Konfigurationseditor*. Alles durch den Inhalt der Datei ersetzen und speichern.

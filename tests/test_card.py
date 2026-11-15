@@ -758,3 +758,148 @@ def test_a_renamed_area_reaches_a_room_that_takes_its_name_from_the_area() -> No
     """)
 
     assert result["names"] == ["Duschbad", "Wohnzimmer"]
+
+
+def test_a_cooling_heat_pump_says_so_with_its_reason_and_no_cost() -> None:
+    """In the cooling season the source line tells what the air conditioner does (docs/PHASE12_COOLING.md §10.4)."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass();
+      const system = (entity_id, tk, state, attributes) => {
+        hass.entities[entity_id] = { entity_id, platform: "thriftherm", translation_key: tk };
+        hass.states[entity_id] = { entity_id, state, attributes, last_updated: "t0" };
+      };
+      system("sensor.thriftherm_heat_pump_command", "midea_command", "cool", { reason: "cool_lift" });
+      system("sensor.thriftherm_heat_cost_per_kwh_heat_pump", "midea_cost_per_kwh_thermal", "0.09", {});
+      system("select.thriftherm_season", "season", "cooling", {});
+      await shown(main, hass);
+      const html = main.shadowRoot.innerHTML;
+      const headline = (html.match(/class="headline">([^<]*)</) || [])[1];
+      const sub = (html.match(/class="sub">([^<]*)</) || [])[1];
+      console.log(JSON.stringify({ headline, sub }));
+    """)
+
+    assert result["headline"] == texts.CARD["en"]["heat_pump_cools"]
+    assert result["sub"] == texts.label("cool_lift", "en")
+
+
+def test_a_room_shows_its_cooling_target_in_the_cooling_season() -> None:
+    """Its heating target is the frost limit then, which would read as if the room were to be cooled to 7 °C."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass();
+      const season = "select.thriftherm_season";
+      hass.entities[season] = { entity_id: season, platform: "thriftherm", translation_key: "season" };
+      hass.states[season] = { entity_id: season, state: "cooling", attributes: {}, last_updated: "t0" };
+      const target = hass.states["sensor.thriftherm_badezimmer_target_temperature"];
+      target.state = "7.0";
+      Object.assign(target.attributes, { reason: "cooling_season", cool_target: 25.0, cool_reason: "cool_schedule_comfort" });
+      await shown(main, hass);
+      const html = main.shadowRoot.innerHTML;
+      const targets = [...html.matchAll(/class="target">→ ([^<]*)</g)].map((m) => m[1]);
+      const reasons = [...html.matchAll(/class="reason">([^<]*)</g)].map((m) => m[1]);
+      console.log(JSON.stringify({ targets, reasons }));
+    """)
+
+    assert result["targets"][0].startswith("25")
+    assert result["reasons"][0] == texts.label("cool_schedule_comfort", "en")
+
+
+def test_the_learning_line_does_not_say_twice_that_no_heating_run_is_under_way() -> None:
+    """The state is named "waiting for a heating run" since 2026-11-13; "… because the boiler is not heating right
+    now" behind it said the same again. Any other reason is still named."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass();
+      await shown(main, hass);
+      const learning = (codes) => main._learning({ entity_id: "sensor.thriftherm_learning_state", state: "paused",
+                                                   attributes: { paused_because: codes } });
+      console.log(JSON.stringify({ waiting: learning(["no_heating_run"]), drying: learning(["drying_mode"]) }));
+    """)
+
+    assert "because" not in result["waiting"] and result["waiting"]
+    # held back by something else, a heating run or not, it is paused, and says by what
+    assert result["drying"] == f"{texts.CARD['en']['learning_paused']}, because {texts.PAUSED_BECAUSE['en']['drying_mode']}"
+
+
+def test_the_learning_state_is_named_waiting_for_a_heating_run() -> None:
+    """The sensor's own state, in the strings and both translations: the card and Home Assistant show these."""
+    component = Path(texts.__file__).parent
+    for name, wording in (("strings.json", "Waiting for a heating run"), ("translations/en.json", "Waiting for a heating run"),
+                          ("translations/de.json", "Wartet auf Heizlauf")):
+        states = json.loads((component / name).read_text(encoding="utf-8"))["entity"]["sensor"]["learning_state"]["state"]
+        assert states["paused"] == wording, name
+
+
+def test_a_return_at_midnight_set_in_the_card_goes_out_as_a_real_return() -> None:
+    """Review 2026-11-13 (B14): the card's field always sends a date and a time, but a time of 00:00 went to the date
+    field's entity, which reads midnight as "only the date was picked": the return became 23:59 that day, provisional,
+    with no pre-heating. Midnight goes out as the action with a return time; every other time as before."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass();
+      await shown(main, hass);
+      const field = (value) => ({ dataset: { action: "return", entity: "datetime.thriftherm_planned_return", sent: "" }, value });
+      calls.length = 0;
+      main._onLeave({ target: field("2026-12-24T00:00") });
+      main._onLeave({ target: field("2026-12-24T17:30") });
+      console.log(JSON.stringify({ calls }));
+    """)
+
+    midnight, evening = result["calls"]
+    assert midnight[:3] == ["thriftherm", "set_away", {"return_time": "2026-12-24 00:00:00"}]
+    field = {"entity_id": "datetime.thriftherm_planned_return"}
+    assert evening == ["datetime", "set_value", {"datetime": "2026-12-24 17:30:00"}, field]
+
+
+def test_a_return_at_midnight_that_is_refused_can_be_set_again() -> None:
+    """Midnight of today is past and refused. The field kept the refused value as sent, went on showing it, and the
+    same value did not go out again: it is put back to what it had, and painted anew."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass((a) => a[1] === "set_away");
+      await shown(main, hass);
+      const dataset = { action: "return", entity: "datetime.thriftherm_planned_return", sent: "" };
+      const field = { dataset, value: "2026-11-13T00:00" };
+      calls.length = 0;
+      main._onLeave({ target: field });
+      await tick(20);
+      main._onLeave({ target: field });
+      await tick(20);
+      console.log(JSON.stringify({ sent: field.dataset.sent, tries: calls.length }));
+    """)
+
+    assert result == {"sent": "", "tries": 2}
+
+
+def test_the_automatic_season_cools_on_the_card_and_says_why() -> None:
+    """Stage 2 (docs/PHASE12_COOLING.md §20.2): the select's state is the choice, its attribute `season` the season in
+    force. The card goes by the season in force, and shows the automatic's choice with its reason."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass();
+      const system = (entity_id, tk, state, attributes) => {
+        hass.entities[entity_id] = { entity_id, platform: "thriftherm", translation_key: tk };
+        hass.states[entity_id] = { entity_id, state, attributes, last_updated: "t0" };
+      };
+      system("sensor.thriftherm_heat_pump_command", "midea_command", "cool", { reason: "cool_lift" });
+      system("select.thriftherm_mode", "mode", "auto", { options: ["auto", "off"] });  // the season shows under it
+      system("select.thriftherm_season", "season", "auto",
+             { season: "cooling", reason: "season_rooms_warm_up", options: ["heating", "cooling", "auto"] });
+      await shown(main, hass);
+      const html = main.shadowRoot.innerHTML;
+      const headline = (html.match(/class="headline">([^<]*)</) || [])[1];
+      const season = (html.match(/class="season-auto">([^<]*)</) || [])[1];
+      const chosen = (html.match(/data-entity="select.thriftherm_season">[\\s\\S]*?<option value="([a-z]*)" selected/) || [])[1];
+      console.log(JSON.stringify({ headline, season, chosen }));
+    """)
+
+    assert result["headline"] == texts.CARD["en"]["heat_pump_cools"]
+    assert result["season"] == f"auto: cooling · {texts.label('season_rooms_warm_up', 'en')}"
+    assert result["chosen"] == "auto"

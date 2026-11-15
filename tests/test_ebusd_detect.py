@@ -153,8 +153,21 @@ async def test_gas_meter_ambiguous_is_left_empty(hass: HomeAssistant) -> None:
     hass.states.async_set("sensor.gas_meter_volume_raw", "1234.5", {"device_class": "gas", "unit_of_measurement": "m³"})  # no state class
     assert detect(hass).entities == {"gas_flow": "sensor.gas_meter_flow"}
 
+    _gas_flow(hass, "sensor.gas_meter_flow_2")
+    assert detect(hass).entities == {}
+
+
+async def test_a_lone_flow_that_is_not_gas_is_not_proposed_as_the_gas_flow(hass: HomeAssistant) -> None:
+    # review 2026-11-13: the only m³/h sensor of the house was a ventilation's air flow, or a heat meter's water
     _gas_flow(hass, "sensor.ventilation_flow")
     assert detect(hass).entities == {}
+    hass.states.async_set("sensor.heat_meter_flow", "0.3", {"unit_of_measurement": "m³/h", "device_class": "volume_flow_rate"})
+    assert detect(hass).entities == {}
+    # told by its device class, its id or its name
+    hass.states.async_set("sensor.zaehler_durchfluss", "0.0", {"unit_of_measurement": "m³/h", "friendly_name": "Gasdurchfluss"})
+    assert detect(hass).entities == {"gas_flow": "sensor.zaehler_durchfluss"}
+    hass.states.async_set("sensor.flow_2", "0.0", {"unit_of_measurement": "m³/h", "device_class": "gas"})
+    assert detect(hass).entities == {}  # two of them: left to the user
 
 
 # ------------------------------------------------------------------ pre-filling a form

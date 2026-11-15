@@ -16,11 +16,21 @@ def _with(state, **changes):
     return state.__class__(**{**state.__dict__, **changes})
 
 
-def test_active_block_uses_comfort_temperature():
+@pytest.mark.parametrize(
+    ("temp", "schedule", "reason"),
+    [
+        pytest.param(20.0, ScheduleState(active=True), "schedule_comfort", id="active_block_uses_comfort_temperature"),
+        pytest.param(
+            18.0, ScheduleState(active=False, next_start=MON_NIGHT + timedelta(hours=1)), "schedule_preheat",
+            id="preheating_starts_from_the_next_block",
+        ),
+    ],
+)
+def test_the_comfort_temperature_applies_in_a_block_and_while_preheating_for_the_next(temp, schedule, reason):
     cfg = room_config("wohnzimmer", comfort=21.0, setback=17.0)
-    st = _with(room_state(cfg, temp=20.0), schedule=ScheduleState(active=True))
+    st = _with(room_state(cfg, temp=temp), schedule=schedule)
     res = room_engine.evaluate_room(st, MON_NIGHT, "auto", PARAMS)
-    assert res.target == 21.0 and res.target_reason == "schedule_comfort"
+    assert res.target == 21.0 and res.target_reason == reason
 
 
 def test_block_temperature_wins_over_comfort():
@@ -37,14 +47,6 @@ def test_outside_a_block_the_setback_applies():
     assert res.target == 17.0 and res.target_reason == "schedule_setback"
     # the preheat start is published even while the setback is still active
     assert res.preheat_start_ts == pytest.approx(far.timestamp() - 3.75 * 3600 - 1200, abs=1)
-
-
-def test_preheating_starts_from_the_next_block():
-    cfg = room_config("wohnzimmer", comfort=21.0, setback=17.0)
-    soon = MON_NIGHT + timedelta(hours=1)
-    st = _with(room_state(cfg, temp=18.0), schedule=ScheduleState(active=False, next_start=soon))
-    res = room_engine.evaluate_room(st, MON_NIGHT, "auto", PARAMS)
-    assert res.target == 21.0 and res.target_reason == "schedule_preheat"
 
 
 def test_without_next_start_no_preheating():

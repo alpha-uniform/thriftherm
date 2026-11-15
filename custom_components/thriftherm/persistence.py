@@ -24,8 +24,9 @@ from .engines.common import as_dict, as_float
 from .engines.heat_call import CallMemory
 from .engines.heat_pump_control import ControlMemory
 from .engines.room_control import RoomCtrlMemory
-from .engines.learning import CoolRateStats, CopMap, HeatRateStats
-from .const import SOURCE_BOILER, SOURCE_HEAT_PUMP, STORAGE_VERSION
+from .engines.learning import AcCoolRateStats, CoolRateStats, CopMap, HeatRateStats
+from .engines.season import FreeRunDays, OutdoorHours
+from .const import SEASON_AUTO, SEASON_COOLING, SEASON_HEATING, SOURCE_BOILER, SOURCE_HEAT_PUMP, STORAGE_VERSION
 from .models import DryingState, Override
 
 if TYPE_CHECKING:
@@ -67,6 +68,8 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
     coord.heat_rates.forget([r for r in {*coord.heat_rates.rates, *coord.heat_rates.gradients} if r not in rooms])
     coord.cool_rates = CoolRateStats.from_storage(data.get("cool_rates"))
     coord.cool_rates.forget([r for r in coord.cool_rates.rates if r not in rooms])
+    coord.ac_cool_rates = AcCoolRateStats.from_storage(data.get("ac_cool_rates"))
+    coord.ac_cool_rates.forget([r for r in coord.ac_cool_rates.rates if r not in rooms])
     block = data.get("midea_block_until")
     coord.heat_pump_tracker.block_until = as_float(block) if block else None
     cause = data.get("midea_block_reason")
@@ -111,10 +114,26 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
     stored = data.get("room_temps")
     if isinstance(stored, dict):
         coord.room_temps = {
-            str(room): {k: v for k, raw in values.items() if k in ("comfort", "setback") and (v := as_float(raw)) is not None}
+            str(room): {
+                k: v
+                for k, raw in values.items()
+                if k in ("comfort", "setback", "cool_comfort", "cool_outside") and (v := as_float(raw)) is not None
+            }
             for room, values in stored.items()
             if isinstance(values, dict) and room in rooms
         }
+    # cooling (docs/PHASE12_COOLING.md): the season chosen, since when, cooling overrides, begun pre-cools
+    _restore_season(coord, data, now)
+    for key, raw in as_dict(data.get("cool_overrides")).items():
+        try:
+            ov = Override(float(raw["target"]), float(raw["until_ts"]), float(raw.get("set_at_ts", now)), hand.ACTION)
+        except (KeyError, TypeError, ValueError):
+            continue
+        if ov.until_ts > now and key in rooms:
+            coord.cool_overrides[key] = ov
+    coord._cool_precool_latch = {
+        k: v for k, raw in as_dict(data.get("cool_precool_latch")).items() if k in rooms and (v := as_float(raw)) is not None
+    }
     coord.boosts = {
         k: v for k, raw in as_dict(data.get("boosts")).items() if (v := as_float(raw)) is not None and v > now and k in rooms
     }
@@ -164,11 +183,42 @@ def _drying(raw: Any) -> DryingState | None:
     return None if state == DryingState() else state
 
 
+def _restore_season(coord: ThrifthermCoordinator, data: dict[str, Any], now: float) -> None:
+    """The season, the choice and what the automatic measured (docs/PHASE12_COOLING.md §2, §20.2, review K1)."""
+    season = data.get("season")
+    forced = False
+    coord.season_since_ts = as_float(data.get("season_since_ts"))
+    if season == SEASON_COOLING and not coord.cooling_allowed:
+        # Cooling taken back (or hidden) while it was the season: that is a change to heating, now, and stays one.
+        # Left in the store, last summer's cooling season was in force again, unasked, the moment cooling was
+        # allowed once more: every radiator at frost protection (review 2026-11-13).
+        coord.season, coord.season_since_ts = SEASON_HEATING, now
+        coord._store_dirty = True
+        forced = True
+    elif season in (SEASON_HEATING, SEASON_COOLING):
+        coord.season = season
+    # stage 2 (§20.2): the choice; a store from before it holds the season chosen by hand. Automatic stays chosen where
+    # cooling is not allowed, to hold again once it is; it measured nothing meanwhile, its days begin at nought.
+    choice = data.get("season_choice", season)
+    # anything else, a damaged one included, is the season in force chosen by hand
+    if choice is not None:  # a store from before cooling holds neither: the default stays
+        coord.season_choice = SEASON_AUTO if choice == SEASON_AUTO else coord.season
+    reason = data.get("season_reason")
+    # the automatic's reason no longer holds where the start turned cooling into heating (K1)
+    coord.season_reason = reason if isinstance(reason, str) and not forced else None
+    modes = data.get("unit_modes_seen")
+    coord.unit_modes_seen = tuple(str(m) for m in modes) if isinstance(modes, list) else ()
+    if choice == SEASON_AUTO and coord.cooling_allowed:
+        coord.free_run = FreeRunDays.from_storage(data.get("free_run"))
+        coord.outdoor_hours = OutdoorHours.from_storage(data.get("outdoor_hourly"))
+
+
 def to_store(coord: ThrifthermCoordinator) -> dict[str, Any]:
     return {
         "cop_map": coord.cop_map.to_storage(),
         "heat_rates": coord.heat_rates.to_storage(),
         "cool_rates": coord.cool_rates.to_storage(),
+        "ac_cool_rates": coord.ac_cool_rates.to_storage(),
         "midea_block_until": coord.heat_pump_tracker.block_until,
         "midea_block_reason": coord.heat_pump_tracker.block_reason,  # a lockout for dear heat alone ends in "heat pump only"
         "overrides": {
@@ -200,4 +250,15 @@ def to_store(coord: ThrifthermCoordinator) -> dict[str, Any]:
         "preheat_began": dict(coord._preheat_began),
         "learning_basis": learning_reset.basis(coord.config),
         "last_learning_reset": coord.last_learning_reset,
+        "season": coord.season,
+        "season_since_ts": coord.season_since_ts,
+        "season_choice": coord.season_choice,
+        "season_reason": coord.season_reason,
+        "unit_modes_seen": list(coord.unit_modes_seen),
+        "free_run": coord.free_run.to_storage(),
+        "outdoor_hourly": coord.outdoor_hours.to_storage(),
+        "cool_overrides": {
+            k: {"target": o.target, "until_ts": o.until_ts, "set_at_ts": o.set_at_ts} for k, o in coord.cool_overrides.items()
+        },
+        "cool_precool_latch": dict(coord._cool_precool_latch),
     }

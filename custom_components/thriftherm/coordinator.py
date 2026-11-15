@@ -13,17 +13,41 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_DOMAIN, ATTR_ENTITY_ID, ATTR_SERVICE_DATA, EVENT_CALL_SERVICE, UnitOfTemperature
-from homeassistant.core import CALLBACK_TYPE, Context, Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, Context, Event, EventStateChangedData, HomeAssistant, State, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from . import boiler_profiles, executors, issues, learning_reset, persistence
+from . import boiler_profiles, const, executors, issues, learning_reset, persistence
 from .adapters.config import system_type_from_config
 from .adapters.inputs import SnapshotBuilder, whole_number
 from .const import (
+    CONF_COOL_AWAY_TEMP,
+    CONF_COOL_FLOOR_TEMP,
+    CONF_COOLING_CHEAP_POWER_ENTITY,
+    CONF_COOLING_CHEAP_POWER_K,
+    CONF_COOLING_SEASON_FROM_C,
+    CONF_COOLING_SEASON_VETO_C,
+    CONF_HEATING_SEASON_FROM_C,
+    CONF_HEAT_PUMP_COOL_FAN_STAGE,
+    CONF_HEAT_PUMP_COOL_SHORTFALL,
+    CONF_HEAT_PUMP_COOLING_ALLOWED,
+    COOL_SHORTFALL_CHOICES,
+    COOL_SHORTFALL_LIFT,
+    DEFAULT_COOL_AWAY_TEMP,
+    DEFAULT_COOL_COMFORT_TEMP,
+    DEFAULT_COOL_FLOOR_TEMP,
+    DEFAULT_COOLING_CHEAP_POWER_K,
+    DEFAULT_COOLING_SEASON_FROM_C,
+    DEFAULT_COOLING_SEASON_VETO_C,
+    DEFAULT_HEATING_SEASON_FROM_C,
+    DEFAULT_COOL_OUTSIDE_TEMP,
+    HEAT_PUMP_PLAN_COOL,
+    SEASON_AUTO,
+    SEASON_COOLING,
+    SEASON_HEATING,
     BOILER_REPORTS_FAULT,
     CONF_BOILER_FLOW_TEMP,
     CONF_BOILER_STATE_NUMBER,
@@ -37,6 +61,7 @@ from .const import (
     CONF_BOILER_PUMP_POWER_W,
     CONF_BOILER_PROFILE,
     CONF_BOOST_DURATION_MIN,
+    CONF_GAS_FLOW,
     CONF_GAS_VOLUME,
     CONF_HEAT_PUMP_ALLOW_ACTIVE,
     CONF_HEAT_PUMP_CLIMATE,
@@ -60,6 +85,7 @@ from .const import (
     DEFAULT_ROOM_ECHO_FILTER,
     DOMAIN,
     HEAT_PUMP_COOLING_USER,
+    HEAT_PUMP_OFF,
     HEAT_PUMP_PLAN_HEAT,
     HEAT_PUMP_UNAVAILABLE,
     MODES,
@@ -101,14 +127,26 @@ from .engines import (
     room_control,
     safety,
 )
+from .engines import season as season_engine
 from .engines.heat_pump_tracking import HeatPumpTracker
 from .engines.safety import HEAT_PUMP_DROPOUT_S, HEAT_PUMP_ISSUE_PREFIX
 from .engines import cop_profiles
-from .engines.learning import HEAT_BY_BOILER, HEAT_BY_BOTH, HEAT_BY_HEAT_PUMP, HEAT_SOURCES, CoolRateStats, CopMap, HeatRateStats
+from .engines.learning import (
+    HEAT_BY_BOILER,
+    HEAT_BY_BOTH,
+    HEAT_BY_HEAT_PUMP,
+    HEAT_SOURCES,
+    AcCoolRateStats,
+    CoolRateStats,
+    CopMap,
+    HeatRateStats,
+    ac_cool_learnable,
+)
 from .engines.boiler_memory import BoilerInputs, BoilerMemory, curve_flow
-from .engines.common import round_half
+from .engines.common import as_float, round_half
 from .models import SettingChange
 from .engines.heat_pump_control import ControlInputs, ControlMemory
+from .engines import heat_pump_cooling, room_cooling
 from .engines.room_control import RoomCtrlMemory
 from .models import (
     Advice,
@@ -146,10 +184,16 @@ LOAD_LOG_ROWS = 720
 
 
 STORE_SAVE_INTERVAL_S = 600.0
+# a humidity load the bathroom gives notice of: warm seconds then are the shower's (docs/PHASE12_COOLING.md §20.2)
+_HUMIDITY_LOAD_REASONS = (
+    "drying_waiting_for_the_shower_to_end", "drying_waiting_for_open_window", "drying_waiting_for_the_heat_pump",
+    "drying_started_humidity_load", "drying_active",
+)
 SETTING_PAIR_S = 15.0  # a setpoint and a mode changed this close may reach one cycle: its debouncer waits 10 s
 SETPOINT_SETTLE_S = 1200.0  # after a setpoint change the rooms and their thermostats settle first
 # How long an unload waits for the cycle under way: one call times out after 30 s, and none follows it
 UNLOAD_WAIT_S = 120.0
+EVALUATION_FAILURES_LET_GO = 3  # cycles in a row whose evaluation raised: the heat pump is let go of, as on Plan only
 
 type ThrifthermConfigEntry = ConfigEntry["ThrifthermCoordinator"]
 
@@ -290,6 +334,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.cop_map = CopMap()
         self.heat_rates = HeatRateStats()
         self.cool_rates = CoolRateStats()
+        self.ac_cool_rates = AcCoolRateStats()  # how fast the unit cools each room it serves (docs/PHASE12_COOLING.md §20.3)
         self._last_store_save: float = 0.0
         self._store_dirty = False
         # heat pump control
@@ -300,7 +345,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # boiler control
         self.boiler_control_mode: str = CTRL_SHADOW
         self.boiler_memory = BoilerMemory()
-        # what the boiler learning by load will be judged on: one compact row per cycle, about a day
+        # what the boiler learning by load will be judged on: one compact row per cycle, half a day of them
         self.load_log: deque[list] = deque(maxlen=LOAD_LOG_ROWS)
         self.last_learning_reset: dict[str, Any] | None = None
         # gas for heating and gas for hot water, counted apart (engines/gas_split.py)
@@ -361,6 +406,129 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._last_target_change_ts: float = 0.0
         self._last_target_change_rooms: tuple[str, ...] = ()  # whose setpoint started the learning pause
         self.room_temps: dict[str, dict[str, float]] = {}
+        # cooling (docs/PHASE12_COOLING.md): the season chosen by hand, since when, the cooling overrides per room
+        self.season: str = SEASON_HEATING  # the season in force
+        self.season_since_ts: float | None = None  # its last real change, by hand or by the automatic
+        # stage 2 (§20.2): the choice (heating, cooling or automatic), why the automatic chose, what it measures
+        self.season_choice: str = SEASON_HEATING
+        self.season_reason: str | None = None
+        self.free_run = season_engine.FreeRunDays()
+        self.outdoor_hours = season_engine.OutdoorHours()
+        self.unit_modes_seen: tuple[str, ...] = ()  # the unit's modes as last seen: unreachable is no reason to heat
+        self._season_evaluated_ts: float | None = None
+        self.cool_overrides: dict[str, Override] = {}
+        self._cool_precool_latch: dict[str, float] = {}  # room -> the block start or return a begun pre-cool is for
+        self._failed_cycles = 0  # cycles in a row whose evaluation raised
+        self._run_on_after_cooling = False  # the fan runs on after a cooling run: no heat, whatever the season says now
+
+    @property
+    def cooling_allowed(self) -> bool:
+        """The options allow cooling with the heat pump."""
+        return const.COOLING_PREVIEW and self.has_heat_pump and bool(self.config.get(CONF_HEAT_PUMP_COOLING_ALLOWED, False))
+
+    @property
+    def unit_can_cool(self) -> bool:
+        """The heat pump offers a cooling mode, as far as its entity tells, or told when it was last reachable."""
+        modes = self._unit_modes_now()
+        return "cool" in (self.unit_modes_seen if modes is None else modes)
+
+    def _unit_modes_now(self) -> tuple[str, ...] | None:
+        state = self.hass.states.get(self.config.get(CONF_HEAT_PUMP_CLIMATE) or "")
+        modes = None if state is None else state.attributes.get("hvac_modes")
+        return tuple(str(m) for m in modes) if modes else None
+
+    @property
+    def cooling_season(self) -> bool:
+        """Thriftherm cools now: allowed, and the season chosen is cooling. Heating then holds the frost protection only."""
+        return self.cooling_allowed and self.season == SEASON_COOLING
+
+    @property
+    def cool_floor(self) -> float:
+        """The cooling floor of the options: no room is cooled below it."""
+        return float(self.config.get(CONF_COOL_FLOOR_TEMP, DEFAULT_COOL_FLOOR_TEMP))
+
+    @property
+    def cheap_power(self) -> bool:
+        """The user's own "power is cheap" entity is on (docs/PHASE12_COOLING.md §20.1); unreadable or missing is off."""
+        entity_id = self.config.get(CONF_COOLING_CHEAP_POWER_ENTITY)
+        state = self.hass.states.get(entity_id) if entity_id else None
+        return state is not None and state.state == "on"
+
+    @property
+    def _cheap_k(self) -> float:
+        """How much lower the cooling targets are now: only in the cooling season, only with cheap power."""
+        if not (self.cooling_season and self.cheap_power):
+            return 0.0
+        return float(self.config.get(CONF_COOLING_CHEAP_POWER_K, DEFAULT_COOLING_CHEAP_POWER_K))
+
+    @property
+    def _cool_shortfall(self) -> str:
+        chosen = self.config.get(CONF_HEAT_PUMP_COOL_SHORTFALL)
+        return chosen if chosen in COOL_SHORTFALL_CHOICES else COOL_SHORTFALL_LIFT
+
+    @property
+    def seasons(self) -> list[str]:
+        """The choices: heating, cooling and automatic, where cooling is allowed and the unit can cool."""
+        if self.cooling_allowed and self.unit_can_cool:
+            return [SEASON_HEATING, SEASON_COOLING, SEASON_AUTO]
+        return [SEASON_HEATING]
+
+    async def async_set_season(self, season: str) -> None:
+        """Heating, cooling or automatic. Refused where cooling is not allowed or the unit cannot cool.
+
+        Automatic keeps the season in force; the 72 hours it holds count from its last real change (§20.2).
+        """
+        if season not in self.seasons:
+            return
+        if season == self.season_choice and (season == SEASON_AUTO or season == self.season):
+            return
+        self.season_choice = season
+        self._store_dirty = True
+        if season != SEASON_AUTO:
+            self.season_reason = None  # chosen by hand: the automatic's reason no longer holds
+        if season == SEASON_AUTO:
+            self._season_evaluated_ts = None  # judged at the next cycle
+            _LOGGER.info("thriftherm season chosen automatically, %s in force", self.season)
+        elif season != self.season:
+            self._set_season(season, None)
+        await self._async_changed()
+
+    def _set_season(self, season: str, reason: str | None) -> None:
+        self.season = season
+        self.season_since_ts = time.time()
+        self.season_reason = reason
+        self._store_dirty = True
+        _LOGGER.info("thriftherm season set to %s%s", season, f" ({reason})" if reason else "")
+
+    @property
+    def season_verdicts(self) -> list[str | None]:
+        """The automatic's verdicts of the last three days, yesterday first (None: the day did not count)."""
+        return [v for _, v in self.free_run.verdicts(dt_util.now())]
+
+    def cool_temperature(self, room: str, kind: str) -> float:
+        """The cooling comfort (`cool_comfort`) or the target outside the cooling schedule (`cool_outside`) of a room."""
+        stored = self.room_temps.get(room, {}).get(kind)
+        if stored is not None:
+            return stored
+        return DEFAULT_COOL_COMFORT_TEMP if kind == "cool_comfort" else DEFAULT_COOL_OUTSIDE_TEMP
+
+    async def async_set_cool_temperature(self, room: str, kind: str, value: float) -> None:
+        """As for heating, the other way round: outside the schedule never cooler than the comfort; the other follows."""
+        temps = self.room_temps.setdefault(room, {})
+        temps[kind] = float(value)
+        if kind == "cool_comfort" and self.cool_temperature(room, "cool_outside") < value:
+            temps["cool_outside"] = float(value)
+        if kind == "cool_outside" and self.cool_temperature(room, "cool_comfort") > value:
+            temps["cool_comfort"] = float(value)
+        _LOGGER.info("thriftherm %s: %s temperature set to %.1f °C", room, kind, value)
+        await self._async_changed()
+
+    async def async_set_cool_override(self, room: str, temperature: float, duration_min: int | None) -> None:
+        minutes = duration_min or self._override_default_min
+        now = time.time()
+        self.cool_overrides[room] = Override(float(temperature), now + minutes * 60.0, now, hand.ACTION)
+        _LOGGER.info("thriftherm cooling override: %s -> %.1f °C for %d min", room, temperature, minutes)
+        await self._async_changed()
 
     @property
     def room_allow_active(self) -> bool:
@@ -830,6 +998,19 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         elif not self.boiler_entities and whole_number(new.state) in self.boiler_profile.water_wait_states:
             self._note_boiler_signs(None, True, now_ts)
 
+    def _gas_burns(self, flow_m3h: float) -> bool:
+        """A gas flow that counts as the burner running, by the measure of the boiler control."""
+        prices = self.builder.prices
+        power = economics.gas_power_w(flow_m3h, prices.gas_z_factor, prices.gas_calorific_kwh_m3)
+        return power > boiler_control.HOT_WATER_GAS_W
+
+    def _valve_turned(self, old: State, new: State) -> bool:
+        """A room thermostat that starts or stops heating, or is blocked or released by Better Thermostat 2.0, is heard
+        at once: the boiler need not wait for the next cycle (issue #8). Its other attribute updates wait."""
+        if not any(room.climate_entity == new.entity_id for room in self.builder.rooms):
+            return False
+        return any(old.attributes.get(key) != new.attributes.get(key) for key in ("hvac_action", "heating_blocked_by"))
+
     @callback
     def _on_watched_change(self, event: Event[EventStateChangedData]) -> None:
         old = event.data.get("old_state")
@@ -843,8 +1024,17 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # setpoint somebody else set on what we command. Reported 2026-10-12: a thermostat turned
         # by hand showed as an override only with the next cycle, up to a minute later.
         by_others = noted is not None and noted.origin != hand.OURS
-        if old is not None and new is not None and old.state == new.state and not by_others:
+        if old is not None and new is not None and old.state == new.state and not by_others and not self._valve_turned(old, new):
             return
+        if old is not None and new is not None and new.entity_id == self.config.get(CONF_GAS_FLOW):
+            # A burner that starts or stops is seen at once. A flow that is merely another one waits for the regular
+            # cycle: measured 3-13 Nov 2026, it changed every twelve seconds while burning, each change a cycle, and
+            # the log of the boiler's load held two and a half hours of a heating day instead of twelve. Burning is
+            # what the engines take for it (above 1 kW), not a flow above nought: a meter that ramps or rests a
+            # little above 0 would have its start told by the wrong step (review 2026-11-13).
+            before, now = as_float(old.state), as_float(new.state)
+            if before is not None and now is not None and self._gas_burns(before) == self._gas_burns(now):
+                return
         self.hass.async_create_task(self.async_request_refresh())
 
     # ------------------------------------------------------------------ user actions
@@ -902,7 +1092,51 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # a planned run never touched the unit; carrying it over looked like a manual change
             self.control_memory = self.control_memory.fresh_run_state()
             if was_active:
-                self.hass.async_create_task(self.async_let_go_of_heat_pump(left))
+                self.hass.async_create_task(self._async_let_go_after_the_cycle(left, self._control_memory_before))
+
+    async def _async_let_go_after_the_cycle(self, mem: ControlMemory, before: ControlMemory) -> None:
+        """Let go once the cycle under way has sent what it was sending.
+
+        Review 2026-11-13: Plan only chosen while a quick heat-up's start went out found the unit not yet at 30 °C
+        and left it; the cycle then sent the rest, and nobody set the unit down. `mem` is what that cycle planned,
+        so the unit is judged against what it was really left with. `before` is the memory that plan began with: a
+        cycle that had planned the end of a quick heat-up and could no longer send it left the unit as `before`
+        says. Each let-go acts only on a unit that still stands as its memory left it, so at most one does.
+        """
+        async with self._debounced_refresh.async_lock():
+            await self.async_let_go_of_heat_pump(mem)
+            if before is not mem:
+                await self.async_let_go_of_heat_pump(before)
+
+    async def _async_let_go_of_cooling(self, mem: ControlMemory, entity_id: str) -> None:
+        """A cooling run of ours is switched off as the control lets go: left as it is, it would cool on for good, turned
+        up perhaps, and below the floor (docs/PHASE12_COOLING.md §4.1). One somebody set meanwhile stays."""
+        if mem.manual_until_ts is not None and mem.manual_until_ts > time.time():
+            return
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state != "cool" or state.attributes.get("temperature") != mem.last_target:
+            return
+        # Switched off, not left resting in cool: once the control is back, perhaps in the heating season, a unit found
+        # in cool would be taken for one cooled by hand and left so for good (review 2026-11-12).
+        command = HeatPumpCommand("off", "stop", "off", None, None, None, "control_let_go")
+        if await executors.async_execute_heat_pump(self.hass, entity_id, command, self._own_context()):
+            _LOGGER.info("thriftherm heat pump: cooling at %s °C as the control lets go, switched off", mem.last_target)
+            if mem is self.control_memory:
+                self.control_memory = replace(mem, running_since_ts=None, last_hvac_mode="off", stopped_since_ts=time.time())
+
+    async def _async_let_go_of_run_on(self, mem: ControlMemory, entity_id: str) -> None:
+        """A fan run-on of ours is ended as the control lets go: its "off" is sent by an active control only, and the
+        fan ran until the control was active again, for good after a disable or a delete (review 2026-11-13). A unit
+        somebody set meanwhile stays."""
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state != "fan_only":
+            return
+        command = HeatPumpCommand("off", "stop", "off", None, None, None, "control_let_go")
+        if await executors.async_execute_heat_pump(self.hass, entity_id, command, self._own_context()):
+            _LOGGER.info("thriftherm heat pump: fan running on as the control lets go, switched off")
+            if self.control_memory.fan_until_ts == mem.fan_until_ts:
+                # also the memory a switch of the control began anew with: it kept the run-on on record
+                self.control_memory = replace(self.control_memory, fan_until_ts=None, last_hvac_mode="off")
 
     async def async_let_go_of_heat_pump(self, mem: ControlMemory | None = None) -> None:
         """Set a unit our last command left above its least speed down to its floor, as the control lets go of it.
@@ -915,6 +1149,12 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         mem = self.control_memory if mem is None else mem
         entity_id = self.config.get(CONF_HEAT_PUMP_CLIMATE)
         boosted = mem.last_target is not None and mem.last_target >= heat_pump_control.BOOST_C
+        if self.has_heat_pump and entity_id and mem.fan_until_ts is not None and mem.last_hvac_mode == "fan_only":
+            await self._async_let_go_of_run_on(mem, entity_id)
+            return
+        if self.has_heat_pump and entity_id and mem.running_since_ts is not None and mem.last_hvac_mode == "cool":
+            await self._async_let_go_of_cooling(mem, entity_id)
+            return
         if not (self.has_heat_pump and entity_id and mem.running_since_ts is not None and mem.last_hvac_mode == "heat"):
             return
         if not (boosted or mem.drying_held) or (mem.manual_until_ts is not None and mem.manual_until_ts > time.time()):
@@ -925,7 +1165,14 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         step = state.attributes.get("target_temp_step")
         floor = heat_pump_control.to_step(heat_pump_control.SETPOINT_MIN, step if isinstance(step, (int, float)) else None)
         command = HeatPumpCommand("off", "adjust", None, floor, None, None, "control_let_go")
+        # ... and its fan back to where the quick heat-up or the drying turned it up from, while it still shows their
+        # stage: left on it, that stage read as one chosen by hand once the control was back (review 2026-11-13).
+        # After the setpoint and apart from it: a fan stage the unit refuses must not keep it at 30 °C.
+        fan = mem.fan_turned_up_from if state.attributes.get("fan_mode") == mem.fan_turned_up_to else None
         if await executors.async_execute_heat_pump(self.hass, entity_id, command, self._own_context()):
+            if fan:
+                back = HeatPumpCommand("off", "adjust", None, None, fan, None, "control_let_go")
+                await executors.async_execute_heat_pump(self.hass, entity_id, back, self._own_context())
             _LOGGER.info("thriftherm heat pump: left at %.1f °C as the control lets go, set down to %.1f °C", mem.last_target, floor)
             if mem is self.control_memory:
                 # What the store keeps, and a new run finds: a drying still held at 17 °C stood on it until the unit
@@ -978,6 +1225,14 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self._async_changed()
 
     async def async_set_override(self, room: str, temperature: float, duration_min: int | None) -> None:
+        if self.cooling_season:
+            if not any(r.key == room and r.served_by_heat_pump for r in self.builder.rooms):
+                # nothing heats in the cooling season, and the room has no air conditioner to cool it
+                raise ServiceValidationError(
+                    translation_domain=DOMAIN, translation_key="no_override_in_cooling_season", translation_placeholders={"room": room}
+                )
+            await self.async_set_cool_override(room, temperature, duration_min)  # in the cooling season the cooling target
+            return
         minutes = duration_min or self._override_default_min
         now = time.time()
         self.overrides[room] = Override(target=float(temperature), until_ts=now + minutes * 60.0, set_at_ts=now, by=hand.ACTION)
@@ -988,12 +1243,14 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """End what was changed by hand: one room's override, or everything and the heat pump's too."""
         if room is None:
             self.overrides.clear()
+            self.cool_overrides.clear()
             self.boosts.clear()
             if self.control_memory.manual_until_ts is not None:
                 # back to automatic: a unit left heating is taken over by the next cycle
                 self.control_memory = replace(self.control_memory, manual_until_ts=None, manual_by=None)
         else:
             self.overrides.pop(room, None)
+            self.cool_overrides.pop(room, None)
             self.boosts.pop(room, None)
         for key, drying in self.drying_states.items():
             if drying.manual and room in (None, key):
@@ -1057,17 +1314,25 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise ServiceValidationError(
                 translation_domain=DOMAIN, translation_key="unknown_room", translation_placeholders={"room": ", ".join(sorted(unknown))}
             )
-        self._forget(chosen, room_keys, learning_reset.REASON_USER)
+        self._forget(chosen, room_keys, learning_reset.REASON_USER, boiler_rooms=room_keys)
         _LOGGER.warning("thriftherm: learning data reset by user: %s %s", list(chosen), room_keys or "")
         await self.async_save_store(force=True)
         await self.async_refresh()
 
-    def _forget(self, scopes: Iterable[str], rooms: Iterable[str] | None, reason: str) -> None:
+    def _forget(
+        self, scopes: Iterable[str], rooms: Iterable[str] | None, reason: str, boiler_rooms: Iterable[str] | None = None
+    ) -> None:
+        """`rooms` narrows the room area; `boiler_rooms` the boiler's curve to these rooms' lines (a reset by hand)."""
         # Only learned values go. Run state, lockout timers of the controllers and
         # manual-change holds stay, so a reset can never make a unit cycle.
         scopes = set(scopes)
         if learning_reset.SCOPE_BOILER in scopes:
-            self.boiler_memory = boiler_learning.reset(self.boiler_memory)
+            self.boiler_memory = boiler_learning.reset(self.boiler_memory, boiler_rooms)
+            # what a room still shows of its last call is forgotten with it, or it would be taken in again
+            gone = None if boiler_rooms is None else set(boiler_rooms)
+            self.call_memory = {
+                key: replace(mem, last=None) if gone is None or key in gone else mem for key, mem in self.call_memory.items()
+            }
         if learning_reset.SCOPE_HEAT_PUMP in scopes:
             self.cop_map = CopMap()
             self._bind_cop_map()
@@ -1080,9 +1345,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if learning_reset.SCOPE_ROOMS in scopes:
             self.heat_rates.forget(None if rooms is None else list(rooms))
             self.cool_rates.forget(None if rooms is None else list(rooms))
+            self.ac_cool_rates.forget(None if rooms is None else list(rooms))
+        narrowed = {learning_reset.SCOPE_ROOMS, learning_reset.SCOPE_BOILER}  # the areas the rooms named narrow
         self.last_learning_reset = {
             "scopes": [s for s in learning_reset.SCOPES if s in scopes],
-            "rooms": None if rooms is None or learning_reset.SCOPE_ROOMS not in scopes else sorted(rooms),
+            "rooms": sorted(rooms) if rooms is not None and scopes & narrowed else None,
             "reason": reason,
             "at": dt_util.utcnow().isoformat(timespec="seconds"),
         }
@@ -1090,6 +1357,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     # ------------------------------------------------------------------ cycle
     async def _async_update_data(self) -> dict[str, Any]:
+        memory_before = self.control_memory
         try:
             now = time.time()
             self.overrides = {k: o for k, o in self.overrides.items() if o.until_ts > now}
@@ -1115,9 +1383,18 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self.last_update_success:
                 # Home Assistant logs the message only, the traceback on debug: once per series here
                 _LOGGER.exception("thriftherm: evaluation failed")
+            # what the heat pump decision planned did not go out
+            self.control_memory = memory_before
+            self._failed_cycles += 1
             # nothing below runs: a boiler addressed through entities must not keep a block meanwhile
             await self.async_release_boiler()
+            if self._failed_cycles == EVALUATION_FAILURES_LET_GO and self.control_mode == CTRL_ACTIVE and not self._unloading:
+                # The time limits of a quick heat-up and of a drying run in the evaluation only: a unit left in one
+                # heated on at 30 °C for as long as it failed (review 2026-11-13). Not at the first failure, which
+                # would end every quick heat-up for one bad cycle.
+                await self.async_let_go_of_heat_pump()
             raise UpdateFailed(f"evaluation failed: {err}") from err
+        self._failed_cycles = 0
         # The executors never raise and give up after a timeout, so every command below is tried and
         # the store and the repairs still follow. The boiler goes first: a heat pump that does not
         # answer must not delay its SetMode.
@@ -1405,9 +1682,157 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             rate = self.heat_rates.rate(key, HEAT_BY_BOILER)
         return replace(state, heat_rate_k_h=rate, preheat_by_heat_pump=by_heat_pump)
 
+    def _heated_by_hand(self, room: str) -> bool:
+        """Somebody turned up the room's thermostat since the cooling season began (a change by hand taken over), not an
+        override from the heating season or one asked of Thriftherm itself."""
+        held = self.overrides.get(room)
+        since = self.season_since_ts or 0.0
+        return held is not None and held.by != hand.ACTION and held.set_at_ts >= since and held.until_ts > time.time()
+
+    def _with_cooling_targets(
+        self, snapshot: HeatingSnapshot, rooms: dict[str, RoomResult], mode: str, cooling: bool, now_ts: float
+    ) -> dict[str, RoomResult]:
+        """The served rooms with their cooling targets (engines/room_cooling.py), shown in the heating season too.
+
+        A room counts for the air conditioner only in the cooling season, with a reading and its window shut, and not
+        while somebody heats it at its thermostat (a heating override taken from a change by hand): that one is theirs.
+        """
+        self.cool_overrides = {k: o for k, o in self.cool_overrides.items() if o.until_ts > now_ts}
+        floor = self.cool_floor
+        cheap_k = self._cheap_k if cooling else 0.0
+        latch: dict[str, float] = {}
+        out = dict(rooms)
+        for cfg in self.builder.rooms:
+            res = rooms.get(cfg.key)
+            if res is None or not cfg.served_by_heat_pump:
+                continue
+            aim = room_cooling.cooling_target(
+                room_cooling.CoolTargetInputs(
+                    now=snapshot.now, mode=mode, temperature=res.temperature,
+                    comfort=self.cool_temperature(cfg.key, "cool_comfort"),
+                    outside=self.cool_temperature(cfg.key, "cool_outside"),
+                    away=float(self.config.get(CONF_COOL_AWAY_TEMP, DEFAULT_COOL_AWAY_TEMP)), floor=floor,
+                    schedule=self.builder.cool_schedule(cfg), override=self.cool_overrides.get(cfg.key),
+                    away_return_ts=self.away_return_ts, away_provisional=self.away_return_provisional,
+                    latch_ts=self._cool_precool_latch.get(cfg.key), margin_s=snapshot.params.preheat_margin_s,
+                    cheap_k=cheap_k, rate_k_h=self.ac_cool_rates.rate(cfg.key),
+                )
+            )
+            if aim.precool_for_ts is not None:
+                latch[cfg.key] = aim.precool_for_ts
+            heated_by_hand = cooling and self._heated_by_hand(cfg.key)
+            reason = heat_pump_cooling.HEATED_BY_HAND if heated_by_hand else aim.reason
+            allowed = (
+                cooling and aim.target is not None and res.temperature is not None and not res.window_open and not heated_by_hand
+            )
+            out[cfg.key] = replace(
+                res, cool_target=aim.target, cool_target_reason=reason,
+                cooling_allowed=allowed,
+            )
+        if latch != self._cool_precool_latch:
+            self._cool_precool_latch = latch
+            self._store_dirty = True
+        return out
+
+    def _learn_ac_cooling(
+        self, snapshot: HeatingSnapshot, rooms: dict[str, RoomResult], command: Any, active: bool, outdoor: float | None,
+        now_ts: float,
+    ) -> None:
+        """How fast the unit cools each room it serves at its least speed (docs/PHASE12_COOLING.md §20.3)."""
+        if not self.cooling_allowed:
+            return
+        unit = snapshot.heat_pump
+        mem = self.control_memory
+        own_cool_run = self.cooling_season and active and command.plan == HEAT_PUMP_PLAN_COOL and unit.hvac_mode == "cool"
+        ran = heat_pump_control.ran_s(unit, mem, now_ts)
+        cheap = self._cheap_k > 0.0
+        for cfg in self.builder.rooms:
+            res = rooms.get(cfg.key)
+            if res is None or not cfg.served_by_heat_pump:
+                continue
+            own = res.temperature is not None and not any(i.startswith("using_trv_local_temperature") for i in res.issues)
+            learnable = own and ac_cool_learnable(
+                own_cool_run=own_cool_run, resting=mem.resting, lifted=mem.cool_lifted, compressor_ran_s=ran,
+                override=cfg.key in self.cool_overrides, window_open=bool(res.window_open), cheap_power=cheap,
+            )
+            episode = self.ac_cool_rates.episodes.get(cfg.key)
+            learned = self.ac_cool_rates.observe(cfg.key, now_ts, res.temperature, outdoor, learnable)
+            if learned is not None and episode is not None:
+                _LOGGER.info("thriftherm learned cooling rate %s: %.2f K/h", cfg.key, learned)
+                self._store_dirty = True
+
+    def _observe_season(
+        self, snapshot: HeatingSnapshot, rooms: dict[str, RoomResult], boiler_released: bool, active: bool,
+        outdoor: float | None, now_ts: float,
+    ) -> None:
+        """The automatic season (docs/PHASE12_COOLING.md §20.2): measure the rooms, judge once an hour, frost at once.
+
+        Only where cooling is allowed and automatic is chosen: otherwise nothing is measured and nothing stored.
+        """
+        modes = self._unit_modes_now()
+        if modes is not None and modes != self.unit_modes_seen:
+            self.unit_modes_seen = modes
+            self._store_dirty = True
+        if not self.cooling_allowed or self.season_choice != SEASON_AUTO:
+            return
+        unit = snapshot.heat_pump
+        sample_unit = season_engine.UnitSample(
+            hvac_mode=unit.hvac_mode, compressor_hz=unit.compressor_hz, resting=active and self.control_memory.resting,
+            run_on_after_cooling=self._run_on_after_cooling,
+        )
+        samples = []
+        for cfg in self.builder.rooms:
+            res = rooms.get(cfg.key)
+            if res is None:
+                continue
+            served = cfg.served_by_heat_pump and self.has_heat_pump
+            own = res.temperature is not None and not any(i.startswith("using_trv_local_temperature") for i in res.issues)
+            op = season_engine.room_operation(
+                served=served, unit=sample_unit, thermostat_heating=res.thermostat_heating,
+                calling=res.boiler_call == "calling", boiler_released=boiler_released, drying=res.drying.active,
+                window_open=res.window_open, own_reading=own,
+            )
+            load = res.drying.active or (res.drying_reason or "") in _HUMIDITY_LOAD_REASONS
+            samples.append(
+                season_engine.RoomSample(
+                    key=cfg.key, contact=bool(cfg.window_sensors), served=served, heats=op.heats, cools=op.cools,
+                    free=op.free, temperature=res.temperature,
+                    heat_comfort=self.room_temperature(cfg.key, "comfort") or snapshot.params.frost_temp,
+                    cool_comfort=self.cool_temperature(cfg.key, "cool_comfort"), load=load, drying=res.drying.active,
+                )
+            )
+        self.free_run.observe(snapshot.now, samples)
+        self.outdoor_hours.observe(now_ts, outdoor)
+        frost = bool(self._frost_rooms)
+        due = self._season_evaluated_ts is None or now_ts - self._season_evaluated_ts >= season_engine.EVALUATE_EVERY_S
+        if not due and not (frost and self.season == SEASON_COOLING):
+            return
+        self._season_evaluated_ts = now_ts
+        self._store_dirty = True  # what was measured goes into the store with the next save
+        decision = season_engine.decide(
+            season_engine.SeasonInputs(
+                now_ts=now_ts, season=self.season, since_ts=self.season_since_ts,
+                verdicts=self.free_run.verdicts(snapshot.now), outdoor_mean=self.outdoor_hours.mean(now_ts), frost=frost,
+                unit_can_cool=self.unit_can_cool,
+                cooling_from=float(self.config.get(CONF_COOLING_SEASON_FROM_C, DEFAULT_COOLING_SEASON_FROM_C)),
+                heating_from=float(self.config.get(CONF_HEATING_SEASON_FROM_C, DEFAULT_HEATING_SEASON_FROM_C)),
+                veto=float(self.config.get(CONF_COOLING_SEASON_VETO_C, DEFAULT_COOLING_SEASON_VETO_C)),
+            )
+        )
+        if decision.changed:
+            self._set_season(decision.season, decision.reason)
+        elif decision.reason is not None:
+            self.season_reason = decision.reason
+
     def _evaluate(self, snapshot: HeatingSnapshot) -> dict[str, Any]:
         params = snapshot.params
         now_ts = snapshot.now.timestamp()
+        # In the cooling season the heating side runs as in the mode "off": frost protection only (docs/PHASE12_COOLING.md
+        # §2.3). The mode chosen stays as it is and decides the cooling.
+        chosen_mode = snapshot.mode
+        cooling = self.cooling_season
+        if cooling:
+            snapshot = replace(snapshot, mode=MODE_OFF)
         snapshot = self._adopt_manual_thermostat_changes(snapshot, now_ts)
         signal_ok, self._ebus_signal_lost_since = boiler_engine.signal_with_grace(
             snapshot.boiler.signal_ok, self._ebus_signal_lost_since, now_ts
@@ -1492,6 +1917,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 snapshot.away_return_ts,
                 heat_pump_heat_possible=heat_pump_heat_possible,
                 heat_pump_cooling=heat_pump_res.run_state == HEAT_PUMP_COOLING_USER,
+                cooling_season=cooling,
+                frost=key in self._frost_rooms,  # last cycle's list: it is heated to where it leaves it
             )
             for key, state in snapshot.rooms.items()
         }
@@ -1500,6 +1927,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             {key: state.temperature_history for key, state in snapshot.rooms.items()},
         )
         self._preheat_latch = {key: res.preheat_for_ts for key, res in rooms.items() if res.preheat_for_ts is not None}
+        if self.cooling_allowed:
+            rooms = self._with_cooling_targets(snapshot, rooms, chosen_mode, cooling, now_ts)
         for key, res in rooms.items():
             self.drying_states[key] = res.drying
             was = self._last_drying.get(key, False)
@@ -1532,7 +1961,10 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         heat_pump_room_keys = [r.key for r in self.builder.rooms if r.served_by_heat_pump]
         served = tuple(rooms[k] for k in heat_pump_room_keys if k in rooms)
         cop_res = self.heat_pump_tracker.cop(
-            snapshot, heat_pump_res, defrost_res, params, now_ts,
+            snapshot,
+            # in the cooling season, and in a fan run-on after cooling, the unit gives off no heat to measure
+            replace(heat_pump_res, run_state=HEAT_PUMP_OFF) if cooling or self._run_on_after_cooling else heat_pump_res,
+            defrost_res, params, now_ts,
             above_minimum=heat_pump_control.why_above_minimum(snapshot.heat_pump, served, self.control_memory),
         )
 
@@ -1598,7 +2030,12 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.call_memory[key] = memory
             call_states[key] = state
         rooms = {
-            key: replace(res, boiler_call=call_states[key], stalled_target=self.call_memory[key].stalled_target)
+            key: replace(
+                res, boiler_call=call_states[key], stalled_target=self.call_memory[key].stalled_target,
+                last_call=self.call_memory[key].last,
+                calling_s=now_ts - since if (since := self.call_memory[key].since_ts) is not None else None,
+                target_steady_s=None if (stood := self.call_memory[key].target_since_ts) is None else now_ts - stood,
+            )
             for key, res in rooms.items()
         }
         heat_pump_mode = self.control_mode if self.has_heat_pump else CTRL_OFF
@@ -1623,45 +2060,71 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # --- midea control (phase 7): shadow or active --------------------------------------
         blocked = advice.blocked.get("midea")
-        command, self.control_memory = heat_pump_control.decide(
-            ControlInputs(
-                now_ts=now_ts,
-                control_mode=heat_pump_mode,
-                op_mode=snapshot.mode,
-                heat_pump=snapshot.heat_pump,
-                run_state=heat_pump_res.run_state,
-                rooms=tuple(rooms[k] for k in heat_pump_room_keys if k in rooms),
-                advice_source=advice.source,
-                blocked_reason=None if blocked in (None, heat_pump_res.run_state, "mode_boiler_only", "outdoor_too_cold") else blocked,
-                safety_state=safety_res.state,
-                outdoor_c=outdoor,
-                expected_cop=decision_cop,
-                break_even_cop=econ.break_even_cop,
-                outdoor_bin=None if outdoor is None else CopMap.bin_of(outdoor),
-                # known and run in within a week: a band that says gas is measured again now and then (review 2026-11-08)
-                bin_learned=outdoor is not None and self.cop_map.learned(outdoor, params.duct_factor, now_ts),
-                params=params,
-                cheaper=econ.cheaper_source == SOURCE_HEAT_PUMP,
-                started_ts=self._started_ts,
-                defrosting=defrost_res.suspected,
-                # the radiators add the peak for a lagging room; without them the unit itself is set higher, or not
-                boiler_can_help=boiler_can_help,
-                may_lift=may_lift,
-                boiler_held=boiler_held,
-                help_at_floor=help_at_floor,  # "warm up slower": the boiler helps from half a degree below only
-                # without a central heat source the unit holds frost and away protection itself (review 2026-11-08)
-                has_heat_source=self.has_heat_source,
-                frost_rooms=safety_res.frost_rooms,
-                heat_pump_gone_s=heat_pump_gone_s,  # a dropout of its bridge keeps the run, as the safety bridges it
-                # every room unknown only because none has reported since the start: the unit is left as it is
-                safety_pending=starting
-                and safety_res.state == SAFETY_FALLBACK
-                and self.celsius
-                and bool(rooms)
-                and all(f"room:{key}" not in self._arrived for key, res in rooms.items() if res.temperature is None),
-            ),
-            self.control_memory,
-        )
+        if cooling:
+            unit_room = self.config.get(CONF_HEAT_PUMP_ROOM)
+            command, self.control_memory = heat_pump_cooling.decide(
+                heat_pump_cooling.CoolInputs(
+                    now_ts=now_ts, control_mode=heat_pump_mode, heat_pump=snapshot.heat_pump,
+                    rooms=tuple(rooms[k] for k in heat_pump_room_keys if k in rooms), params=params,
+                    floor=self.cool_floor,
+                    shortfall=self._cool_shortfall, fan_stage=str(self.config.get(CONF_HEAT_PUMP_COOL_FAN_STAGE) or "auto"),
+                    unit_window_open=bool(unit_room in rooms and rooms[unit_room].window_open),
+                    safety_state=safety_res.state, frost=bool(safety_res.frost_rooms), started_ts=self._started_ts,
+                    heat_pump_gone_s=heat_pump_gone_s, season_since_ts=self.season_since_ts,
+                    safety_pending=starting and safety_res.state == SAFETY_FALLBACK and bool(rooms)
+                    and all(f"room:{key}" not in self._arrived for key, res in rooms.items() if res.temperature is None),
+                ),
+                self.control_memory,
+            )
+        else:
+            command, self.control_memory = heat_pump_control.decide(
+                ControlInputs(
+                    now_ts=now_ts,
+                    control_mode=heat_pump_mode,
+                    op_mode=snapshot.mode,
+                    heat_pump=snapshot.heat_pump,
+                    run_state=heat_pump_res.run_state,
+                    rooms=tuple(rooms[k] for k in heat_pump_room_keys if k in rooms),
+                    advice_source=advice.source,
+                    blocked_reason=(
+                        None if blocked in (None, heat_pump_res.run_state, "mode_boiler_only", "outdoor_too_cold") else blocked
+                    ),
+                    safety_state=safety_res.state,
+                    outdoor_c=outdoor,
+                    expected_cop=decision_cop,
+                    break_even_cop=econ.break_even_cop,
+                    outdoor_bin=None if outdoor is None else CopMap.bin_of(outdoor),
+                    # known and run in within a week: a band that says gas is measured again now and then (review 2026-11-08)
+                    bin_learned=outdoor is not None and self.cop_map.learned(outdoor, params.duct_factor, now_ts),
+                    params=params,
+                    cheaper=econ.cheaper_source == SOURCE_HEAT_PUMP,
+                    started_ts=self._started_ts,
+                    defrosting=defrost_res.suspected,
+                    # the radiators add the peak for a lagging room; without them the unit itself is set higher, or not
+                    boiler_can_help=boiler_can_help,
+                    may_lift=may_lift,
+                    boiler_held=boiler_held,
+                    help_at_floor=help_at_floor,  # "warm up slower": the boiler helps from half a degree below only
+                    # without a central heat source the unit holds frost and away protection itself (review 2026-11-08)
+                    has_heat_source=self.has_heat_source,
+                    frost_rooms=safety_res.frost_rooms,
+                    heat_pump_gone_s=heat_pump_gone_s,  # a dropout of its bridge keeps the run, as the safety bridges it
+                    # also where cooling was taken back in its season: that is a change of season too
+                    season_since_ts=self.season_since_ts,
+                    # every room unknown only because none has reported since the start: the unit is left as it is
+                    safety_pending=starting
+                    and safety_res.state == SAFETY_FALLBACK
+                    and self.celsius
+                    and bool(rooms)
+                    and all(f"room:{key}" not in self._arrived for key, res in rooms.items() if res.temperature is None),
+                ),
+                self.control_memory,
+            )
+        if command.action == "stop" and (cooling or command.reason == "season_ended"):
+            # also the run of the cooling season that the heating control ends once the season is heating
+            self._run_on_after_cooling = True
+        elif self.control_memory.fan_until_ts is None:
+            self._run_on_after_cooling = False
         if self.plan_log.heat_pump(command, now_ts, self.control_mode == CTRL_ACTIVE):
             self._store_dirty = True
         if command.plan == HEAT_PUMP_PLAN_HEAT and heat_pump_acts and not self.control_memory.resting:
@@ -1689,6 +2152,12 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         settling = now_ts - self._last_target_change_ts < SETPOINT_SETTLE_S
         if settling:
             learning_blocked.append("setpoint_recently_changed")
+        if cooling:
+            learning_blocked.append("cooling_season")
+        if outdoor is None and self.has_boiler:
+            # no outdoor temperature, and the last known one has run out: a step of the curve would be put at a
+            # temperature there never was (review of the curve learning 2026-11-12, finding 6)
+            learning_blocked.append("outdoor_temperature_unknown")
         if any(r.boost_active for r in rooms.values()):
             learning_blocked.append("quick_heat_up")
         if any(r.drying.active for r in rooms.values()):
@@ -1823,6 +2292,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 max_temp=state.thermostat_max_temp,
                 step=state.thermostat_step,
                 wrapped=state.thermostat_wrapped,
+                held_by_hand=cooling and self._heated_by_hand(cfg.key),
             )
             if self.room_ctrl_memory[cfg.key].last_sent_target != before.last_sent_target:
                 # A sent setpoint must survive a restart at once: measured 2026-09-26, the store
@@ -1856,6 +2326,12 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # boiler's only where the unit's compressor does not run in the room as well (a unit that shows
         # no frequency counts as running in heat mode, unless it rests at the lowest setpoint).
         unit = snapshot.heat_pump
+        # cool or dry, ours or by hand, and the fan running on after cooling: the unit takes heat out of its rooms
+        # Also where cooling is not allowed: cooled by hand on a summer evening, a room's fall was learned as its heat
+        # loss to outside, several times too large (review 2026-11-13, decided: wherever there is a heat pump).
+        unit_cools = self.has_heat_pump and (
+            unit.hvac_mode in ("cool", "dry") or ((cooling or self._run_on_after_cooling) and unit.hvac_mode == "fan_only")
+        )
         compressor_heats = self.has_heat_pump and heat_pump_control.compressor_heats(
             unit, self.control_memory, heat_pump_mode == CTRL_ACTIVE
         )
@@ -1885,10 +2361,17 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # how fast the room loses heat: the basis for a setback that really saves
             # Held at its least speed the compressor runs for hours with no room calling (2026-10-30): its rooms
             # drift slowly then, and that is no cool-down.
-            cooled = self.cool_rates.observe(key, now_ts, measured, outdoor, heating or by_heat_pump, bool(res.window_open))
+            # A room the air conditioner cools loses no heat to outside, whatever the gradient (docs/PHASE12_COOLING.md §7.1).
+            cooled_by_unit = unit_cools and key in heat_pump_room_keys
+            cooled = self.cool_rates.observe(
+                key, now_ts, measured, outdoor, heating or by_heat_pump or cooled_by_unit, bool(res.window_open)
+            )
             if cooled is not None:
                 _LOGGER.info("thriftherm learned cool-down coefficient %s: %.4f per h", key, cooled)
                 self._store_dirty = True
+
+        self._observe_season(snapshot, rooms, boiler_heats, heat_pump_mode == CTRL_ACTIVE, outdoor, now_ts)
+        self._learn_ac_cooling(snapshot, rooms, command, heat_pump_mode == CTRL_ACTIVE, outdoor, now_ts)
 
         self.plan_log.changes(advice, safety_res, defrost_res)
         room_names = {r.key: r.name for r in self.builder.rooms}
@@ -1919,6 +2402,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "away_return_provisional": self.away_return_provisional,
             "heat_rates": self.heat_rates.to_dict(),
             "cool_rates": self.cool_rates.to_dict(),
+            "ac_cool_rates": self.ac_cool_rates.to_dict() if self.cooling_allowed else None,  # hidden with cooling
             "heating_power": {
                 r.key: by_source
                 for r in self.builder.rooms
@@ -1957,6 +2441,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "room_commands": room_commands,
             "echoes_ignored": dict(self.echoes_ignored),
             "room_control_mode": self.room_control_mode,
+            "season": self.season,
+            "season_since_ts": self.season_since_ts,
+            "season_choice": self.season_choice,
+            "season_reason": self.season_reason,
+            "cool_overrides": {k: {"target": o.target, "until_ts": o.until_ts} for k, o in self.cool_overrides.items()},
         }
 
     def _adopt_manual_thermostat_changes(self, snapshot: HeatingSnapshot, now_ts: float) -> HeatingSnapshot:

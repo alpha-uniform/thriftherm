@@ -21,12 +21,6 @@ def test_a_stopped_pump_moves_no_heat_whatever_status01_says():
     assert boiler_engine.evaluate(state, PRICES).thermal_power_estimate_w is None
 
 
-def test_without_the_pump_entity_status01_still_decides():
-    res = boiler_engine.evaluate(boiler_state(flow=45.0, ret=38.0, pump="on"), PRICES)
-    assert res.thermal_power_estimate_w is not None
-    assert res.pump_running is None
-
-
 def test_hot_water_detection_keeps_using_status01():
     state = replace(boiler_state(pump="hwc"), pump_running=True)
     assert boiler_engine.evaluate(state, PRICES).hwc_active is True

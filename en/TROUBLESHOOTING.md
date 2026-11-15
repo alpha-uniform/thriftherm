@@ -98,7 +98,7 @@ A boiler through entities (preview) is different: if Home Assistant crashes or l
 
 A window is open, or the room's thermostat is switched off. Close the window or switch the thermostat back to *heat*.
 
-If a radiator thermostat has not answered a setpoint for half an hour, is unavailable for half an hour, or has not reported for six hours, the room does not call for heat either. A repair notice appears for it. Look at its *Last seen* in Zigbee2MQTT or ZHA; with ZHA it counts as a report as well.
+A [silent radiator thermostat](GUIDE.md#silent-thermostats) (setpoint not answered for half an hour, unavailable for half an hour, or six hours without a report) does not call for heat either. A repair notice appears for it. Look at its *Last seen* in Zigbee2MQTT or ZHA; with ZHA it counts as a report as well.
 
 ### A room is at 15 °C
 
@@ -110,11 +110,7 @@ A change by hand becomes a temporary override, for 120 minutes by default. End i
 
 ### Overrides although nobody touched the thermostat
 
-Better Thermostat rewrites the valve setpoint every few seconds. When a Zigbee reply arrives late, Better Thermostat takes the old value for a turn of the knob.
-
-The **echo filter** recognises this (Options → *Control parameters*, section *Releases*, on by default). When Better Thermostat jumps to a value the valve already showed within the last minute and left again (for example 16 → 16.5 → 16), the jump is ignored and the planned setpoint is sent again. A real turn of the knob brings a new value and is taken over.
-
-The room's *Thermostat plan* sensor shows when an echo was last ignored.
+Mostly a late radio echo: Better Thermostat rewrites the setpoint every few seconds, and takes a late reply over Zigbee for a turn of the knob. The **echo filter** catches this (Options → *Control parameters*, section *Releases*, on by default; [how it works](HOW_IT_WORKS.md#echo-filter)). Check that it is on. The room's *Thermostat plan* sensor shows when an echo was last ignored.
 
 ### A room takes very long after you turn it up
 
@@ -132,6 +128,14 @@ The *Learning state* then shows *Heating curve correction at its limit*, and in 
 
 First check that the valve opens fully and the radiator is bled. If it stays that way, set the room's target a little lower or replace the radiator with a bigger one. The correction never goes beyond the 10 degrees, and the higher flow while the room calls costs only a little gas.
 
+### The learning state shows “Waiting for a heating run”
+
+That is no fault. Thriftherm learns only while the boiler fires or cycles for the heating and the boiler control is *Active*; without an outdoor temperature the heating curve learns nothing. The attribute *Paused because* gives the exact reason. How long learning takes overall: [user guide, how long learning takes](GUIDE.md#how-long-learning-takes).
+
+### A room's heat-up rate stays at its starting value
+
+A room learns its heat-up rate from periods in which it rises by at least 0.5 degrees over at least 30 minutes, with the window closed. A room without a setback only swings by a tenth or two and therefore never learns it; it stays at the *Default heat-up rate*. That does no harm, it only affects how early it pre-heats.
+
 ### A thermostat does not accept setpoints
 
 The thermostat hangs. Take the battery out and put it back, and update its firmware.
@@ -144,7 +148,7 @@ Right after a restart *Boiler command* shows *Waiting for room data*. Thriftherm
 
 ### Temperature trend is empty after a restart
 
-The trend needs about 30 minutes of readings. On a new installation the sensor is disabled until you enable it ([user guide, dashboard sensors](GUIDE.md#8-dashboard-sensors-worth-knowing)).
+The trend needs about 30 minutes of readings. On a new installation the sensor is disabled until you enable it ([user guide, dashboard sensors](GUIDE.md#dashboard-sensors-worth-knowing)).
 
 ### Flow and return change only every few minutes
 
@@ -171,6 +175,6 @@ If the card is still missing, the browser usually shows a start page from before
 
 ## None of this fits
 
-- What a repair notice means and what to do is in the [user guide, repairs](GUIDE.md#9-repairs).
+- What a repair notice means and what to do is in the [user guide, repairs](GUIDE.md#repairs).
 - The *Decision reason* sensor says in plain words why Thriftherm does what it does.
 - For a bug report: Settings → Devices & services → Thriftherm → ⋮ → *Download diagnostics*. The file holds configuration, current state and learned values; only the people whose arrival ends away mode are left out. Look through it before posting it and attach it to an [issue](https://github.com/alpha-uniform/thriftherm/issues).

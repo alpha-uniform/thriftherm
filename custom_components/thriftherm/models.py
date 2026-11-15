@@ -103,6 +103,7 @@ class RoomConfig:
     drying_automatic: bool = True  # False: a drying starts with the button only, not by the humidity after a shower
     schedule_entity: str | None = None  # weekly schedule helper, replaces the text windows
     preheat_max_s: float | None = None  # longest preheat; set, the room also calls up to the end of its block
+    cooling_schedule_entity: str | None = None  # weekly schedule helper of its cooling comfort (docs/PHASE12_COOLING.md)
 
 
 @dataclass(frozen=True)
@@ -303,7 +304,6 @@ class Parameters:
     boiler_hot_water_standby: bool = True  # False: SetMode disables the keep-warm / cylinder load
     boiler_heat_up_rate_k_h: float = 0.0  # how fast a room is to heat up (engines/heat_up.py); 0: off
     boiler_spread_min_room_share: float = 0.5  # the spread judges the curve only while this share of the rooms calls
-    boiler_load_model: bool = True  # a curve per load class (how many rooms call); False: one common correction for all
 
 
 @dataclass(frozen=True)
@@ -324,6 +324,27 @@ class HeatingSnapshot:
 # ---------------------------------------------------------------------------
 # Engine results
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class EndedCall:
+    """A room's call for the boiler that has ended (engines/heat_call.py): when, and from where to where the room went.
+
+    `spoiled` says why it tells nothing about the flow; None: a holding call, begun three tenths below a target
+    that stood and ended at it, with nothing else moving the room.
+    """
+
+    start_ts: float
+    end_ts: float
+    start_c: float
+    end_c: float
+    spoiled: str | None = None
+
+    @property
+    def pace_k_per_h(self) -> float | None:
+        """How fast the room rose over the call."""
+        duration = self.end_ts - self.start_ts
+        return None if duration <= 0 else (self.end_c - self.start_c) / duration * 3600.0
 
 
 @dataclass(frozen=True)
@@ -366,6 +387,18 @@ class RoomResult:
     schedule_entity: str | None = None  # the room's weekly schedule helper, for a dashboard to open
     next_change_ts: float | None = None  # when the schedule switches next (engines/room.py next_schedule_change)
     next_target: float | None = None  # ... and the target it switches to
+    # for how long `target` has stood as it is (None: not known): the trend looks back 90 minutes, and what it
+    # saw before the target moved says nothing about the way to it (engines/boiler_load.counts)
+    target_steady_s: float | None = None
+    # how long ago the room sensor reported (None: not known, or the valve stands in): one that reports on a change
+    # of a degree only reads flat for hours, which is silence and no trend (engines/boiler_load.counts)
+    temperature_age_s: float | None = None
+    last_call: EndedCall | None = None  # the room's last call for the boiler that ended (engines/heat_call.py)
+    calling_s: float | None = None  # for how long its call for the boiler has run; None: none runs
+    # cooling (docs/PHASE12_COOLING.md): the room's cooling target, None while it is not to be cooled, and why
+    cool_target: float | None = None
+    cool_target_reason: str | None = None
+    cooling_allowed: bool = False  # it counts for the air conditioner: a cooling target, a reading, the window shut
 
 
 @dataclass(frozen=True)

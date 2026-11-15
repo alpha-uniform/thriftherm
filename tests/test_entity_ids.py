@@ -27,8 +27,8 @@ def test_no_brand_names_or_mangled_umlauts_in_ids():
 
 def test_every_platform_can_get_an_english_id():
     """A new platform without an entry here would silently fall back to the translated name."""
-    from custom_components.thriftherm.const import PLATFORMS
+    from custom_components.thriftherm.const import COOLING_PLATFORMS, PLATFORMS
     from custom_components.thriftherm.entity import _PLATFORMS
 
-    assert {domain for _cls, domain in _PLATFORMS} >= set(PLATFORMS)
-    assert set(OBJECT_IDS) == set(PLATFORMS)
+    assert {domain for _cls, domain in _PLATFORMS} >= {*PLATFORMS, *COOLING_PLATFORMS}
+    assert set(OBJECT_IDS) == {*PLATFORMS, *COOLING_PLATFORMS}

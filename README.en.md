@@ -32,10 +32,20 @@ Many boilers run without a real controller. The boiler then keeps its heating ci
 - **Heating blocked when no room needs heat.** Hot water is not touched and keeps following the knob.
 - **Heat-up speed of your choice** in °C per hour. More speed burns more gas.
 - **Hot water recognised:** after a shower learning pauses for an hour, so shower water does not upset the heating curve.
-- **Summer mode over eBUS:** heating is off, hot water keeps working, and the knob can stay open.
+- **Heating off over eBUS** (mode *Off (frost protection only)*): heating is off, hot water keeps working, and the knob can stay open.
 - **Safe fallback:** if Home Assistant stops, the boiler returns to its own knob after 9 to 16 minutes. The knob always remains the upper limit.
 
 Every decision comes with a reason you can read in Home Assistant. When boiler data is missing, Thriftherm sends nothing and the boiler runs on its knob.
+
+## How long Thriftherm learns
+
+From the first day Thriftherm heats with starting values: your heating curve, a typical heat-up rate and a COP curve from the data sheet. What it learns on top comes only from real heating runs and with *Active*:
+
+- **Heating curve per room:** first corrections on the first heating day, stable after about 1 to 2 weeks of heating season. It learns the slope for cold days only in frost.
+- **Heat-up rates:** a first value after 1 to 2 days with a setback, a reliable one after 1 to 2 weeks.
+- **COP map of the heat pump:** the frequent outdoor temperatures after 2 to 4 weeks, frost only in frost.
+
+The times are estimated from the rules and depend on the weather ([details](en/GUIDE.md#how-long-learning-takes)).
 
 ## Quick start
 
@@ -54,7 +64,7 @@ Nothing is written to the boiler or the thermostats until you switch to *Active*
 ## Documentation
 
 - [Setup](en/SETUP.md): step by step from nothing to *Active*
-- [User guide](en/GUIDE.md): daily use with modes, temperatures, services, learning and repairs
+- [User guide](en/GUIDE.md): daily use with modes, temperatures, thermostats, learning and how long it takes, services, repairs and a list of terms
 - [How it works](en/HOW_IT_WORKS.md): how Thriftherm decides, with thresholds, learning steps and rules
 - [Troubleshooting](en/TROUBLESHOOTING.md): when something does not work, ordered by what you see
 - [Poll fewer ebusd values](en/EBUSD.md): optional, for fresher flow and return values
@@ -120,8 +130,8 @@ The full list is in the [setup guide, step 1](en/SETUP.md#1-what-you-need).
 
 ```bash
 python3 -m venv .venv
-./.venv/bin/pip install pytest pytest-asyncio pytest-homeassistant-custom-component
-./.venv/bin/pytest -q
+./.venv/bin/pip install pytest pytest-asyncio pytest-homeassistant-custom-component pytest-xdist
+./.venv/bin/pytest -q -n auto
 ```
 
 The engines under `custom_components/thriftherm/engines/` are pure Python without Home Assistant imports and unit-tested (about 90 % line and branch coverage).
@@ -136,6 +146,7 @@ Thriftherm is built in my spare time. If it saves you energy or money, you can [
 
 - **David** – the first coffee, and two ideas that are in now: counting the gas for heating and for hot water apart, without a gas meter too, and trimming the list ebusd polls so that the values that matter come more often. Thank you!
 - **[jwarzecha](https://github.com/jwarzecha)** – a coffee, the idea that the boiler comes only when the thermostat wants to heat too ([#3](https://github.com/alpha-uniform/thriftherm/issues/3)), and the data of a Vaillant atmoTEC pro ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)). Thank you!
+- **[elektroduell](https://github.com/elektroduell)** – coffees, the data of his Vaillant VCW with an eBUS Adapter Shield C5, and the Shelly sensors that report only on a change: they brought the switch *Room sensors report only on a change* ([#7](https://github.com/alpha-uniform/thriftherm/issues/7)) and a heating curve learning that no longer misreads such sensors. Thank you!
 
 ## License
 

@@ -346,6 +346,28 @@ class ThrifthermCard extends HTMLElement {
     this.shadowRoot.innerHTML = `<style>${STYLE}</style><ha-card><div class="card">${body}</div></ha-card>`;
   }
 
+  // the season in force: the select's state is the choice, automatic (§20.2) tells the season in its attribute
+  _coolingSeason() {
+    const season = this._sys("season");
+    return (season?.attributes?.season ?? season?.state) === "cooling";
+  }
+
+  // the season row: the choice, and with automatic the season it chose and why (docs/PHASE12_COOLING.md §20.2)
+  _seasonRow() {
+    const season = this._sys("season");
+    if (!season) return "";
+    const fmt = (o) => this._hass.formatEntityState(season, o);
+    const options = (season.attributes.options || []).map((o) =>
+      `<option value="${esc(o)}"${o === season.state ? " selected" : ""}>${esc(fmt(o))}</option>`).join("");
+    let auto = "";
+    if (season.state === "auto" && season.attributes.season) {
+      const why = season.attributes.reason ? ` · ${this._label(season.attributes.reason)}` : "";
+      auto = `<span class="season-auto">${esc(`${fmt("auto")}: ${fmt(season.attributes.season)}${why}`)}</span>`;
+    }
+    return `<label class="mode-row"><span>${esc(this._t("season"))}</span>
+        <select data-action="mode" data-entity="${esc(season.entity_id)}">${options}</select></label>${auto}`;
+  }
+
   // 1. heat source in a sentence, the comparison on a tap
   _sourceBlock() {
     const hp = this._sys("midea_command");
@@ -353,6 +375,16 @@ class ThrifthermCard extends HTMLElement {
     if (!hp && !boiler) return ""; // neither a heat pump nor a boiler to tell about
     const hpHeats = hp?.state === "heat";
     const boilerHeats = boiler?.state === "heat";
+    if (this._coolingSeason()) {
+      // the cooling season (docs/PHASE12_COOLING.md): what the air conditioner does and why; costs say nothing here
+      const cools = hp?.state === "cool";
+      const why = this._label(this._attr(hp, "reason"));
+      return `
+      <div class="source">
+        ${icon("heatPump", cools ? "hp" : "muted")}
+        <span class="source-text"><span class="headline">${esc(this._t(cools ? "heat_pump_cools" : "cooling_rests"))}</span>${why ? `<span class="sub">${esc(why)}</span>` : ""}</span>
+      </div>`;
+    }
     let line;
     if (hpHeats && boilerHeats) line = this._t("both_heat");
     else if (hpHeats) line = this._t("heat_pump_heats");
@@ -443,11 +475,14 @@ class ThrifthermCard extends HTMLElement {
 
   _learning(learning) {
     const state = this._state(learning);
-    const codes = learning.attributes.paused_because || [];
+    // "waiting for a heating run" says by itself that the boiler is not heating right now
+    const codes = (learning.attributes.paused_because || []).filter((c) => c !== "no_heating_run");
     if (!codes.length) return state;
     const clauses = this._texts.paused_because;
     const why = [...new Set(codes.map((c) => (c.startsWith("safety_") ? clauses.safety : clauses[c] || this._label(c))))];
-    return this._t("because", { state, why: why.join(this._t("and")) });
+    // held back by something else than the missing heating run, it is paused, whatever the boiler does
+    const paused = learning.state === "paused" ? this._t("learning_paused") : state;
+    return this._t("because", { state: paused, why: why.join(this._t("and")) });
   }
 
   // 2. warnings, only when there are some
@@ -564,7 +599,9 @@ class ThrifthermCard extends HTMLElement {
     if (!target) return "";
     const a = target.attributes;
     const current = this._measured(a.temperature_entity);
-    const setpoint = num(target.state);
+    // in the cooling season a served room shows its cooling target; its heating target is the frost limit then
+    const cooling = this._coolingSeason() && a.cool_reason !== undefined;
+    const setpoint = cooling ? num(a.cool_target) : num(target.state);
     const windowOpen = this._s(room.ids.window_open)?.state === "on";
     const allowed = this._s(room.ids.heating_allowed)?.state !== "off";
     const demandState = this._s(room.ids.demand);
@@ -582,7 +619,8 @@ class ThrifthermCard extends HTMLElement {
     ].join("");
 
     let reason;
-    if (windowOpen) reason = this._t("window_open");
+    if (cooling) reason = windowOpen ? this._t("window_open") : this._label(a.cool_reason);
+    else if (windowOpen) reason = this._t("window_open");
     else if (byHand) {
       const until = num(a.override_until_ts);
       reason = until !== null ? `${this._t("by_hand")}, ${this._t("until", { time: this._time(until) })}` : this._t("by_hand");
@@ -697,6 +735,7 @@ class ThrifthermCard extends HTMLElement {
       <label class="mode-row"><span>${esc(this._t("operating_mode"))}</span>
         <select data-action="mode" data-entity="${esc(mode.entity_id)}">${options}</select></label>
       ${away}
+      ${this._seasonRow()}
     </div>`;
   }
 
@@ -789,8 +828,22 @@ class ThrifthermCard extends HTMLElement {
   _onLeave(ev) {
     const el = ev.target;
     if (this._hass && el.dataset?.action === "return" && el.value && el.value !== el.dataset.sent) {
+      const before = el.dataset.sent;
       el.dataset.sent = el.value;
-      this._hass.callService("datetime", "set_value", { datetime: `${el.value.replace("T", " ")}:00` }, { entity_id: el.dataset.entity });
+      const when = `${el.value.replace("T", " ")}:00`;
+      // This field always carries a time of day. The entity reads midnight as "only the date was picked" (as Home
+      // Assistant's own date field sends it) and makes it a provisional 23:59: a return at midnight is asked for as
+      // the action, which takes it as it is.
+      if (el.value.endsWith("T00:00")) {
+        // refused (midnight of today is past): not on record as sent, so the same value can be set again, and the
+        // field shows what is planned
+        Promise.resolve(this._hass.callService("thriftherm", "set_away", { return_time: when })).catch(() => {
+          if (el.dataset.sent === el.value) el.dataset.sent = before;
+          this._signature = "";
+          this._render();
+        });
+      }
+      else this._hass.callService("datetime", "set_value", { datetime: when }, { entity_id: el.dataset.entity });
     }
     if (this._deferred) {
       this._deferred = false;
@@ -983,6 +1036,7 @@ const STYLE = `
   .mode { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; }
   .mode-row { display: flex; align-items: center; gap: 12px; }
   .mode-row > span { flex: 1; }
+  .season-auto { display: block; color: var(--secondary-text-color); font-size: 0.9rem; }
   select, input { font: inherit; color: var(--primary-text-color); background: var(--ha-card-background, var(--card-background-color, transparent));
     border: 1px solid var(--divider-color); border-radius: 8px; padding: 6px 8px; max-width: 60%; }
   button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--primary-color); outline-offset: 2px; }

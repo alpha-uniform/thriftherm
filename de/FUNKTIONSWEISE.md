@@ -2,7 +2,7 @@
 
 [English](../en/HOW_IT_WORKS.md) | **Deutsch**
 
-Für die Bedienung reicht die [Anleitung](ANLEITUNG.md). Hier steht, wie Thriftherm intern entscheidet.
+Für die Bedienung reicht die [Anleitung](ANLEITUNG.md). Hier steht, wie Thriftherm intern entscheidet. Fachbegriffe erklärt die [Anleitung, Begriffe](ANLEITUNG.md#begriffe).
 
 Die Zahlen stammen aus dem Code. „Standard“ heißt: in den Optionen einstellbar. Alle anderen Werte sind fest.
 
@@ -13,14 +13,13 @@ Die Zahlen stammen aus dem Code. „Standard“ heißt: in den Optionen einstell
 - [Vorheizen](#vorheizen)
 - [Thermensteuerung](#thermensteuerung)
 - [Aufheiztempo](#aufheiztempo)
-- [Lernen](#lernen)
+- [Lernen](#lernen), mit [Wie lange das Lernen dauert](#wie-lange-das-lernen-dauert)
 - [Wärmepumpe](#wärmepumpe)
 
 ## Abwesend und geplante Rückkehr
 
-Die Bedienung steht in der [Anleitung, Abschnitt 2](ANLEITUNG.md#abwesend-mit-und-ohne-rückkehr). Hier die Regeln, nach denen *Geplante Rückkehr* deine Eingaben liest.
+Die Bedienung, auch ein erneutes *Abwesend*, steht in der [Anleitung](ANLEITUNG.md#abwesend-mit-und-ohne-rückkehr). Hier die Regeln, nach denen *Geplante Rückkehr* deine Eingaben liest.
 
-- **Erneut *Abwesend*:** Ist *Abwesend* mit Rückkehr schon an, ändert ein erneutes *Abwesend* nichts. Für Abwesend ohne Ende erst einen anderen Modus wählen und dann wieder *Abwesend*, oder `thriftherm.set_away` mit `clear_return_time: true` aufrufen.
 - **Erst das Datum:** Solange nichts geplant ist, nimmt das Uhrzeitfeld nichts an.
 - **Nur ein Datum ist ein Platzhalter:** Solange keine Uhrzeit gewählt ist, steht die Rückkehr vorläufig auf 23:59 des gewählten Tages, heute wie an jedem späteren Tag. Ein anderes Datum nimmt die vorläufige 23:59 mit. Eine vorläufige Rückkehr heizt nicht vor. Erst die Uhrzeit, die du danach wählst, gilt, und für sie wird rechtzeitig vorgeheizt. Wählst du keine, endet Abwesend trotzdem um 23:59.
 - **Datum ändern, wenn schon eine Uhrzeit geplant ist:** Das neue Datum behält die geplante Uhrzeit und gilt sofort. Wählst du heute und ist diese Uhrzeit schon vorbei, steht wieder vorläufig 23:59 da.
@@ -58,7 +57,7 @@ Kommt die Luft im Raum während *Abwesend* ihrem Taupunkt näher als 3 Grad (Sta
 
 ## Änderungen von Hand
 
-Was eine Änderung von Hand bewirkt und wo du sie siehst, steht in der [Anleitung, Abschnitt 3](ANLEITUNG.md#änderungen-von-hand). Hier steht, woran Thriftherm sie erkennt.
+Was eine Änderung von Hand bewirkt und wo du sie siehst, steht in der [Anleitung](ANLEITUNG.md#änderungen-von-hand). Hier steht, woran Thriftherm sie erkennt.
 
 Thriftherm schreibt Sollwerte und muss deshalb wissen, wer einen Sollwert geändert hat. Das sagt Home Assistant selbst: Jede Änderung trägt mit, woher sie kommt.
 
@@ -71,7 +70,9 @@ Thriftherm schreibt Sollwerte und muss deshalb wissen, wer einen Sollwert geänd
 
 Ein fremder Sollwert an einem Thermostat oder an der Wärmepumpe startet sofort einen Zyklus, ohne auf den nächsten zu warten. Eine eigene Automation, die die Anzeige beschleunigt, ist deshalb nicht nötig.
 
-**Echo-Filter:** Better Thermostat schreibt den Sollwert des Heizkörperthermostats alle paar Sekunden neu. Kommt über Zigbee eine Antwort verspätet an, hält Better Thermostat den alten Wert für einen Dreh am Thermostat. Der Echo-Filter (Optionen → Regelparameter, standardmäßig an) erkennt das: Springt Better Thermostat auf einen Wert, den das Thermostat in der letzten Minute schon hatte und wieder verlassen hatte (z. B. 16 → 16,5 → 16), wird das ignoriert und der geplante Sollwert neu gesendet. Ein echter Dreh bringt einen neuen Wert und wird übernommen. Wann zuletzt ein Echo ignoriert wurde, zeigt der Sensor *Thermostat-Plan* des Raums.
+### Echo-Filter
+
+Better Thermostat schreibt den Sollwert des Heizkörperthermostats alle paar Sekunden neu. Kommt über Zigbee eine Antwort verspätet an, hält Better Thermostat den alten Wert für einen Dreh am Thermostat. Der Echo-Filter (Optionen → Regelparameter, standardmäßig an) erkennt das: Springt Better Thermostat auf einen Wert, den das Thermostat in der letzten Minute schon hatte und wieder verlassen hatte (z. B. 16 → 16,5 → 16), wird das ignoriert und der geplante Sollwert neu gesendet. Ein echter Dreh bringt einen neuen Wert und wird übernommen. Wann zuletzt ein Echo ignoriert wurde, zeigt der Sensor *Thermostat-Plan* des Raums.
 
 ### Dreh am Ventil hinter einem Raumthermostat
 
@@ -107,7 +108,7 @@ Beginn = Blockbeginn − (Soll − Ist) / Aufheizrate − Sicherheitszuschlag
 
 ## Thermensteuerung
 
-Die Bedienung steht in der [Anleitung, Abschnitt 5](ANLEITUNG.md#5-thermensteuerung-eigene-therme-über-ebusd).
+Die Bedienung steht in der [Anleitung](ANLEITUNG.md#thermensteuerung).
 
 ### Vorlauf
 
@@ -182,7 +183,7 @@ Das letzte Feld der ebusd-Nachricht `Status01` heißt Pumpenstatus, folgt aber d
 
 ## Aufheiztempo
 
-Die Einstellung steht in der [Anleitung, Aufheiztempo](ANLEITUNG.md#aufheiztempo).
+Die Einstellung steht in der [Anleitung](ANLEITUNG.md#aufheiztempo).
 
 **Anlass:** Von einem Nutzer am 14.10.2026 gemeldet: Wohnzimmer von 20,5 auf 23,5 °C gestellt, der Vorlauf blieb 40 Minuten bei 45 °C, die Therme taktete mit 44 °C Rücklauf, und zwei Stunden später stand der Raum bei 22,2 °C.
 
@@ -217,7 +218,7 @@ Die Einstellung steht in der [Anleitung, Aufheiztempo](ANLEITUNG.md#aufheiztempo
 
 ## Lernen
 
-Was gelernt wird und wo du es siehst, steht in der [Anleitung, Abschnitt 6](ANLEITUNG.md#6-lernen).
+Was gelernt wird und wo du es siehst, steht in der [Anleitung](ANLEITUNG.md#lernen).
 
 ### Was gelernt wird
 
@@ -231,7 +232,7 @@ Was gelernt wird und wo du es siehst, steht in der [Anleitung, Abschnitt 6](ANLE
 
 **Am Vorlauf-Minimum lernt die Kurve nicht nach oben.** An einem milden Tag liegt die Kurve unter dem Minimum, und gesendet wird das Minimum. Kommt ein Raum dann nicht hin, braucht er mehr als das Minimum; über die Kurve an einem kalten Tag sagt das nichts. Früher hob ein Schritt den Wert um die ganze Lücke bis zum Minimum: Im Test vom 15.10.2026 stieg bei 16 °C draußen ein Wert mit einem Schritt um 4,4 Grad, nach drei Schritten stand das Schlafzimmer bei 9,3 Grad mehr. Jetzt bleibt das Lernen dort stehen, und der Lernstatus zeigt *Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum*. Hält das an, ist das Minimum für diesen Raum zu niedrig, und du hebst es in den Thermen-Optionen an.
 
-**An der Grenze der Korrektur** (±10 Grad für Höhe oder Steigung) geht ein Schritt nur noch bis zur Grenze, oder er entfällt. Dann zeigt der Lernstatus *Heizkurven-Korrektur an ihrer Grenze (Höhe oder Steigung, je ±10 Grad)*, bis eine Stunde und 20 Minuten lang kein Schritt mehr an die Grenze stößt. Welche Linie es ist, steht im Attribut `curve_by_load`. Steht ein einzelner Raum dauerhaft dort, liegt es meist nicht an der Kurve, sondern am Heizkörper oder an der Hydraulik dieses Raums.
+**An der Grenze der Korrektur** (±10 Grad für Höhe oder Steigung) geht ein Schritt nur noch bis zur Grenze, oder er entfällt. Dann zeigt der Lernstatus *Heizkurven-Korrektur an ihrer Grenze (Höhe oder Steigung, je ±10 Grad)*, bis zwei Stunden und 10 Minuten lang kein Schritt mehr an die Grenze stößt. Welche Linie es ist, steht im Attribut `curve_by_load`. Steht ein einzelner Raum dauerhaft dort, liegt es meist nicht an der Kurve, sondern am Heizkörper oder an der Hydraulik dieses Raums.
 
 ### Höhe und Steigung
 
@@ -277,8 +278,13 @@ Ein Raum, der nichts über den Vorlauf sagt (siehe [Schutz gegen falsches Lernen
 Eine taktende Therme liefert nie eine ruhige Spreizung. Dann entscheiden die Räume.
 
 - **Taktbetrieb** heißt: mindestens 3 Brennerstarts in der letzten Stunde, und die fertigen Brennerläufe dauern im Median höchstens 5 Minuten.
-- **Rauf um eine Stufe**, wenn ein angeforderter Raum hängt und der Heizbetrieb seit mindestens 30 Minuten frei ist (Grund *Therme taktet und ein Raum erreicht sein Soll nicht*). Hängen heißt: mindestens 0,2 Grad unter Soll und langsamer als 0,2 Grad je Stunde. Ein Raum, den die Stillstand-Regel aufgegeben hat, zählt mit.
-- **Runter** nur, wenn alle angeforderten Räume zügig warm werden: ab 0,5 Grad je Stunde.
+- **Rauf um eine Stufe**, wenn ein angeforderter Raum hängt, sein eigener Ruf seit mindestens 30 Minuten läuft und der Heizbetrieb ebenso lange frei ist (Grund *Therme taktet und ein Raum erreicht sein Soll nicht*). Hängen heißt: mindestens 0,2 Grad unter Soll und langsamer als 0,2 Grad je Stunde. Ein Raum, den die Stillstand-Regel aufgegeben hat, zählt mit.
+- **Ein solcher Schritt ist ein Versuch.** Thriftherm merkt sich, wie schnell der Raum beim Schritt stieg. Hängt der Raum 90 Minuten später immer noch und steigt nicht um mindestens 0,1 Grad je Stunde schneller, wird der Schritt zurückgenommen, und für diesen Raum gibt es in diesem Lastfall einen Tag lang keinen weiteren (Lernstatus: *Mehr Vorlauf hat diesem Raum nicht geholfen*). Dann bremst der Heizkörper, das Ventil oder der kurze Brennerlauf, nicht die Kurve. Steigt er schneller oder hängt er nicht mehr, bleibt der Schritt. Hängen mehrere Räume, kommt der nächste an die Reihe. Gesehen am 22.10.2026: Das Bad blieb bei 40 wie bei 47 °C Soll-Vorlauf 0,9 Grad unter Soll, und sein Wert stieg trotzdem bis auf 10,8 Grad.
+- **Hat der Schritt nach oben nicht geholfen, wird weniger probiert.** Dann ändert der Vorlauf an dieser Stelle der Kurve für den Raum nichts. Thriftherm nimmt deshalb gleich einen Schritt nach unten, wieder als Versuch, aber nie unter die gemeinsame Korrektur. Steigt der Raum danach nicht um 0,1 Grad je Stunde langsamer, bleibt er; sonst wird er zurückgenommen (Lernstatus: *Weniger Vorlauf hat diesem Raum geschadet*), und der Wert wird einen Tag lang nicht mehr gesenkt. Ein Wert, der nur hoch ist, weil mehr nichts half, kommt so einen Schritt am Tag herunter.
+- **Runter über die Rufe.** Ein Raum, der sein Soll hält, pendelt um ein, zwei Zehntel; sein Trend über 90 Minuten zeigt nichts. Was der Vorlauf für ihn tut, zeigt sich darin, wie schnell ein **Halte-Ruf** ihn von 0,3 Grad unter Soll ans Soll bringt. Drei solche Rufe in Folge mit mindestens 0,6 Grad je Stunde senken den Wert des Raums um einen Schritt (Grund *Therme taktet*). Dafür muss die Therme im ganzen Ruf frei gewesen sein und getaktet haben, und kein anderer Raum darf den Vorlauf bestimmt haben, weder mit seinem Wert noch mit seinem Bedarfszuschlag. Jeder langsamere Ruf und jedes Hängen setzt die Zählung zurück, und nach einem Tag ohne zügigen Ruf beginnt sie neu.
+- **Was kein Halte-Ruf ist:** ein Ruf, der mit einem neuen Soll oder mehr als 0,5 Grad unter Soll begann (das ist Aufheizen), einer mit Schnell-Aufheizen, zugedrehtem Ventil oder Hilfe der Wärmepumpe, einer, der durch Stillstand, Fenster oder Komfortende endete, der erste nach dem Lüften, und einer, in dem der Fühler nur einen einzigen Schritt gemeldet hat. Er zählt weder für noch gegen.
+- **Auch dieser Schritt ist ein Versuch.** Hängt der Raum in den drei Stunden danach, wird er zurückgenommen, statt mit einem neuen Schritt nach oben beantwortet zu werden, und der Wert wird einen Tag lang nicht mehr gesenkt. Gesehen im Oktober 2026: Auf fünf von sechs Schritten nach unten folgte binnen Stunden einer nach oben.
+- **Rufprotokoll:** Die letzten zehn Rufe je Raum stehen in der Diagnose (`boiler_memory.calls`: Raum, Ende, Minuten, Anstieg, Tempo, gesendeter Vorlauf, Brennerstarts der letzten Stunde, Urteil). Sie bleiben lokal.
 
 Gemessen am 10.10.2026: Mit 35 °C Mindest-Vorlauf statt 45 °C lief der Brenner nur noch 41 s alle 15 min statt 62 s. Das Bad blieb 14 Stunden 0,2 bis 0,3 Grad unter Soll. Weniger Vorlauf hieß dort weniger Wärme, nicht weniger Starts.
 
@@ -299,10 +305,9 @@ Thriftherm führt deshalb drei Lastfälle: ein Raum fordert an, wenige, die Mehr
 
 **Start ohne eigenen Wert:**
 
-- Ein Lastfall ohne eigenen Wert startet mit dem des nächstgelegenen Lastfalls. Sind zwei gleich nah, nimmt er den mit mehr Räumen. Gibt es keinen, startet er mit der bisherigen gemeinsamen Korrektur.
-- Ein Raum ohne eigenen Wert startet mit dem Wert, den sein Lastfall vor den Werten je Raum gelernt hatte. So ändert ein Update den Vorlauf nicht. Er übernimmt auch, ob dieser Wert schon gefunden war und wie lange er sich schon bewährt hat.
-- Gibt es den nicht, startet der Raum mit seinem eigenen Wert aus dem nächstgelegenen Lastfall, denn es ist derselbe Heizkörper.
-- Sonst übernehmen Lastfall und Raum nur den Wert. Betriebsstunden und Schritte sammeln sie selbst.
+- Ein Raum ohne eigenen Wert nimmt seinen eigenen Wert aus dem nächsten Lastfall mit **mehr** Räumen, denn es ist derselbe Heizkörper. Umgekehrt nicht: Ruft ein Raum allein, taktet die Therme, und ihr Vorlauf liegt im Mittel weit unter dem Sollwert. Was der Raum dabei gelernt hat, wäre mit mehreren Räumen zu viel (gesehen am 12.11.2026: 10,8 Grad mehr aus dem Bad allein hätten für die ganze Wohnung gegolten).
+- Gibt es den nicht, gilt die gemeinsame Korrektur. Sie gilt auch, solange seit der Freigabe noch kein Raum angefordert hat. Wer die Werte je Raum früher abgeschaltet hatte (die Option gibt es seit 13.11.2026 nicht mehr), hat dort seine gelernte Korrektur: Jeder Raum beginnt bei ihr und lernt von da an seinen eigenen Wert. Werte je Raum aus der Zeit davor werden beim ersten Start einmal verworfen, damit der Vorlauf bleibt, wie er war.
+- Der Wert bleibt geliehen, bis der Raum seinen ersten eigenen Schritt macht: Ändert sich die Herkunft oder wird sie zurückgesetzt, folgt er. Betriebsstunden und ob ein Wert gefunden ist, sammelt jeder Raum selbst.
 
 ### Gefundene Werte
 
@@ -320,17 +325,19 @@ Ohne diese Regel beantwortet das Lernen jede kleine Abweichung, und der Vorlauf 
 
 - nur im Modus *Aktiv*;
 - frühestens 10 Minuten nach Brennerstart und aus mindestens 10 Messwerten;
-- nie während Warmwasser, einer Sollwertänderung in den letzten 20 Minuten, Schnell-Aufheizen, Trocknung, einem Aufheizen mit Zuschlag ([Aufheiztempo](#aufheiztempo)) oder wenn der Sicherheitsstatus nicht OK ist.
+- nie während Warmwasser, einer Sollwertänderung in den letzten 20 Minuten, Schnell-Aufheizen, Trocknung, einem Aufheizen mit Zuschlag ([Aufheiztempo](#aufheiztempo)) oder einem Vorheizen mit *Längstes Vorheizen*, bei einer Störung der Therme, ohne Außentemperatur oder wenn der Sicherheitsstatus nicht OK ist.
 
 Nach jeder solchen Pause wartet das Lernen ein volles Prüffenster von 20 Minuten und zählt nur Brennerläufe aus dieser Zeit. Was davor war, gehörte zu einem anderen Sollwert, einer Trocknung oder dem Drehknopf der Therme.
 
 **Wartezeit und Tagesgrenzen** gelten für alle Lastfälle und Räume gemeinsam:
 
-- vor einem Schritt nach oben mindestens 45 Minuten seit dem letzten Schritt, vor einem nach unten eine Stunde;
+- vor einem Schritt nach oben mindestens 90 Minuten seit dem letzten Schritt, vor einem nach unten eine Stunde. So weit schaut der Trend der Räume zurück: Früher zeigt er noch nicht, was der letzte Schritt gebracht hat (gesehen am 22.10.2026: 1, 2 und 4 Grad mehr in zweieinhalb Stunden);
 - je Tag höchstens 10 Grad nach oben und 4 Grad nach unten.
 
-**Welche Räume nicht als „kommt nicht hin“ zählen:**
+**Welche Räume mit ihrem Vorankommen nichts über den Vorlauf sagen**, weder für mehr noch für weniger (die Regeln zur Spreizung gelten unabhängig davon):
 
+- **Ein Raum, dessen Soll sich in den letzten 90 Minuten geändert hat.** Sein Trend enthält noch die Zeit davor, und er heizt auf, statt zu halten. Die Heizkurve ist fürs Halten da; fürs Aufheizen gibt es den Bedarfszuschlag und das [Aufheiztempo](#aufheiztempo). Die Zeit übersteht einen Neustart und das Speichern der Optionen; nach einem offenen Fenster beginnt sie neu. Ein Komfortblock, der samt Vorheizen kürzer als 90 Minuten ist, hebt die Kurve deshalb nie an; senken können seine Halte-Rufe sie trotzdem.
+- **Ein Raum, dessen Fühler seit 90 Minuten nichts gemeldet hat.** Ein Fühler, der nur bei einer Änderung um etwa ein Grad meldet (etwa Shelly H&T), zeigt stundenlang eine flache Linie und springt dann. Die flache Linie ist Schweigen, kein Stillstand ([#7](https://github.com/alpha-uniform/thriftherm/issues/7)).
 - **Ein Raum mit Schnell-Aufheizen:** Ein Wunsch auf Zeit sagt nichts über die Heizkurve, die die geplanten Temperaturen halten soll.
 - **Ein Raum mit Handänderung, solange er noch dorthin aufheizt.** Ist er bis auf 1 Grad heran und hält dort, zählt er wie jeder Raum. Sonst lernte ein Haushalt, der nur von Hand heizt, nie etwas. Gesehen am 13.10.2026: Vier Räume, für einen Test 3 Grad über ihre Temperatur gestellt, trieben die Korrektur der meisten Räume in drei Stunden von 1 auf 8,5 Grad.
 - **Ein Raum, dessen Thermostat meldet, dass es gerade nicht heizt** (das sagen Better Thermostat und Versatile Thermostat). Sein Ventil ist zu, auch wenn der Raum unter Soll liegt, und ein heißerer Vorlauf schlösse es nur früher.
@@ -339,7 +346,7 @@ Nach jeder solchen Pause wartet das Lernen ein volles Prüffenster von 20 Minute
 
 Die Schritte wachsen mit der Gewissheit: erst grob, dann fein.
 
-- **Ein Schritt nach oben nach einem nach oben** verdoppelt sich: 1, 2, 4 Grad, mehr nicht.
+- **Ein Schritt nach oben nach einem nach oben** verdoppelt sich: 1, 2 Grad, mehr nicht.
 - **Ein Schritt gegen den vorigen** halbiert sich, bis auf 0,5 Grad.
 - **Ein Schritt nach unten nach einem nach unten** ist wieder der erste Schritt. Schritte nach unten wachsen nie: Komfort geht vor Sparen.
 - In einem Lastfall zählt der letzte Schritt dieses Lastfalls. Ein Schritt, den das Bad allein machte, sagt nichts über den nächsten für die ganze Wohnung.
@@ -348,9 +355,25 @@ Die Schritte wachsen mit der Gewissheit: erst grob, dann fein.
 
 Gemessen am 11.10.2026: Mit festen Schritten von 1 Grad, vier am Tag, stand die Korrektur nach acht Stunden bei 4 Grad mehr, und das Bad lag noch 0,6 Grad unter Soll. Das Vorlauf-Minimum war dort für das Bad allein 10 Grad zu niedrig.
 
+### Wie lange das Lernen dauert
+
+Die Übersicht steht in der [Anleitung](ANLEITUNG.md#wie-lange-das-lernen-dauert). Hier die Rechnung dahinter. Sie folgt aus den Regeln oben, nicht aus einer ganzen gemessenen Saison.
+
+**Heizkurve, nach oben.** Ein Raum, der hängt, bekommt frühestens 30 Minuten nach Beginn seines Rufs einen Schritt, und sein Soll muss seit 90 Minuten stehen. Die Schritte wachsen 1, 2, 2, 2 Grad mit je 90 Minuten Abstand: Eine um 7 Grad zu niedrige Kurve ist so in rund 6 Stunden eingeholt, mehr als 10 Grad am Tag gibt es nicht.
+
+**Heizkurve, nach unten.** Höchstens 4 Grad am Tag, mit einer Stunde Abstand. Läuft die Therme durch, entscheidet die Spreizung nach je 20 Minuten. Taktet sie, braucht jeder Schritt drei zügige Halte-Rufe in Folge; an der Testanlage dauerte ein Ruf 1 bis 1,5 Stunden, rund fünf kamen in zehn Stunden. Das sind ein bis zwei Schritte am Tag, eine um 4 bis 6 Grad zu hohe Kurve braucht also 2 bis 6 Heiztage. Ob Halte-Rufe die nötigen 0,6 Grad je Stunde überhaupt erreichen, ist die größte Unsicherheit: Wenn nicht, sinkt die Kurve einer taktenden Therme kaum.
+
+**Gefunden.** Ein Wert gilt nach drei bewerteten Betriebsstunden ohne hängenden Raum und ohne Schritt als gefunden. Für den häufigen Lastfall ist das nach etwa ein bis zwei Wochen Heizsaison zu erwarten. Seltene Lastfälle sammeln ihre Stunden langsam: An der Testanlage hatte „ein Raum“ nach zwei Monaten 109 Betriebsstunden, „wenige“ 8 und „die Mehrheit“ 0,3.
+
+**Steigung.** Ein Schritt geht an milden Tagen fast ganz in die Höhe ([Höhe und Steigung](#höhe-und-steigung)). Die Steigung lernt erst an Tagen deutlich unter 0 °C, in einem milden Winter erst in der nächsten Saison.
+
+**Aufheizrate und Auskühlkoeffizient.** Beide gelten ab dem ersten gültigen Wert, es zählt der Median der letzten zehn. Mit einer Absenkung gibt es ein bis zwei Aufheizphasen und eine Auskühlphase am Tag: ein erster Wert nach ein bis zwei Tagen, belastbar mit drei Werten nach zwei bis vier Tagen, die volle Reihe nach ein bis zwei Wochen. Ein Raum mit festem Soll pendelt nur 0,2 bis 0,4 Grad und erreicht die 0,5 Grad Anstieg nie: Er behält die Start-Aufheizrate. Ausgekühlt wird nur gelernt, wenn es drinnen mindestens 5 Grad wärmer ist als draußen, also meist nicht über etwa 16 °C draußen.
+
+**COP-Kennfeld.** Eine Stufe von 2 Grad Außentemperatur ist nach 3 Stunden Laufzeit bei kleinster Leistung bekannt. Liegt das Wetter 4 bis 8 Stunden am Tag in einer Stufe und läuft die Wärmepumpe die Hälfte davon, sind das 1 bis 3 Tage. Eine Stufe, in der die Heizung günstiger ist, lernt nur über Lernläufe von einer Stunde, höchstens einer am Tag: mindestens 3 Tage mit passendem Wetter, realistisch 1 bis 3 Wochen. Die häufigen Stufen (etwa 0 bis 12 °C) sind so nach 2 bis 4 Wochen bekannt, Froststufen erst bei Frost. Bis dahin gilt die Nachbarstufe oder die angepasste Startkurve; angepasst wird sie schon ab der ersten bekannten Stufe.
+
 ## Wärmepumpe
 
-Die Bedienung steht in der [Anleitung, Abschnitt 7](ANLEITUNG.md#7-wärmepumpe-optional).
+Die Bedienung steht in der [Anleitung](ANLEITUNG.md#wärmepumpe-optional).
 
 ### COP messen
 
@@ -386,7 +409,7 @@ Ab 3 Stunden Laufzeit gilt eine Stufe als bekannt. Bis dahin gilt, was daneben b
 
 ### Frostschutz
 
-Ohne zentrale Heizung (eingerichtet mit *Keine – nur Wärmepumpe und Raumsteuerung*) ist die Wärmepumpe die einzige Wärme, die Thriftherm steuert. Sie hält dann im Modus *Abwesend* die Abwesenheitstemperatur und im Sommerbetrieb die Frostschutztemperatur, und einen versorgten Raum unter der Frostschutztemperatur heizt sie in jedem Modus, bei offenem Fenster, bei unbekannter oder zu tiefer Außentemperatur und auch bei teurer Wärme, bis er 1 Grad darüber liegt.
+Ohne zentrale Heizung (eingerichtet mit *Keine – nur Wärmepumpe und Raumsteuerung*) ist die Wärmepumpe die einzige Wärme, die Thriftherm steuert. Sie hält dann im Modus *Abwesend* die Abwesenheitstemperatur und im Modus *Aus (nur Frostschutz)* die Frostschutztemperatur, und einen versorgten Raum unter der Frostschutztemperatur heizt sie in jedem Modus, bei offenem Fenster, bei unbekannter oder zu tiefer Außentemperatur und auch bei teurer Wärme, bis er 1 Grad darüber liegt.
 
 Mit Therme oder Fernwärme ist sie die Reserve: Einen versorgten Raum, der 30 Minuten ohne Unterbrechung unter der Frostgrenze liegt, heizt sie ebenso (*Frostschutz: Zentralheizung reicht nicht*). Eine Heizung, die für den Sommer aus ist, auf ihrem Drehknopf steht oder ausfällt, ließe den Raum sonst weiter auskühlen. Ein Neustart lässt die 30 Minuten nicht von vorn beginnen. Vereisung, Fehlercodes und der Sicherheitsstatus *Fallback* halten sie weiter an, und in *Nur planen* wird nichts gesendet.
 
@@ -428,9 +451,14 @@ So läuft es:
 
 - **Start:** Ist der kälteste versorgte Raum an seinem Soll, geht der Sollwert ein halbes Grad über die eigene Messung des Geräts. So läuft es sanft an; weiter darüber startet die PortaSplit gleich mit 60 bis 79 Hz. War das Gerät lange aus, steht seine eigene Messung still, dann zählt der Ansaugfühler, solange seine letzte Meldung innerhalb seiner Grenze liegt (Standard 3 Stunden).
 - **Halten:** Läuft der Verdichter, steigt die eigene Messung um rund 1,5 Grad, und der Sollwert liegt dann etwa ein Grad darunter. Dort bleibt er: Ein neues Soll der Räume schickt nichts, das Gerät piept selten. Neu gesetzt wird er nur, wenn das Gerät selbst abschaltet, obwohl ein Raum unter Soll ist, wenn seine Messung 10 Minuten lang mehr als ein halbes Grad unter dem Sollwert liegt, oder einmal 15 Minuten nach einer höheren Leistung, dann nur nach unten. Steigt die Messung 5 Minuten lang auf 1,5 Grad über den Sollwert, ob ein Raum unter Soll ist oder nicht (bei 2 Grad ohne die 5 Minuten abzuwarten, frühestens 10 Minuten nach dem letzten Sollwert), geht er auf ein Grad unter die Messung, nicht während die Wärmepumpe höher dreht: Rund 1,75 Grad über dem Sollwert schaltet das Gerät sich sonst selbst ab, gesehen am 31.10.2026 fünfmal in 46 Minuten, als das Büro wärmer wurde. Beim Abtauen und 15 Minuten danach nie.
-- **Steht sie weiter:** Liegt ein Raum 0,2 Grad unter Soll und läuft ihr Verdichter 5 Minuten nach dem letzten Sollwert noch immer nicht, geht der Sollwert auf 1,5 Grad über ihre eigene Messung, frühestens nach der Mindestpause; hilft schon die Heizung, erst nach einer halben Stunde, bei *Langsamer aufheizen* erst 0,5 Grad unter Soll. 15 Minuten nach dem Start wird er wieder ein Grad unter ihre Messung gesetzt. Das kann ihren Start für ein bis drei Minuten härter machen (gemessen am 03.11. und 04.11.2026: 28 bis 67 Hz). Nach einer längeren Ruhe startet ein halbes Grad darüber sie oft nicht: In der Nacht zum 03.11.2026 stand sie vier Stunden, am 04.11.2026 morgens 26 Minuten.
+- **Steht sie weiter:** Liegt ein Raum 0,2 Grad unter Soll und läuft ihr Verdichter 5 Minuten nach dem letzten Sollwert noch immer nicht, geht der Sollwert auf 1,5 Grad über ihre eigene Messung, frühestens nach der Mindestpause; hilft schon die Heizung, erst nach einer halben Stunde, bei *Langsamer warm werden* erst 0,5 Grad unter Soll. 15 Minuten nach dem Start wird er wieder ein Grad unter ihre Messung gesetzt. Das kann ihren Start für ein bis drei Minuten härter machen (gemessen am 03.11. und 04.11.2026: 28 bis 67 Hz). Nach einer längeren Ruhe startet ein halbes Grad darüber sie oft nicht: In der Nacht zum 03.11.2026 stand sie vier Stunden, am 04.11.2026 morgens 26 Minuten.
 - **Ruhen:** Ist der kälteste versorgte Raum ein halbes Grad über Soll, geht der Sollwert auf 17 °C (*Räume warm: Verdichter ruht*), frühestens nach der Mindestlaufzeit. Das Gerät bleibt im Heizbetrieb, nur der Lüfter läuft: Aus dem Heizbetrieb läuft es sanft wieder an, aus Aus oder Lüften startet es mit 60 bis 79 Hz. Am Soll heizt es wieder, frühestens nach der Mindestpause. Misst das Gerät bei laufendem Verdichter weniger als 19 °C (stehend 1,5 Grad weniger), oder läuft der Verdichter 15 Minuten nach dem Ruhe-Sollwert noch, wird es ausgeschaltet.
-- **Kommt ein Raum nicht hinterher** (10 Minuten lang 0,2 Grad unter Soll und langsamer als 0,3 Grad je Stunde, oder sein Vorheizen wird nicht rechtzeitig fertig; ein vorheizender Raum wird erst eine halbe Stunde nach dessen Beginn geprüft, mit dem Tempo seither), hilft die Heizung (Therme oder Fernwärme), bis alle Räume am Soll sind (Attribut `boiler_helps`). Dabei zählen nur Räume, deren Heizkörper heizen darf, also nicht einer mit von Hand ausgeschaltetem Thermostat; der bekommt keine Hilfe und ist später am Soll. Die Wärmepumpen-Räume rufen sie dann ab 0,2 Grad unter Soll. Die Wärmepumpe bleibt am Minimum, denn darüber kostet ihre Wärme mehr als die der Therme. Das ist der Standard der Option *Wenn die Wärmepumpe allein nicht reicht*. Mit *Wärmepumpe dreht höher* oder im Modus *Nur Wärmepumpe* (außer mit *Langsamer warm werden* oder *Wärmepumpe allein*) geht stattdessen ihr Sollwert alle 10 Minuten um ein halbes Grad hoch, höchstens 1,5 Grad über ihre eigene Messung, und bleibt dort, bis alle Räume am Soll sind; ihr COP sinkt dabei. Dann geht der Sollwert gleich zurück auf ein Grad unter ihre Messung. Mit *Langsamer warm werden* bleibt sie am Minimum, dreht nie höher, und die Räume brauchen länger; die Heizung hilft erst, wenn ein Raum ein halbes Grad unter Soll liegt (auch in der Absenkung) oder ein Vorheizen voraussichtlich ein halbes Grad zu kurz kommt, und dann, bis alle Räume am Soll sind. In der Simulation über zehn aufgezeichnete Tage lagen die Räume so im Mittel 0,13 bis 0,18 Grad unter Soll statt 0,3 bis 0,6 ohne diese Hilfe (bei Frost bis 1,7), für rund 7 Cent am Tag weniger als mit *Therme oder Fernwärme hilft*, mit 2 bis 4 Thermenläufen von rund 40 Minuten am Tag statt 5 bis 9 kurzen. Im Modus *Nur Wärmepumpe* hilft dann nichts. Mit *Wärmepumpe allein* bleibt sie ebenso am Minimum, und solange sie die günstigere Quelle ist, rufen ihre Räume die Therme nicht: Sie heizen nicht mit, bestimmen den Vorlauf nicht und lehren die Heizkurve nichts. Die Therme heizt die anderen Räume weiter; läuft sie für einen davon, bekommt ein Raum unter Soll über sein offenes Ventil etwas ab. Ist die Wärmepumpe teurer oder gesperrt, heizt die Therme alle Räume. Bei Fernwärme heißt das nur kleinste Leistung, denn dort gibt es nichts zu sperren. Ohne zentrale Heizung (eingerichtet mit *Keine – nur Wärmepumpe und Raumsteuerung*) dreht sie immer höher, was auch eingestellt ist. Ein Raum knapp unter Soll, der nicht hinterherhängt, hebt ihn nicht.
+- **Kommt ein Raum nicht hinterher** (10 Minuten lang 0,2 Grad unter Soll und langsamer als 0,3 Grad je Stunde, oder sein Vorheizen wird nicht rechtzeitig fertig; ein vorheizender Raum wird erst eine halbe Stunde nach dessen Beginn geprüft, mit dem Tempo seither), entscheidet die Option *Wenn die Wärmepumpe allein nicht reicht*. Dabei zählen nur Räume, deren Heizkörper heizen darf, also nicht einer mit von Hand ausgeschaltetem Thermostat; der bekommt keine Hilfe und ist später am Soll. Ein Raum knapp unter Soll, der nicht hinterherhängt, löst nichts aus.
+  - *Therme oder Fernwärme hilft* (Standard): Die Heizung hilft, bis alle Räume am Soll sind (Attribut `boiler_helps`). Die Wärmepumpen-Räume rufen sie dann ab 0,2 Grad unter Soll. Die Wärmepumpe bleibt am Minimum, denn darüber kostet ihre Wärme mehr als die der Therme.
+  - *Wärmepumpe dreht höher*, ebenso im Modus *Nur Wärmepumpe* (außer mit *Langsamer warm werden* oder *Wärmepumpe allein*): Ihr Sollwert geht alle 10 Minuten um ein halbes Grad hoch, höchstens 1,5 Grad über ihre eigene Messung, und bleibt dort, bis alle Räume am Soll sind; ihr COP sinkt dabei. Dann geht der Sollwert gleich zurück auf ein Grad unter ihre Messung.
+  - *Langsamer warm werden*: Sie bleibt am Minimum, dreht nie höher, und die Räume brauchen länger. Die Heizung hilft erst, wenn ein Raum ein halbes Grad unter Soll liegt (auch in der Absenkung) oder ein Vorheizen voraussichtlich ein halbes Grad zu kurz kommt, und dann, bis alle Räume am Soll sind. In der Simulation über zehn aufgezeichnete Tage lagen die Räume so im Mittel 0,13 bis 0,18 Grad unter Soll statt 0,3 bis 0,6 ohne diese Hilfe (bei Frost bis 1,7), für rund 7 Cent am Tag weniger als mit *Therme oder Fernwärme hilft*, mit 2 bis 4 Thermenläufen von rund 40 Minuten am Tag statt 5 bis 9 kurzen. Im Modus *Nur Wärmepumpe* hilft dann nichts.
+  - *Wärmepumpe allein*: Sie bleibt ebenso am Minimum, und solange sie die günstigere Quelle ist, rufen ihre Räume die Therme nicht: Sie heizen nicht mit, bestimmen den Vorlauf nicht und lehren die Heizkurve nichts. Die Therme heizt die anderen Räume weiter; läuft sie für einen davon, bekommt ein Raum unter Soll über sein offenes Ventil etwas ab. Ist die Wärmepumpe teurer oder gesperrt, heizt die Therme alle Räume. Bei Fernwärme heißt das nur kleinste Leistung, denn dort gibt es nichts zu sperren.
+  - Ohne zentrale Heizung (eingerichtet mit *Keine – nur Wärmepumpe und Raumsteuerung*) dreht sie immer höher, was auch eingestellt ist.
 - **Loslassen:** Geht ihre Steuerung auf *Nur planen* oder *Aus*, oder wird Thriftherm deaktiviert oder gelöscht, wird ein Gerät, das noch auf 30 °C oder dem Sollwert einer Trocknung steht, auf seinen kleinsten Sollwert gestellt und ruht dort; eines auf kleinster Leistung oder eines, das inzwischen jemand gestellt hat, bleibt, wie es ist. Ein Neuladen, nach dem es aktiv weitergeht, ändert nichts.
 - **Mehr Leistung** gibt es nur mit *Schnell aufheizen* (30 °C, Lüfter hoch), etwas mehr beim Trocknen (siehe oben). Danach fällt ihre Messung mit der Leistung: 15 Minuten später wird der Sollwert noch einmal aus ihr gesetzt, nur nach unten.
 - **Lüfter:** Sonst läuft er auf der *Lüfterstufe im Normalbetrieb* (Standard *Auto*; *Voll* ist die stärkste Stufe des Geräts, eine Stufe, die es nicht hat, gilt als *Auto*). Gemessen am 13.10.2026 brachte *Voll* bei gleichem Strom rund 7 % mehr Wärme als *Auto*, und *Auto* dreht bei wenig Last langsamer als *Silent*; mehr Luft trägt auch mehr Wärme durch die Schläuche in die Räume. Lauter ist es dafür. Trocknen und Schnell aufheizen geben die Stufe danach zurück. Hat das Gerät noch die zuletzt gegebene Stufe, bekommt es eine neu gewählte einmal; eine Stufe von Hand bleibt.

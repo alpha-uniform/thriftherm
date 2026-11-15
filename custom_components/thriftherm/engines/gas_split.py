@@ -25,7 +25,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
-from math import isfinite
 from typing import Any
 
 from ..const import BOILER_REPORTS_HEATING, BOILER_REPORTS_HOT_WATER
@@ -61,6 +60,7 @@ class GasSplit:
     unassigned_kwh: float = 0.0  # burnt while nobody watched what for (gas meter only)
     source: str | None = None
     meter_m3: float | None = None  # the meter reading counted up to
+    meter_ts: float | None = None  # ... and when the meter last moved to a new reading
     meter_start_kwh: float | None = None  # the meter's energy when the count began (gas meter only): `meter_total_kwh`
     counted_ts: float | None = None  # when the meter or the counters were last looked at
     counters: Mapping[str, float] = field(default_factory=dict)  # each boiler counter's reading counted up to
@@ -73,6 +73,7 @@ class GasSplit:
             "unassigned_kwh": self.unassigned_kwh,
             "source": self.source,
             "meter_m3": self.meter_m3,
+            "meter_ts": self.meter_ts,
             "meter_start_kwh": self.meter_start_kwh,
             "counted_ts": self.counted_ts,
             "counters": dict(self.counters),
@@ -94,7 +95,8 @@ class GasSplit:
             unassigned_kwh=max(0.0, as_float(raw.get("unassigned_kwh")) or 0.0),
             source=source if source in (SOURCE_METER, SOURCE_COUNTERS) else None,
             meter_m3=as_float(raw.get("meter_m3")),
-            meter_start_kwh=start if start is not None and isfinite(start) else None,
+            meter_ts=as_float(raw.get("meter_ts")),
+            meter_start_kwh=start,
             counted_ts=as_float(raw.get("counted_ts")),
             counters=numbers("counters"),
             counters_ts=numbers("counters_ts"),
@@ -123,7 +125,12 @@ def hot_water_now(
 def by_meter(split: GasSplit, meter_m3: float, kwh_per_m3: float, hot_water: bool, now_ts: float) -> GasSplit:
     """Credit what the meter moved since the last look to what the boiler is doing now."""
     first = split.source != SOURCE_METER or split.meter_m3 is None or split.counted_ts is None
-    looked = replace(split, source=SOURCE_METER, meter_m3=meter_m3, counted_ts=now_ts, counters={}, counters_ts={})
+    moved_ts = split.meter_ts if split.meter_ts is not None else split.counted_ts
+    moved = first or meter_m3 != split.meter_m3
+    looked = replace(
+        split, source=SOURCE_METER, meter_m3=meter_m3, meter_ts=now_ts if moved else moved_ts, counted_ts=now_ts,
+        counters={}, counters_ts={},
+    )
     if looked.meter_start_kwh is None:
         # The total starts at the meter's energy: of this reading at the first look, and for a count that
         # began before the total was kept, of the reading it stands at less what it has counted.
@@ -133,11 +140,17 @@ def by_meter(split: GasSplit, meter_m3: float, kwh_per_m3: float, hot_water: boo
         return looked  # first look: count from here
     step = meter_m3 - split.meter_m3
     if -MAX_BACK_STEP_M3 < step < 0.0:
-        return replace(looked, meter_m3=split.meter_m3)  # looked at, nothing credited until it passes that reading
+        # looked at, nothing credited until it passes that reading
+        return replace(looked, meter_m3=split.meter_m3, meter_ts=moved_ts)
     if step <= 0.0 or step > MAX_STEP_M3:
         return looked  # nothing burnt, or not the same meter any more: counted from here, nothing credited
     elapsed = now_ts - split.counted_ts
-    told = 0.0 if elapsed > MAX_GAP_S else min(step, MAX_FLOW_M3_H * max(elapsed, 0.0) / 3600.0)
+    # A meter that reports more rarely than it is looked at (every five minutes, 0.2 m³ at a time) took the time
+    # since its last step to burn this one: capped by the time since the last look, half of its gas went to
+    # "unassigned" (review 2026-11-13). One silent for longer than the gap is capped by the look, as before.
+    since_step = now_ts - moved_ts
+    burnt_in = since_step if elapsed <= since_step <= MAX_GAP_S else elapsed
+    told = 0.0 if elapsed > MAX_GAP_S else min(step, MAX_FLOW_M3_H * max(burnt_in, 0.0) / 3600.0)
     looked = replace(looked, unassigned_kwh=round(split.unassigned_kwh + (step - told) * kwh_per_m3, 4))
     if hot_water:
         return replace(looked, hot_water_kwh=round(split.hot_water_kwh + told * kwh_per_m3, 4))

@@ -260,6 +260,7 @@ def decide(
     max_temp: float | None = None,
     step: float | None = None,
     wrapped: bool = False,
+    held_by_hand: bool = False,
 ) -> tuple[RoomCommand, RoomCtrlMemory]:
     """The setpoint plan for one room thermostat and what to remember of it.
 
@@ -280,6 +281,10 @@ def decide(
         return cmd(ROOM_PLAN_HANDS_OFF, "thermostat_unavailable"), mem
     if hvac_mode == "off":
         return cmd(ROOM_PLAN_HANDS_OFF, "thermostat_off"), mem
+    if held_by_hand:
+        # Turned up by hand in the cooling season (docs/PHASE12_COOLING.md §3.6): whoever did wants heat in this room.
+        # Not fought for the time in hand; the room is not cooled meanwhile, and a gas boiler stays blocked.
+        return cmd(ROOM_PLAN_HANDS_OFF, "heating_by_hand_in_cooling"), mem
 
     desired = thermostat_setpoint(result.target, min_temp, max_temp)
     active = control_mode == CTRL_ACTIVE

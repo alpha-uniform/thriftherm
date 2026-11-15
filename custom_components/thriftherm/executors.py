@@ -46,7 +46,12 @@ async def _call(
 async def async_set_thermostat(
     hass: HomeAssistant, climate_entity: str, room_cmd: RoomCommand, context: Context | None = None
 ) -> None:
-    """Write a room setpoint to its thermostat. `context` marks the change it causes as ours."""
+    """Write a room setpoint to its thermostat. `context` marks the change it causes as ours.
+
+    A call that failed stays on record as sent and is repeated after five minutes, as any setpoint not answered
+    (engines/room_control.py): it may have arrived all the same (a timeout, a lost answer), and taken as not sent,
+    the thermostat showing it read as a change by hand (review 2026-11-13).
+    """
     data = {"entity_id": climate_entity, "temperature": room_cmd.target}
     what = f"room {room_cmd.room}: setpoint {room_cmd.target:.1f}"
     if await _call(hass, "climate", "set_temperature", data, what, context=context):
@@ -175,7 +180,7 @@ async def async_execute_heat_pump(
         # drying asked for "full" and 22 °C, the unit stayed on "auto"). So nothing is sent that
         # the unit already has, and a call waits until the unit shows what the call before asked.
         if command.action == "start":
-            calls.append(("set_hvac_mode", {"hvac_mode": "heat"}))
+            calls.append(("set_hvac_mode", {"hvac_mode": command.hvac_mode or "heat"}))  # heat, or cool in the cooling season
         # A unit without fan stages shows neither a list of them nor a current one, and Home Assistant
         # refuses it any fan stage: every start carries one, and the refusal ended it before its setpoint.
         fan_known = command.fan_mode in offered_fans if offered_fans else "fan_mode" in has
