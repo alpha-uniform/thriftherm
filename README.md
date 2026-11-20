@@ -20,13 +20,13 @@
 
 **Fernwärme, Zentralheizung oder keine eigene Therme.** Thriftherm heizt die Räume über ihre Heizkörperventile nach Zeitplan, direkt oder über [Better Thermostat](https://github.com/KartoffelToby/better_thermostat), mit Vorheizen und Abwesenheit; an die Wärmeversorgung geht nie etwas. Richtig lohnt sich das mit einer Wärmepumpe: Dann vergleicht Thriftherm den Strom mit dem Grenzpreis der Fernwärme. Ohne Therme kann die Wärmepumpe auch allein heizen.
 
-Für den Anfang reicht ein Temperaturfühler oder ein smartes Ventil je Raum. Smarte Ventile steuert Thriftherm direkt (Vorschau, Sonoff TRVZB/TRVZBT seit 15.11.2026 im Betrieb) oder über Better Thermostat; beides lässt sich später Raum für Raum ergänzen. Was genau mit welcher Ausstattung geht, zeigt die [Übersicht in der Einrichtungsanleitung](de/EINRICHTUNG.md#was-mit-deiner-ausstattung-geht).
+Für den Anfang reicht ein Temperaturfühler oder ein smartes Ventil je Raum. Smarte Ventile steuert Thriftherm direkt (Vorschau, Sonoff TRVZB/TRVZBT) oder über Better Thermostat; beides lässt sich später Raum für Raum ergänzen. Was genau mit welcher Ausstattung geht, zeigt die [Übersicht in der Einrichtungsanleitung](de/EINRICHTUNG.md#was-mit-deiner-ausstattung-geht).
 
 **Alles bleibt bei dir.** Thriftherm läuft vollständig lokal in Home Assistant und sendet keine Daten nach außen: keine Cloud, kein Konto, keine Nutzungsstatistik. Auch die Dashboard-Karte lädt nichts aus dem Internet.
 
 ## Was sich an der Therme ändert
 
-Viele Thermen laufen ohne echten Regler. Dann hält die Therme ihren Heizkreis den ganzen Winter auf der Temperatur ihres Drehknopfs, auch wenn alle Thermostatventile zu sind. Sie zündet für ein paar Sekunden mit Mindestlast, schießt über das Ziel hinaus und taktet. In der getesteten Installation hing ein zentraler Raumregler am eBUS: Er maß einen einzigen Raum, entschied damit für die ganze Wohnung und war nicht mit dem Internet verbunden. Thriftherm übernimmt die Rolle des Reglers:
+Viele Thermen laufen ohne echten Regler. Dann hält die Therme ihren Heizkreis den ganzen Winter auf der Temperatur ihres Drehknopfs, auch wenn alle Thermostatventile zu sind. Sie zündet für ein paar Sekunden mit Mindestlast, schießt über das Ziel hinaus und taktet. Oft hängt ein zentraler Raumregler am eBUS: Er misst einen einzigen Raum, entscheidet damit für die ganze Wohnung und ist nicht mit dem Internet verbunden. Thriftherm übernimmt die Rolle des Reglers:
 
 - **Vorlauf so niedrig wie möglich:** aus Heizkurve, Wärmebedarf der Räume und der Spreizung zwischen Vorlauf und Rücklauf. Der Raum, der am meisten braucht, bestimmt den Vorlauf.
 - **Heizbetrieb gesperrt, wenn kein Raum Wärme braucht.** Warmwasser bleibt unberührt und folgt weiter dem Drehknopf.
@@ -91,7 +91,7 @@ Getestet an einer Vaillant atmoTEC plus VCW 194/4-5 (Heizwert-Kombitherme, ebusd
 
 ## Verwendete Hardware
 
-Damit lief die getestete Installation. Andere Geräte gehen genauso, solange sie in Home Assistant auftauchen.
+Damit läuft Thriftherm. Andere Geräte gehen genauso, solange sie in Home Assistant auftauchen.
 
 | Aufgabe | Gerät |
 |---|---|
@@ -108,7 +108,7 @@ Damit lief die getestete Installation. Andere Geräte gehen genauso, solange sie
 | Vaillant atmoTEC pro VUW PL 240/3-3M | `bai` / `bai.308523` | vom Besitzer geprüft, Schreibtest bestanden, Rückfall zum Drehknopf nach rund 15 min | [jwarzecha](https://github.com/jwarzecha) ([#4](https://github.com/alpha-uniform/thriftherm/issues/4)) |
 | Vaillant VCW DE 244/4-5-HL R1 (2011, Teillast auf 10 kW) | noch offen | im Betrieb geprüft mit eBUS Adapter Shield C5: Heizsperre und Freigabe werden angenommen (Brenner startet eine Minute nach der Freigabe) | [elektroduell](https://github.com/elektroduell) ([#7](https://github.com/alpha-uniform/thriftherm/issues/7)) |
 
-Jede Therme kommt als Profil dazu: welche ebusd-Nachrichten ihre Werte liefern und welche Nachricht den Sollwert annimmt. Ich kann nur die Therme bei mir zu Hause testen. Jede weitere Therme kommt über Daten dazu, die ihre Besitzer teilen – **deine Therme kann die nächste sein**: Öffne ein [Issue mit Thermendaten](https://github.com/alpha-uniform/thriftherm/issues/new?template=boiler_data.yml) und nenne Modell, ebusd-Definition und was dir aufgefallen ist. Wer Daten beisteuert, wird auf Wunsch in der Tabelle oben genannt; ohne Angabe bleibt der Eintrag anonym.
+Jede Therme kommt als Profil dazu: welche ebusd-Nachrichten ihre Werte liefern und welche Nachricht den Sollwert annimmt. Ich kann nicht jede Therme selbst testen. Jede weitere Therme kommt über Daten dazu, die ihre Besitzer teilen – **deine Therme kann die nächste sein**: Öffne ein [Issue mit Thermendaten](https://github.com/alpha-uniform/thriftherm/issues/new?template=boiler_data.yml) und nenne Modell, ebusd-Definition und was dir aufgefallen ist. Wer Daten beisteuert, wird auf Wunsch in der Tabelle oben genannt; ohne Angabe bleibt der Eintrag anonym.
 
 ## Voraussetzungen
 

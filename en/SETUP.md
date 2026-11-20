@@ -133,7 +133,7 @@ Open the **Configuration** tab of the ebusd app:
 | Setting | What to enter |
 |---|---|
 | Adapter / device | your eBUS adapter: the USB device, or for a network adapter its address, for example `ens:192.0.2.10:9999` |
-| Command-line options | add `--accesslevel=*` – needed so Thriftherm can send the boiler its setpoint. The test installation also has `--mqttretain`: all values then stay in the broker and are back at once after a restart of Home Assistant – stale ones too, see the note below |
+| Command-line options | add `--accesslevel=*` – needed so Thriftherm can send the boiler its setpoint. With `--mqttretain` added, all values stay in the broker and are back at once after a restart of Home Assistant – stale ones too, see the note below |
 | MQTT | nothing to enter: the app finds Home Assistant's Mosquitto broker by itself. Another broker is given in the command-line options (`--mqtthost=…`, `--mqttport=…`, `--mqttuser=…`, `--mqttpass=…`) |
 | Copy `mqtt-hassio.cfg` (`seed_mqtt_cfg`) | on – this puts an editable copy of the MQTT configuration into the app's folder |
 
@@ -162,7 +162,7 @@ Is Thriftherm already set up? Then open *Thriftherm → Configure → Gas boiler
 
 ### 2.5 Poll fewer values so that flow and return are fresher
 
-Optional, for advanced users. ebusd polls the boiler's values in turn; the shorter its list, the more often flow and return come (on the test installation, after trimming, they pause for only 1 minute 48 seconds instead of 4 minutes). The control does not need it, Thriftherm fetches its values itself; it helps if you want to see them promptly in a dashboard. What can go, what has to stay and how to trim: [Poll fewer ebusd values](EBUSD.md).
+Optional, for advanced users. ebusd polls the boiler's values in turn; the shorter its list, the more often flow and return come. The control does not need it, Thriftherm fetches its values itself; it helps if you want to see them promptly in a dashboard. What can go, what has to stay and how to trim: [Poll fewer ebusd values](EBUSD.md).
 
 ## 3. Install Thriftherm
 
@@ -222,7 +222,7 @@ The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fill
 | Heating pump running (ebusd WP, on/off) | ebusd **WP** |
 | Boiler status number (ebusd Statenumber, S.xx) | ebusd **Statenumber** |
 | Hot water active (ebusd hwcmode, or a binary sensor) | ebusd **Status02 hwcmode** |
-| eBUS signal (binary sensor) | **ebusd's own signal** (`binary_sensor.…_global_signal`), not the adapter's connectivity sensor: when the adapter drops off Wi-Fi, its own sensor keeps its last value "on" (measured) |
+| eBUS signal (binary sensor) | **ebusd's own signal** (`binary_sensor.…_global_signal`), not the adapter's connectivity sensor: when the adapter drops off Wi-Fi, its own sensor keeps its last value "on" |
 | Nominal circulation flow of the pump | keep the default unless your boiler's manual says otherwise |
 | Gas meter volume (m³, total), Gas meter instantaneous flow (m³/h) | your gas meter entities, if you have them; otherwise leave empty. The control needs no gas meter: it tells burner runs and hot water from the pump and the status code. Without a meter, the *Gas power* and *Gas energy* sensors are not created |
 | Without a gas meter: nominal heat input of the boiler (type plate, kW) | only without a gas meter and only for a Vaillant boiler: the value **Q** or **Qn** from the type plate, the larger one of a range (atmoTEC plus VCW 194/4-5: 22.2). With it Thriftherm estimates *Gas for heating* and *Gas for hot water* from the boiler's counters ([how exact](GUIDE.md#dashboard-sensors-worth-knowing)). For that the six ebusd messages PrEnergySumHc1 to 3 and PrEnergySumHwc1 to 3 must reach Home Assistant, so do not exclude them ([Poll fewer ebusd values](EBUSD.md#what-thriftherm-needs)); Thriftherm finds them by itself. Leave empty with a gas meter |
@@ -342,7 +342,7 @@ A room's thermostat can also be the climate entity of [Versatile Thermostat](htt
 
 Only for a gas boiler with eBUS.
 
-1. **Turn the front knob to the highest flow temperature you want to allow**, for example 55 °C. The knob stays the upper limit, and it is what the boiler falls back to if Home Assistant stops. Do not turn it to the left stop: on the tested boiler that is summer mode and blocks heating whatever Thriftherm sends.
+1. **Turn the front knob to the highest flow temperature you want to allow**, for example 55 °C. The knob stays the upper limit, and it is what the boiler falls back to if Home Assistant stops. Do not turn it to the left stop: on a Vaillant atmoTEC that is summer mode and blocks heating whatever Thriftherm sends.
 2. **Check the pump mode once.** With the factory setting the pump may stop together with the burner: the boiler cycles all day, but the radiators far down the circuit stay cold. Why this happens: [user guide, pump mode](GUIDE.md#why-the-pump-mode-matters).
    - Vaillant: d.18 = 0 "post-run" is the factory setting – the pump runs only with the burner, plus a short overrun. d.18 = 1 "permanent" – the pump runs while heating is released and stops when Thriftherm blocks heating.
    - Change it in the boiler's service menu, or once via ebusd (message `HcPumpMode`, values `post_run`, `permanent`, `winter`).

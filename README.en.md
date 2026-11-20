@@ -26,7 +26,7 @@ To start, one temperature sensor or one smart valve per room is enough. Thrifthe
 
 ## What changes at the boiler
 
-Many boilers run without a real controller. The boiler then keeps its heating circuit at the knob temperature all winter, even when every thermostatic valve is closed. It fires for a few seconds at minimum load, overshoots and cycles. At the tested installation a central room controller sat on the eBUS: it measured a single room, decided for the whole flat from it and was not connected to the internet. Thriftherm takes over the controller's job:
+Many boilers run without a real controller. The boiler then keeps its heating circuit at the knob temperature all winter, even when every thermostatic valve is closed. It fires for a few seconds at minimum load, overshoots and cycles. A typical case is a central room controller on the eBUS: it measures a single room, decided for the whole flat from it and was not connected to the internet. Thriftherm takes over the controller's job:
 
 - **Flow temperature as low as possible:** from the heating curve, the heat demand of the rooms and the spread between flow and return. The room that needs the most sets the flow.
 - **Heating blocked when no room needs heat.** Hot water is not touched and keeps following the knob.
@@ -92,7 +92,7 @@ Tested on a Vaillant atmoTEC plus VCW 194/4-5 (non-condensing combi boiler, ebus
 
 ## Hardware used
 
-This is what the tested installation runs on. Other devices work the same way as long as they show up in Home Assistant.
+This is what Thriftherm is developed on. Other devices work the same way as long as they show up in Home Assistant.
 
 | Job | Device |
 |---|---|

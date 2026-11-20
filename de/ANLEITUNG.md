@@ -117,7 +117,7 @@ Für jedes Raumthermostat gilt: Ein Thermostat, das du von Hand **ausschaltest**
 
 ### Ventile direkt, ohne Raumthermostat (Vorschau)
 
-> **Vorschau.** Seit 15.11.2026 an Sonoff TRVZB/TRVZBT mit Zigbee2MQTT im Betrieb; andere Ventile (ZHA, Shelly und weitere) sind bisher nur nachgestellt getestet.
+> **Vorschau.** Mit Sonoff TRVZB/TRVZBT und Zigbee2MQTT erprobt; andere Ventile (ZHA, Shelly und weitere) sind bisher nur nachgestellt getestet.
 
 Statt eines Raumthermostats kannst du dem Raum seine Heizkörperventile geben (Raum-Optionen → *Heizkörperventile, direkt gesteuert*). Better Thermostat brauchst du dann nicht; ein Ventil, das ein aktiver Better-Thermostat-Eintrag noch steuert, lehnt das Formular ab. Der Raum hat entweder ein *Thermostat* oder Ventile, nicht beides.
 
@@ -193,7 +193,7 @@ Gilt für eine eigene Therme über ebusd. Eine Therme ohne eBUS lässt sich als 
 
 Der Sensor *Therme-Steuerbefehl* zeigt den Plan (`Heizen`, `Heizbetrieb gesperrt`, …), den genauen `SetMode`-Befehl, den Grund, worauf gewartet wird, ob die Heizungspumpe läuft und die Status-Nummer der Therme (`S.xx`, wie auf ihrem Display).
 
-**Warum das Minimum vom Gerätetyp abhängt.** Ein Brennwertgerät profitiert von niedrigem Vorlauf: Unter etwa 56 °C Rücklauf kondensiert das Abgas und bringt bis zu 11 % mehr, etwa 30 °C sind ein gutes Minimum. Ein Heizwertgerät kondensiert nie und spart dort wenig; bei kurzen Brennerläufen kommt die Wärme womöglich nicht bis zu den fernen Heizkörpern. An der getesteten Heizwerttherme blieb mit 30 °C der letzte Heizkörper kalt, 45 °C funktioniert: dort mit etwa 45 °C beginnen. Die Einstellung heißt *Minimale Vorlauftemperatur* ([Einrichtung, Schritt 4.3](EINRICHTUNG.md#43-gastherme-ebusd-und-gaszähler)).
+**Warum das Minimum vom Gerätetyp abhängt.** Ein Brennwertgerät profitiert von niedrigem Vorlauf: Unter etwa 56 °C Rücklauf kondensiert das Abgas und bringt bis zu 11 % mehr, etwa 30 °C sind ein gutes Minimum. Ein Heizwertgerät kondensiert nie und spart dort wenig; bei kurzen Brennerläufen kommt die Wärme womöglich nicht bis zu den fernen Heizkörpern. Bei einer Heizwerttherme kann mit 30 °C der letzte Heizkörper kalt bleiben; dort mit etwa 45 °C beginnen. Die Einstellung heißt *Minimale Vorlauftemperatur* ([Einrichtung, Schritt 4.3](EINRICHTUNG.md#43-gastherme-ebusd-und-gaszähler)).
 
 ### Aufheiztempo
 
@@ -219,7 +219,7 @@ Der *Lernstatus* zeigt *Aufheiz-Zuschlag je Raum* (beim Aufheizen der Zuschlag, 
 
 Im Werkszustand läuft die Pumpe nur, solange der Brenner brennt, plus kurzem Nachlauf (Vaillant: d.18 = 0, „Nachlauf“). Nehmen die Räume wenig Wärme ab, schaltet die Therme nach Sekunden wieder ab. Das Wasser hat dann nur eine Runde über den Bypass der Therme gedreht: **Die Heizkörper weit hinten im Kreis bleiben kalt**, obwohl die Therme den ganzen Tag taktet.
 
-Mit Pumpenmodus **durchlaufend** (d.18 = 1) läuft die Pumpe, solange der Heizbetrieb freigegeben ist, und **steht, wenn Thriftherm sperrt**. Das kostet etwa 33 W, nur während geheizt wird. An der getesteten Therme war genau das der Grund für ein kaltes Bad ([gemessen](FUNKTIONSWEISE.md#ebusd-pumpe-und-statuswerte)). Prüfen und ändern: [Einrichtung, Schritt 6](EINRICHTUNG.md#6-an-der-therme).
+Mit Pumpenmodus **durchlaufend** (d.18 = 1) läuft die Pumpe, solange der Heizbetrieb freigegeben ist, und **steht, wenn Thriftherm sperrt**. Das kostet etwa 33 W, nur während geheizt wird. Mit dem Modus *Nachlauf* kann ein Heizkörper fern der Therme kalt bleiben ([Hintergrund](FUNKTIONSWEISE.md#ebusd-pumpe-und-statuswerte)). Prüfen und ändern: [Einrichtung, Schritt 6](EINRICHTUNG.md#6-an-der-therme).
 
 ### ebusd: Pumpe und Statuswerte
 
@@ -363,7 +363,7 @@ data:
 | *Thermostat-Plan* je Raum | was an das Thermostat geht |
 | *Therme-Steuerbefehl* | was die Therme bekommt; *Drehknopf regelt* heißt, es wird nichts gesendet und die Therme läuft über ihren Knopf. Zeigt auch Heizungspumpe und Status S.xx |
 | *Lernstatus* | was gelernt wurde und warum das Lernen wartet ([Wo du es siehst](#wo-du-es-siehst)) |
-| *Gas für Heizung*, *Gas für Warmwasser* | wie viel Gas (kWh) seit der Einrichtung in die Heizung und ins Warmwasser ging. Mit Gaszähler gemessen: Jeder Schritt des Zählers zählt für das, was die Therme in dem Moment tut; was verbrannt wurde, während Home Assistant nicht lief, steht unter *Nicht zugeordnet*. Ohne Gaszähler bei Vaillant-Thermen aus deren eigenen Zählern geschätzt ([Einrichtung, Schritt 4.3](EINRICHTUNG.md#43-gastherme-ebusd-und-gaszähler)); auf der Testanlage lag die Schätzung in 32 Tagen (95,8 kWh am Gaszähler) insgesamt 1 % über dem Zähler und an keinem Tag mehr als 0,3 kWh daneben. Beide eignen sich für das Energie-Dashboard |
+| *Gas für Heizung*, *Gas für Warmwasser* | wie viel Gas (kWh) seit der Einrichtung in die Heizung und ins Warmwasser ging. Mit Gaszähler gemessen: Jeder Schritt des Zählers zählt für das, was die Therme in dem Moment tut; was verbrannt wurde, während Home Assistant nicht lief, steht unter *Nicht zugeordnet*. Ohne Gaszähler bei Vaillant-Thermen aus deren eigenen Zählern geschätzt ([Einrichtung, Schritt 4.3](EINRICHTUNG.md#43-gastherme-ebusd-und-gaszähler)). Beide eignen sich für das Energie-Dashboard |
 | *Geplante Rückkehr* | wann du zurück bist; einstellbar (erst Datum, dann Uhrzeit), leer, wenn nichts geplant ist. *Vorläufig (23:59 als Platzhalter)* (`provisional`) ist `true`, solange nur ein Datum gewählt ist: Abwesend endet dann um 23:59, vorgeheizt wird noch nicht |
 
 **Detail-Sensoren sind anfangs ausgeschaltet.** Abweichung vom Soll, Temperaturtrend, Taupunkt und absolute Feuchte je Raum, die Spreizung Vorlauf/Rücklauf, die geschätzte Wärmeleistung der Therme und die geschätzte Luftmenge der Wärmepumpe ändern sich fast bei jedem Zyklus und dienen der Auswertung, nicht der Regelung. Jede Änderung ist eine Zeile in der Datenbank von Home Assistant, deshalb sind sie bei einer neuen Installation ausgeschaltet; einschalten unter *Einstellungen → Geräte & Dienste → Entitäten*. Berechnet werden sie so oder so.

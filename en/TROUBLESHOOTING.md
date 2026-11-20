@@ -38,11 +38,11 @@ Fix:
 
 For a push notification, add an automation on *ebusd signal*, for example "off for 5 minutes".
 
-**What it looked like on the test installation:** the router handed out new addresses at night, the eBUS adapter got a different IP, and the Wi-Fi gas meter got the adapter's old one.
+**A typical case:** the router handed out new addresses at night, the eBUS adapter got a different IP, and the Wi-Fi gas meter got the adapter's old one.
 
 - ebusd no longer found the adapter ("unable to open …" in its log). Thriftherm handed the boiler back within minutes, and it heated for over an hour by its own knob.
 - ebusd knocked on the gas meter every 5 seconds. The meter kept losing its MQTT connection, and its values showed "unavailable" in Home Assistant.
-- All the while Home Assistant kept showing the last stored eBUS values (flow 22 °C, status 31), because ebusd keeps its values in the broker. In fact the flow was close to 50 °C.
+- All the while Home Assistant kept showing the last stored eBUS values because ebusd keeps its values in the broker. In fact the boiler was heating.
 
 ### A Wi-Fi device keeps dropping its connection
 

@@ -8,15 +8,15 @@ Optional, für Fortgeschrittene: Hier kürzt du die Liste, die ebusd reihum abfr
 
 ebusd fragt die Werte der Therme der Reihe nach ab, eine Nachricht alle paar Sekunden. Je mehr Nachrichten auf der Liste stehen, desto seltener kommt jede einzelne dran. Von sich aus stehen bei einer Vaillant-Therme rund 75 bis 80 darauf, und die meisten braucht niemand.
 
-Thriftherm sorgt selbst dafür, dass seine fünf wichtigen Nachrichten (FlowTemp, ReturnTemp, Status01, WP, Statenumber) bevorzugt abgefragt werden; dafür musst du nichts einstellen. Zwischen den bevorzugten Runden arbeitet ebusd aber jedes Mal die ganze übrige Liste ab. Auf der Testanlage gemessen (12.10.2026, eine Abfrage alle 6 Sekunden): Ein bevorzugter Wert kommt fünfmal im Abstand von 30 Sekunden und pausiert dann so lange, wie die übrige Liste braucht.
+Thriftherm sorgt selbst dafür, dass seine fünf wichtigen Nachrichten (FlowTemp, ReturnTemp, Status01, WP, Statenumber) bevorzugt abgefragt werden; dafür musst du nichts einstellen. Zwischen den bevorzugten Runden arbeitet ebusd aber jedes Mal die ganze übrige Liste ab. Zum Beispiel bei einer Abfrage alle 6 Sekunden: Ein bevorzugter Wert kommt fünfmal im Abstand von 30 Sekunden und pausiert dann so lange, wie die übrige Liste braucht.
 
 | Übrige Nachrichten auf der Liste | Pause für Vorlauf und Rücklauf |
 |---|---|
 | etwa 75 (Auslieferungszustand) | etwa 8 Minuten |
-| 35 (Testanlage bis 12.10.2026) | 4 Minuten |
-| 13 (Testanlage nach dem Kürzen um die Liste unten) | 1 Minute 48 Sekunden |
+| 35 | 4 Minuten |
+| 13 (nach dem Kürzen um die Liste unten) | 1 Minute 48 Sekunden |
 
-Die erste Zeile ist aus dem gemessenen Muster hochgerechnet, die beiden anderen sind gemessen. Jede Nachricht weniger spart 6 Sekunden.
+Die Zeiten sind ein Beispiel. Jede Nachricht weniger spart 6 Sekunden.
 
 **Für die Regelung spielt die Pause keine Rolle.** Thriftherm liest seine fünf Werte einmal pro Minute selbst aus, egal wie lang die Liste ist: mit Gaszähler, sobald der Verbrauch zeigt, ohne Gaszähler durchgehend (denn dann verraten nur diese Werte, dass der Brenner angesprungen ist). Übrig bleibt die Pause mit Gaszähler bei ruhender Therme. Kürzen lohnt sich also, wenn du die Werte auch dann zeitnah sehen willst, etwa in einem Dashboard, und es entlastet den Bus.
 
@@ -32,7 +32,7 @@ Diese Nachrichten nicht ausschließen:
 | Statenumber | Status-Nummer S.xx: Heizung, Warmwasser oder Nachlauf |
 | Status02 | Feld *hwcmode*: Warmwasser aktiv |
 | SetMode | der Befehl an die Therme – nie ausschließen |
-| PrEnergySumHc1 bis 3, PrEnergySumHwc1 bis 3 | nur ohne Gaszähler: Daraus schätzt Thriftherm das Gas für Heizung und für Warmwasser (siehe [unten](#was-auf-der-testanlage-niemand-braucht)) |
+| PrEnergySumHc1 bis 3, PrEnergySumHwc1 bis 3 | nur ohne Gaszähler: Daraus schätzt Thriftherm das Gas für Heizung und für Warmwasser (siehe [unten](#was-meist-niemand-braucht)) |
 
 Dazu kommt *ebusd Signal* vom ebusd-Gerät selbst; das ist keine Abfrage an der Therme.
 
@@ -49,7 +49,7 @@ Thriftherm liest diese Nachrichten nicht, nützlich sind sie trotzdem:
 | StorageTemp | Temperatur auf der Warmwasser-Seite |
 | HoursTillService | Stunden bis zur Wartung |
 
-## Was auf der Testanlage niemand braucht
+## Was meist niemand braucht
 
 23 Nachrichten, von nichts gelesen und nirgends angezeigt:
 
@@ -59,15 +59,15 @@ Thriftherm liest diese Nachrichten nicht, nützlich sind sie trotzdem:
 
 Eine Ausnahme, falls du Brennerstarts genau zählen willst: HcStarts und HwcStarts zählen in Hunderterschritten, HcUnderHundredStarts und HwcUnderHundredStarts liefern die letzten beiden Stellen dazu. Thriftherm braucht das nicht, es zählt die Brennerläufe selbst; die Starts für die Heizung zeigt der Sensor *Therme Heizstarts heute*. Ohne Gaszähler zählt er nach der Statusnummer (Statenumber), bei jedem Wechsel Brenner an/aus sofort; fragt ebusd sie selten ab, fehlen kurze Brennerläufe.
 
-## Was auf der Testanlage schon ausgeschlossen ist
+## Was bei der Vaillant atmoTEC schon ausgeschlossen ist
 
-Seit dem 13.09.2026; die Runde wurde damit etwa halb so lang:
+Die Runde wurde damit etwa halb so lang:
 
 - HwcTemp, OutdoorstempSensor, Expertlevel_ReturnTemp – diese Fühler hat die Therme nicht, die Werte waren leer
 - VortexFlowSensor, Status, Status16 – ebusd konnte sie für dieses Gerät nicht entschlüsseln
 - PowerValue und die festen Einstellwerte (unter anderem FlowTempMax, HwcTempDesired, HwcTempMax, PumpPowerDesired, StorageTempDesired, ExternalFlowTempDesired, TempDiffFailure, TempGradientFailure, TimerInputHc)
 
-Welche Nachrichten deine Therme liefert, hängt vom Gerät ab. Schau in Home Assistant auf das ebusd-Gerät: Was dauernd leer, 0 oder unverändert ist und dich nicht interessiert, kann weg. Einen Fehlercode oder den Wasserdruck liefert die Testanlage (atmoTEC) über ebusd nicht brauchbar; bei anderen Thermen kann das anders sein, dann lohnt es sich, diese Werte zu behalten.
+Welche Nachrichten deine Therme liefert, hängt vom Gerät ab. Schau in Home Assistant auf das ebusd-Gerät: Was dauernd leer, 0 oder unverändert ist und dich nicht interessiert, kann weg. Einen Fehlercode oder den Wasserdruck liefert die Vaillant atmoTEC über ebusd nicht brauchbar; bei anderen Thermen kann das anders sein, dann lohnt es sich, diese Werte zu behalten.
 
 ## So schließt du Nachrichten aus
 
@@ -89,4 +89,4 @@ Welche Nachrichten deine Therme liefert, hängt vom Gerät ab. Schau in Home Ass
 
 ## Schneller abfragen
 
-`--pollinterval=2` in den Kommandozeilen-Optionen der ebusd-App halbiert bis drittelt alle Zeiten. Das ist auf der Testanlage nicht ausprobiert. Dort schlagen schon beim normalen Takt etwa 9 % der Abfragen fehl und werden wiederholt; ob ein dichterer Takt das verschlimmert, ist offen. Wer es versucht, schaut danach ins Protokoll der ebusd-App nach Zeilen mit `ERR:`.
+`--pollinterval=2` in den Kommandozeilen-Optionen der ebusd-App halbiert bis drittelt alle Zeiten. Das ist nicht ausprobiert. Schon beim normalen Takt schlagen manche Abfragen fehl und werden wiederholt; ob ein dichterer Takt das verschlimmert, ist offen. Wer es versucht, schaut danach ins Protokoll der ebusd-App nach Zeilen mit `ERR:`.

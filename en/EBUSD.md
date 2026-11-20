@@ -8,15 +8,15 @@ Optional, for advanced users: this page shows how to trim the list ebusd polls i
 
 ebusd reads the boiler's values one after another, one message every few seconds. The more messages are on the list, the more rarely each one gets its turn. For a Vaillant boiler some 75 to 80 are on it by default, and nobody needs most of them.
 
-Thriftherm makes sure by itself that its five important messages (FlowTemp, ReturnTemp, Status01, WP, Statenumber) are polled with priority; there is nothing to configure for that. But between the priority rounds ebusd works through the whole rest of the list each time. Measured on the test installation (2026-10-12, one poll every 6 seconds): a priority value comes five times at 30-second spacing and then pauses for as long as the rest of the list takes.
+Thriftherm makes sure by itself that its five important messages (FlowTemp, ReturnTemp, Status01, WP, Statenumber) are polled with priority; there is nothing to configure for that. But between the priority rounds ebusd works through the whole rest of the list each time. Example with one poll every 6 seconds: a priority value comes five times at 30-second spacing and then pauses for as long as the rest of the list takes.
 
 | Other messages on the list | Pause for flow and return |
 |---|---|
 | about 75 (as delivered) | about 8 minutes |
-| 35 (test installation until 2026-10-12) | 4 minutes |
-| 13 (test installation after trimming by the list below) | 1 minute 48 seconds |
+| 35 | 4 minutes |
+| 13 (after trimming by the list below) | 1 minute 48 seconds |
 
-The first row is extrapolated from the measured pattern, the other two are measured. Every message less saves 6 seconds.
+Every message less saves 6 seconds.
 
 **For the control the pause does not matter.** Thriftherm reads its five values itself once a minute, however long the list is: with a gas meter as soon as it shows consumption, without one all the time (for then only these values tell that the burner has started). What remains is the pause with a gas meter while the boiler rests. So trimming pays off when you want to see the values promptly then too, in a dashboard for example, and it takes load off the bus.
 
@@ -32,7 +32,7 @@ Do not exclude these messages:
 | Statenumber | status number S.xx: heating, hot water or overrun |
 | Status02 | field *hwcmode*: hot water active |
 | SetMode | the command to the boiler – never exclude |
-| PrEnergySumHc1 to 3, PrEnergySumHwc1 to 3 | only without a gas meter: Thriftherm estimates the gas for heating and for hot water from them (see [below](#what-nobody-needs-on-the-test-installation)) |
+| PrEnergySumHc1 to 3, PrEnergySumHwc1 to 3 | only without a gas meter: Thriftherm estimates the gas for heating and for hot water from them (see [below](#what-nobody-needs)) |
 
 Plus *ebusd Signal* from the ebusd device itself; that is no read at the boiler.
 
@@ -49,7 +49,7 @@ Thriftherm does not read these messages, but they are useful all the same:
 | StorageTemp | temperature on the hot water side |
 | HoursTillService | hours until service |
 
-## What nobody needs on the test installation
+## What nobody needs
 
 23 messages, read by nothing and shown nowhere:
 
@@ -59,15 +59,15 @@ Thriftherm does not read these messages, but they are useful all the same:
 
 One exception in case you want to count burner starts exactly: HcStarts and HwcStarts count in steps of a hundred, HcUnderHundredStarts and HwcUnderHundredStarts deliver the last two digits. Thriftherm does not need that, it counts the burner runs itself; the sensor *Boiler heating starts today* shows the starts for the heating. Without a gas meter it counts by the status number (Statenumber), at once on every change of the burner on or off; if ebusd polls it rarely, short burner runs are missed.
 
-## Already excluded on the test installation
+## Messages worth excluding
 
-Since 2026-09-13; the round became about half as long:
+Excluding these made the round about half as long:
 
 - HwcTemp, OutdoorstempSensor, Expertlevel_ReturnTemp – the boiler has no such sensors, the values were empty
 - VortexFlowSensor, Status, Status16 – ebusd could not decode them for this unit
 - PowerValue and the fixed settings (among them FlowTempMax, HwcTempDesired, HwcTempMax, PumpPowerDesired, StorageTempDesired, ExternalFlowTempDesired, TempDiffFailure, TempGradientFailure, TimerInputHc)
 
-Which messages your boiler delivers depends on the unit. Look at the ebusd device in Home Assistant: what is always empty, 0 or unchanged and does not interest you can go. The test installation (atmoTEC) delivers no usable fault code or water pressure over ebusd; other boilers may, and then those values are worth keeping.
+Which messages your boiler delivers depends on the unit. Look at the ebusd device in Home Assistant: what is always empty, 0 or unchanged and does not interest you can go. A Vaillant atmoTEC delivers no usable fault code or water pressure over ebusd; other boilers may, and then those values are worth keeping.
 
 ## How to exclude messages
 
@@ -89,4 +89,4 @@ Which messages your boiler delivers depends on the unit. Look at the ebusd devic
 
 ## Polling faster
 
-`--pollinterval=2` in the command-line options of the ebusd app cuts all times to a half or a third. This has not been tried on the test installation. There about 9 % of the polls fail at the normal pace already and are repeated; whether a tighter pace makes that worse is open. If you try it, check the log of the ebusd app for lines with `ERR:` afterwards.
+`--pollinterval=2` in the command-line options of the ebusd app cuts all times to a half or a third. This has not been tried. Some polls fail at the normal pace already and are repeated; whether a tighter pace makes that worse is open. If you try it, check the log of the ebusd app for lines with `ERR:` afterwards.

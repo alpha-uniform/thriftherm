@@ -193,7 +193,7 @@ For an own boiler on ebusd. A boiler without eBUS can be controlled, as a previe
 
 Sensor *Boiler command* shows the plan (`Heat`, `Heating blocked`, …), the exact `SetMode` payload, the reason, what it is waiting for, whether the heating pump runs and the boiler's status code (`S.xx`, as on its display).
 
-**Why the minimum depends on the boiler type.** A condensing boiler gains from a low flow: below a return of about 56 °C its flue gas condenses and yields up to 11 % more, so about 30 °C is a good minimum. A non-condensing boiler never condenses and saves little there; with short burner runs the heat may not even reach distant radiators. On the tested non-condensing boiler 30 °C left the last radiator cold, 45 °C works: start there with about 45 °C. The setting is *Minimum flow temperature* ([setup guide, step 4.3](SETUP.md#43-gas-boiler-ebusd-and-gas-meter)).
+**Why the minimum depends on the boiler type.** A condensing boiler gains from a low flow: below a return of about 56 °C its flue gas condenses and yields up to 11 % more, so about 30 °C is a good minimum. A non-condensing boiler never condenses and saves little there; with short burner runs the heat may not even reach distant radiators. On a non-condensing boiler start with about 45 °C; at 30 °C the last radiator may stay cold. The setting is *Minimum flow temperature* ([setup guide, step 4.3](SETUP.md#43-gas-boiler-ebusd-and-gas-meter)).
 
 ### Heat-up speed
 
@@ -219,7 +219,7 @@ The *Learning state* shows *Heat-up extra per room* (the extra while a room heat
 
 With the factory pump mode the pump runs only while the burner fires, plus a short overrun (Vaillant: d.18 = 0, "post-run"). When the rooms take little heat, the boiler stops again within seconds. The water has then only circled through the boiler's bypass: **the radiators far down the circuit stay cold**, although the boiler cycles all day.
 
-With pump mode **permanent** (d.18 = 1) the pump runs whenever heating is released and **stops when Thriftherm blocks heating**. That costs about 33 W, only while heating. On the tested boiler this was the cause of a cold bathroom ([measured](HOW_IT_WORKS.md#ebusd-pump-and-status-values)). To check and change it: [setup guide, step 6](SETUP.md#6-at-the-boiler).
+With pump mode **permanent** (d.18 = 1) the pump runs whenever heating is released and **stops when Thriftherm blocks heating**. That costs about 33 W, only while heating. With pump mode *post-run* a radiator far from the boiler can stay cold ([details](HOW_IT_WORKS.md#ebusd-pump-and-status-values)). To check and change it: [setup guide, step 6](SETUP.md#6-at-the-boiler).
 
 ### ebusd: pump and status values
 
@@ -363,7 +363,7 @@ data:
 | *Thermostat plan* per room | what is handed to the thermostat |
 | *Boiler command* | what the boiler gets; *Knob in charge* means nothing is sent and the boiler runs on its own knob. Also shows the heating pump and the status code S.xx |
 | *Learning state* | what has been learned and why learning waits ([Where you see it](#where-you-see-it)) |
-| *Gas for heating*, *Gas for hot water* | how much gas (kWh) went into the heating and how much into hot water since setup. Measured with a gas meter: each step of the meter counts for what the boiler is doing at that moment; what was burnt while Home Assistant was not running is under *Not assigned*. Without a gas meter, estimated for Vaillant boilers from their own counters ([setup guide, step 4.3](SETUP.md#43-gas-boiler-ebusd-and-gas-meter)); on the test installation the estimate was 1 % above the meter over 32 days (95.8 kWh at the gas meter) and never more than 0.3 kWh off on any day. Both fit the energy dashboard |
+| *Gas for heating*, *Gas for hot water* | how much gas (kWh) went into the heating and how much into hot water since setup. Measured with a gas meter: each step of the meter counts for what the boiler is doing at that moment; what was burnt while Home Assistant was not running is under *Not assigned*. Without a gas meter, estimated for Vaillant boilers from their own counters ([setup guide, step 4.3](SETUP.md#43-gas-boiler-ebusd-and-gas-meter)). Both fit the energy dashboard |
 | *Planned return* | when you expect to be back; editable (date first, then time), empty when nothing is planned. *Provisional (23:59 placeholder)* (`provisional`) is `true` while only a date is picked: away then ends at 23:59, nothing is pre-heated yet |
 
 **Detail sensors start disabled.** Deviation from target, temperature trend, dew point and absolute humidity per room, the flow/return spread, the boiler's thermal power estimate and the heat pump's airflow estimate change with almost every cycle and serve the analysis, not the control. Each change is a row in Home Assistant's database, so on a new installation they are disabled; enable the ones you want under *Settings → Devices & services → Entities*. Thriftherm computes them either way.
