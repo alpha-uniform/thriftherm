@@ -15,7 +15,7 @@ from dataclasses import replace
 
 import voluptuous as vol
 from homeassistant.const import EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import Event, HomeAssistant, ServiceCall
+from homeassistant.core import Event, HassJob, HomeAssistant, ServiceCall
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
@@ -57,6 +57,8 @@ RETIRED_CURVE_PER_ROOM = "boiler_load_model"
 # hass.data key: entry id -> (heat pump climate, let-go) of an entry unloaded neither disabled nor yet deleted. A delete
 # carries it out, and so does the next run of a reload that does not go on with that unit actively or fails to start.
 PENDING_LET_GO = f"{DOMAIN}_pending_let_go"
+# the run unloaded for a reload, until the next one is up: it hands back the valves the new one drives no more (§7)
+PENDING_VALVES = f"{DOMAIN}_pending_valves"
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
@@ -152,8 +154,8 @@ OLD_DEFAULT_HEAT_RATE_HEAT_PUMP = 1.2
 
 
 def _platforms(coordinator: ThrifthermCoordinator) -> list[str]:
-    """The platforms of this entry: the climate platform only where cooling is allowed, so no one else loads it."""
-    return [*PLATFORMS, *(COOLING_PLATFORMS if coordinator.cooling_allowed else [])]
+    """The platforms of this entry: the climate platform only where a room has a room climate, so no one else loads it."""
+    return [*PLATFORMS, *(COOLING_PLATFORMS if coordinator.room_climate_rooms else [])]
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> bool:
@@ -206,6 +208,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
     await card.async_load(hass, version)
     # a reload: the last run left the unit to this one, if this one goes on with it
     parked = hass.data.get(PENDING_LET_GO, {}).pop(entry.entry_id, None)
+    before: ThrifthermCoordinator | None = hass.data.get(PENDING_VALVES, {}).pop(entry.entry_id, None)
     coordinator = ThrifthermCoordinator(hass, entry)
     try:
         await coordinator.async_start()
@@ -230,8 +233,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
             # last run left, and a quick heat-up stayed at 30 °C for good (verifier of 0.7.3b, #R1, #R8).
             let_go, parked = parked[1], None
             await let_go()
+        if before is not None and (left := set(before.valve_ctrl_memory) - coordinator.direct_valves):
+            # a room put back on Better Thermostat or a valve taken out: the valve gets back what it had (§7)
+            await before.async_hand_back_valves(only=left)
         await coordinator.async_config_entry_first_refresh()
     except Exception:
+        if before is not None:
+            with suppress(Exception):
+                await before.async_hand_back_valves()  # this run never starts: nobody drives the valves
         if parked is not None:
             await parked[1]()  # this run never starts: the unit is left to nobody, as on a disable
         elif coordinator.control_mode == CTRL_ACTIVE:
@@ -269,6 +278,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
 
     # not listen_once: its remover would log an error on an unload after the stop
     entry.async_on_unload(hass.bus.async_listen(EVENT_HOMEASSISTANT_STOP, _save_on_stop))
+
+    async def _hand_back_on_shutdown() -> None:
+        # The valves driven directly get back what they had (§7), in stage 1 of the stop: on EVENT_HOMEASSISTANT_STOP
+        # MQTT and ZHA go down themselves, and nothing would reach a valve (review 2026-11-15, second round). No cycle
+        # after this one puts them on the room again.
+        await coordinator.async_stop_cycles()
+        await coordinator.async_hand_back_valves()
+        # a unit mid-way through a quick heat-up or a drying gets the rooms' normal target, not 30 °C or 17 until the
+        # control is back (decided 19.11.); the store is written after this, on EVENT_HOMEASSISTANT_STOP
+        await coordinator.async_let_go_of_heat_pump(to_rooms_target=True)
+
+    entry.async_on_unload(hass.async_add_shutdown_job(HassJob(_hand_back_on_shutdown)))
     _LOGGER.info("Thriftherm started (heat pump control: %s)", coordinator.control_mode)
     return True
 
@@ -326,6 +347,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) 
                     entry.runtime_data.config.get(CONF_HEAT_PUMP_CLIMATE),
                     _let_go_later(entry.runtime_data),
                 )
+        if entry.disabled_by is not None:
+            await entry.runtime_data.async_hand_back_valves()  # concept §7
+        else:  # a reload, or a delete (its hand-back waits for async_remove_entry)
+            hass.data.setdefault(PENDING_VALVES, {})[entry.entry_id] = entry.runtime_data
         # learning and user state changed since the last periodic save must survive a restart
         await entry.runtime_data.async_save_store(force=True)
         await entry.runtime_data.async_release_boiler(final=True)
@@ -355,6 +380,8 @@ async def async_remove_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) 
     parked = hass.data.get(PENDING_LET_GO, {}).pop(entry.entry_id, None)
     if parked is not None:
         await parked[1]()
+    if (before := hass.data.get(PENDING_VALVES, {}).pop(entry.entry_id, None)) is not None:
+        await before.async_hand_back_valves()
     issues.async_clear(hass)
     await Store(hass, STORAGE_VERSION, f"{STORAGE_KEY}.{entry.entry_id}").async_remove()
     await card.async_remove_resource(hass)

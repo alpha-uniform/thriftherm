@@ -14,7 +14,7 @@ from homeassistant.helpers import selector
 from . import boiler_profiles, learning_reset, texts
 from .adapters import ebusd_detect
 from .adapters.config import system_type_from_config
-from .adapters.inputs import driven_by
+from .adapters.inputs import driven_by, valve_driver
 from .config_schema import (
     BOILER_KEYS,
     HEAT_PUMP_KEYS,
@@ -110,6 +110,9 @@ class ThrifthermConfigFlow(ConfigFlow, domain=DOMAIN):
     def _drives(self, climate: str) -> tuple[str, ...]:
         return driven_by(self.hass, climate)  # a room thermostat in front of the heat pump's unit is the unit
 
+    def _driver(self, valve: str) -> str | None:
+        return valve_driver(self.hass, valve)  # a valve Better Thermostat drives is no valve to drive directly
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
@@ -160,7 +163,9 @@ class ThrifthermConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_room(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = validate_room(user_input, self._rooms, self._data.get(CONF_HEAT_PUMP_CLIMATE), self._drives)
+            errors = validate_room(
+                user_input, self._rooms, self._data.get(CONF_HEAT_PUMP_CLIMATE), self._drives, driver=self._driver
+            )
             if not errors:
                 self._rooms.append(room_from_input(user_input))
                 if user_input.get("add_another"):
@@ -192,6 +197,9 @@ class ThrifthermOptionsFlow(OptionsFlow):
 
     def _drives(self, climate: str) -> tuple[str, ...]:
         return driven_by(self.hass, climate)  # see ThrifthermConfigFlow._drives
+
+    def _driver(self, valve: str) -> str | None:
+        return valve_driver(self.hass, valve)  # see ThrifthermConfigFlow._driver
 
     def _save(self, changes: dict[str, Any]) -> ConfigFlowResult:
         options = known_keys({**self._config, **changes})
@@ -374,7 +382,9 @@ class ThrifthermOptionsFlow(OptionsFlow):
         errors: dict[str, str] = {}
         if user_input is not None:
             others = [r for r in rooms if r[CONF_ROOM_KEY] != self._room_key]
-            errors = validate_room(user_input, others, self._config.get(CONF_HEAT_PUMP_CLIMATE), self._drives, self._room_key)
+            errors = validate_room(
+                user_input, others, self._config.get(CONF_HEAT_PUMP_CLIMATE), self._drives, self._room_key, self._driver
+            )
             if not errors:
                 # What the form does not show stays as it is stored: the cooling schedule while cooling is hidden,
                 # "served by the heat pump" and the drying while no heat pump is entered. Built from the answer

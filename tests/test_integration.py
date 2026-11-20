@@ -5,26 +5,28 @@ from __future__ import annotations
 import time
 from dataclasses import replace
 from datetime import timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed, async_mock_service
 
+from custom_components.thriftherm.config_schema import ROOM_ACTION_ADD
 from custom_components.thriftherm.const import (
     CONF_BOILER_FLOW_TEMP,
     CONF_BOILER_PUMP_RUNNING,
-    CONF_BOILER_STATE_NUMBER,
     CONF_BOILER_PUMP_STATE,
     CONF_BOILER_RETURN_TEMP,
     CONF_BOILER_SIGNAL,
+    CONF_BOILER_STATE_NUMBER,
     CONF_GAS_FLOW,
     CONF_HEAT_PUMP_CLIMATE,
     CONF_HEAT_PUMP_POWER,
     CONF_OUTDOOR_TEMP_SENSORS,
+    CONF_ROOM_HEAT_PUMP,
     CONF_ROOM_HUMIDITY,
     CONF_ROOM_KEY,
-    CONF_ROOM_HEAT_PUMP,
     CONF_ROOM_NAME,
     CONF_ROOM_PRIORITY,
     CONF_ROOM_TEMP,
@@ -32,8 +34,9 @@ from custom_components.thriftherm.const import (
     CONF_ROOMS,
     DOMAIN,
 )
-from custom_components.thriftherm.config_schema import ROOM_ACTION_ADD
 from custom_components.thriftherm.coordinator import ThrifthermCoordinator
+
+from .conftest import climate_loaded
 
 
 @pytest.fixture(autouse=True)
@@ -404,6 +407,7 @@ async def test_quick_heat_up_button(hass: HomeAssistant) -> None:
 
 
 async def test_active_control_sends_commands(hass: HomeAssistant) -> None:
+    await climate_loaded(hass)
     hvac_calls = async_mock_service(hass, "climate", "set_hvac_mode")
     temp_calls = async_mock_service(hass, "climate", "set_temperature")
     fan_calls = async_mock_service(hass, "climate", "set_fan_mode")
@@ -475,7 +479,7 @@ async def test_boiler_control_plans_by_default_and_sends_when_active(hass: HomeA
     assert command.attributes["setmode_payload"].endswith(";-;-;0;0;0;0;0;0")
     assert command.attributes["commands_sent"] is False
     setmode = [c for c in publish if c.data["topic"].endswith("/SetMode/set")]
-    assert not setmode  # plan only; read requests to ebusd are allowed
+    assert not setmode  # observe only; read requests to ebusd are allowed
     flow = hass.states.get("sensor.thriftherm_boiler_flow_setpoint_planned")
     assert flow is not None and 30.0 <= float(flow.state) <= 60.0
 
@@ -498,6 +502,7 @@ async def test_boiler_active_needs_release(hass: HomeAssistant) -> None:
 
 
 async def test_room_control_plans_and_writes_thermostat(hass: HomeAssistant, freezer) -> None:
+    await climate_loaded(hass)
     set_temp = async_mock_service(hass, "climate", "set_temperature")
     _set_states(hass)
     hass.states.async_set("climate.bath_bt", "heat", {"temperature": 17.0, "current_temperature": 18.5})
@@ -514,7 +519,7 @@ async def test_room_control_plans_and_writes_thermostat(hass: HomeAssistant, fre
     assert select is not None and select.state == "shadow" and "active" in select.attributes["options"]
     plan = hass.states.get("sensor.thriftherm_badezimmer_thermostat_plan")
     assert plan is not None and plan.state == "set" and plan.attributes["setpoint"] == 21.0
-    assert not set_temp  # plan only
+    assert not set_temp  # observe only
     assert hass.states.get("sensor.thriftherm_wohnzimmer_thermostat_plan") is None  # no thermostat configured
 
     await hass.services.async_call(
@@ -965,7 +970,8 @@ async def test_switching_heat_pump_control_starts_from_a_clean_run_state(hass: H
 
 
 async def test_devices_and_entities_of_removed_rooms_are_cleaned_up(hass: HomeAssistant) -> None:
-    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
 
     entry = await _setup(hass)
     dev_reg, ent_reg = dr.async_get(hass), er.async_get(hass)
@@ -1132,6 +1138,8 @@ async def test_the_boiler_control_is_told_how_long_each_rooms_target_has_stood(h
 
 
 _HA_ATTRIBUTES = {"friendly_name", "icon", "device_class", "unit_of_measurement", "state_class", "options", "supported_features", "restored", "min", "max", "step", "mode"}
+# a climate's own, named by Home Assistant (every room has a room climate since 2026-11-17)
+_HA_ATTRIBUTES |= {"hvac_modes", "min_temp", "max_temp", "target_temp_step", "current_temperature", "temperature", "hvac_action"}
 
 
 async def test_every_attribute_has_a_translated_name(hass: HomeAssistant) -> None:
@@ -1420,6 +1428,7 @@ async def test_rooms_of_a_cooling_heat_pump_never_call_the_boiler(hass: HomeAssi
 async def test_a_sent_setpoint_is_stored_at_once(hass: HomeAssistant, hass_storage) -> None:
     """2026-09-26: the store still held 21.0 while the thermostat had 21.5 from us; a restart
     took that for a change by hand. A sent setpoint is now written without waiting."""
+    await climate_loaded(hass)
     async_mock_service(hass, "climate", "set_temperature")
     _set_states(hass)
     hass.states.async_set("climate.bath_bt", "heat", {"temperature": 17.0, "current_temperature": 18.5})
@@ -1508,7 +1517,7 @@ async def test_the_curve_per_load_class_is_shown_recorded_and_kept(hass: HomeAss
     assert coordinator.load_log and len(coordinator.load_log[-1]) == 10  # one compact row per cycle
     assert coordinator.load_log[-1][5:7] == [2, 2] and coordinator.load_log[-1][9] == [2.5, 1.5]  # target minus actual
 
-    found = LoadLine(level_k=2.0, hours=30.0, calm_hours=4.0, found=True)
+    found = LoadLine(level_k=2.0, hours=30.0)
     lines = {
         "majority:badezimmer": found,
         "majority:wohnzimmer": found,
@@ -1521,14 +1530,14 @@ async def test_the_curve_per_load_class_is_shown_recorded_and_kept(hass: HomeAss
     # the rooms' lines for the majority, not the common 9 K nor the bathroom's 5 K alone
     assert attrs["heating_curve_offset_k"] == 2.0
     by_load = attrs["curve_by_load"]
-    assert by_load["majority:badezimmer"]["found"] is True and by_load["single:badezimmer"]["level_k"] == 5.0
+    assert by_load["majority:badezimmer"]["hours"] == 30.0 and by_load["single:badezimmer"]["level_k"] == 5.0
 
     await coordinator.async_save_store(force=True)
     stored = hass_storage[f"thriftherm.learning.{entry.entry_id}"]["data"]
     assert stored["boiler_memory"]["lines"]["single:badezimmer"]["level_k"] == 5.0 and stored["boiler_load_log"]
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
-    assert entry.runtime_data.boiler_memory.lines["majority:badezimmer"].calm_hours >= 4.0
+    assert entry.runtime_data.boiler_memory.lines["majority:badezimmer"].hours >= 30.0
     assert len(entry.runtime_data.load_log) >= len(stored["boiler_load_log"])
 
 
@@ -1869,6 +1878,7 @@ async def test_the_boiler_heating_starts_of_the_day_are_a_sensor(hass: HomeAssis
     state = hass.states.get("sensor.thriftherm_boiler_heating_starts_today")
     assert int(state.state) == entry.runtime_data.data["boiler_command"].starts_today == 1
     assert state.attributes["state_class"] == "total_increasing"  # a daily counter: the statistics give starts per day
+    assert (state.attributes["source"], state.attributes["short_runs_may_be_missed"]) == ("gas_meter", False)
 
 
 async def _final_hand_back_fails(hass: HomeAssistant, caplog, remove: bool = False) -> MockConfigEntry:
@@ -1955,7 +1965,7 @@ async def test_an_entry_added_again_ends_the_hand_back_its_deleted_one_waited_fo
 
 async def test_an_entry_added_again_in_plan_only_leaves_the_hand_back_to_be_made_up(hass: HomeAssistant, caplog) -> None:
     """Verifier of 0.7.3b (#R4, #R23): the waiting ended as soon as any entry had the entities configured. One added
-    again starts in Plan only with a fresh store and never writes them: the block stayed on the switch for good."""
+    again starts in Observe only with a fresh store and never writes them: the block stayed on the switch for good."""
     from custom_components.thriftherm.coordinator import HAND_BACK_RETRIES
 
     await _final_hand_back_fails(hass, caplog, remove=True)
@@ -1976,6 +1986,7 @@ async def _boosting(hass: HomeAssistant, target: float = 30.0, drying: bool = Fa
     """An active heat pump control left mid-way through a quick heat-up (or a drying): the unit at `target`."""
     entry = await _setup(hass, options={"midea_allow_active_control": True})
     coordinator = entry.runtime_data
+    await climate_loaded(hass)
     set_temperature = async_mock_service(hass, "climate", "set_temperature")
     for service in ("set_hvac_mode", "set_fan_mode"):
         async_mock_service(hass, "climate", service)
@@ -1996,7 +2007,7 @@ async def _boosting(hass: HomeAssistant, target: float = 30.0, drying: bool = Fa
 
 @pytest.mark.parametrize("mode", ["shadow", "off"])
 async def test_leaving_active_control_sets_a_boosted_unit_down_to_its_floor(hass: HomeAssistant, mode: str) -> None:
-    """Review 2026-11-08 (#32): switched to Plan only mid-way through a quick heat-up, the unit stayed at 30 °C for good."""
+    """Review 2026-11-08 (#32): switched to Observe only mid-way through a quick heat-up, the unit stayed at 30 °C for good."""
     _, coordinator, set_temperature = await _boosting(hass)
     coordinator.set_control_mode(mode)
     await hass.async_block_till_done()
@@ -2102,7 +2113,8 @@ async def test_a_unit_held_at_its_least_speed_is_left_as_it_is_when_the_control_
 
 async def test_room_devices_are_child_devices_of_the_hub_named_after_the_room(hass: HomeAssistant) -> None:
     """Home Assistant 2026.11 names each thing once: the room device is a child of "Thriftherm" called "Wohnzimmer"."""
-    from homeassistant.helpers import device_registry as dr, entity_registry as er
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
 
     entry = await _setup(hass)
     dev_reg = dr.async_get(hass)
@@ -2161,3 +2173,96 @@ async def test_a_room_child_device_of_a_deleted_room_is_cleaned_up_on_reload(has
 
     assert dev_reg.async_get(gone.id) is None
     assert dev_reg.async_get_child_device_by_identifier((DOMAIN, f"{entry.entry_id}_room_badezimmer"), entry.entry_id) is not None
+
+
+async def test_without_a_gas_meter_every_burn_the_status_number_shows_counts(hass: HomeAssistant, monkeypatch) -> None:
+    """Decided 15.11.: a burn between two cycles counted no start. A change of the status number starts a cycle, but only
+    where the burner goes on or off (a status number ticking through the codes of one run is no cycle each)."""
+    async_mock_service(hass, "mqtt", "publish")
+    hass.states.async_set("sensor.statenumber", "0")
+    entry = await _setup(hass, options={"boiler_state_number": "sensor.statenumber", "gas_flow": None})
+    coordinator = entry.runtime_data
+    await coordinator.async_refresh()
+    before = coordinator.data["boiler_command"].starts_today
+    assert coordinator.data["boiler_command"].starts_source == "status_code"
+    cycles = []
+    real = coordinator.async_request_refresh
+
+    async def counted() -> None:
+        cycles.append(hass.states.get("sensor.statenumber").state)
+        await coordinator.async_refresh()
+
+    monkeypatch.setattr(coordinator, "async_request_refresh", counted)
+    # a heating run (Vaillant S.1 to S.4), the pump's run-on, the lockout, rest: well within a minute
+    for code in ("1", "2", "3", "4", "7", "8", "0"):
+        hass.states.async_set("sensor.statenumber", code)
+        await hass.async_block_till_done()
+    assert cycles == ["1", "7"]  # on and off, nothing else
+    assert coordinator.data["boiler_command"].starts_today == before + 1
+    # the heating shown as active is the burner, by the same sign
+    hass.states.async_set("sensor.statenumber", "4")
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.thriftherm_boiler_space_heating_active").state == "on"
+    hass.states.async_set("sensor.statenumber", "8")  # the lockout after the run: the burner is off
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.thriftherm_boiler_space_heating_active").state == "off"
+    monkeypatch.setattr(coordinator, "async_request_refresh", real)
+
+
+async def test_every_room_has_a_room_climate_and_the_entity_ids_stay(hass: HomeAssistant) -> None:
+    """Decided 2026-11-17: the living room with Better Thermostat had no room climate of Thriftherm's own. Every room has
+    one now, heating only without cooling; no entity id that was there changes, the room climates only come along."""
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    keys = [r.key for r in coordinator.builder.rooms]
+    assert coordinator.room_climate_rooms == tuple(keys)
+    for key in keys:
+        state = hass.states.get(f"climate.thriftherm_{key}_room_climate")
+        assert state is not None and state.attributes["hvac_modes"] == ["heat", "off"]
+    assert hass.states.get("sensor.thriftherm_badezimmer_target_temperature") is not None
+
+
+async def test_off_on_the_room_climate_holds_until_switched_on_and_on_ends_only_the_off(hass: HomeAssistant) -> None:
+    """Decided 19.11. (review 2026-11-18): "off" on a room climate ended unseen after the override time (120 min), and
+    "heat" or climate.turn_on ended a quick heat-up and a drying by hand as well. Off holds until switched on, the
+    frost limit still guards it; on ends the off alone, and "heat" on a room not off changes nothing."""
+    from custom_components.thriftherm.models import ROOM_OFF_UNTIL_TS, DryingState
+
+    entry = await _setup(hass)
+    coordinator = entry.runtime_data
+    entity = "climate.thriftherm_wohnzimmer_room_climate"
+    frost = coordinator.builder.params.frost_temp
+    await hass.services.async_call("climate", "set_hvac_mode", {"entity_id": entity, "hvac_mode": "off"}, blocking=True)
+    held = coordinator.overrides["wohnzimmer"]
+    assert (held.target, held.until_ts) == (frost, ROOM_OFF_UNTIL_TS)
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get(entity).state == "off"
+    assert coordinator.data["rooms"]["wohnzimmer"].override_until_ts is None  # no end to show
+    coordinator.boosts["wohnzimmer"] = time.time() + 3600.0
+    drying = DryingState(True, time.time(), None, None, manual=True)
+    coordinator.drying_states["wohnzimmer"] = drying
+    changed = coordinator._async_changed
+    coordinator._async_changed = AsyncMock()  # what "on" did, not what the next cycle makes of a drying here
+    await hass.services.async_call("climate", "turn_on", {"entity_id": entity}, blocking=True)
+    coordinator._async_changed = changed
+    assert "wohnzimmer" not in coordinator.overrides
+    assert "wohnzimmer" in coordinator.boosts and coordinator.drying_states["wohnzimmer"] is drying
+    await coordinator.async_set_override("wohnzimmer", 22.5, None)
+    await hass.services.async_call("climate", "set_hvac_mode", {"entity_id": entity, "hvac_mode": "heat"}, blocking=True)
+    assert coordinator.overrides["wohnzimmer"].target == 22.5  # not off: heat changes nothing
+
+
+@pytest.mark.parametrize("drying", [False, True])
+async def test_a_stop_in_a_quick_heat_up_or_a_drying_leaves_the_unit_at_its_rooms_target(hass: HomeAssistant, drying) -> None:
+    """Decided 19.11.: Home Assistant stopping mid-way through a quick heat-up or a drying left the unit at 30 °C (or held
+    at 17) until it was back. In the stop's first stage the unit gets the room's normal target, and it is remembered."""
+    _, coordinator, set_temperature = await _boosting(hass, drying=drying)
+    target = coordinator.own_target("badezimmer")
+    assert target is not None and target < 30.0
+    for job in list(hass._shutdown_jobs):  # stage 1 of a stop
+        if (task := hass.async_run_hass_job(job.job, *job.args)) is not None:
+            await task
+    await hass.async_block_till_done()
+    assert [c.data["temperature"] for c in set_temperature] == [target]
+    assert (coordinator.control_memory.last_target, coordinator.control_memory.drying_held) == (target, False)

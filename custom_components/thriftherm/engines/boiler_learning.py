@@ -19,8 +19,8 @@ From what
   is hotter than the radiators take, large with demand means too cold.
 * **A boiler that cycles** never gives a settled spread; what it delivers shows in the
   rooms alone. A room that is called for and does not get there asks for more; a step up
-  that leaves it rising no faster is taken back (`review_trials`). Only rooms close to their
-  targets that still rise briskly allow less.
+  that brought more heat and left it rising no faster is taken back (`review_trials`). Only
+  rooms close to their targets that still rise briskly allow less.
 * **Rooms that hold a temperature**, not rooms heating up to one: a room's progress counts
   once its target has stood for the 90 minutes its trend looks back (`boiler_load.counts`).
 
@@ -44,6 +44,7 @@ from ..models import EndedCall, RoomResult
 from . import boiler_load as load
 from .boiler_memory import (
     ADJUSTMENTS_STORED,
+    BAND_MARK,
     CORRECTION_LIMIT_K,
     BoilerInputs,
     BoilerMemory,
@@ -55,7 +56,7 @@ from .boiler_memory import (
 BURNING_GAS_W = 1000.0  # a gas meter reading above this is a burning boiler
 
 # --- the burner
-BURNS_KEPT_S = 3600.0  # cycling and the burner share look an hour back
+BURNER_HOUR_S = 3600.0  # cycling and the burner share look an hour back
 # A boiler that fires for a minute and then waits out its lockout is cycling. Measured
 # 2026-09-17 with one radiator open: 60 s of burner every 15 minutes.
 CYCLE_MIN_STARTS = 3  # within the hour
@@ -78,6 +79,21 @@ DEMAND_ACTIVE = 0.3
 # A step up for a room that lags is a trial (`review_trials`):
 HELPED_K_H = 0.1  # it helped a room that rises at least this much faster than when the step was taken
 TRIAL_MAX_S = 3 * 3600.0  # judged after the wait that follows a step up, and no later than this
+BURNS_KEPT_S = TRIAL_MAX_S  # the burns are kept as long as a step is on trial: what it brought is judged by them
+# A step up is judged by the room only once it brought more heat: the burner ran a share of the time since the step at
+# least this much above that of the hour before the trial's first step, relative and in points of the hour. Seen
+# 2026-11-14 and 15: half a kelvin more flow for the bathroom alone, the boiler at its lockout (S.8) for a third of the
+# time and more, left the burner running 7.8 % of the time after 11.1 % before, and 23.2 % after 21.7 %. Each step was
+# taken back as no help, and the bathroom stayed 0.2 to 0.3 K below its target. On 2026-10-22 more flow (45-48 °C
+# against 40-41 °C) took the burner from 3.6-5.8 % to 6.7-9.4 % of the hour, and the bathroom still lagged by 0.9 K:
+# that is no help. The mean flow does not tell the two apart: a cycling boiler's water cools through its lockout, and
+# it stood at 31-35 °C on 2026-10-22 at any flow asked.
+HEAT_MORE_REL = 0.15
+HEAT_MORE_ABS = 0.01
+# Steps on trial that brought no more heat stay, up to this much above where the trial began; more flow that left the
+# burner running no longer is no help either, and the whole run is taken back (the line of 2026-10-22 must not come
+# back by steps that each said nothing).
+RUN_MAX_K = 2.0
 NO_HELP_S = 24 * 3600.0  # after one that was taken back none is tried for the room for this long: then things may have changed
 LAG_MIN_HEAT_S = 1800.0  # the rooms' progress (`boiler_load.lagging`) counts once the heating is released this long
 # What lowers a cycling boiler's curve is the pace of the rooms' holding calls (`count_calls`). The test bathroom, its
@@ -117,9 +133,15 @@ PHASE_REFINING = "refining"
 PHASE_PAUSED = "paused"
 
 
+def _lag_k(inp: BoilerInputs) -> float:
+    """How far below its target a calling room counts as not getting there, with this installation's band."""
+    return load.lag_deficit_k(inp.params.call_on_k)
+
+
 # ---------------------------------------------------------------------------
 # The burner
 # ---------------------------------------------------------------------------
+
 def flame(inp: BoilerInputs) -> bool:
     """Is the burner on for the heating, by the best sign this installation has.
 
@@ -135,6 +157,18 @@ def flame(inp: BoilerInputs) -> bool:
     if inp.status_known:
         return inp.reported_mode == BOILER_REPORTS_HEATING
     return inp.burner_heating
+
+
+BURNER_SOURCE_GAS = "gas_meter"
+BURNER_SOURCE_STATUS = "status_code"
+BURNER_SOURCE_SIGN = "burner_sign"
+
+
+def burner_source(inp: BoilerInputs) -> str:
+    """Which sign `flame` goes by: the gas meter, the boiler's status code, or its flame sign or pump state."""
+    if inp.gas_power_w is not None:
+        return BURNER_SOURCE_GAS
+    return BURNER_SOURCE_STATUS if inp.status_known else BURNER_SOURCE_SIGN
 
 
 def track_burns(
@@ -174,12 +208,18 @@ def drop_burn_in_progress(mem: BoilerMemory) -> BoilerMemory:
     return replace(mem, burn_since_ts=None, burn_interrupted=False)
 
 
-def burner_share(mem: BoilerMemory, now_ts: float) -> tuple[float, int]:
-    """Share of the last hour the burner ran for the heating (0..1), and how often it started."""
-    since = now_ts - BURNS_KEPT_S
+def burner_share(mem: BoilerMemory, now_ts: float, since_ts: float | None = None) -> tuple[float, int]:
+    """Share of the last hour the burner ran for the heating (0..1), and how often it started; with `since_ts`, of the
+    time since then (at most `BURNS_KEPT_S`)."""
+    since = now_ts - BURNER_HOUR_S if since_ts is None else max(since_ts, now_ts - BURNS_KEPT_S)
     runs = list(mem.burns) + ([(mem.burn_since_ts, now_ts)] if mem.burn_since_ts is not None else [])
     burning = sum(max(min(end, now_ts) - max(start, since), 0.0) for start, end in runs)
-    return burning / BURNS_KEPT_S, len([1 for start, _ in runs if start >= since])
+    return burning / max(now_ts - since, 1.0), len([1 for start, _ in runs if start >= since])
+
+
+def _last_hour(mem: BoilerMemory, now_ts: float) -> tuple[tuple[float, float], ...]:
+    """The burns that ended within the last hour: what a call is judged by, as when no more were kept."""
+    return tuple(burn for burn in mem.burns if now_ts - burn[1] <= BURNER_HOUR_S)
 
 
 def short_cycling(mem: BoilerMemory, now_ts: float, since_ts: float | None = None) -> bool:
@@ -187,7 +227,7 @@ def short_cycling(mem: BoilerMemory, now_ts: float, since_ts: float | None = Non
 
     `since_ts`: only runs from then on count, e.g. those since the learning may act again.
     """
-    since = now_ts - BURNS_KEPT_S if since_ts is None else max(now_ts - BURNS_KEPT_S, since_ts)
+    since = now_ts - BURNER_HOUR_S if since_ts is None else max(now_ts - BURNER_HOUR_S, since_ts)
     finished = [end - start for start, end in mem.burns if start >= since]
     starts = len(finished) + (1 if mem.burn_since_ts is not None and mem.burn_since_ts >= since else 0)
     return starts >= CYCLE_MIN_STARTS and bool(finished) and median(finished) <= CYCLE_SHORT_BURN_S
@@ -239,12 +279,12 @@ def cycling_direction(inp: BoilerInputs, mem: BoilerMemory) -> tuple[int, str | 
     A room that does not get there asks for more, one the stall rule has given up on included: it is the
     evidence. What allows less is not seen here but in the calls that end (`count_calls`).
     """
-    return (1, "rooms_lagging") if given_time(mem, inp.now_ts) and load.lagging(inp.rooms) else (0, None)
+    return (1, "rooms_lagging") if given_time(mem, inp.now_ts) and load.lagging(inp.rooms, _lag_k(inp)) else (0, None)
 
 
 def _call_not_the_flows(inp: BoilerInputs, mem: BoilerMemory, call: EndedCall, key: str | None) -> str | None:
     """Why a room's holding call still says nothing about the line `key`; None: it does."""
-    burns = [end - start for start, end in mem.burns if end > call.start_ts]
+    burns = [end - start for start, end in _last_hour(mem, inp.now_ts) if end > call.start_ts]
     if mem.burn_since_ts is not None:
         burns.append(inp.now_ts - mem.burn_since_ts)
     if not inp.learning_allowed or mem.learning_since_ts is None or mem.learning_since_ts > call.start_ts:
@@ -287,7 +327,7 @@ def count_calls(inp: BoilerInputs, mem: BoilerMemory) -> BoilerMemory:
             # rounded as it is kept: 20.9 - 20.7 is 0.1999999999999993, and 0.2 K in 20 minutes is brisk
             verdict = "fast" if pace is not None and round(pace, 2) >= FAST_CALL_K_H else "slow"
         mem = replace(mem, outvoted=tuple(k for k in mem.outvoted if k != r.key))  # its next call is asked anew
-        starts = len([1 for start, _ in mem.burns if start >= call.start_ts])
+        starts = len([1 for start, _ in _last_hour(mem, inp.now_ts) if start >= call.start_ts])
         starts += 1 if mem.burn_since_ts is not None and mem.burn_since_ts >= call.start_ts else 0
         row = (
             r.key, call.end_ts, round((call.end_ts - call.start_ts) / 60.0, 1), round(call.end_c - call.start_c, 2),
@@ -301,8 +341,7 @@ def count_calls(inp: BoilerInputs, mem: BoilerMemory) -> BoilerMemory:
         line = load.line_of(mem.lines, key, mem.offset_k, mem.slope_k)
         before = line.fast_calls if _within_day(line.fast_call_ts, inp.now_ts) else 0
         fast = before + 1 if verdict == "fast" else 0
-        # so many brisk calls are evidence that lasts: a found line yields to them without being asked for hours
-        line = replace(line, fast_calls=fast, fast_call_ts=inp.now_ts if fast else None, found=line.found and fast < FAST_CALLS)
+        line = replace(line, fast_calls=fast, fast_call_ts=inp.now_ts if fast else None)
         mem = replace(mem, lines={**mem.lines, key: line})
         if fast < FAST_CALLS or _within_day(line.no_less_ts, inp.now_ts):
             continue
@@ -339,7 +378,8 @@ def moved_last_day(mem: BoilerMemory, now_ts: float, direction: int = 0) -> floa
 def next_step(mem: BoilerMemory, direction: int, now_ts: float, line: load.LoadLine | None = None) -> float:
     """The size of a step in this direction now.
 
-    Up after a step up: doubled. Against the step before: halved. Down after a step down, or
+    Up after a step up: doubled, unless that step stands on trial without an answer (`review_trials`): then as large.
+    Against the step before: halved. Down after a step down, or
     a first step: the first step. With a load
     class's `line` the step before is the last one taken in that class: a step the bathroom
     alone took says nothing about the size of the next one for the whole flat.
@@ -354,6 +394,8 @@ def next_step(mem: BoilerMemory, direction: int, now_ts: float, line: load.LoadL
         return first
     if (last > 0) != (direction > 0):
         return max(abs(last) / 2.0, STEP_REFINING_K)
+    if direction > 0 and line is not None and line.trial_open:
+        return min(max(abs(last), STEP_REFINING_K), STEP_MAX_K)  # the last step said nothing: no larger one on it
     return min(max(abs(last), STEP_REFINING_K) * 2.0, STEP_MAX_K) if direction > 0 else first
 
 
@@ -377,7 +419,7 @@ def step_room(
     over for a day: the next room is asked, and without one no step is taken.
     """
     if reason == "rooms_lagging":
-        rooms = sorted(load.lagging_rooms(inp.rooms), key=lambda r: -round(r.target - r.temperature, 2))
+        rooms = sorted(load.lagging_rooms(inp.rooms, _lag_k(inp)), key=lambda r: -round(r.target - r.temperature, 2))
     else:
         rooms = sorted((r for r in _slow_rooms(heating) if load.counts(r)), key=lambda r: r.trend_k_per_h)
     if cell is None:
@@ -386,7 +428,7 @@ def step_room(
     return next((r for r, line in lines if not _within_day(line.no_help_ts, inp.now_ts)), None)
 
 
-def review_trials(inp: BoilerInputs, mem: BoilerMemory, cell: str | None) -> BoilerMemory:
+def review_trials(inp: BoilerInputs, mem: BoilerMemory, cell: str | None, limited: bool = False) -> BoilerMemory:
     """Judge the steps a cycling boiler's rooms were given on trial, once the trend can show what they did.
 
     Seen 2026-10-22: the bathroom stayed 0.9 K below target at a flow set to 40 as at 47 °C, and its line went
@@ -395,7 +437,10 @@ def review_trials(inp: BoilerInputs, mem: BoilerMemory, cell: str | None) -> Boi
     `TRIAL_MAX_S` after it; later nobody can tell what it did, and it stays.
 
     * A step **up** for a room that lagged: if the room still lags and rises no faster than it did (by
-      `HELPED_K_H`), the step is taken back and none is tried for this room for `NO_HELP_S` (`held_back` says
+      `HELPED_K_H`), it depends on what the step brought. With the burner running no longer than before
+      (`brought_more_heat`) the step says nothing: it stays, the next step is no larger, and that one continues
+      the trial from the same start (`LoadLine.trial_open`), up to `RUN_MAX_K` above it. With more heat, or that
+      far up, the run is taken back to its start and none is tried for this room for `NO_HELP_S` (`held_back` says
       why). Then the flow does not matter to this room at this point of the curve, so less of it is tried at
       once: a step down, on trial as well, though never below the common correction. A line that is high only
       because more did not help comes down a step a day that way, until less begins to hurt.
@@ -406,22 +451,61 @@ def review_trials(inp: BoilerInputs, mem: BoilerMemory, cell: str | None) -> Boi
     Only the lines of the class in use are judged: with another number of rooms calling the boiler runs otherwise.
     """
     now = inp.now_ts
-    lagging = {r.key: r for r in load.lagging_rooms(inp.rooms)}
+    lagging = {r.key: r for r in load.lagging_rooms(inp.rooms, _lag_k(inp))}
+    heating = {r.key for r in inp.rooms if load.heats_up(r)}
     for key, line in tuple(mem.lines.items()):
         age = None if line.trial is None or line.last_step_ts is None else now - line.last_step_ts
         if cell is None or age is None or age < ADJUST_COOLDOWN_UP_S or load.class_of(key) != load.class_of(cell):
             continue
         trend, level, slope = line.trial
         room = lagging.get(load.room_of(key))
-        if age >= TRIAL_MAX_S:
-            mem = replace(mem, lines={**mem.lines, key: replace(line, trial=None)})
+        if limited and line.last_step_k > 0:
+            # the boiler at its own limit (engines/boiler_limit.py, 19.11.): the step lifted the curve for the boiler's
+            # cycling. Back to its start, unjudged, without a hold; the compensation sends what is needed
+            mem = replace(mem, lines={**mem.lines, key: replace(_trial_over(line), level_k=level, slope_k=slope)})
+            continue
+        if line.last_step_k > 0 and (line.trial_heat_up or load.room_of(key) in heating):
+            # A step for a room heating up (16.11.: the study's preheat): its rise is the heat-up's, never proof the step
+            # helped. It waits unjudged while the heat-up goes on; after it, or once the trial ran out, the line goes
+            # back to where the trial began, without a hold. A trial stored before this rule is found here as well.
+            if load.room_of(key) in heating and line.trial_run_k >= RUN_MAX_K - 1e-6:
+                # that far up and still heating up as slowly (review 2026-11-18: +10 K in 13.7 hours, the hold never
+                # came): back to its start, and no further step for this room for a day, as for one holding
+                back = replace(_trial_over(line), level_k=level, slope_k=slope, no_help_ts=now)
+                mem = replace(mem, lines={**mem.lines, key: back}, last_adjust_reason="flow_no_help")
+                continue
+            if load.room_of(key) in heating and age < TRIAL_MAX_S:
+                if not (line.trial_heat_up and line.trial_open):
+                    mem = replace(mem, lines={**mem.lines, key: replace(line, trial_heat_up=True, trial_open=True)})
+                continue
+            mem = replace(mem, lines={**mem.lines, key: replace(_trial_over(line), level_k=level, slope_k=slope)})
+            continue
+        if age >= TRIAL_MAX_S and line.trial_open and room is not None:
+            # its next step never came (another room got it, the flow at its maximum): the steps that said nothing go
+            # back, without the day's hold, as nothing was shown (review 2026-11-15)
+            mem = replace(mem, lines={**mem.lines, key: replace(_trial_over(line), level_k=level, slope_k=slope)})
+        elif age >= TRIAL_MAX_S:
+            mem = replace(mem, lines={**mem.lines, key: _trial_over(line)})
         elif not given_time(mem, now):
             continue  # released minutes ago: how the room does shows later
         elif line.last_step_k > 0:
             if room is None or trend is None or room.trend_k_per_h >= trend + HELPED_K_H:
-                mem = replace(mem, lines={**mem.lines, key: replace(line, trial=None)})
+                mem = replace(mem, lines={**mem.lines, key: _trial_over(line)})
                 continue
-            back = replace(line, level_k=level, slope_k=slope, trial=None, no_help_ts=now)
+            if line.trial_open:
+                continue  # judged: it waits for the next step
+            if line.trial_along is not None and line.trial_along != inp.heating_along:
+                # Rooms began or ended heating along, or opened otherwise (16.11.): the burner ran for their radiators
+                # too, and says nothing about this step. Unjudged: it stays, the next is no larger, no hold.
+                if line.trial_run_k < RUN_MAX_K - 1e-6:
+                    mem = replace(mem, lines={**mem.lines, key: replace(line, trial_open=True)})
+                else:
+                    mem = replace(mem, lines={**mem.lines, key: replace(_trial_over(line), level_k=level, slope_k=slope)})
+                continue
+            if not brought_more_heat(mem, line, now) and line.trial_run_k < RUN_MAX_K - 1e-6:
+                mem = replace(mem, lines={**mem.lines, key: replace(line, trial_open=True)})
+                continue
+            back = replace(_trial_over(line), level_k=level, slope_k=slope, no_help_ts=now)
             mem = replace(mem, lines={**mem.lines, key: back}, last_adjust_reason="flow_no_help")
             above_common = correction(mem, inp.outdoor_c, key) - next_step(mem, -1, now, back) - correction(mem, inp.outdoor_c)
             if above_common < -1e-9 or _within_day(back.no_less_ts, now):
@@ -449,9 +533,27 @@ def review_trials(inp: BoilerInputs, mem: BoilerMemory, cell: str | None) -> Boi
     return mem
 
 
+def _trial_over(line: load.LoadLine) -> load.LoadLine:
+    return replace(
+        line, trial=None, trial_share=None, trial_open=False, trial_run_k=0.0, trial_along=None, trial_heat_up=False
+    )
+
+
+def brought_more_heat(mem: BoilerMemory, line: load.LoadLine, now_ts: float) -> bool:
+    """The step up on trial for `line` had the burner running measurably longer than before the trial began.
+
+    Measured from the last step, against the hour before the trial's first (`LoadLine.trial_share`). A trial
+    stored before this was measured counts as having brought more, so it is judged by the room alone, as it was.
+    """
+    if line.trial_share is None or line.last_step_ts is None:
+        return True
+    after = burner_share(mem, now_ts, line.last_step_ts)[0]
+    return after >= line.trial_share * (1.0 + HEAT_MORE_REL) and after - line.trial_share >= HEAT_MORE_ABS
+
+
 def no_help(inp: BoilerInputs, mem: BoilerMemory, cell: str | None) -> bool:
     """A room lags behind a cycling boiler, and for every such room a step up was tried and taken back lately."""
-    return cell is not None and load.lagging(inp.rooms) and step_room(inp, mem, [], "rooms_lagging", cell) is None
+    return cell is not None and load.lagging(inp.rooms, _lag_k(inp)) and step_room(inp, mem, [], "rooms_lagging", cell) is None
 
 
 def _take_step(
@@ -479,8 +581,19 @@ def _take_step(
     before = None if line_key is None else load.line_of(mem.lines, line_key, mem.offset_k, mem.slope_k)
     after = apply(inp, mem, direction, reason, line_key, cell, boosts)
     if reason == "rooms_lagging" and room is not None and after.adjustments != mem.adjustments:
-        trial = (room.trend_k_per_h, before.level_k, before.slope_k)
-        after = replace(after, lines={**after.lines, line_key: replace(after.lines[line_key], trial=trial)})
+        moved = after.adjustment_steps[-1]  # the step, without the lift to the flow sent (`apply`)
+        if before.trial_open and before.trial is not None:
+            # the step before said nothing: the trial goes on, with the rooms heating along as at its start
+            trial, share, run, along = before.trial, before.trial_share, before.trial_run_k + moved, before.trial_along
+            up = before.trial_heat_up or load.heats_up(room)
+        else:
+            trial, share, run = (room.trend_k_per_h, before.level_k, before.slope_k), burner_share(mem, inp.now_ts)[0], moved
+            along, up = inp.heating_along, load.heats_up(room)
+        stepped = replace(
+            after.lines[line_key], trial=trial, trial_share=share, trial_run_k=round(run, 3), trial_along=along,
+            trial_heat_up=up,
+        )
+        after = replace(after, lines={**after.lines, line_key: stepped})
     return _capped(inp, after, mem, cell, boosts or {})
 
 
@@ -534,7 +647,7 @@ def apply(
     the curve's points, scaled so that the flow at this temperature moves by the full step.
 
     With `cell`, the load class or the room within it the step is taken under, only that line
-    moves; a line that was found first has to be asked for long enough (`boiler_load.ask`).
+    moves.
     Without one the common correction moves. `deciding` is the line that set
     the flow, when it is another than `cell`: a room that got more than its own line asks for
     more than what it got. `boosts` are what the calling rooms ask for on top of their lines.
@@ -562,15 +675,6 @@ def apply(
     if room <= 0:
         return mem
     line = load.line_of(mem.lines, cell, mem.offset_k, mem.slope_k) if cell else None
-    if line is not None:
-        allowed, line = load.ask(line, direction, now)
-        if line.found:
-            # A found line remembers that it was asked, whatever stops the step below. Review 2026-10-13:
-            # granted by its hold but stopped by the cooldown of another class's step, it forgot the
-            # asking, which lapsed and started over (a step at +111 minutes instead of +85).
-            mem = replace(mem, lines={**mem.lines, cell: line})
-        if not allowed:
-            return mem  # a value that was found stays put until the evidence has lasted
     cooldown = ADJUST_COOLDOWN_UP_S if direction > 0 else ADJUST_COOLDOWN_DOWN_S
     if mem.adjustments and now - mem.adjustments[-1] < cooldown:
         return mem
@@ -623,8 +727,12 @@ def learn(
     burning: bool,
     cell: str | None = None,
     boosts: Mapping[str, float] | None = None,
+    limited: bool = False,
 ) -> BoilerMemory:
     """One cycle of learning while the heating is released; `burning` is the heating flame now.
+
+    `limited`: the boiler is at its own limit (engines/boiler_limit.py): a room lagging then is no reason to lift the
+    curve; the line that sets the flow comes down a step at a time instead, the compensation sending what is needed.
 
     `heating` are the rooms that call. How many of them there are decides whether the spread
     may judge the curve; `cell` is the line that sets the flow (a load class, or the room within it
@@ -653,9 +761,11 @@ def learn(
         mem = replace(mem, learning_since_ts=now, last_review_ts=None, samples=0, spread_ema=None)
     fresh = now - mem.learning_since_ts < REVIEW_S
     if not fresh:
-        mem = review_trials(inp, mem, cell)
+        mem = review_trials(inp, mem, cell, limited)
     if not fresh and short_cycling(mem, now, mem.learning_since_ts):
         direction, reason = cycling_direction(inp, mem)
+        if direction > 0 and limited:
+            return _ease_at_limit(inp, mem, cell)
         if direction:
             after = _take_step(inp, mem, heating, direction, reason, cell, boosts)
             if after.adjustments != mem.adjustments:  # not by their number: that stops changing once the list is full
@@ -676,7 +786,7 @@ def learn(
 
     # With only a few rooms calling the spread says little about the curve: one open radiator
     # returns the water almost as warm as it went out. Then only the rooms' progress counts.
-    direction, reason = steady_direction(ema if judged_by_spread else None, heating, load.lagging(inp.rooms))
+    direction, reason = steady_direction(ema if judged_by_spread else None, heating, load.lagging(inp.rooms, _lag_k(inp)))
     if direction == 0:
         return replace(mem, last_review_ts=now)
     after = _take_step(inp, mem, heating, direction, reason, cell, boosts)
@@ -708,10 +818,14 @@ def reset(mem: BoilerMemory, rooms: Iterable[str] | None = None) -> BoilerMemory
             lines={key: line for key, line in mem.lines.items() if load.room_of(key) not in gone},
             heat_up={room: state for room, state in mem.heat_up.items() if room not in gone},
             calls=tuple(call for call in mem.calls if call[0] not in gone),
+            # what the room's lines rose reliably with at the boiler's limit (engines/boiler_limit.py)
+            comp_lines={
+                key: line for key, line in mem.comp_lines.items() if load.room_of(key.split(BAND_MARK)[0]) not in gone
+            },
         )
     return replace(
         mem, offset_k=0.0, slope_k=0.0, lines={}, adjustments=(), adjustment_steps=(), last_adjust_reason=None,
-        limit_cut_ts=None, spread_ema=None, samples=0, last_review_ts=None, heat_up={}, calls=(),
+        limit_cut_ts=None, spread_ema=None, samples=0, last_review_ts=None, heat_up={}, calls=(), comp_lines={},
     )
 
 
@@ -725,7 +839,21 @@ def shown_phase(inp: BoilerInputs, mem: BoilerMemory, burning: bool) -> str:
     return phase(mem, inp.now_ts) if (inp.learning_allowed and at_work) else PHASE_PAUSED
 
 
-def held_back(inp: BoilerInputs, mem: BoilerMemory, cell: str | None = None, asked: float | None = None) -> str | None:
+def _ease_at_limit(inp: BoilerInputs, mem: BoilerMemory, cell: str | None) -> BoilerMemory:
+    """The boiler at its limit and a room lagging: the line of the flow comes down a step, at most every
+    ADJUST_COOLDOWN_UP_S, while it lies above the common correction; what it was lifted for the boiler's cycling
+    goes back (19.11.: few:schlafzimmer +9.6 K, wohnzimmer +8.2 K learned so)."""
+    if cell is None or (mem.adjustments and inp.now_ts - mem.adjustments[-1] < ADJUST_COOLDOWN_UP_S):
+        return mem
+    above = correction(mem, inp.outdoor_c, cell) - correction(mem, inp.outdoor_c)
+    if above <= 1e-9:
+        return mem
+    return apply(inp, mem, -1, "boiler_limit", cell, cell)
+
+
+def held_back(
+    inp: BoilerInputs, mem: BoilerMemory, cell: str | None = None, asked: float | None = None, limited: bool = False
+) -> str | None:
     """A step that is due but is not taken in full: the flow at its minimum, more of it no help, or the correction at its limit.
 
     The rooms' brisk calls ask for less (`count_calls`); or a room does not get there while the flow the rooms ask for (`asked`)
@@ -735,7 +863,9 @@ def held_back(inp: BoilerInputs, mem: BoilerMemory, cell: str | None = None, ask
     swallowed it or cut it short (`apply`). That is remembered once for all lines: it says the last
     step tried met the limit, whichever line that was (`curve_by_load` shows which).
     """
-    if asked is not None and asked < inp.params.boiler_flow_min and load.lagging(inp.rooms):
+    if limited and load.lagging(inp.rooms, _lag_k(inp)):
+        return "boiler_limit"  # the boiler cycles far below the flow sent: more is sent, the curve is not lifted
+    if asked is not None and asked < inp.params.boiler_flow_min and load.lagging(inp.rooms, _lag_k(inp)):
         return "rooms_lagging_at_flow_min"
     line = None if cell is None else load.line_of(mem.lines, cell, mem.offset_k, mem.slope_k)
     if line is not None and line.fast_calls >= FAST_CALLS and _within_day(line.fast_call_ts, inp.now_ts):

@@ -42,7 +42,8 @@ async def test_a_stored_cooling_option_does_nothing_while_hidden(hass: HomeAssis
     coord = hass.config_entries.async_entries(DOMAIN)[0].runtime_data
     assert not coord.cooling_allowed and coord.season == SEASON_HEATING
     assert hass.states.get("select.thriftherm_season") is None
-    assert hass.states.get("climate.thriftherm_badezimmer_room_climate") is None
+    # every room has its room climate (2026-11-17), heating only while cooling is hidden
+    assert hass.states.get("climate.thriftherm_badezimmer_room_climate").attributes["hvac_modes"] == ["heat", "off"]
 
 
 def test_stored_cooling_options_are_kept_while_hidden() -> None:

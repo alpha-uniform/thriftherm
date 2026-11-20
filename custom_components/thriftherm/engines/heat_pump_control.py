@@ -1069,7 +1069,7 @@ def _decide(inp: ControlInputs, mem: ControlMemory) -> tuple[HeatPumpCommand, Co
     # icing lockout, an error code and the safety fallback still block it.
     # With a central heat source the unit is its reserve: a room on the frost list for `FROST_RESERVE_S` without a break is
     # heated as without one, until the safety lets it go. District heating Thriftherm does not control may be off for the
-    # summer, a boiler may fail, be left to plan only or stand on its own knob, and the room would go on into the frost.
+    # summer, a boiler may fail, be left to observe only or stand on its own knob, and the room would go on into the frost.
     alone = not inp.has_heat_source
     since = dict(mem.frost_since)
     frost = [

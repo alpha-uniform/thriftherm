@@ -45,7 +45,8 @@ async def test_without_cooling_allowed_there_is_no_season_and_nothing_to_cool(ha
     assert coord.season == SEASON_HEATING and not coord.cooling_allowed
     assert hass.states.get("select.thriftherm_season") is None
     assert hass.states.get("number.thriftherm_badezimmer_cooling_comfort_temperature") is None
-    assert hass.states.get("climate.thriftherm_badezimmer_room_climate") is None
+    # every room has its room climate (2026-11-17), heating only without cooling
+    assert hass.states.get("climate.thriftherm_badezimmer_room_climate").attributes["hvac_modes"] == ["heat", "off"]
 
 
 async def test_cooling_allowed_brings_the_season_the_numbers_and_the_room_climate(hass: HomeAssistant) -> None:
@@ -269,7 +270,7 @@ async def test_the_run_on_after_a_cooling_run_ended_by_the_change_to_heating_cou
 
 
 async def test_letting_go_in_the_fan_run_on_switches_the_unit_off(hass: HomeAssistant) -> None:
-    """K10: Plan only, Off, a disable or a delete in the run-on left the fan running until the control was active again."""
+    """K10: Observe only, Off, a disable or a delete in the run-on left the fan running until the control was active again."""
     import time
     from dataclasses import replace as _replace
 
@@ -494,7 +495,9 @@ async def test_nothing_is_measured_without_automatic(hass: HomeAssistant) -> Non
     assert coord.free_run.days == {} and coord.free_run.last_ts is None
 
 
-async def test_the_automatic_season_measures_the_rooms(hass: HomeAssistant) -> None:
+async def test_the_automatic_season_measures_the_rooms(hass: HomeAssistant, freezer) -> None:
+    # at a fixed time: on the wall clock the result hung on the time of day (failed 15.11. at 09:05, on main as well)
+    freezer.move_to("2026-10-12 12:30:00+00:00")
     coord = await _automatic(hass)
     await coord.async_refresh()
     coord.free_run.last_ts -= 300  # five minutes since the last cycle

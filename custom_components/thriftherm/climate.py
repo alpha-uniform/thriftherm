@@ -1,9 +1,13 @@
-"""A room thermostat of Thriftherm's own for every room the heat pump serves (docs/PHASE12_COOLING.md §3.6, variant A4).
+"""A room thermostat of Thriftherm's own for every room (docs/PHASE12_COOLING.md §3.6, variant A4; docs/PHASE13_VALVES.md
+§8): for the rooms the heat pump cools, the rooms driven directly, which have no Better Thermostat for Apple Home any
+more, and since 2026-11-17 the rooms with a thermostat of their own as well. A setpoint set on it there is what a turn on
+that thermostat is, an override for the override time; room control passes it on, and the thermostat's answer is ours.
+In Apple Home one of the two is left out of the bridge, best Better Thermostat's: Siri then sets Thriftherm's targets.
 
-Made for Apple Home and Siri through the HomeKit Bridge: one thermostat per room that heats in the heating season and
-cools in the cooling season. Its setpoint is the target of the season; a setpoint set on it becomes an override, of the
-heating target or of the cooling target. A cooling target never reaches Better Thermostat: there a setpoint is a heating
-command, and a radiator would heat against the air conditioner.
+Made for Apple Home and Siri through the HomeKit Bridge: one thermostat per room that heats in the heating season and,
+where the heat pump may cool it, cools in the cooling season. Its setpoint is the target of the season; a setpoint set
+on it becomes an override, of the heating target or of the cooling target. A cooling target never reaches Better
+Thermostat: there a setpoint is a heating command, and a radiator would heat against the air conditioner.
 """
 
 from __future__ import annotations
@@ -31,16 +35,15 @@ COOL_RANGE = (COOL_SETPOINT_MIN, COOL_OFF_TARGET)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry, async_add_entities: AddEntitiesCallback) -> None:
     coordinator = entry.runtime_data
-    if not coordinator.cooling_allowed:
-        return
-    async_add_entities(RoomClimate(coordinator, room.key) for room in coordinator.builder.rooms if room.served_by_heat_pump)
+    async_add_entities(RoomClimate(coordinator, key) for key in coordinator.room_climate_rooms)
 
 
 class RoomClimate(ThrifthermEntity, ClimateEntity):
     """Heat or cool, by the season; the setpoint is the room's target, a change of it an override."""
 
     _attr_translation_key = "room_climate"
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    # the native names (Home Assistant 2026.11; the old ones stop working in 2027.11); see the end of this module
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = 0.5
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE | ClimateEntityFeature.TURN_OFF | ClimateEntityFeature.TURN_ON
@@ -56,7 +59,10 @@ class RoomClimate(ThrifthermEntity, ClimateEntity):
 
     @property
     def _cooling(self) -> bool:
-        return self.coordinator.cooling_season
+        # a room driven directly that the heat pump does not serve only heats, whatever the season
+        cfg = next((r for r in self.coordinator.builder.rooms if r.key == self._room_key), None)
+        cools = self.coordinator.cooling_allowed and cfg is not None and cfg.served_by_heat_pump
+        return cools and self.coordinator.cooling_season
 
     @property
     def hvac_modes(self) -> list[HVACMode]:
@@ -85,16 +91,17 @@ class RoomClimate(ThrifthermEntity, ClimateEntity):
         return (COOL_RANGE if self._cooling else HEAT_RANGE)[1]
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         room = self.room
         return None if room is None else room.temperature
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         room = self.room
         if room is None:
             return None
-        return room.cool_target if self._cooling else room.target
+        # its own target: heating along raises the boiler's, not the room's (shown in Apple Home it would look like a turn)
+        return room.cool_target if self._cooling else self.coordinator.own_target(self._room_key)
 
     @property
     def hvac_action(self) -> HVACAction | None:
@@ -125,12 +132,17 @@ class RoomClimate(ThrifthermEntity, ClimateEntity):
         if hvac_mode not in self.hvac_modes:
             raise ServiceValidationError(translation_domain=DOMAIN, translation_key="season_mode_not_offered")
         if hvac_mode == HVACMode.OFF:
-            if self._cooling:
-                await self.coordinator.async_set_cool_override(self._room_key, COOL_OFF_TARGET, None)
-            else:
-                await self.coordinator.async_set_override(self._room_key, self.coordinator.builder.params.frost_temp, None)
+            # held until switched on again, the frost limit still guarding it (decided 19.11.)
+            await self.coordinator.async_switch_room_off(self._room_key, cooling=self._cooling)
             return
-        # back on: the room follows its plan again, as with "back to automatic" for this room
-        overrides = self.coordinator.cool_overrides if self._cooling else self.coordinator.overrides
-        if self._room_key in overrides:
-            await self.coordinator.async_clear_override(self._room_key)
+        # back on: only from off, and only the off ends; a quick heat-up or a drying go on (decided 19.11.)
+        if self.hvac_mode == HVACMode.OFF:
+            await self.coordinator.async_switch_room_on(self._room_key, cooling=self._cooling)
+
+
+# A Home Assistant before 2026.11 knows the old names only. There they stand as aliases; on a newer one they must not
+# (each counts as a deprecated override there and is warned of).
+if not hasattr(ClimateEntity, "native_current_temperature"):
+    RoomClimate._attr_temperature_unit = RoomClimate._attr_native_temperature_unit  # type: ignore[attr-defined]
+    RoomClimate.current_temperature = RoomClimate.native_current_temperature  # type: ignore[assignment]
+    RoomClimate.target_temperature = RoomClimate.native_target_temperature  # type: ignore[assignment]

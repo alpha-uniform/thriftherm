@@ -26,7 +26,6 @@ from .const import (
     CONF_HEAT_PUMP_INTAKE_TEMP,
     CONF_HEAT_PUMP_OUTLET_TEMP,
     CONF_HEAT_PUMP_ROOM,
-    CONF_ROOM_CLIMATE,
     CONF_ROOM_HEAT_PUMP,
     CONF_ROOM_KEY,
     CONF_ROOM_TEMP,
@@ -47,7 +46,9 @@ REASON_CONFIGURATION = "configuration_changed"
 
 _ROOM_PREFIX = "room:"
 # settings that invalidate nothing any more; a basis may carry them
-_RETIRED = {SCOPE_BOILER: ("flow_min", "flow_max"), SCOPE_HEAT_PUMP: ("duct_factor",)}
+# The room's thermostat left its fingerprint on 2026-11-15: a room put from Better Thermostat on its valves (or back)
+# heats the same radiators, and its heat-up rates were forgotten. A basis stored with it still matches.
+_RETIRED = {SCOPE_BOILER: ("flow_min", "flow_max"), SCOPE_HEAT_PUMP: ("duct_factor",), SCOPE_ROOMS: ("thermostat",)}
 
 
 def _fingerprint(values: Mapping[str, Any]) -> str:
@@ -83,9 +84,7 @@ def basis(config: Mapping[str, Any]) -> dict[str, str]:
         ),
     }
     for room in rooms:
-        result[_ROOM_PREFIX + str(room[CONF_ROOM_KEY])] = _fingerprint(
-            {"temperature": room.get(CONF_ROOM_TEMP), "thermostat": room.get(CONF_ROOM_CLIMATE)}
-        )
+        result[_ROOM_PREFIX + str(room[CONF_ROOM_KEY])] = _fingerprint({"temperature": room.get(CONF_ROOM_TEMP)})
     return result
 
 
@@ -118,7 +117,8 @@ def invalidated(stored: Any, current: Mapping[str, str]) -> tuple[set[str], set[
     rooms = {
         key[len(_ROOM_PREFIX):]
         for key, value in current.items()
-        if key.startswith(_ROOM_PREFIX) and key in stored and stored[key] != value
+        if key.startswith(_ROOM_PREFIX) and key in stored
+        and _comparable(SCOPE_ROOMS, stored[key]) != _comparable(SCOPE_ROOMS, value)
     }
     if rooms:
         scopes.add(SCOPE_ROOMS)

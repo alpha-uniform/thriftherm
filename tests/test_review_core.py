@@ -18,6 +18,7 @@ from pytest_homeassistant_custom_component.common import async_mock_service
 
 from custom_components.thriftherm.engines.heat_pump_control import ControlMemory
 
+from .conftest import climate_loaded
 from .test_integration import _boosting, _setup
 
 RELEASED = {"midea_allow_active_control": True, "boiler_allow_active_control": True, "room_allow_active_control": True}
@@ -57,7 +58,7 @@ async def test_plan_only_chosen_while_a_quick_heat_up_start_goes_out_does_not_le
     control was taken back.
 
     `set_control_mode` lets go at once, in a task of its own: it finds the unit not yet as the command will leave it
-    and sends nothing. The cycle then sends the rest of its start (the fan stage, 30 °C) with the control in Plan only,
+    and sends nothing. The cycle then sends the rest of its start (the fan stage, 30 °C) with the control in Observe only,
     and nothing sets the unit down afterwards.
     """
     entered, release = asyncio.Event(), asyncio.Event()
@@ -71,6 +72,7 @@ async def test_plan_only_chosen_while_a_quick_heat_up_start_goes_out_does_not_le
         hass.states.async_set("climate.midea", call.data.get("hvac_mode", shown.state), attrs)
 
     for service in ("set_hvac_mode", "set_temperature", "set_fan_mode"):
+        await climate_loaded(hass)
         hass.services.async_register("climate", service, climate_service)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     hass.states.async_set("climate.midea", "off", UNIT)
@@ -81,7 +83,7 @@ async def test_plan_only_chosen_while_a_quick_heat_up_start_goes_out_does_not_le
 
     cycle = hass.async_create_task(coordinator.async_refresh())
     await asyncio.wait_for(entered.wait(), 5)  # the start of the quick heat-up is on its way
-    coordinator.set_control_mode("shadow")  # Plan only, chosen in the dashboard at that moment
+    coordinator.set_control_mode("shadow")  # Observe only, chosen in the dashboard at that moment
     await asyncio.sleep(0)
     await asyncio.sleep(0)  # the let-go task has looked at the unit
     release.set()
@@ -101,6 +103,7 @@ async def test_letting_go_of_a_boosted_unit_puts_its_fan_back(hass: HomeAssistan
     once the control is back that stage reads as one chosen by hand and stays.
     """
     _, coordinator, set_temperature = await _boosting(hass)
+    await climate_loaded(hass)
     set_fan_mode = async_mock_service(hass, "climate", "set_fan_mode")
     shown = {**hass.states.get("climate.midea").attributes, "fan_modes": ["auto", "low", "high", "full"], "fan_mode": "high"}
     hass.states.async_set("climate.midea", "heat", shown)
@@ -130,6 +133,7 @@ async def test_letting_go_sets_the_setpoint_down_although_the_unit_refuses_the_f
     async def take(call) -> None:
         sent.append(call.data["temperature"])
 
+    await climate_loaded(hass)
     hass.services.async_register("climate", "set_fan_mode", refuse)
     hass.services.async_register("climate", "set_temperature", take)
     shown = {**hass.states.get("climate.midea").attributes, "fan_modes": ["auto", "low", "high", "full"], "fan_mode": "high"}
@@ -145,7 +149,7 @@ async def test_letting_go_sets_the_setpoint_down_although_the_unit_refuses_the_f
 
 
 async def test_plan_only_lets_go_of_a_quick_heat_up_whose_end_was_planned_but_not_sent(hass: HomeAssistant) -> None:
-    """The cycle under way had planned the end of the quick heat-up; Plan only came before its command went out, so
+    """The cycle under way had planned the end of the quick heat-up; Observe only came before its command went out, so
     nothing was sent, and the memory of that plan no longer said 30 °C: the unit was not let go of."""
     _, coordinator, set_temperature = await _boosting(hass)
     left_at_30 = coordinator.control_memory

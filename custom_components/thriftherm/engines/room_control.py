@@ -25,9 +25,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from ..const import CTRL_ACTIVE, CTRL_OFF, ROOM_PLAN_DISABLED, ROOM_PLAN_HANDS_OFF, ROOM_PLAN_HOLD, ROOM_PLAN_SET
+from ..const import (
+    CTRL_ACTIVE,
+    CTRL_OFF,
+    ROOM_LEAD_MAX_K,
+    ROOM_PLAN_DISABLED,
+    ROOM_PLAN_HANDS_OFF,
+    ROOM_PLAN_HOLD,
+    ROOM_PLAN_SET,
+)
 from . import hand
 from .common import as_float, round_half
+from .valve_control import CORRECTION_MAX_K, CORRECTION_MIN_K
 from ..models import RoomCommand, RoomResult, SettingChange
 
 TOLERANCE_K = 0.25
@@ -50,6 +59,16 @@ class RoomCtrlMemory:
     # When the thermostat was first sent a setpoint it has not answered since: retries and a new
     # target keep it. A thermostat that does not answer for long is silent (room.THERMOSTAT_UNANSWERED_S).
     pending_since_ts: float | None = None
+    # How far the last setpoint sent lay above the room's own (the lead, docs/PHASE13_VALVES.md §6). A turn by hand is
+    # a wish for the room: the override it becomes is what the thermostat shows less this (`without_extra`).
+    sent_extra_k: float = 0.0
+    # the extra of the setpoint before the last one: while ours is unconfirmed the thermostat still shows that one, and a
+    # turn of its knob is relative to it (review 2026-11-13)
+    extra_before_send: float = 0.0
+    thermostat: str | None = None  # whose memory this is (the room's climate entity when it was written)
+    # The part of `sent_extra_k` that is the correction of a valve driven directly (way c, docs/PHASE13_VALVES.md §3.1):
+    # the lead is the rest. A turn by hand is taken without either.
+    sent_correction_k: float = 0.0
 
     def to_storage(self) -> dict:
         # Kept over a restart so the rate limit still holds. A setpoint that differs after a restart
@@ -61,6 +80,10 @@ class RoomCtrlMemory:
             "thermostat_before_send": self.thermostat_before_send,
             "answered_with": self.answered_with,
             "pending_since_ts": self.pending_since_ts,
+            "sent_extra_k": self.sent_extra_k,
+            "extra_before_send": self.extra_before_send,
+            "thermostat": self.thermostat,
+            "sent_correction_k": self.sent_correction_k,
         }
 
     @classmethod
@@ -74,7 +97,32 @@ class RoomCtrlMemory:
             thermostat_before_send=as_float(data.get("thermostat_before_send")),
             answered_with=as_float(data.get("answered_with")),
             pending_since_ts=as_float(data.get("pending_since_ts")),
+            sent_extra_k=_extra(as_float(data.get("sent_extra_k"))),
+            extra_before_send=_extra(as_float(data.get("extra_before_send"))),
+            thermostat=data.get("thermostat") if isinstance(data.get("thermostat"), str) else None,
+            sent_correction_k=_correction(as_float(data.get("sent_correction_k"))),
         )
+
+
+def _correction(value: float | None) -> float:
+    """A stored correction of way c, none where it cannot be one."""
+    return value if value is not None and CORRECTION_MIN_K <= value <= CORRECTION_MAX_K else 0.0
+
+
+def _extra(value: float | None) -> float:
+    """A stored extra, none where it cannot be one: the lead (at most ROOM_LEAD_MAX_K) or JOIN_K heating along, and the
+    correction of way c."""
+    # the lead, heating along, a valve's hysteresis (at most 3 K, coordinator) and the correction of way c
+    ok = value is not None and CORRECTION_MIN_K <= value <= ROOM_LEAD_MAX_K + 0.5 + 3.0 + CORRECTION_MAX_K
+    return value if ok else 0.0
+
+
+def without_extra(value: float, mem: RoomCtrlMemory) -> float:
+    """What a setpoint turned to by hand asks of the room: the value less the lead the thermostat had from us.
+
+    Until it confirmed our last setpoint it still shows the one before, with the extra that had.
+    """
+    return round_half(value - (mem.sent_extra_k if mem.confirmed else mem.extra_before_send))
 
 
 def pending_since(mem: RoomCtrlMemory, wrapped: bool = False) -> float | None:
@@ -261,17 +309,31 @@ def decide(
     step: float | None = None,
     wrapped: bool = False,
     held_by_hand: bool = False,
+    lead_k: float = 0.0,
+    own_c: float | None = None,
+    hold_c: float | None = None,
+    correction_k: float = 0.0,
+    hold_reason: str = "window_open_frost",
 ) -> tuple[RoomCommand, RoomCtrlMemory]:
     """The setpoint plan for one room thermostat and what to remember of it.
 
     `min_temp` and `max_temp` are the limits the thermostat names (see `thermostat_setpoint`).
     The limited setpoint is what is sent and remembered: the thermostat showing it is in sync,
     and nobody's hand. `step` is the thermostat's own step (see `_renders`), `wrapped` whether
-    it drives valves of its own (see `pending_since`).
+    it drives valves of its own (see `pending_since`), `lead_k` how far above the room's target the thermostat is
+    asked for (heat_call.lead_k), within its limits, and `own_c` the room's own target where `result` heats along
+    above it: what the thermostat gets above that is the extra a turn of the knob is relative to. `hold_c` is what a
+    valve driven directly holds instead while its room's window is open (docs/PHASE13_VALVES.md §5.1): the frost limit,
+    without a lead, or an end of its range while it is moved (`hold_reason` "valve_exercise", §5.6). `correction_k` is
+    the correction of a valve driven directly on way c (engines/valve_plan.py `setpoint_correction`), on top of target
+    and lead.
     """
 
+    extra = 0.0  # the lead in the setpoint, once there is one
+    correction = 0.0  # the part of it that is the correction of way c: not shown as lead (review 2026-11-15)
+
     def cmd(plan: str, reason: str, target: float | None = None, send: bool = False) -> RoomCommand:
-        return RoomCommand(room, plan, target, send, reason, thermostat_target)
+        return RoomCommand(room, plan, target, send, reason, thermostat_target, lead_k=round(extra - correction, 2))
 
     if control_mode == CTRL_OFF:
         return cmd(ROOM_PLAN_DISABLED, "control_off"), mem
@@ -286,21 +348,45 @@ def decide(
         # Not fought for the time in hand; the room is not cooled meanwhile, and a gas boiler stays blocked.
         return cmd(ROOM_PLAN_HANDS_OFF, "heating_by_hand_in_cooling"), mem
 
-    desired = thermostat_setpoint(result.target, min_temp, max_temp)
+    target_reason = result.target_reason
+    if hold_c is not None:
+        result, lead_k, own_c, target_reason = replace(result, target=hold_c), 0.0, None, hold_reason
+        correction_k = 0.0
+    plain = thermostat_setpoint(result.target, min_temp, max_temp)
     active = control_mode == CTRL_ACTIVE
     if own_target:
         # The thermostat holds a target of its own (Versatile Thermostat: window open, load
         # shedding, safety) and returns to the requested one by itself. Writing against it
         # would be answered with the same target again.
-        return cmd(ROOM_PLAN_HOLD, "thermostat_own_rule", desired), mem
+        return cmd(ROOM_PLAN_HOLD, "thermostat_own_rule", plain), mem
+    desired = plain
+    if lead_k > 0.0:
+        base = plain
+        if step is not None and step > KNOB_STEP_K:
+            # A thermostat in whole degrees holds no half degree of lead: it would round it to a whole one or to none.
+            # It gets the lead in its own steps, on its own grid (review 2026-11-13).
+            lead_k = int(lead_k / step + 1e-6) * step
+            base = round(plain / step) * step
+        # on the setpoint as sent, not on the target: a target off the half degrees rounded with the lead gave 1 K or none
+        desired = thermostat_setpoint(base + lead_k, min_temp, max_temp) if lead_k > 0.0 else plain
+    own_plain = plain if own_c is None else thermostat_setpoint(own_c, min_temp, max_temp)
+    if step is not None and step > KNOB_STEP_K:
+        own_plain = round(own_plain / step) * step  # what the thermostat shows for the room's own target
+    extra = max(round(desired - own_plain, 2), 0.0)
+    if correction_k:
+        corrected = thermostat_setpoint(desired + correction_k, min_temp, max_temp)
+        correction = round(corrected - desired, 2)  # what of it the thermostat's limits leave
+        desired, extra = corrected, round(extra + correction, 2)
 
     if active and thermostat_target is not None and mem.last_sent_target is not None and not mem.confirmed:
         if abs(thermostat_target - mem.last_sent_target) <= TOLERANCE_K:
             mem = replace(mem, confirmed=True)
 
     if thermostat_target is not None and abs(thermostat_target - desired) <= TOLERANCE_K:
-        if active and mem.last_sent_target != desired:
-            mem = replace(mem, last_sent_target=desired, confirmed=True)
+        if active and (
+            mem.last_sent_target != desired or mem.sent_extra_k != extra or mem.sent_correction_k != correction
+        ):
+            mem = replace(mem, last_sent_target=desired, confirmed=True, sent_extra_k=extra, sent_correction_k=correction)
         return cmd(ROOM_PLAN_HOLD, "in_sync", desired), mem
     if (
         active
@@ -309,6 +395,8 @@ def decide(
         and mem.last_sent_target == desired
         and abs(thermostat_target - mem.answered_with) <= TOLERANCE_K
     ):
+        if mem.sent_extra_k != extra or mem.sent_correction_k != correction:
+            mem = replace(mem, sent_extra_k=extra, sent_correction_k=correction)
         return cmd(ROOM_PLAN_HOLD, "in_sync", desired), mem  # the thermostat's own rendering of what we sent
 
     if active and mem.last_sent_target == desired and mem.last_sent_ts is not None:
@@ -341,5 +429,9 @@ def decide(
             thermostat_before_send=thermostat_target,
             answered_with=thermostat_target if rendered else None,
             pending_since_ts=now_ts if pending is None else pending,
+            sent_extra_k=extra,
+            extra_before_send=mem.sent_extra_k,
+            thermostat=mem.thermostat,
+            sent_correction_k=correction,
         )
-    return cmd(ROOM_PLAN_SET, result.target_reason, desired, send=True), mem
+    return cmd(ROOM_PLAN_SET, target_reason, desired, send=True), mem

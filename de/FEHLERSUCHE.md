@@ -38,6 +38,12 @@ Abhilfe:
 
 Für eine Push-Nachricht legst du eine Automation auf *ebusd Signal* an, zum Beispiel „5 Minuten aus“.
 
+**So sah das auf der Testanlage aus:** Der Router vergab die Adressen nachts neu, der eBUS-Adapter bekam eine andere IP, und der WLAN-Gaszähler bekam die alte Adresse des Adapters.
+
+- ebusd fand den Adapter nicht mehr („unable to open …“ im Log). Thriftherm gab die Therme nach wenigen Minuten ab, und sie heizte eine gute Stunde lang nach ihrem Drehknopf.
+- ebusd klopfte alle 5 Sekunden beim Gaszähler an. Der verlor dadurch immer wieder seine MQTT-Verbindung, und seine Werte standen in Home Assistant auf „nicht verfügbar“.
+- Home Assistant zeigte die ganze Zeit die letzten gespeicherten eBUS-Werte weiter an (Vorlauf 22 °C, Status 31), weil ebusd seine Werte im Broker hinterlegt. Tatsächlich lag der Vorlauf bei fast 50 °C.
+
 ### Ein WLAN-Gerät verliert ständig die Verbindung
 
 Zum Beispiel der Gaszähler. Er hat die alte Adresse des eBUS-Adapters bekommen, und ebusd klopft dort weiter an. Abhilfe wie oben: die Adresse in der ebusd-App korrigieren, feste Adressen vergeben und das Gerät neu starten.
@@ -121,6 +127,18 @@ Die Heizkurve ist dafür gemacht, Temperaturen zu halten, nicht für schnelles A
 Die Karte zeigt dann *Fast erreicht, heizt wieder unter …*. Hat ein Raum eine Stunde geheizt, liegt höchstens 0,3 Grad unter dem Soll und steigt kaum noch, gilt er als erreicht: Die Therme würde sonst stundenlang für die letzten Zehntel takten. Er ruft wieder, sobald er 0,5 Grad unter dem Soll liegt oder sich das Soll ändert. *Schnell aufheizen* ist von der Regel ausgenommen.
 
 Kommt ein Raum öfter nicht ganz hin, ist meist der Vorlauf zu niedrig. Stell ein *Aufheiztempo* ein (z. B. 1 Grad pro Stunde): Dann hebt Thriftherm den Vorlauf an, solange der Raum zu langsam steigt, und merkt sich, was er braucht. Das kostet etwas mehr Gas.
+
+### Ein direkt gesteuertes Ventil nimmt die Raumtemperatur nicht
+
+Beim Sonoff TRVZB und anderen ist die *Fühlerauswahl* (`temperature_sensor_select`) in Home Assistant oft deaktiviert, ohne dass es jemand bewusst so eingestellt hat. Dann kann Thriftherm sie nicht auf den Raum stellen, und das Ventil regelt nach seinem eigenen Fühler mit Offset. Thriftherm meldet das mit dem Hinweis *Entitäten am Ventil ausgeschaltet*. Aktiviere die Entität unter Einstellungen → Geräte → das Ventil → Entitäten; der Hinweis verschwindet dann von selbst.
+
+### Ein Raum bleibt knapp unter dem Ziel, das Ventil bleibt zu
+
+Viele Ventile öffnen erst ein Stück unter ihrem Sollwert. Beim Sonoff TRVZB heißt die Einstellung *Temperaturgenauigkeit* (`temperature_accuracy`, ab Werk oft −1): Das Ventil öffnet erst 1 Grad unter seinem Soll und meldet bis dahin „ruht“. Ein Raum für 20 °C pendelt dann zwischen 19 und 20 °C.
+
+- **Ventile direkt oder ein Ventil als Thermostat des Raums:** Thriftherm erkennt die Einstellung (`temperature_accuracy`, `hysteresis`), legt beim Anfordern der Therme den größeren Wert von Vorhalt und Schwelle auf den Sollwert und lässt sich vom „ruht“ des Ventils nicht abhalten.
+- **Feiner stellen hilft immer:** Stell die Genauigkeit am Ventil auf −0,4 oder −0,2 (beim TRVZB in Schritten von 0,2). Das Ventil öffnet dann früher, auch hinter Better Thermostat.
+- **Hinter Better Thermostat** gleicht BT den Sollwert selbst nach; dort hilft vor allem das feinere Stellen am Ventil. Thriftherm zeigt dafür den Hinweis *Ventil öffnet spät*, der von selbst verschwindet, sobald die Schwelle 0,5 Grad oder feiner ist.
 
 ### Ein Raum kommt nicht ans Soll, obwohl die Korrektur an der Grenze steht
 

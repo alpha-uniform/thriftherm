@@ -17,6 +17,17 @@ HEAT_PUMP_ISSUE_PREFIX = "midea_"
 # A room hovering at the frost limit would otherwise toggle the boiler between
 # heat and block every few minutes; it stays a frost room until 1 K above.
 FROST_HYSTERESIS_K = 1.0
+# A room whose window has been open no longer than this is no frost room (decided 2026-11-15): a sensor by the open
+# window at −20 °C outside fired the boiler for the frost rule. Open longer, it counts again: a window forgotten.
+FROST_WINDOW_GRACE_S = 30 * 60.0
+
+
+def _aired(readings: tuple[tuple[str, str | None, float | None], ...]) -> bool:
+    """A contact is open, and every open one has been open a known time below FROST_WINDOW_GRACE_S."""
+    from .room import WINDOW_OPEN_STATES  # room imports this module
+
+    open_since = [since for _e, state, since in readings if (state or "").lower() in WINDOW_OPEN_STATES]
+    return bool(open_since) and all(s is not None and s < FROST_WINDOW_GRACE_S for s in open_since)
 
 # What a reading says that has not arrived yet: its entity is not loaded, or has no state so far.
 NOT_ARRIVED = frozenset({"unavailable", "unknown", "empty", "none", "None", "entity_not_found"})
@@ -80,11 +91,13 @@ def evaluate(
             if not_arrived(f"window:{key}", None):  # a contact tells open or closed only once it has reported
                 pending.add(issues[-1])
         for issue in r.issues:
+            if issue == "using_trv_local_temperature:not_configured":
+                continue  # a room set up without a sensor of its own: the valve measures, as chosen (2026-11-15)
             if issue.startswith("using_trv_local_temperature"):
                 issues.append(f"room_using_trv_fallback:{key}")
             elif issue == "thermostat_silent":
                 issues.append(f"room_thermostat_silent:{key}")
-        if r.temperature is not None:
+        if r.temperature is not None and not (state is not None and _aired(state.window_readings)):
             limit = snapshot.params.frost_temp + (FROST_HYSTERESIS_K if key in previous_frost_rooms else 0.0)
             if r.temperature < limit:
                 frost_rooms.append(key)

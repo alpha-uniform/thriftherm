@@ -36,7 +36,7 @@ from math import ceil, floor, isfinite
 
 from ..models import RoomResult
 from .common import as_dict, as_float
-from .heat_call import CALL_CALLING, CALL_STALLED
+from .heat_call import CALL_CALLING, CALL_STALLED, STALL_RATE_K_H, STALL_S
 from .room import TREND_WINDOW_S
 
 CLASS_SINGLE = "single"
@@ -49,21 +49,15 @@ SPREAD_RULE_ACTIVE = "active"
 SPREAD_RULE_BLOCKED = "blocked_few_rooms"
 
 # The rooms' verdict, the same evidence the cycling rule of the learning uses (measured 2026-10-10).
-LAG_DEFICIT_K = 0.2  # a called room still this far below target ...
+LAG_DEFICIT_K = 0.2  # a called room still this far below target (with the band of before; see lag_deficit_k) ...
 LAG_RATE_K_H = 0.2  # ... and rising more slowly than this: it does not get there
 # ... once its own call has run this long. A call begins three tenths below target with a trend of 0 over the 90
 # minutes before: with another room keeping the boiler released, every call began as "lagging" (review 2026-11-13).
 LAG_MIN_CALL_S = 1800.0
+HEAT_UP_FROM_K = 0.3  # a raised target this far above the room is heated up to, not held (the band of a call)
 HAND_HOLD_BAND_K = 1.0  # a target set by hand counts once the room is this close to it: holding, not heating up
 MAX_GAP_S = 300.0  # a longer gap between two cycles (restart, outage) is not counted as operation
 
-# A value that was found. First values, to be reviewed against the recorded cycles.
-FOUND_AFTER_H = 3.0  # this much judged operation in the class without a lagging room and without a step
-HOLD_UP_S = 2700.0  # a found value is raised only after a room has asked for it this long ...
-HOLD_DOWN_S = 7200.0  # ... and lowered only after the rooms have allowed it this long: comfort before saving
-# The asking need not be unbroken: a cycling boiler's calls end, a room 0.2 K below target reads 0.1 K
-# the next half hour (measured 2026-10-10 in the bathroom). It only starts over after this long without it.
-ASK_GRACE_S = 2700.0
 # At a boundary (a third room calling on and off) the class would change by the minute, and with
 # it the flow (review 2026-10-11: 4 K every minute, each one sent to the boiler).
 DWELL_S = 600.0
@@ -77,22 +71,30 @@ class LoadLine:
     slope_k: float = 0.0  # added in full at -10 °C, not at all at +15 °C
     hours: float = 0.0  # operation with the heating released
     lag_hours: float = 0.0  # of which a called room did not get there
-    calm_hours: float = 0.0  # operation since the last lagging room or step
-    found: bool = False  # it has served for `FOUND_AFTER_H` since its last step: only lasting evidence moves it
     last_step_k: float = 0.0  # the last learning step taken in this class (signed), and when: the next
     last_step_ts: float | None = None  # one doubles or halves by it, whatever the other classes did since
     # A step up for a room a cycling boiler did not get there is a trial, and so is every step down of such a
     # boiler (boiler_learning.review_trials): how fast the room rose then (K/h; None: it did not lag), and the
     # line's level and slope before it. None: no step is under review.
     trial: tuple[float | None, float, float] | None = None
+    # A step up on trial is judged by the room only once it brought more heat: the burner's share of the hour before
+    # the trial's first step (None: a trial from before that was measured, judged by the room alone), and whether the
+    # step stood without an answer, the burner running no longer than before: the next step up continues the trial.
+    # And by how much the trial's steps raised the line, without what lifted it to the flow sent first.
+    trial_share: float | None = None
+    trial_open: bool = False
+    trial_run_k: float = 0.0
+    # the step was taken while the room heated up (`heats_up`): never judged helped by a rise the heat-up brings, it goes
+    # back to its start once the heat-up is over or the trial runs out
+    trial_heat_up: bool = False
+    # the rooms heating along when the trial began, each with its valve's opening (%): the burner's share then counts
+    # for the trial only while they stay so (None: a trial from before this was kept, judged as it was)
+    trial_along: tuple[tuple[str, float], ...] | None = None
     no_help_ts: float | None = None  # the last step up that left the room rising no faster was taken back then
     no_less_ts: float | None = None  # the last step down that left the room worse off was taken back then
     fast_calls: int = 0  # holding calls in a row that got the room to its target briskly (boiler_learning.count_calls)
     fast_call_ts: float | None = None  # ... and when the last of them ended: a day on, the count starts over
     borrowed: bool = False  # its value is not its own yet: `line_of` takes it from where the line starts
-    asked: int = 0  # the direction the learning asks a found value to move in (not stored)
-    asked_since_ts: float | None = None
-    asked_last_ts: float | None = None
 
     @property
     def lag_share(self) -> float:
@@ -104,11 +106,14 @@ class LoadLine:
             "slope_k": self.slope_k,
             "hours": round(self.hours, 4),
             "lag_hours": round(self.lag_hours, 4),
-            "calm_hours": round(self.calm_hours, 4),
-            "found": self.found,
             "last_step_k": self.last_step_k,
             "last_step_ts": self.last_step_ts,
             "trial": None if self.trial is None else list(self.trial),
+            "trial_share": self.trial_share,
+            "trial_open": self.trial_open,
+            "trial_run_k": self.trial_run_k,
+            "trial_along": None if self.trial_along is None else [list(x) for x in self.trial_along],
+            "trial_heat_up": self.trial_heat_up,
             "no_help_ts": self.no_help_ts,
             "no_less_ts": self.no_less_ts,
             "fast_calls": self.fast_calls,
@@ -134,16 +139,26 @@ class LoadLine:
         whole = len(trial) == 3 and (raw[0] is None or trial[0] is not None) and None not in trial[1:]
         whole = whole and all(isfinite(v) for v in trial if v is not None)
         calls = as_float(data.get("fast_calls"))
+        share = as_float(data.get("trial_share"))
+        along_raw = data.get("trial_along")
+        along = None
+        if whole and isinstance(along_raw, list):
+            pairs = [(str(x[0]), as_float(x[1])) for x in along_raw if isinstance(x, list) and len(x) == 2]
+            if len(pairs) == len(along_raw) and all(v is not None and isfinite(v) for _, v in pairs):
+                along = tuple((k, float(v)) for k, v in pairs)
         return cls(
             level_k=number("level_k", signed=True),
             slope_k=number("slope_k", signed=True),
             hours=number("hours"),
             lag_hours=number("lag_hours"),
-            calm_hours=number("calm_hours"),
-            found=data.get("found") is True,
             last_step_k=number("last_step_k", signed=True),
             last_step_ts=stamp_of("last_step_ts"),
             trial=(trial[0], trial[1], trial[2]) if whole else None,
+            trial_share=share if whole and share is not None and isfinite(share) and 0.0 <= share <= 1.0 else None,
+            trial_open=whole and data.get("trial_open") is True,
+            trial_run_k=number("trial_run_k") if whole else 0.0,
+            trial_along=along,
+            trial_heat_up=whole and data.get("trial_heat_up") is True,
             no_help_ts=stamp_of("no_help_ts"),
             no_less_ts=stamp_of("no_less_ts"),
             fast_calls=int(calls) if calls is not None and isfinite(calls) and calls > 0 else 0,
@@ -169,7 +184,7 @@ def lines_from_storage(data: object) -> dict[str, LoadLine]:
         lighter = (lines.get(room_cell(other, room_of(key))) for other in CLASSES[: CLASSES.index(class_of(key))])
         taken = any(o and o.last_step_ts is not None and (o.level_k, o.slope_k) == (line.level_k, line.slope_k) for o in lighter)
         if "borrowed" not in stored[key] and line.last_step_ts is None and taken:
-            lines[key] = replace(line, borrowed=True, found=False, calm_hours=0.0)
+            lines[key] = replace(line, borrowed=True)
     return lines
 
 
@@ -303,18 +318,62 @@ def settled_class(
 # ---------------------------------------------------------------------------
 # The rooms' verdict
 # ---------------------------------------------------------------------------
+def heats_up(r: RoomResult) -> bool:
+    """The room heats up to its target rather than holding it: a preheat, a quick heat-up, or a raised target it has not
+    reached yet (`heating_up`)."""
+    return r.preheat_for_ts is not None or r.boost_active or r.heating_up
+
+
+def heating_up(
+    was: bool, target_before: float | None, r: RoomResult, reached_k: float, steady_s: float | None = None
+) -> bool:
+    """Whether the room heats up to its target after this cycle: its target rose and it is further below than
+    `reached_k` (the end of the call), until it gets that close, or its target goes down again, or it stands still on
+    its target for an hour (`steady_s` since the target is as it is): rising slower than a stalled call, it holds
+    (review 2026-11-18: a bathroom standing 0.2-0.3 below all day counted as heating up)."""
+    if r.temperature is None:
+        return was
+    lacks = round(r.target - r.temperature, 2)
+    if target_before is not None and r.target < target_before - 1e-9:
+        return False
+    if was:
+        stands = (
+            steady_s is not None and steady_s >= STALL_S and r.trend_k_per_h is not None
+            and r.trend_k_per_h < STALL_RATE_K_H
+        )
+        return lacks > reached_k and not stands
+    return target_before is not None and r.target > target_before + 1e-9 and lacks > HEAT_UP_FROM_K
+
+
+def on_heat_up_plan(r: RoomResult) -> bool:
+    """A room heating up at least as fast as its heat-up is planned: below its target as planned, no sign of too little
+    flow. Its pace since a preheat began, else its trend; without a pace or a plan it says nothing either."""
+    pace = r.preheat_pace_k_per_h if r.preheat_for_ts is not None and r.preheat_pace_k_per_h is not None else r.trend_k_per_h
+    return r.heat_rate_k_h is None or pace is None or pace >= r.heat_rate_k_h - 1e-9
+
+
 def counts(r: RoomResult) -> bool:
     """Whether a room's progress says anything about the flow (see `lagging_rooms`)."""
     if not r.heating_allowed or r.boost_active or r.thermostat_heating is False or r.temperature is None:
+        return False
+    if r.valve_unable is not None:  # a valve driven directly being exercised or on a flat battery
         return False
     if r.target_steady_s is not None and r.target_steady_s < TREND_WINDOW_S:
         return False
     if r.temperature_age_s is not None and r.temperature_age_s > TREND_WINDOW_S:
         return False
+    if heats_up(r) and on_heat_up_plan(r):
+        return False  # heating up as planned (16.11.: the study's preheat counted, and its line went to +4.6 K)
     return r.target_reason != "override" or round(r.target - r.temperature, 2) <= HAND_HOLD_BAND_K
 
 
-def lagging_rooms(rooms: tuple[RoomResult, ...]) -> list[RoomResult]:
+def lag_deficit_k(call_on_k: float) -> float:
+    """How far below its target a calling room has to stay to count as not getting there: follows the band of the call
+    (review 2026-11-15 §3.8). 0.2 with the band of before (a call from 0.3 below)."""
+    return max(LAG_DEFICIT_K, round(call_on_k - 0.1, 2))
+
+
+def lagging_rooms(rooms: tuple[RoomResult, ...], lag_k: float = LAG_DEFICIT_K) -> list[RoomResult]:
     """Rooms that are called for, stay below target and barely rise (a stalled one included).
 
     What is no evidence that the flow is too low:
@@ -326,10 +385,15 @@ def lagging_rooms(rooms: tuple[RoomResult, ...]) -> list[RoomResult]:
       degree only (issue #7, Shelly H&T) stood flat for four hours and then jumped: a trend of 0.0 K/h that
       is silence, and nobody knows what the room did;
     * a quick heat-up: it is a wish for a while;
+    * a room heating up (a preheat, a raised target it has not reached, `heats_up`) at least as fast as planned
+      (`on_heat_up_plan`): the curve is for holding (16.11.: the study, preheating at its planned pace, counted as not
+      getting there, and a step lifted its line from 0 to +4.6 K). Behind its plan it counts;
     * a target set by hand that the room is still heating up to. Seen 2026-10-13: four rooms set 3 K
       above their temperature for a test drove the correction for most rooms from +1 K to +8.5 K in
       three hours. Once the room is within `HAND_HOLD_BAND_K` and stays there, it is holding, and
       that counts: a household that heats by hand only would never teach the curve otherwise;
+    * a room driven directly whose valve cannot be open: being exercised, or on a flat battery (an off or a
+      silent valve takes the room's heating away anyway);
     * a room whose thermostat says it does not heat. Its valve is shut although the room is below
       target (the valve's own sensor at the hot radiator, a window rule of the thermostat), and a
       hotter flow would only shut it sooner.
@@ -340,16 +404,16 @@ def lagging_rooms(rooms: tuple[RoomResult, ...]) -> list[RoomResult]:
         if counts(r)
         and r.boiler_call in (None, CALL_CALLING, CALL_STALLED)
         # rounded as the call rule rounds it: sensors report tenths, and 21.0 - 20.8 is 0.1999999999999993
-        and round(r.target - r.temperature, 2) >= LAG_DEFICIT_K
+        and round(r.target - r.temperature, 2) >= lag_k
         and r.trend_k_per_h is not None
         and r.trend_k_per_h < LAG_RATE_K_H
         and (r.calling_s is None or r.calling_s >= LAG_MIN_CALL_S)
     ]
 
 
-def lagging(rooms: tuple[RoomResult, ...]) -> bool:
+def lagging(rooms: tuple[RoomResult, ...], lag_k: float = LAG_DEFICIT_K) -> bool:
     """Whether any room lags (`lagging_rooms`)."""
-    return bool(lagging_rooms(rooms))
+    return bool(lagging_rooms(rooms, lag_k))
 
 
 # ---------------------------------------------------------------------------
@@ -368,7 +432,7 @@ def line_of(lines: Lines, load: str, level_k: float, slope_k: float) -> LoadLine
         return kept
     start = _start(lines, load)
     level, slope = (level_k, slope_k) if start is None else (start.level_k, start.slope_k)
-    return replace(kept or LoadLine(), level_k=level, slope_k=slope, borrowed=True, found=False)
+    return replace(kept or LoadLine(), level_k=level, slope_k=slope, borrowed=True)
 
 
 def _start(lines: Lines, load: str) -> LoadLine | None:
@@ -384,57 +448,29 @@ def _start(lines: Lines, load: str) -> LoadLine | None:
 
 
 def observe(
-    lines: Lines, load: str | None, hours: float, lag: bool, level_k: float, slope_k: float, judged: bool = True
+    lines: Lines, load: str | None, hours: float, lag: bool, level_k: float, slope_k: float
 ) -> dict[str, LoadLine]:
-    """Book one cycle of released heating to a line: its hours, and whether its room got there.
-
-    `judged` says a verdict was possible in this cycle: a room called and had been given time.
-    Only such time counts towards "found" (review 2026-10-11: a bathroom calling 25 minutes at
-    a time and stuck a kelvin below target was "found" after eight calls).
-    """
+    """Book one cycle of released heating to a line: its hours, and whether its room got there."""
     out = dict(lines)
     if load is None or hours <= 0:
         return out
     line = line_of(lines, load, level_k, slope_k)
-    calm = 0.0 if lag else line.calm_hours + (hours if judged else 0.0)
     out[load] = replace(
         line,
         hours=line.hours + hours,
         lag_hours=line.lag_hours + (hours if lag else 0.0),
         fast_calls=0 if lag else line.fast_calls,
-        calm_hours=calm,
-        # a lagging room does not unfind it: that takes a step; and a borrowed value is not this line's to find
-        found=not line.borrowed and (line.found or calm >= FOUND_AFTER_H),
     )
     return out
 
 
-def ask(line: LoadLine, direction: int, now_ts: float) -> tuple[bool, LoadLine]:
-    """May a step in this direction be taken now? A found value only yields to evidence that lasts.
-
-    Returns the answer and the line with what is being asked for remembered. The asking may
-    pause for up to `ASK_GRACE_S`; after a longer pause, or once the other direction is
-    asked for, it starts over.
-    """
-    if not line.found:
-        return True, line
-    fresh = (
-        line.asked == direction
-        and line.asked_since_ts is not None
-        and line.asked_last_ts is not None
-        and now_ts - line.asked_last_ts <= ASK_GRACE_S
-    )
-    if not fresh:
-        return False, replace(line, asked=direction, asked_since_ts=now_ts, asked_last_ts=now_ts)
-    hold = HOLD_UP_S if direction > 0 else HOLD_DOWN_S
-    return now_ts - line.asked_since_ts >= hold, replace(line, asked_last_ts=now_ts)
-
-
 def stepped(line: LoadLine, level_k: float, slope_k: float, moved_k: float, now_ts: float) -> LoadLine:
-    """The line after a learning step: its new value, and it has to prove itself again."""
+    """The line after a learning step: its new value; a trial and the brisk calls start over."""
     return replace(
-        line, level_k=level_k, slope_k=slope_k, calm_hours=0.0, found=False, last_step_k=moved_k, last_step_ts=now_ts,
-        trial=None, no_help_ts=None, fast_calls=0, borrowed=False, asked=0, asked_since_ts=None, asked_last_ts=None,
+        line, level_k=level_k, slope_k=slope_k, last_step_k=moved_k, last_step_ts=now_ts,
+        trial=None, trial_share=None, trial_open=False, trial_run_k=0.0, trial_along=None, trial_heat_up=False,
+        no_help_ts=None, fast_calls=0,
+        borrowed=False,
     )
 
 
@@ -447,7 +483,6 @@ def summary(lines: Lines, cold_weight: float, level_k: float, slope_k: float) ->
             "correction_k": round(line.level_k + line.slope_k * cold_weight, 2),
             "level_k": round(line.level_k, 2),
             "slope_k": round(line.slope_k, 2),
-            "found": line.found,
             "hours": round(line.hours, 1),
             "lag_share": round(line.lag_share, 2),
         }

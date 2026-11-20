@@ -486,7 +486,7 @@ def test_with_a_boiler_released_a_room_still_below_the_frost_limit_gets_the_rese
     cmd, _ = decide(inp([room], **{**later, "blocked": "icing_lockout_active"}), mem)
     assert (cmd.plan, cmd.reason) == ("off", "blocked")  # what protects the unit still blocks it
     cmd, _ = decide(inp([room], **{**later, "mode": "shadow"}), mem)
-    assert cmd.plan == "heat"  # only planned: the coordinator writes nothing in Plan only, as for every plan
+    assert cmd.plan == "heat"  # only planned: the coordinator writes nothing in Observe only, as for every plan
 
 
 def test_a_room_not_read_yet_after_a_restart_keeps_its_frost_half_hour():

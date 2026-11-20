@@ -160,3 +160,41 @@ def test_two_rooms_whose_entities_collide_are_a_repair():
     found = issues.detect(hass, coord)
     assert found["room_names_collide_bad_cool"] == {"translation_key": "room_names_collide", "room": "Bad cool", "other": "Bad"}
     assert "room_names_collide_keller_cool" not in found and "room_names_collide_flur_cool" not in found
+
+
+# ------------------------------------------------------------------ a coarse threshold at a valve behind BT (2026-11-15)
+def _behind_bt(coarse):
+    rooms = (
+        SimpleNamespace(key="bad", name="Bad", served_by_heat_pump=False, schedule_entity="schedule.bad",
+                        schedule_weekday="", schedule_weekend="", cooling_schedule_entity=None),
+    )
+    coord = _coordinator(available=True)
+    coord.builder = SimpleNamespace(rooms=rooms, params=SimpleNamespace(airflow_curve=((1, 1), (2, 2)), duct_factor=0.75))
+    coord.has_heat_pump = False
+    coord.coarse_valves = lambda room: coarse
+    return coord
+
+
+def test_a_valve_behind_better_thermostat_with_a_coarse_threshold_gets_a_hint():
+    """A TRVZB at −1 opens 1 K below its setpoint only: the room stays below its target (seen 2026-11-15)."""
+    hass = SimpleNamespace(states=_States())
+    found = issues.detect(hass, _behind_bt((("climate.heizkorper_badezimmer", 1.0),)))
+    assert found["valve_threshold_bad"] == {
+        "translation_key": "valve_threshold_coarse", "room": "Bad", "valves": "climate.heizkorper_badezimmer",
+        "threshold": "1.0",
+    }
+    assert "valve_threshold_bad" not in issues.detect(hass, _behind_bt(()))  # set finer: gone by itself
+
+
+def test_a_valve_driven_directly_with_its_room_temperature_entities_switched_off_gets_a_hint():
+    """Seen 2026-11-15: three TRVZBT had their sensor selection disabled in HA, nobody knew why."""
+    hass = SimpleNamespace(states=_States())
+    coord = _behind_bt(())
+    coord.disabled_valve_entities = lambda room: ("select.heizkorper_bad_temperature_sensor_select",)
+    found = issues.detect(hass, coord)
+    assert found["valve_entities_disabled_bad"] == {
+        "translation_key": "valve_entities_disabled", "room": "Bad",
+        "entities": "select.heizkorper_bad_temperature_sensor_select",
+    }
+    coord.disabled_valve_entities = lambda room: ()
+    assert "valve_entities_disabled_bad" not in issues.detect(hass, coord)

@@ -38,6 +38,12 @@ Fix:
 
 For a push notification, add an automation on *ebusd signal*, for example "off for 5 minutes".
 
+**What it looked like on the test installation:** the router handed out new addresses at night, the eBUS adapter got a different IP, and the Wi-Fi gas meter got the adapter's old one.
+
+- ebusd no longer found the adapter ("unable to open …" in its log). Thriftherm handed the boiler back within minutes, and it heated for over an hour by its own knob.
+- ebusd knocked on the gas meter every 5 seconds. The meter kept losing its MQTT connection, and its values showed "unavailable" in Home Assistant.
+- All the while Home Assistant kept showing the last stored eBUS values (flow 22 °C, status 31), because ebusd keeps its values in the broker. In fact the flow was close to 50 °C.
+
 ### A Wi-Fi device keeps dropping its connection
 
 The gas meter, for example. It got the eBUS adapter's old address, and ebusd keeps knocking there. Fix as above: correct the address in the ebusd app, give fixed addresses and restart the device.
@@ -121,6 +127,18 @@ The heating curve is made to hold temperatures, not to heat up fast. How fast it
 The card then shows *Nearly there, heats again below …*. When a room has heated for an hour, is at most 0.3 degrees below its target and hardly rises any more, it counts as reached: otherwise the boiler would cycle for hours over the last tenths. It calls again once it is 0.5 degrees below its target or the target changes. *Quick heat-up* is exempt from this rule.
 
 If a room often falls a little short, the flow is usually too low. Set a *heat-up speed* (e.g. 1 degree per hour): Thriftherm then raises the flow while the room rises too slowly and remembers what it needs. That burns a little more gas.
+
+### A valve driven directly does not take the room temperature
+
+On the Sonoff TRVZB and others the *sensor selection* (`temperature_sensor_select`) is often disabled in Home Assistant without anyone having set it so. Thriftherm then cannot put it on the room, and the valve goes by its own sensor with an offset. Thriftherm reports it with the notice *valve entities switched off*. Enable the entity under Settings → Devices → the valve → Entities; the notice then goes away by itself.
+
+### A room stays just below its target, the valve stays shut
+
+Many valves open only some way below their setpoint. On the Sonoff TRVZB the setting is called *temperature accuracy* (`temperature_accuracy`, often −1 out of the box): the valve opens only 1 degree below its setpoint and says "idle" until then. A room for 20 °C then swings between 19 and 20 °C.
+
+- **Valves driven directly, or a valve as the room's thermostat:** Thriftherm finds the setting (`temperature_accuracy`, `hysteresis`), puts the larger of the lead and the threshold on the setpoint while the room calls for the boiler and is not held back by the valve's "idle".
+- **A finer setting always helps:** set the accuracy at the valve to −0.4 or −0.2 (steps of 0.2 on the TRVZB). The valve then opens earlier, behind Better Thermostat as well.
+- **Behind Better Thermostat** BT adjusts the setpoint itself; there the finer setting at the valve is what helps most. Thriftherm shows the notice *valve opens late* for it, which goes away by itself once the threshold is 0.5 degrees or finer.
 
 ### A room does not reach its target although the correction is at its limit
 

@@ -15,6 +15,7 @@ from custom_components.thriftherm.adapters.inputs import applies_own_target
 from custom_components.thriftherm.const import CONF_ROOMS, DOMAIN
 from custom_components.thriftherm.engines.room_control import RoomCtrlMemory, decide
 
+from .conftest import climate_loaded
 from .test_integration import _entry_data, _set_states
 from .test_room_control import NOW, rr
 
@@ -104,6 +105,7 @@ async def test_the_valves_behind_versatile_thermostat_are_found(hass: HomeAssist
 
 async def test_an_open_window_in_versatile_thermostat_is_no_turn_of_the_knob(hass: HomeAssistant, freezer) -> None:
     freezer.move_to(datetime(2026, 9, 27, 14, 30, tzinfo=dt_util.UTC))
+    await climate_loaded(hass)
     set_temp = async_mock_service(hass, "climate", "set_temperature")
     _register(hass, {"underlying_entity_ids": ["climate.bath_trv"]})
     _set_states(hass)
@@ -143,6 +145,7 @@ VALVE, VT = "climate.bath_trv", "climate.bath_vt"
 async def _regulating(hass: HomeAssistant, freezer):
     """Room control active; Versatile Thermostat has our 21 °C, its valve the 18.5 °C it regulates with."""
     freezer.move_to(datetime(2026, 9, 27, 14, 30, tzinfo=dt_util.UTC))
+    await climate_loaded(hass)
     set_temp = async_mock_service(hass, "climate", "set_temperature")
     _register(hass, {"underlying_entity_ids": [VALVE]})
     _set_states(hass)

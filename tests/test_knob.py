@@ -11,6 +11,7 @@ from pytest_homeassistant_custom_component.common import async_mock_service
 from custom_components.thriftherm.const import DOMAIN
 from custom_components.thriftherm.engines.room_control import knob_turn
 
+from .conftest import climate_loaded
 from .test_echo_filter import _register, _setup_room_control, start  # noqa: F401 - `start` is a fixture
 from .test_integration import _set_states
 
@@ -60,6 +61,7 @@ def _thermostat_writes(hass: HomeAssistant, freezer, seconds: float, setpoint: f
 
 async def _running(hass: HomeAssistant, freezer):
     """Room control active; the thermostat has our 21 °C, its valve its corrected 18.5 °C."""
+    await climate_loaded(hass)
     set_temp = async_mock_service(hass, "climate", "set_temperature")
     _register(hass)
     _set_states(hass)

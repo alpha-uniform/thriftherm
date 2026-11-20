@@ -275,3 +275,40 @@ def test_forgetting_the_heat_pump_learning_keeps_an_icing_lockout():
     tracker.reset()
     assert tracker.block_until == 5_000.0 and tracker.defrost_cycle_starts == [1_000.0, 2_000.0]
     assert tracker.cop_samples == [] and tracker.inefficient_since is None
+
+
+# ---------------------------------------------------------------- the room's thermostat (2026-11-15)
+def _rooms(config, **changes):
+    rooms = [dict(r) for r in config["rooms"]]
+    rooms[0].update(changes)
+    return {**config, "rooms": rooms}
+
+
+def test_moving_a_room_from_better_thermostat_to_its_valves_keeps_what_it_learned() -> None:
+    """Seen 2026-11-15 02:15: the bathroom put on its valve forgot its heat-up rates. The radiator is the same."""
+    config = _rooms(_entry_data(), climate_entity="climate.badezimmer")
+    before = learning_reset.basis(config)
+    direct = _rooms(config, climate_entity=None, valve_entities=["climate.heizkorper_badezimmer"])
+    assert learning_reset.invalidated(before, learning_reset.basis(direct)) == (set(), set())
+    assert learning_reset.invalidated(learning_reset.basis(direct), before) == (set(), set())  # and back
+
+
+def test_a_basis_stored_with_the_thermostat_forgets_nothing() -> None:
+    """Every installation stored the thermostat in the room's fingerprint: read now, that alone resets nothing."""
+    import json
+
+    config = _rooms(_entry_data(), climate_entity="climate.badezimmer")
+    stored = learning_reset.basis(config)
+    key = "room:badezimmer"
+    old = json.loads(stored[key]) if "thermostat" in stored[key] else {**json.loads(stored[key]),
+                                                                        "thermostat": "climate.badezimmer"}
+    stored = {**stored, key: json.dumps(old, sort_keys=True)}
+    direct = _rooms(config, climate_entity=None, valve_entities=["climate.heizkorper_badezimmer"])
+    assert learning_reset.invalidated(stored, learning_reset.basis(direct)) == (set(), set())
+    assert learning_reset.invalidated(stored, learning_reset.basis(config)) == (set(), set())
+
+
+def test_a_new_room_sensor_still_forgets_the_room() -> None:
+    config = _rooms(_entry_data(), climate_entity="climate.badezimmer")
+    moved = _rooms(config, temperature_sensor="sensor.elsewhere")
+    assert learning_reset.invalidated(learning_reset.basis(config), learning_reset.basis(moved))[1] == {"badezimmer"}

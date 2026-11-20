@@ -14,10 +14,11 @@ import pytest
 from homeassistant.core import HomeAssistant
 
 from custom_components.thriftherm.adapters.inputs import ROOM_TEMP_MAX_AGE_S
-from custom_components.thriftherm.engines import boiler_control, room as room_engine, safety
+from custom_components.thriftherm.engines import boiler_control, safety
+from custom_components.thriftherm.engines import room as room_engine
 from custom_components.thriftherm.engines.boiler_control import curve_flow
 
-from .conftest import PARAMS, room_config, room_state, snapshot
+from .conftest import PARAMS, climate_loaded, room_config, room_state, snapshot
 from .test_integration import _setup
 
 
@@ -148,6 +149,7 @@ async def test_a_thermostat_that_raises_does_not_stop_the_other_rooms(hass: Home
             raise TypeError("'NoneType' object is not subscriptable")
         written.append(dict(call.data))
 
+    await climate_loaded(hass)
     hass.services.async_register("climate", "set_temperature", set_temperature)
     _set_states(hass)
     data = _entry_data()
@@ -193,6 +195,7 @@ async def test_the_boiler_gets_its_setmode_before_a_silent_heat_pump(hass: HomeA
 
     hass.services.async_register("mqtt", "publish", publish)
     for service in ("set_hvac_mode", "set_temperature", "set_fan_mode"):
+        await climate_loaded(hass)
         hass.services.async_register("climate", service, no_answer)
     released = {"boiler_allow_active_control": True, "midea_allow_active_control": True}
     coordinator = (await _setup(hass, options=released)).runtime_data
@@ -247,6 +250,7 @@ async def test_a_unit_system_switched_to_fahrenheit_after_the_setup_keeps_hands_
     from custom_components.thriftherm.const import DOMAIN
 
     published = async_mock_service(hass, "mqtt", "publish")
+    await climate_loaded(hass)
     climate = [async_mock_service(hass, "climate", s) for s in ("set_hvac_mode", "set_temperature", "set_fan_mode")]
     released = {"boiler_allow_active_control": True, "midea_allow_active_control": True}
     coordinator = (await _setup(hass, options=released)).runtime_data
@@ -282,6 +286,7 @@ async def test_a_boosted_unit_is_still_stopped_once_the_unit_system_is_fahrenhei
     from homeassistant.util.unit_system import METRIC_SYSTEM, US_CUSTOMARY_SYSTEM
     from pytest_homeassistant_custom_component.common import async_mock_service
 
+    await climate_loaded(hass)
     modes = async_mock_service(hass, "climate", "set_hvac_mode")
     setpoints = async_mock_service(hass, "climate", "set_temperature")
     async_mock_service(hass, "climate", "set_fan_mode")
@@ -491,8 +496,10 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
     assert boiler_control.BoilerMemory.from_storage({"offset_k": None}).offset_k == 0.0
     assert list(boiler.to_storage()) == [
         "offset_k", "slope_k", "adjustments", "adjustment_steps", "last_adjust_reason", "calls", "state", "state_since_ts",
-        "last_flow", "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "starts_day_ts", "burns", "starts_today",
-        "burn_interrupted", "lines", "heat_up",
+        "last_flow", "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "starts_day_ts", "comp_ts", "comp_ok_k",
+        "comp_short_k", "comp_floor_k", "comp_ample_ts", "comp_left_ts", "burns", "starts_today", "burn_interrupted", "lines",
+        "heat_up",
+        "comp_k", "comp_lines", "comp_key", "comp_last_up", "comp_left_k", "comp_left_key",
     ]
     assert boiler.burn_since_ts is None  # a burn in progress does not outlast a restart
 
@@ -522,7 +529,17 @@ def test_stored_memories_keep_their_format_and_drop_what_is_not_a_number():
     room = RoomCtrlMemory.from_storage({"last_sent_target": "21", "last_sent_ts": "x", "confirmed": 1, "thermostat_before_send": {}})
     assert room == RoomCtrlMemory(last_sent_target=21.0, last_sent_ts=None, confirmed=True, thermostat_before_send=None)
     assert RoomCtrlMemory.from_storage("nonsense") == RoomCtrlMemory()
-    assert list(room.to_storage()) == ["last_sent_target", "last_sent_ts", "confirmed", "thermostat_before_send", "answered_with", "pending_since_ts"]
+    assert list(room.to_storage()) == [
+        "last_sent_target", "last_sent_ts", "confirmed", "thermostat_before_send", "answered_with", "pending_since_ts",
+        "sent_extra_k", "extra_before_send", "thermostat", "sent_correction_k",
+    ]
+    # a lead that cannot be (the store damaged): none, so that no turn by hand becomes something nobody asked for
+    assert RoomCtrlMemory.from_storage({"sent_extra_k": 40}).sent_extra_k == 0.0
+    assert RoomCtrlMemory.from_storage({"sent_extra_k": -3}).sent_extra_k == 0.0
+    # down to -2: a valve on way c held below the room's target (docs/PHASE13_VALVES.md §3.1)
+    assert RoomCtrlMemory.from_storage({"sent_extra_k": -1, "sent_correction_k": -1}).sent_extra_k == -1.0
+    assert RoomCtrlMemory.from_storage({"sent_correction_k": 9}).sent_correction_k == 0.0
+    assert RoomCtrlMemory.from_storage({"sent_extra_k": 1.0}).sent_extra_k == 1.0
 
 
 def test_the_minimum_state_time_still_holds_after_a_restart():
@@ -647,7 +664,10 @@ def test_restore_keeps_only_allowed_modes_and_valid_values():
 
     def coord():
         return SimpleNamespace(
-            builder=SimpleNamespace(rooms=[SimpleNamespace(key=k, served_by_heat_pump=False) for k in "abcd"]),
+            builder=SimpleNamespace(
+                rooms=[SimpleNamespace(key=k, served_by_heat_pump=False, valve_entities=()) for k in "abcd"],
+                restore_valve_memory=lambda data, now: None,
+            ),
             heat_pump_tracker=SimpleNamespace(block_until=None), overrides={}, boosts={}, room_temps={}, room_ctrl_memory={},
             mode="auto", control_mode="shadow", boiler_control_mode="shadow", room_control_mode="shadow",
             control_modes=["off", "shadow"], boiler_control_modes=["off", "shadow", "active"], room_control_modes=["off", "shadow"],

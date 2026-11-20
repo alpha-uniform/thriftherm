@@ -6,6 +6,8 @@ Every value is validated here so the engines can trust `SensorReading.valid`.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import math
 import re
@@ -25,14 +27,14 @@ from homeassistant.util import dt as dt_util
 
 from ..const import (
     CONF_BOILER_CIRCULATION_L_H,
+    CONF_BOILER_FLAME,
     CONF_BOILER_FLOW_TEMP,
     CONF_BOILER_HWC_MODE,
     CONF_BOILER_PUMP_RUNNING,
     CONF_BOILER_PUMP_STATE,
-    CONF_BOILER_STATE_NUMBER,
     CONF_BOILER_RETURN_TEMP,
-    CONF_BOILER_FLAME,
     CONF_BOILER_SIGNAL,
+    CONF_BOILER_STATE_NUMBER,
     CONF_GAS_FLOW,
     CONF_GAS_VOLUME,
     CONF_HEAT_PUMP_CLIMATE,
@@ -58,6 +60,9 @@ from ..engines.room import WINDOW_CLOSED_STATES, WINDOW_OPEN_STATES
 from ..engines.room_cooling import CoolSchedule
 from ..engines.safety import HEAT_PUMP_DROPOUT_S
 from ..engines.schedule_week import block_starting, comfort_run_end, next_level_change
+from ..engines.valve_caps import Entity, caps_of, quirks_of
+from ..engines.valve_control import EXTERNAL_MAX_AGE_S
+from ..engines.valve_plan import ValveView
 
 # A room sensor that has been quiet for hours is not a measurement any more: room
 # temperatures decide the heating, so they get a tighter limit than the general one
@@ -67,6 +72,11 @@ ROOM_TEMP_MAX_AGE_S = 6 * 3600.0
 # 07:42 to 15:42 on 2026-09-23 and was taken for dead. While the same device still reports
 # something else (humidity, as a rule), its temperature still holds, up to this age.
 ROOM_TEMP_UNCHANGED_MAX_S = 24 * 3600.0
+# A broker or Zigbee2MQTT restart takes the entities of a valve away for a minute and brings them back with the values
+# they had: that is no report of the valve (2026-11-13: 40 s at 15:28; the valve had last spoken at 11:00). Gone longer,
+# a valve that answers again with the same values has spoken. The values come back one by one within the burst.
+VALVE_REPLAY_GONE_MAX_S = 600.0
+VALVE_REPLAY_BURST_S = 120.0
 # The outlet moves with every burst of the unit: two hours unchanged was the longest seen in a run (2026-11-04).
 # Longer than this with its device alive it hangs, and the table of the COP would learn from it.
 OUTLET_UNCHANGED_MAX_S = 6 * 3600.0
@@ -74,6 +84,9 @@ OUTLET_UNCHANGED_MAX_S = 6 * 3600.0
 # this with it alive they hang. The coordinator keeps the last known value for six hours after that.
 OUTDOOR_MAX_AGE_S = 3600.0
 OUTDOOR_UNCHANGED_MAX_S = 6 * 3600.0
+# a valve driven directly on this little battery may not move its motor any more (review 2026-11-15 item 4): its room's
+# hours say nothing about the flow
+VALVE_BATTERY_FLAT_PCT = 10.0
 SAMPLE_SPACING_S = 30.0  # room histories: 240 samples cover two hours, 400 the humidity's 3 h 10 min
 # A gas flow above 0 that has not changed for this long, while the meter reading has not moved
 # either, was left behind by a meter that dropped off: burning gas moves the reading within minutes.
@@ -104,9 +117,9 @@ from ..models import (
     BoilerState,
     DryingState,
     HeatingSnapshot,
-    Override,
     HeatPumpSample,
     HeatPumpState,
+    Override,
     Parameters,
     Prices,
     RoomConfig,
@@ -227,6 +240,16 @@ def _state_age_s(state: State, now: datetime) -> float:
     return max((now - ts).total_seconds(), 0.0)
 
 
+def _fingerprint(state: State) -> str:
+    """A state with its attributes, short: a valve's setpoint is an attribute of its climate entity."""
+    text = json.dumps([state.state, sorted(state.attributes.items())], default=str, ensure_ascii=False)
+    return hashlib.sha1(text.encode(), usedforsecurity=False).hexdigest()[:16]
+
+
+def _reported_ts(state: State) -> float:
+    return (getattr(state, "last_reported", None) or state.last_updated).timestamp()
+
+
 def _zha_device_seen_s(hass: HomeAssistant, device_id: str, now: datetime) -> float | None:
     """How long ago ZHA last saw one of its devices; None while ZHA calls it unavailable, or without a usable answer.
 
@@ -288,6 +311,102 @@ def driven_by(hass: HomeAssistant, climate_entity: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(e for e in _driven(hass, climate_entity) or () if e != climate_entity))
 
 
+def valve_driver(hass: HomeAssistant, valve: str) -> str | None:
+    """The room thermostat of an enabled Better or Versatile Thermostat entry that drives `valve`, None if none does.
+
+    The setup refuses such a valve for a room driven directly (docs/PHASE13_VALVES.md §4): two controllers at one valve
+    sent two setpoints a minute. A disabled entry drives nothing.
+    """
+    registry = er.async_get(hass)
+    own = registry.async_get(valve)
+    if own is not None and own.platform in ("better_thermostat", "versatile_thermostat"):
+        return valve  # a room thermostat of its own, no valve (review 2026-11-15)
+    for entry in registry.entities.values():
+        if entry.domain != "climate" or entry.platform not in ("better_thermostat", "versatile_thermostat"):
+            continue
+        owner = hass.config_entries.async_get_entry(entry.config_entry_id) if entry.config_entry_id else None
+        if owner is None or owner.disabled_by is not None or entry.entity_id == valve:
+            continue
+        if valve in (_driven(hass, entry.entity_id) or ()):
+            return entry.entity_id
+    return None
+
+
+def _float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def valve_view(hass: HomeAssistant, valve: str) -> ValveView:
+    """A valve driven directly as Home Assistant shows it: what its device can do (engines/valve_caps.py) and what it has.
+
+    Read anew each time from the registries: a valve replaced, or an entity switched on in ZHA, is seen at once.
+    """
+    registry = er.async_get(hass)
+    entry = registry.async_get(valve)
+    device = None if entry is None or entry.device_id is None else dr.async_get(hass).async_get(entry.device_id)
+    found: list[Entity] = []
+    # with the disabled ones: a selection switched off is to be told, not taken for none (2026-11-15)
+    entries = er.async_entries_for_device(registry, device.id, include_disabled_entities=True) if device else ()
+    for item in entries:
+        state = hass.states.get(item.entity_id)
+        attrs = state.attributes if state is not None else {}
+        options = attrs.get("options") or ()
+        found.append(Entity(
+            entity_id=item.entity_id, domain=item.domain, key=item.translation_key or item.unique_id or "",
+            unit=attrs.get("unit_of_measurement") or item.unit_of_measurement,
+            options=tuple(o for o in options if isinstance(o, str)),
+            writable=item.domain in ("number", "select", "switch", "lock"), enabled=item.disabled_by is None,
+        ))
+    climate = hass.states.get(valve)
+    shown_c = None if climate is None else _float(climate.attributes.get("current_temperature"))
+    caps = caps_of(tuple(found), valve, measures=shown_c is not None or climate is None)
+
+    def value(entity_id: str | None) -> State | None:
+        state = hass.states.get(entity_id) if entity_id else None
+        return None if state is None or state.state in BAD_STATES else state
+
+    selection = value(caps.sensor_select or caps.sensor_switch)
+    offset = value(caps.offset)
+    limits = (-5.0, 5.0, 0.5)
+    if offset is not None:
+        low, high, step = (_float(offset.attributes.get(k)) for k in ("min", "max", "step"))
+        limits = (low if low is not None else -5.0, high if high is not None else 5.0, step or 0.5)
+    external = value(caps.external_temperature)
+    opening = value(caps.opening)
+    hysteresis = value(caps.hysteresis)
+    hysteresis_k = abs(_float(hysteresis.state) or 0.0) if hysteresis is not None else 0.0
+    if entry is not None and entry.platform in _WRAPPER_PLATFORMS:
+        # Better or Versatile Thermostat decide themselves when their valves open: a threshold on their device would
+        # set their word aside (issues #3, #8; check of 2026-11-15). Only a valve's own is Thriftherm's to allow for.
+        hysteresis_k = 0.0
+    return ValveView(
+        caps=caps,
+        quirks=quirks_of(device.manufacturer if device else None, device.model if device else None),
+        available=climate is not None and climate.state not in BAD_STATES,
+        selection=None if selection is None else selection.state,
+        # a person chose it: a context of a user (a restart of the valve, or Thriftherm, has none)
+        selection_by_person=selection is not None and selection.context.user_id is not None,
+        external_shown=None if external is None else _float(external.state),
+        offset_shown=None if offset is None else _float(offset.state),
+        offset_limits=limits,
+        shown_c=shown_c,
+        target_shown=None if climate is None else _float(climate.attributes.get("temperature")),
+        mode=None if climate is None or climate.state in BAD_STATES else climate.state,
+        opening_shown=None if opening is None else _float(opening.state),
+        hvac_action=None if climate is None else climate.attributes.get("hvac_action"),
+        hysteresis_k=min(hysteresis_k, 3.0),
+        setpoint_limits=(
+            (_float(climate.attributes.get("min_temp")) if climate is not None else None) or 5.0,
+            (_float(climate.attributes.get("max_temp")) if climate is not None else None) or 30.0,
+        ),
+        setpoint_step=(_float(climate.attributes.get("target_temp_step")) if climate is not None else None) or 0.5,
+    )
+
+
 def _trim(history: deque, cutoff: float, ts: Callable[[Any], float] = itemgetter(0)) -> None:
     """Drop the entries older than `cutoff` from a history kept in time order."""
     while history and ts(history[0]) < cutoff:
@@ -320,12 +439,61 @@ class SnapshotBuilder:
         self._heat_pump_history: deque[HeatPumpSample] = deque(maxlen=240)
         self._device_sensors: dict[str, tuple[str, ...]] = {}
         self._valve_entities: dict[str, tuple[str, ...]] = {}  # room thermostat -> its valves, for one build
-        self._valve_heard: dict[str, float] = {}  # climate entity -> when its valve last reported (ts)
+        self._init_valve_memory()
         self._zha_devices: dict[str, str | None] = {}  # entity -> its device if ZHA pairs it, for one build
         self._started_at: datetime | None = None  # the first snapshot
         self._windows_seen: set[str] = set()  # contacts that have said open or shut since the start
         self._open_from_start: set[str] = set()  # contacts first found open at the start, not shut since
         self._opened_at: dict[str, datetime] = {}  # open contacts: their last change when first seen open, until seen shut
+
+    def _init_valve_memory(self) -> None:
+        self._valve_heard: dict[str, float] = {}  # climate entity -> when its valve last reported (ts)
+        # what its valve's entities showed when last available, since when all of them are gone, and until when what
+        # they report is the repetition of that by a broker or Home Assistant (VALVE_REPLAY_*)
+        self._valve_values: dict[str, dict[str, str]] = {}
+        self._valve_gone_at: dict[str, float] = {}
+        self._valve_replay_until: dict[str, float] = {}
+
+    def valve_memory(self) -> dict[str, dict[str, Any]]:
+        """What is kept of the valves over a restart of Home Assistant: when each was heard, and what it showed."""
+        return {
+            climate: {"heard": heard, "values": dict(self._valve_values.get(climate, {}))}
+            for climate, heard in self._valve_heard.items()
+        }
+
+    def restore_valve_memory(self, data: Any, now_ts: float) -> None:
+        """Take back `valve_memory` after a restart: the values Home Assistant and the broker bring back now are theirs."""
+        if not isinstance(data, Mapping):
+            return
+        for climate, item in data.items():
+            if not isinstance(climate, str) or not isinstance(item, Mapping):
+                continue
+            heard, values = item.get("heard"), item.get("values")
+            if isinstance(heard, bool) or not isinstance(heard, (int, float)) or not math.isfinite(heard):
+                continue
+            if not isinstance(values, Mapping):
+                continue
+            self._valve_heard[climate] = float(heard)
+            self._valve_values[climate] = {str(k): str(v) for k, v in values.items()}
+            self._valve_gone_at[climate] = now_ts  # as if gone until now: what comes back first is a repetition
+
+    def _note_valve_values(self, climate_entity: str, states: list[State], now_ts: float) -> float | None:
+        """Watch the valve's values for a repetition (VALVE_REPLAY_*); the time up to which reports are no report."""
+        shown = {state.entity_id: _fingerprint(state) for state in states if state.state not in BAD_STATES}
+        if not shown:
+            self._valve_gone_at.setdefault(climate_entity, now_ts)
+            return self._valve_replay_until.get(climate_entity)
+        before = self._valve_values.get(climate_entity)
+        gone = self._valve_gone_at.pop(climate_entity, None)
+        same = before is not None and all(before.get(entity_id) == value for entity_id, value in shown.items())
+        if gone is not None and now_ts - gone <= VALVE_REPLAY_GONE_MAX_S and same:
+            self._valve_replay_until[climate_entity] = now_ts + VALVE_REPLAY_BURST_S
+        until = self._valve_replay_until.get(climate_entity)
+        if until is not None and now_ts <= until and not same:
+            until = self._valve_replay_until.pop(climate_entity)  # another value within the burst: the valve restarted
+            until = None
+        self._valve_values[climate_entity] = {**(before or {}), **shown}
+        return until
 
     # ------------------------------------------------------------------ readers
     def _get(self, entity_id: str | None) -> State | None:
@@ -485,6 +653,18 @@ class SnapshotBuilder:
         behind = self.valves_behind(climate_entity)
         return climate_entity not in behind and any(e.startswith("climate.") for e in behind)
 
+    def _a_valve_flat(self, valves: tuple[str, ...]) -> bool:
+        """Whether a valve's battery reads `VALVE_BATTERY_FLAT_PCT` or less (an unknown reading is no flat one)."""
+        for valve in valves:
+            entity = valve_view(self.hass, valve).caps.battery
+            state = self.hass.states.get(entity) if entity else None
+            try:
+                if state is not None and float(state.state) <= VALVE_BATTERY_FLAT_PCT:
+                    return True
+            except ValueError:
+                continue
+        return False
+
     def thermostat_silent_s(self, climate_entity: str | None, now: datetime) -> float | None:
         """How long the valve behind a room thermostat has been silent, None if unknown.
 
@@ -502,7 +682,14 @@ class SnapshotBuilder:
         if not entities:
             return None
         states = [state for entity_id in entities if (state := self._get(entity_id)) is not None]
-        ages = [_state_age_s(state, now) for state in states if state.state not in BAD_STATES]
+        repeated_until = self._note_valve_values(climate_entity, states, now.timestamp())
+        ages = [
+            _state_age_s(state, now)
+            for state in states
+            if state.state not in BAD_STATES
+            # a value repeated by a broker or Home Assistant restart is no report (see VALVE_REPLAY_*)
+            and (repeated_until is None or _reported_ts(state) > repeated_until)
+        ]
         if (seen := self._zha_seen_s(entities, now)) is not None:
             ages.append(seen)
         if ages:
@@ -570,12 +757,19 @@ class SnapshotBuilder:
 
         A device paired with ZHA is alive as well while ZHA has seen it within the same age (see `ZHA`).
         The reading keeps its own age, and a day without a change is too long either way. Six hours at most,
-        unless the room sensors report only on a change (option): then up to the max. sensor age.
+        unless the room sensors report only on a change (option): then up to the max. sensor age. `heard_s` is when
+        its device was last heard.
         """
         max_age = self.params.sensor_max_age_s
         if not self.params.room_sensors_on_change:
             max_age = min(max_age, ROOM_TEMP_MAX_AGE_S)
-        return self._read_quiet_temperature(entity_id, now, max_age)
+        reading = self._read_quiet_temperature(entity_id, now, max_age)
+        if reading.age_s is None or entity_id is None:
+            return reading
+        # when the device was last heard: Zigbee2MQTT writes no unchanged value anew, its humidity goes on
+        others = (self._device_age_s(entity_id, now), self._zha_seen_s((entity_id,), now))
+        ages = [reading.age_s, *(a for a in others if a is not None)]
+        return replace(reading, heard_s=min(ages))
 
     def _read_quiet_temperature(
         self, entity_id: str | None, now: datetime, max_age: float, value_range: tuple[float, float] = RANGE_ROOM_TEMP,
@@ -589,6 +783,24 @@ class SnapshotBuilder:
         if alive and min(alive) <= max_age:
             return replace(reading, valid=True, reason=None)
         return reading
+
+    def valve_room_reading(self, entity_id: str | None, now: datetime) -> tuple[float | None, bool]:
+        """The room temperature for a valve driven directly, and whether it may go to the valve.
+
+        Fresh within two hours (valve_control.EXTERNAL_MAX_AGE_S), or older while the sensor's device reports other
+        values: Home Assistant does not write an unchanged Zigbee2MQTT value anew, and measured 2026-11-14 the bathroom
+        sensor showed 20.2 °C unchanged for two hours while it reported every half hour (Phase B). With sensors that
+        report only on a change (option), as for the room's call.
+        """
+        if self.params.room_sensors_on_change:
+            # a sensor that reports only on a change (issue #7) holds for the valve as for the call: its silence is the
+            # room staying within its step, not a dead sensor (the rückfall check of 2026-11-15, R2)
+            reading = self.read_room_temperature(entity_id, now)
+        else:
+            # past half an hour only while its device shows it alive, as long as for the call (24 h): with 6 h a ZHA or
+            # Zigbee2MQTT sensor alive but unchanged put the valve on its own sensor (issue #2; check of 2026-11-15, R1)
+            reading = self._read_quiet_temperature(entity_id, now, EXTERNAL_MAX_AGE_S)
+        return reading.value_or_none, reading.valid
 
     def read_text(self, entity_id: str | None) -> str | None:
         state = self._get(entity_id)
@@ -774,6 +986,11 @@ class SnapshotBuilder:
         # sometimes before `hvac_action` leaves heating (issue #8). Without the attribute nothing changes.
         if heating is not None and climate is not None and climate.attributes.get("heating_blocked_by") not in (None, "", "none"):
             heating = False
+        if cfg.direct or (cfg.climate_entity and valve_view(self.hass, cfg.climate_entity).hysteresis_k > 0.0):
+            # A valve says idle while its own hysteresis keeps it shut (seen 2026-11-15: a TRVZB opening 1 K below its
+            # setpoint only). Thriftherm opens it by its setpoint instead (coordinator: hysteresis on top), driven
+            # directly or entered as the room's thermostat. Better Thermostat's idle stays: it is its own decision.
+            heating = None
         own_target = trv_mode is not None and climate is not None and applies_own_target(climate.attributes)
         schedule = self._schedule_state(cfg)
 
@@ -818,6 +1035,7 @@ class SnapshotBuilder:
             thermostat_heating=heating,
             thermostat_own_target=own_target,
             thermostat_silent_s=self.thermostat_silent_s(cfg.climate_entity, now),
+            valve_unable="battery" if cfg.direct and self._a_valve_flat(cfg.valve_entities) else None,
             thermostat_gone_s=self.thermostat_gone_s(cfg.climate_entity, now),
             # Better Thermostat (or Versatile Thermostat over a climate) takes a setpoint at once and passes it
             # on to the thermostats it drives; a switch it drives takes none, and need not report a new target

@@ -55,7 +55,7 @@ LABELS: dict[str, dict[str, str]] = {
         "manual_mode_dry": "Dry mode by hand",
         "frost_in_cooling_season": "Room reports frost in the cooling season",
         # control modes
-        "off": "Off", "shadow": "Plan only", "active": "Active",
+        "off": "Off", "shadow": "Observe only", "active": "Active",
         # where a target temperature comes from
         "override": "Manual override", "mode_off_frost_protection": "Off (frost protection only)",
         "mode_away": "Away", "away_preheat": "Pre-heating for your return", "away_humidity_guard": "Away, raised against damp",
@@ -63,6 +63,7 @@ LABELS: dict[str, dict[str, str]] = {
         "bathroom_drying": "Drying the bathroom",
         "joined_boiler_run": "Heating along while the boiler runs",
         "joined_preheat": "Pre-heating early while the boiler runs",
+        "joined_setback": "Heating along up to its setback while the boiler runs",
         "heat_pump_cooling": "Heat pump cooling: radiator at setback",
         # whether a room calls the boiler
         "calling": "Calls for heat", "idle": "Warm enough", "stalled": "Close to target, barely rising: counts as reached",
@@ -86,6 +87,9 @@ LABELS: dict[str, dict[str, str]] = {
         "short_cycling_at_flow_min": "Boiler cycles, but the flow is already at its minimum",
         "rooms_lagging_at_flow_min": (
             "A room does not get there, but the flow stands at its minimum: raise the minimum if this lasts"
+        ),
+        "boiler_limit": (
+            "The boiler cycles on its least power far below the flow sent: more is sent, the heating curve is not lifted"
         ),
         "correction_limit": "Heating curve correction at its limit (level or slope, ±10 degrees each)",
         "flow_no_help": (
@@ -143,6 +147,9 @@ LABELS: dict[str, dict[str, str]] = {
         "action": "A Thriftherm action",
         "thermostat_own_rule": "The thermostat applies a rule of its own", "no_thermostat": "No thermostat",
         "thermostat_off": "Thermostat off", "thermostat_unavailable": "Thermostat unavailable",
+        "window_open_frost": "Window open: valve at the frost limit",
+        "window_open_off": "Window open: valve off",
+        "valve_exercise": "Valve being moved so it does not stick",
         # COP gates
         "airflow_curve_not_calibrated": "airflow not calibrated", "warming_up": "warming up", "electrical_power_missing": "no power reading",
         "electrical_power_below_minimum": "power too low", "delta_t_below_minimum": "temperature rise too small",
@@ -155,7 +162,7 @@ LABELS: dict[str, dict[str, str]] = {
         "rooms_heating_up": "a room heats up on an extra",
     },
     "de": {
-        "off": "Aus", "shadow": "Nur planen", "active": "Aktiv",
+        "off": "Aus", "shadow": "Nur beobachten", "active": "Aktiv",
         # cooling (docs/PHASE12_COOLING.md)
         "cooling_season": "Kühlzeit: Heizung nur Frostschutz",
         "cooling": "Klimagerät kühlt",
@@ -188,6 +195,7 @@ LABELS: dict[str, dict[str, str]] = {
         "bathroom_drying": "Bad trocknen",
         "joined_boiler_run": "Heizt mit, solange die Therme läuft",
         "joined_preheat": "Heizt früher vor, solange die Therme läuft",
+        "joined_setback": "Heizt bis zur Absenkung mit, solange die Therme läuft",
         "heat_pump_cooling": "Wärmepumpe kühlt: Heizkörper auf Absenkung",
         "calling": "Fordert Wärme an", "idle": "Warm genug",
         "stalled": "Knapp unter Soll, steigt kaum: gilt als erreicht",
@@ -208,6 +216,10 @@ LABELS: dict[str, dict[str, str]] = {
         "short_cycling": "Therme taktet",
         "short_cycling_at_flow_min": "Therme taktet, der Vorlauf steht aber schon am Minimum",
         "rooms_lagging_at_flow_min": "Ein Raum kommt nicht hin, der Vorlauf steht aber am Minimum: bei Dauer das Minimum anheben",
+        "boiler_limit": (
+            "Die Therme taktet auf kleinster Leistung weit unter dem gesendeten Vorlauf: Es wird mehr geschickt, "
+            "die Heizkurve nicht angehoben"
+        ),
         "correction_limit": "Heizkurven-Korrektur an ihrer Grenze (Höhe oder Steigung, je ±10 Grad)",
         "flow_no_help": (
             "Mehr Vorlauf hat diesem Raum nicht geholfen (Heizkörper, Ventil oder kurze Brennerläufe): "
@@ -260,6 +272,9 @@ LABELS: dict[str, dict[str, str]] = {
         "action": "Eine Aktion von Thriftherm",
         "thermostat_own_rule": "Das Thermostat wendet eine eigene Regel an", "no_thermostat": "Kein Thermostat",
         "thermostat_off": "Thermostat aus", "thermostat_unavailable": "Thermostat nicht verfügbar",
+        "window_open_frost": "Fenster offen: Ventil auf Frostgrenze",
+        "window_open_off": "Fenster offen: Ventil aus",
+        "valve_exercise": "Ventil wird bewegt, damit es nicht festsitzt",
         "airflow_curve_not_calibrated": "Luftmenge nicht kalibriert", "warming_up": "Warmlauf", "electrical_power_missing": "keine Leistungsmessung",
         "electrical_power_below_minimum": "Leistung zu gering", "delta_t_below_minimum": "Temperaturhub zu klein",
         "outlet_temp_not_settled": "Ausblas nicht eingeschwungen", "outlet_temp_silent": "Ausblas seit dem Start ohne Meldung", "fan_rpm_outside_curve": "Lüfterdrehzahl außerhalb der Kennlinie",

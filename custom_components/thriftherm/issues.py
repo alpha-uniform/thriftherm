@@ -112,6 +112,21 @@ def detect(
             # a valve that fell out of the radio network keeps its last setpoint: the room
             # neither warms nor cools as planned, and only a restart of the valve helps
             found[f"thermostat_silent_{room.key}"] = {"translation_key": "thermostat_silent", "room": room.name}
+        # A valve behind Better Thermostat that opens only more than 0.5 K below its setpoint (a TRVZB at −1): its room
+        # stays below its target (seen 2026-11-15). Gone by itself once the valve is set finer.
+        # A valve driven directly whose sensor selection or input is switched off in HA (seen 2026-11-15 at three
+        # TRVZBT, nobody knew why): it cannot take the room's temperature and goes by its own sensor and an offset.
+        switched_off = tuple(getattr(coordinator, "disabled_valve_entities", lambda _room: ())(room))
+        if switched_off:
+            found[f"valve_entities_disabled_{room.key}"] = {
+                "translation_key": "valve_entities_disabled", "room": room.name, "entities": ", ".join(switched_off),
+            }
+        coarse = tuple(getattr(coordinator, "coarse_valves", lambda _room: ())(room))
+        if coarse:
+            found[f"valve_threshold_{room.key}"] = {
+                "translation_key": "valve_threshold_coarse", "room": room.name,
+                "valves": ", ".join(valve for valve, _k in coarse), "threshold": f"{max(k for _v, k in coarse):.1f}",
+            }
 
     if coordinator.has_heat_pump and len(coordinator.builder.params.airflow_curve) < 2:  # one point draws no line
         found["airflow_not_calibrated"] = {"translation_key": "airflow_not_calibrated"}

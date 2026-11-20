@@ -41,8 +41,9 @@ SYSTEM_BINARY: tuple[ThrifthermBinaryDescription, ...] = (
         "boiler_heating_active",
         boiler_only=True,
         device_class=BinarySensorDeviceClass.RUNNING,
-        # never together with hot water, as the hot water sensor below detects it
-        value_fn=lambda d: d["boiler"].hc_active and not d["boiler_command"].hot_water,
+        # The burner for the heating, by the sign the starts are counted from (gas meter, status number, flame or pump;
+        # decided 15.11.2026): ebusd's heating flag missed runs under a minute. Never together with hot water.
+        value_fn=lambda d: d["boiler_command"].burner_heating and not d["boiler_command"].hot_water,
     ),
     _desc(
         "boiler_hwc_active",

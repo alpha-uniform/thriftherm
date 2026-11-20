@@ -44,10 +44,20 @@ answer it:
 
 While the boiler runs anyway, other rooms heat along (`join`): a room in its
 comfort window that is below comfort gets comfort + JOIN_K, and a room whose
-preheat would start within PULL_FORWARD_S starts it now. More open radiators
+preheat would start within PULL_FORWARD_S starts it now. A room in its setback that
+is below its setback target heats along up to it, never past it (decided 16.11.: the
+kitchen at 18.4 of 18.5 lacked the heat anyway; heated along it needs no start of its
+own later): its target stays, the coordinator opens a valve it drives directly until
+the target, in part where the valve has an opening limit (valve_plan.join_opening). More open radiators
 take more of the burner's minimum output, so each run lasts longer and fewer
 starts are needed. Joined rooms never call by themselves, so they cannot keep
 the boiler running. A room whose thermostat holds its valve shut does not join.
+
+The lead (`lead_k`, docs/PHASE13_VALVES.md §6): a room thermostat with a control of its own (Better Thermostat,
+Versatile Thermostat, a valve) throttles its valve shortly before its setpoint. The boiler heats a room from
+CALL_ON_K to CALL_OFF_K below its target, and in that band the valve should be open. While the boiler runs for a
+room, its thermostat is asked for the target plus the lead; a room heating along gets the larger of that and its
+joined target, never both. The lead ends with the call, so the thermostat shuts its valve at the target as before.
 """
 
 from __future__ import annotations
@@ -89,6 +99,8 @@ CALL_THERMOSTAT_IDLE = "thermostat_idle"
 
 JOINED_COMFORT = "joined_boiler_run"
 JOINED_PREHEAT = "joined_preheat"
+JOINED_SETBACK = "joined_setback"
+JOINED_REASONS = (JOINED_COMFORT, JOINED_PREHEAT, JOINED_SETBACK)
 
 _COMFORT_REASONS = ("schedule_comfort",)
 _URGENT_REASONS = ("boost",)  # quick heat-up asks for heat now, no stall or end-of-window rule
@@ -155,9 +167,13 @@ def _ended(mem: CallMemory, room: RoomResult, now_ts: float, why: str | None = N
 
 
 def update(
-    room: RoomResult, mem: CallMemory, now_ts: float, comfort_end_ts: float | None = None, helping: bool = False
+    room: RoomResult, mem: CallMemory, now_ts: float, comfort_end_ts: float | None = None, helping: bool = False,
+    call_on_k: float = CALL_ON_K, call_off_k: float = CALL_OFF_K,
 ) -> tuple[str, CallMemory]:
-    """The room's call state after this cycle; `helping`: the boiler adds the peak for the heat pump in this room."""
+    """The room's call state after this cycle; `helping`: the boiler adds the peak for the heat pump in this room.
+
+    `call_on_k` and `call_off_k` are the band of the call (a setting since 2026-11-15): it begins `call_on_k` below the
+    target and ends once the room is less than `call_off_k` below it (negative: above it)."""
     if not room.heating_allowed:
         # no target is kept: the call after an airing is a recovery, not the holding of a temperature
         return CALL_NOT_ALLOWED, CallMemory(last=_ended(mem, room, now_ts, "not_allowed"))
@@ -198,7 +214,7 @@ def update(
     if mem.calling and mem.target is not None and room.target < mem.target:
         # the target went down: start over as if the call were new
         mem = CallMemory(target=mem.target, last=_ended(mem, room, now_ts, "target"), target_since_ts=stood)
-    on, off = (HELP_ON_K, 0.0) if helping else (CALL_ON_K, CALL_OFF_K)
+    on, off = (HELP_ON_K, 0.0) if helping else (call_on_k, call_off_k)
     calling = deficit > off if mem.calling else deficit >= on
     if not calling:
         return CALL_IDLE, CallMemory(target=room.target, last=_ended(mem, room, now_ts), target_since_ts=stood)
@@ -220,7 +236,10 @@ def update(
     if mem.calling:
         start_c, spoiled, readings = mem.start_c, mem.spoiled or moved, mem.readings + (room.temperature != mem.seen_c)
     else:
-        start_c, spoiled, readings = room.temperature, moved or ("heat_up" if deficit > HOLD_START_K else None), 0
+        # a call within the band's start (+ a sensor step) holds a temperature: the threshold follows the band (review
+        # 2026-11-15 §3.8; with a call beginning 0.5 below, every call counted as a heat-up)
+        hold_start = max(HOLD_START_K, round(call_on_k + 0.2, 2))
+        start_c, spoiled, readings = room.temperature, moved or ("heat_up" if deficit > hold_start else None), 0
     if urgent:
         spoiled = spoiled or "boost"
     elif helping:
@@ -265,4 +284,60 @@ def join(
             and r.temperature < level
         ):
             out[key] = replace(r, target=level, target_reason=JOINED_PREHEAT, deviation_k=round(r.temperature - level, 2))
+        elif r.target_reason == "schedule_setback" and r.temperature < r.target:
+            out[key] = replace(r, target_reason=JOINED_SETBACK)  # up to its target, never past it
     return out
+
+
+def heats_along_to(sent: RoomResult, own: RoomResult) -> float | None:
+    """The temperature a room heating along (`join`) heats to, None for one that does not.
+
+    Its own target, as the join ends there (comfort, setback); the comfort it pulls forward for a preheat begun early
+    (16.11.: measured to its setback, a room 0.2 above it had its valve at 30 % for a preheat to 20.5)."""
+    if sent.target_reason == JOINED_PREHEAT:
+        return sent.target
+    if sent.target_reason in JOINED_REASONS:
+        return own.target
+    return None
+
+
+def lead_k(  # noqa: PLR0913 - every condition of the rule
+    state: str,
+    sent: RoomResult,
+    own: RoomResult,
+    option_k: float,
+    boiler_heats: bool,
+    left_to_unit: bool,
+    leading: bool = False,
+    held_k: float | None = None,
+) -> float:
+    """How far above `sent.target` the room thermostat is asked for while the boiler runs for the room (see the top).
+
+    `state` is the room's call state, `sent` the room as handed to its thermostat (joined or not), `own` the room as
+    it is by itself, `option_k` the room's lead, `boiler_heats` whether the boiler may heat now and `left_to_unit`
+    whether the heat pump serves the room instead. A thermostat that reports its valve shut gets none (issue #3, the
+    rule of `join`): a higher setpoint would open it and have the room call by itself. Unless it has the lead already
+    (`leading`) and the call runs: then its own control shut for a moment, and taking the lead away and giving it back
+    sent a setpoint every minute (review 2026-11-13).
+
+    `held_k`: the boiler waits for its data (after a restart, an ebusd gap), its plan says nothing. The lead the
+    thermostat has is held while the room still calls or has no reading yet, not dropped and sent again.
+    """
+    if option_k <= 0.0 or left_to_unit or not own.heating_allowed:
+        return 0.0
+    if not boiler_heats:
+        if held_k is None or held_k <= 0.0:
+            return 0.0
+        calls = state in (CALL_CALLING, CALL_THERMOSTAT_IDLE) or own.temperature is None
+        return min(held_k, option_k) if calls else 0.0
+    if sent.target_reason == JOINED_SETBACK:
+        return 0.0  # up to its own target: a thermostat with a control of its own opens in part by itself (decided 16.11.)
+    if sent.target_reason in (JOINED_COMFORT, JOINED_PREHEAT):
+        # A stalled room or one at the end of its comfort heats along too (`join`), but it is as warm as the boiler gets
+        # it or about to cool down: JOIN_K, nothing more (review 2026-11-13).
+        if state != CALL_IDLE:
+            return 0.0
+        return max(0.0, round(own.target + option_k - sent.target, 2))
+    if state == CALL_CALLING or (state == CALL_THERMOSTAT_IDLE and leading):
+        return option_k
+    return 0.0

@@ -25,6 +25,9 @@ class SensorReading:
     valid: bool = False
     reason: str | None = None
     unit: str | None = None  # the unit it came in, where that is why it is no reading ("wrong_unit")
+    # how long ago its device was last heard, this sensor or another of it (a room temperature): an unchanged value
+    # of a device alive is a room standing still, not a silent sensor (19.11.2026)
+    heard_s: float | None = None
 
     @staticmethod
     def missing(entity_id: str | None = None, reason: str = "not_configured") -> SensorReading:
@@ -104,12 +107,29 @@ class RoomConfig:
     schedule_entity: str | None = None  # weekly schedule helper, replaces the text windows
     preheat_max_s: float | None = None  # longest preheat; set, the room also calls up to the end of its block
     cooling_schedule_entity: str | None = None  # weekly schedule helper of its cooling comfort (docs/PHASE12_COOLING.md)
+    lead_k: float = 0.5  # asked of its thermostat above the target while the boiler runs for it (heat_call.lead_k)
+    # Its radiator valves, driven directly (docs/PHASE13_VALVES.md): the first one is also `climate_entity`, so setpoint,
+    # hand, reappearance, silence and lead work as for a room thermostat; Thriftherm writes the others the same setpoint
+    # and gives each the room temperature or an offset as it can take it (engines/valve_plan.py).
+    valve_entities: tuple[str, ...] = ()
+    valve_opening: bool = False  # its valves on Thriftherm's own controller (way d, engines/valve_tpi.py)
+    valve_force: str | None = None  # a way forced for a test: "offset" or "setpoint" (ValveView.force); None: the best
+
+    @property
+    def direct(self) -> bool:
+        """Whether the room's valves are driven directly, without a room thermostat in between."""
+        return bool(self.valve_entities)
+
+
+# "Off" on a room climate holds until it is switched on again (decided 19.11.: it ended after the override time unseen):
+# an override with this end, 2100-01-01, shown with none. The frost limit still guards the room.
+ROOM_OFF_UNTIL_TS = 4102444800.0
 
 
 @dataclass(frozen=True)
 class Override:
     target: float
-    until_ts: float
+    until_ts: float  # ROOM_OFF_UNTIL_TS: switched off on the room climate, until switched on again
     set_at_ts: float
     by: str | None = None  # who asked for it (engines/hand.py), None for one stored before that was kept
 
@@ -162,6 +182,8 @@ class RoomState:
     thermostat_own_target: bool = False
     thermostat_change: SettingChange | None = None  # the last change of the thermostat's mode or target
     thermostat_silent_s: float | None = None  # how long the valve device behind it has not reported
+    # why a valve driven directly cannot be open now: "exercise" (being moved), "battery" (flat); None: it can
+    valve_unable: str | None = None
     thermostat_gone_s: float | None = None  # how long every entity of that valve has been unavailable, None if not
     # since when the room thermostat has not answered a setpoint sent to it (room control), None if it has
     thermostat_pending_since_ts: float | None = None
@@ -258,6 +280,9 @@ class Parameters:
     # room sensors report only on a change: their temperature holds up to `sensor_max_age_s`, not six hours
     room_sensors_on_change: bool = False
     window_grace_s: float = 90.0
+    call_on_k: float = 0.3  # a room calls for the boiler this far below its target (heat_call.CALL_ON_K)
+    call_off_k: float = 0.1  # and stops once less than this below it; negative: above it (heat_call.CALL_OFF_K)
+    window_valve_off: bool = True  # a valve driven directly is off while its window is open, else at the frost limit
     frost_temp: float = 7.0
     away_temp: float = 15.0
     demand_full_delta_k: float = 2.0
@@ -301,6 +326,8 @@ class Parameters:
     boiler_curve_flow_warm: float = 30.0  # flow temperature at +15 °C outdoor
     boiler_flow_min: float = 30.0
     boiler_flow_max: float = 60.0
+    # a condensing boiler: the flow sent above the curve at its own limit stops lower (engines/boiler_limit.py)
+    boiler_condensing: bool = True
     boiler_hot_water_standby: bool = True  # False: SetMode disables the keep-warm / cylinder load
     boiler_heat_up_rate_k_h: float = 0.0  # how fast a room is to heat up (engines/heat_up.py); 0: off
     boiler_spread_min_room_share: float = 0.5  # the spread judges the curve only while this share of the rooms calls
@@ -381,6 +408,7 @@ class RoomResult:
     # the room's own target its stall was accepted at: heating along raises `target`, the stall is still held against this
     stalled_target: float | None = None
     thermostat_heating: bool | None = None  # see RoomState
+    valve_unable: str | None = None  # see RoomState
     # where `temperature` comes from: the room sensor, or the valve standing in for it (None: no
     # value, or the average of several valves)
     temperature_entity: str | None = None
@@ -390,11 +418,16 @@ class RoomResult:
     # for how long `target` has stood as it is (None: not known): the trend looks back 90 minutes, and what it
     # saw before the target moved says nothing about the way to it (engines/boiler_load.counts)
     target_steady_s: float | None = None
-    # how long ago the room sensor reported (None: not known, or the valve stands in): one that reports on a change
-    # of a degree only reads flat for hours, which is silence and no trend (engines/boiler_load.counts)
+    # how long ago the room sensor's device was last heard (None: not known, or the valve stands in): one that reports
+    # on a change of a degree only reads flat for hours, which is silence and no trend (engines/boiler_load.counts);
+    # an unchanged value of a device alive is a room standing still (19.11.2026)
     temperature_age_s: float | None = None
     last_call: EndedCall | None = None  # the room's last call for the boiler that ended (engines/heat_call.py)
     calling_s: float | None = None  # for how long its call for the boiler has run; None: none runs
+    # heating up to a raised target it has not reached yet (engines/boiler_load.heating_up), and the pace a heat-up is
+    # planned with (engines/room._default_rate): the heating curve learns from holding, not from heating up (16.11.)
+    heating_up: bool = False
+    heat_rate_k_h: float | None = None
     # cooling (docs/PHASE12_COOLING.md): the room's cooling target, None while it is not to be cooled, and why
     cool_target: float | None = None
     cool_target_reason: str | None = None
@@ -501,6 +534,10 @@ class BoilerCommand:
     learning_phase: str = "paused"  # learning | refining | paused
     adjustments_last_day: int = 0
     moved_last_day_k: float = 0.0  # by how much those steps moved the curve, both directions added up
+    # sent above the curve as the boiler cycles at its own limit (engines/boiler_limit.py), and its mean flow
+    limit_comp_k: float = 0.0
+    flow_mean_c: float | None = None
+    limit_learned: dict[str, float] | None = None  # what it begins with, per room's line and outdoor band
     last_adjust_reason: str | None = None
     hot_water: bool = False  # hot water recognised within the last minutes
     hot_water_seen_ts: float | None = None
@@ -509,6 +546,9 @@ class BoilerCommand:
     burner_share: float = 0.0  # share of the last hour the burner ran for the heating (0..1)
     burner_starts_last_hour: int = 0
     starts_today: int = 0  # the heating burner's starts since local midnight
+    starts_source: str | None = None  # what they are counted from (boiler_learning.burner_source)
+    burner_heating: bool = False  # the burner runs for the heating now, by the same sign the starts are counted from
+    short_runs_may_be_missed: bool = True  # a burn under a minute may fall between two readings
     calling_rooms: int = 0  # rooms that really ask the boiler for heat (not the ones heating along)
     rooms_total: int = 0  # rooms whose radiator could take heat right now
     spread_rule: str | None = None  # active | blocked_few_rooms, None while the heating is not released
@@ -529,6 +569,7 @@ class RoomCommand:
     send: bool
     reason: str
     thermostat_target: float | None = None  # what the thermostat currently has
+    lead_k: float = 0.0  # how far `target` lies above the room's own target (heat_call.lead_k)
 
 
 @dataclass(frozen=True)

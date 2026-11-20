@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from custom_components.thriftherm.engines import boiler_learning as learning
+from custom_components.thriftherm.engines import boiler_load as load
 from custom_components.thriftherm.engines.boiler_control import decide
 from custom_components.thriftherm.engines.boiler_learning import MIN_SAMPLES, SETTLE_S
 from custom_components.thriftherm.engines.boiler_load import LoadLine
@@ -32,9 +33,10 @@ def corr(mem, outdoor=5.0):
 
 
 def inp(rooms=(), *, mode="shadow", op="auto", safety="ok", available=True, frost=(), advice="boiler", outdoor=5.0,
-        now=NOW, params=PARAMS, flow=None, ret=None, burner=False, learning=True):
+        now=NOW, params=PARAMS, flow=None, ret=None, burner=False, learning=True, along=()):
     return BoilerInputs(now, mode, op, safety, available, tuple(rooms), tuple(frost), advice, outdoor, params,
-                        flow_c=flow, return_c=ret, burner_heating=burner, learning_allowed=learning)
+                        flow_c=flow, return_c=ret, burner_heating=burner, learning_allowed=learning,
+                        heating_along=tuple(along))
 
 
 def feed(mem, rooms, *, flow, ret, start=NOW, samples=22, step=60.0, learning=True):
@@ -286,7 +288,9 @@ def test_refining_uses_smaller_steps():
 # --- hot water must not teach the heating curve ---------------------------------------------
 
 from custom_components.thriftherm.engines import boiler_control as _bc
-from custom_components.thriftherm.engines.boiler_control import BoilerInputs as _BI, BoilerMemory as _BM
+from custom_components.thriftherm.engines.boiler_control import BoilerInputs as _BI
+from custom_components.thriftherm.engines.boiler_control import BoilerMemory as _BM
+
 from .conftest import PARAMS as _PARAMS
 
 
@@ -521,9 +525,10 @@ def test_heating_bursts_with_overrun_keep_the_learning_running():
 
 # ------------------------------------------------------------------ short cycling
 def _burst(mem, rooms, start, burn_s=60.0, gap_s=900.0, learning=True):
-    """One burner run of burn_s followed by a pause, as a cycling boiler does it."""
-    cmd, mem = _bc.decide(inp(rooms, mode="active", now=start, burner=True, flow=33.0, ret=30.0, learning=learning), mem)
-    cmd, mem = _bc.decide(inp(rooms, mode="active", now=start + burn_s, burner=False, flow=25.0, ret=24.0, learning=learning), mem)
+    """One burner run of burn_s followed by a pause, as a cycling boiler does it; on average near the flow sent, not at
+    the boiler's own limit (test_boiler_limit.py)."""
+    cmd, mem = _bc.decide(inp(rooms, mode="active", now=start, burner=True, flow=42.0, ret=39.0, learning=learning), mem)
+    cmd, mem = _bc.decide(inp(rooms, mode="active", now=start + burn_s, burner=False, flow=38.0, ret=37.0, learning=learning), mem)
     return cmd, mem, start + burn_s + gap_s
 
 
@@ -658,14 +663,19 @@ def test_a_call_counts_only_if_the_boiler_was_released_and_cycling_and_the_room_
     assert (counted, steps, fast) == ((verdict, 1, 0) if verdict == "fast" else (verdict, 0, 2))
 
 
+def test_a_call_is_judged_by_the_burns_of_the_last_hour_as_before():
+    """The burns are kept three hours now, for the trials of a step up. A call is still judged by the last hour of them,
+    as when no more were kept: a long burn early in a long call does not take it from the count (review 2026-11-15)."""
+    early = ((NOW - 5000, NOW - 4600), (NOW - 600, NOW - 540))
+    assert _counted(minutes=100, burns=early) == ("fast", 1, 0)
+
+
 def test_brisk_is_six_tenths_of_a_kelvin_an_hour_and_three_calls_within_a_day():
     assert _counted()[:2] == ("fast", 1) and _counted(pace=0.6)[:2] == ("fast", 1)  # 0.2 K in 20 minutes
     assert _counted(pace=0.59, minutes=60) == ("slow", 0, 0)
     # Review 2026-11-13: two brisk calls in October and one in December are not three in a row
     old = {BATH: LoadLine(level_k=3.0, fast_calls=2, fast_call_ts=NOW - 86400 - 1300)}
     assert _counted(lines=old) == ("fast", 0, 1)
-    found = {BATH: LoadLine(level_k=3.0, fast_calls=2, fast_call_ts=START, found=True, calm_hours=5.0)}
-    assert _counted(lines=found) == ("fast", 1, 0)  # three brisk calls are evidence that lasts: no asking for hours
 
 
 def test_a_room_another_rooms_demand_outbids_does_not_lower_its_own_line():
@@ -742,10 +752,16 @@ def test_after_a_step_up_that_did_not_help_less_flow_is_tried():
     def bath(mem):
         return mem.lines[BATH]
 
+    def step(mem):  # a step up, on trial, the burner at 4.7 % of the hour as on 2026-10-22
+        return _bathroom_lagging(mem, NOW, 6.5, runs=_runs(NOW, OCT22_BEFORE_S))
+
+    def judged(mem):  # 91 minutes on: the burner ran longer (8 %), and the room rose no faster
+        return _bathroom_lagging(mem, NOW + 5460, 6.5, runs=_runs(NOW + 5460, OCT22_BEFORE_S, OCT22_AFTER_S, NOW))
+
     mem = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200, lines={BATH: LoadLine(level_k=6.0)})
-    _, mem = _bathroom_lagging(mem, NOW, 6.5)  # a step up, on trial
+    _, mem = step(mem)
     assert mem.adjustment_steps == (1.0,)
-    cmd, mem = _bathroom_lagging(mem, NOW + 5460, 6.5)  # it did not help: taken back, and half a kelvin less is tried
+    cmd, mem = judged(mem)  # it did not help: taken back, and half a kelvin less is tried
     assert mem.adjustment_steps == (1.0, -0.5) and mem.last_adjust_reason == "flow_less_trial"
     assert correction(mem, 6.5, BATH) == pytest.approx(5.5) and bath(mem).trial == (0.0, 6.0, 0.0)
     assert bath(mem).no_help_ts == NOW + 5460 and cmd.held_back == "flow_no_help"  # no step up for a day, as before
@@ -761,15 +777,14 @@ def test_after_a_step_up_that_did_not_help_less_flow_is_tried():
     # a line lowered in vain within the day is not lowered again on trial
     blocked = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200,
                            lines={BATH: LoadLine(level_k=6.0, no_less_ts=NOW - 3600)})
-    _, again = _bathroom_lagging(_bathroom_lagging(blocked, NOW, 6.5)[1], NOW + 5460, 6.5)
+    _, again = judged(step(blocked)[1])
     assert again.adjustment_steps == (1.0,) and correction(again, 6.5, BATH) == pytest.approx(6.0)
     # the next try comes with the next step up that does not help, a day on at the earliest
     _, next_day = _bathroom_lagging(kept, NOW + 5460 + 86400 + 60, 6.5)
     assert next_day.adjustment_steps == (1.0, -0.5, 0.5) and bath(next_day).trial[0] == 0.0
     # never below the common correction: a line that stands there is not what holds the room back
     at_common = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200, offset_k=2.0)
-    _, mem = _bathroom_lagging(at_common, NOW, 6.5)
-    _, mem = _bathroom_lagging(mem, NOW + 5460, 6.5)
+    _, mem = judged(step(at_common)[1])
     assert mem.adjustment_steps == (1.0,) and correction(mem, 6.5, BATH) == pytest.approx(2.0)
 
 
@@ -1093,17 +1108,36 @@ def test_a_step_the_limit_swallows_is_not_spent():
     assert (after.offset_k, after.slope_k, after.adjustments) == (10.0, 0.0, ())
 
 
-def _cycling(mem, now, outdoor, rooms):
+def _cycling(mem, now, outdoor, rooms, runs=None, along=()):
     """One cycle of the control while the boiler cycles (three short burner runs in the hour) for these rooms."""
-    runs = tuple((now - 3000 + i * 900, now - 2950 + i * 900) for i in range(3))
-    return decide(inp(rooms, mode="active", outdoor=outdoor, now=now), replace(mem, burns=runs))
+    runs = tuple((now - 3000 + i * 900, now - 2950 + i * 900) for i in range(3)) if runs is None else runs
+    return decide(inp(rooms, mode="active", outdoor=outdoor, now=now, along=along), replace(mem, burns=runs))
 
 
-def _bathroom_lagging(mem, now, outdoor, trend=0.0, temp=20.5):
+def _bathroom_lagging(mem, now, outdoor, trend=0.0, temp=20.5, runs=None, along=()):
     """One cycle of the control while the boiler cycles and the bathroom alone calls and does not get there."""
     bath = replace(rr(key="badezimmer", temp=temp, target=21.0, demand=0.0, trend=trend), boiler_call="calling")
     idle = [replace(rr(key=key, temp=21.0, target=21.0, demand=0.0), boiler_call="idle") for key in ("kuche", "wohnzimmer")]
-    return _cycling(mem, now, outdoor, [bath, *idle])
+    return _cycling(mem, now, outdoor, [bath, *idle], runs, along)
+
+
+def _runs(now, before_s, after_s=None, step_ts=None, cycle_s=900.0):
+    """The burner's runs of the last three hours, one every `cycle_s`: `before_s` long each, `after_s` from `step_ts` on."""
+    out, start = [], now - 3 * 3600.0 + 30.0
+    while start < now:
+        length = before_s if step_ts is None or start < step_ts else after_s
+        if start + length < now:
+            out.append((start, start + length))
+        start += cycle_s
+    return tuple(out)
+
+
+# Burner seconds every 15 minutes, from a gas meter: 2026-10-22 with the flow set to 40-41 °C (3.6-5.8 % of the
+# hour) and to 45-48 °C (6.7-9.4 %); 2026-11-14 an hour before the step of 00:42 (11.1 %) and in its trial (7.8 %);
+# 2026-11-15 an hour before the step of 09:36 (21.7 %) and in its trial (23.2 %).
+OCT22_BEFORE_S, OCT22_AFTER_S = 42.0, 72.0
+NOV14_BEFORE_S, NOV14_AFTER_S = 100.0, 70.0
+NOV15_BEFORE_S, NOV15_AFTER_S = 195.0, 209.0
 
 
 def test_a_step_up_that_did_not_help_a_cycling_boilers_room_is_taken_back():
@@ -1116,15 +1150,16 @@ def test_a_step_up_that_did_not_help_a_cycling_boilers_room_is_taken_back():
         return mem.lines["single:badezimmer"]
 
     mem = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200)
-    cmd, mem = _bathroom_lagging(mem, NOW, 6.5)
+    cmd, mem = _bathroom_lagging(mem, NOW, 6.5, runs=_runs(NOW, OCT22_BEFORE_S))
     assert mem.adjustment_steps == (1.0,) and bath(mem).trial == (0.0, 0.0, 0.0)  # its rise then, and the line before
     assert bath(BoilerMemory.from_storage(mem.to_storage())).trial == (0.0, 0.0, 0.0)
     raised = (bath(mem).level_k, bath(mem).slope_k)
 
     cmd, after = _bathroom_lagging(mem, NOW + 3000, 6.5)  # too early to tell: the trend still holds the time before
     assert (bath(after).level_k, bath(after).slope_k) == raised and bath(after).trial and cmd.held_back is None
+    more_heat = _runs(NOW + 5460, OCT22_BEFORE_S, OCT22_AFTER_S, NOW)  # the burner ran longer, as on 2026-10-22
     for flicker in (0.0, 0.05):  # 91 minutes on the room rises no faster than before; a sensor's flicker is no answer
-        cmd, back = _bathroom_lagging(mem, NOW + 5460, 6.5, trend=flicker)
+        cmd, back = _bathroom_lagging(mem, NOW + 5460, 6.5, trend=flicker, runs=more_heat)
         assert (bath(back).level_k, bath(back).slope_k, bath(back).trial) == (0.0, 0.0, None)  # the step is taken back
         assert back.adjustments == mem.adjustments and cmd.offset_k == 0.0
         assert cmd.held_back == "flow_no_help" and cmd.last_adjust_reason == "flow_no_help"
@@ -1149,6 +1184,128 @@ def test_a_step_up_that_did_not_help_a_cycling_boilers_room_is_taken_back():
     # a step down is no step to measure anything against
     down = learning.apply(inp([], mode="active", outdoor=6.5, now=NOW + 3660), mem, -1, "spread_small", "single:badezimmer")
     assert down.adjustment_steps == (1.0, -0.5) and bath(down).trial is None
+
+
+def _bath(mem):
+    return mem.lines["single:badezimmer"]
+
+
+@pytest.mark.parametrize(("before_s", "after_s"), [(NOV14_BEFORE_S, NOV14_AFTER_S), (NOV15_BEFORE_S, NOV15_AFTER_S)])
+def test_a_step_up_that_brought_no_more_heat_says_nothing_and_stays(before_s, after_s):
+    """Seen 2026-11-14 and 15: the bathroom alone, the boiler at its lockout (S.8) a third of the time and more; a step of
+    half a kelvin up made each burn a few seconds longer, and 90 minutes on the burner had run no longer than before.
+    Judged by the room alone the step was taken back as no help, and the bathroom stayed 0.2 to 0.3 K below target
+    for days. A step that brought no more heat says nothing about whether heat helps: it stays, is not doubled, and
+    the next step is a trial again, measured against the same start."""
+    start = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200)
+    cmd, mem = _bathroom_lagging(start, NOW, 6.5, runs=_runs(NOW, before_s))
+    assert mem.adjustment_steps == (1.0,) and _bath(mem).trial_share == pytest.approx(4 * before_s / 3600, abs=0.01)
+    raised = (_bath(mem).level_k, _bath(mem).slope_k)
+
+    later = NOW + 5460
+    cmd, kept = _bathroom_lagging(mem, later, 6.5, runs=_runs(later, before_s, after_s, NOW))
+    assert _bath(kept).no_help_ts is None and cmd.held_back is None and cmd.last_adjust_reason != "flow_no_help"
+    assert kept.adjustment_steps == (1.0, 1.0)  # the step stays, and the next one is no larger
+    assert _bath(kept).level_k > raised[0] and _bath(kept).trial == (0.0, 0.0, 0.0)  # measured against the start
+    assert _bath(kept).trial_share == _bath(mem).trial_share
+    stored = _bath(BoilerMemory.from_storage(kept.to_storage()))
+    assert (stored.trial, stored.trial_share, stored.trial_open) == (_bath(kept).trial, _bath(kept).trial_share, False)
+
+
+def test_more_flow_that_never_brings_more_heat_is_taken_back_whole_and_held_back_a_day():
+    """The line of 2026-10-22 must not come back by steps that each said nothing: two kelvin more flow that left the
+    burner running no longer is no help either. The run goes back to where it started, and the room gets no step up
+    for a day (flow_no_help), as after a step that brought heat and no rise."""
+    start = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200)
+    _, mem = _bathroom_lagging(start, NOW, 6.5, runs=_runs(NOW, NOV15_BEFORE_S))
+    t1 = NOW + 5460
+    _, mem = _bathroom_lagging(mem, t1, 6.5, runs=_runs(t1, NOV15_BEFORE_S, NOV15_AFTER_S, NOW))
+    assert mem.adjustment_steps == (1.0, 1.0)
+    t2 = t1 + 5460
+    cmd, back = _bathroom_lagging(mem, t2, 6.5, runs=_runs(t2, NOV15_BEFORE_S, NOV15_AFTER_S, NOW))
+    assert (_bath(back).level_k, _bath(back).slope_k, _bath(back).trial) == (0.0, 0.0, None)  # the whole run
+    assert back.adjustment_steps == (1.0, 1.0) and _bath(back).no_help_ts == t2
+    assert cmd.held_back == "flow_no_help" and cmd.last_adjust_reason == "flow_no_help"
+    # the day's hold: no step up for the room for 24 hours, then one more try
+    cmd, held = _bathroom_lagging(back, t2 + 86400 - 60, 6.5, runs=_runs(t2 + 86400 - 60, NOV15_BEFORE_S))
+    assert held.adjustments == back.adjustments and _bath(held).level_k == 0.0 and cmd.held_back == "flow_no_help"
+    cmd, again = _bathroom_lagging(back, t2 + 86400 + 60, 6.5, runs=_runs(t2 + 86400 + 60, NOV15_BEFORE_S))
+    assert len(again.adjustments) == 3 and _bath(again).trial is not None and cmd.held_back is None
+
+
+def test_a_run_of_steps_that_brings_heat_but_no_rise_goes_back_to_its_start():
+    """After a step that said nothing the next one brings heat (2026-10-22: 4.7 % of the hour to 8 %) and the room
+    still does not rise: both go back, to the line before the first, and the day's hold follows."""
+    start = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200)
+    _, mem = _bathroom_lagging(start, NOW, 6.5, runs=_runs(NOW, OCT22_BEFORE_S))
+    t1 = NOW + 5460
+    _, mem = _bathroom_lagging(mem, t1, 6.5, runs=_runs(t1, OCT22_BEFORE_S, OCT22_BEFORE_S, NOW))  # nothing more yet
+    assert mem.adjustment_steps == (1.0, 1.0) and _bath(mem).no_help_ts is None
+    t2 = t1 + 5460
+    cmd, back = _bathroom_lagging(mem, t2, 6.5, runs=_runs(t2, OCT22_BEFORE_S, OCT22_AFTER_S, t1))
+    assert (_bath(back).level_k, _bath(back).slope_k, _bath(back).trial) == (0.0, 0.0, None)
+    assert _bath(back).no_help_ts == t2 and cmd.held_back == "flow_no_help"
+
+
+def test_a_run_of_steps_that_helped_stays():
+    """The other way: after a step that said nothing the room rises: what the run raised stays, and the trial ends."""
+    start = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200)
+    _, mem = _bathroom_lagging(start, NOW, 6.5, runs=_runs(NOW, NOV15_BEFORE_S))
+    t1 = NOW + 5460
+    _, mem = _bathroom_lagging(mem, t1, 6.5, runs=_runs(t1, NOV15_BEFORE_S, NOV15_AFTER_S, NOW))
+    raised = (_bath(mem).level_k, _bath(mem).slope_k)
+    t2 = t1 + 5460
+    cmd, kept = _bathroom_lagging(mem, t2, 6.5, trend=0.15, runs=_runs(t2, NOV15_BEFORE_S, NOV15_AFTER_S, NOW))
+    assert (_bath(kept).level_k, _bath(kept).slope_k) >= raised and _bath(kept).no_help_ts is None
+    assert cmd.held_back is None and cmd.last_adjust_reason != "flow_no_help"
+
+
+def test_an_open_trial_that_runs_out_unjudged_goes_back_to_its_start():
+    """Review 2026-11-15: the next step of an open trial may never come (another room lags further and gets it, the flow
+    stands at its maximum). Run out after three hours, the steps that said nothing would stay, and a new trial would
+    start from above them. With the room still lagging they go back to the start, without the day's hold: nothing was
+    shown. A room that got there keeps them."""
+    raised = LoadLine(level_k=0.85, slope_k=0.44, last_step_k=1.0, last_step_ts=NOW - 3 * 3600 - 60,
+                      trial=(0.0, 0.0, 0.0), trial_share=0.2, trial_open=True, trial_run_k=1.0)
+    mem = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200,
+                       lines={"single:badezimmer": raised}, adjustments=(NOW - 600,), adjustment_steps=(1.0,))
+    cmd, back = _bathroom_lagging(mem, NOW, 6.5, runs=_runs(NOW, NOV15_BEFORE_S))
+    assert (_bath(back).level_k, _bath(back).slope_k, _bath(back).trial) == (0.0, 0.0, None)
+    assert _bath(back).no_help_ts is None and cmd.held_back is None
+    _, there = _bathroom_lagging(mem, NOW, 6.5, temp=20.9, runs=_runs(NOW, NOV15_BEFORE_S))
+    assert (_bath(there).level_k, _bath(there).slope_k, _bath(there).trial) == (0.85, 0.44, None)
+
+
+def test_the_lift_to_the_flow_sent_is_no_part_of_a_trials_two_kelvin():
+    """Review 2026-11-15: a room below the line that set the flow is lifted to the flow sent before its step (`apply`).
+    That lift is what the room already got; counted into the 2 K of a trial, the first step without more heat was taken
+    back at once for every room but the one setting the flow."""
+    def room(key, temp):
+        return replace(rr(key=key, temp=temp, target=21.0, demand=0.0, trend=0.0), boiler_call="calling")
+
+    idle = replace(rr(key="wohnzimmer", temp=21.0, target=21.0), boiler_call="idle")
+    rooms = [room("badezimmer", 20.5), room("kuche", 20.95), idle]
+    start = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200,
+                         lines={"majority:kuche": LoadLine(level_k=3.0)})
+    _, mem = _cycling(start, NOW, 6.5, rooms, _runs(NOW, NOV15_BEFORE_S))
+    bath = mem.lines["majority:badezimmer"]
+    assert bath.trial == (0.0, 0.0, 0.0) and bath.trial_run_k == 1.0  # lifted by 3 K, stepped by 1 K
+    later = NOW + 5460
+    cmd, kept = _cycling(mem, later, 6.5, rooms, _runs(later, NOV15_BEFORE_S, NOV15_AFTER_S, NOW))
+    assert kept.lines["majority:badezimmer"].no_help_ts is None and cmd.held_back is None
+    assert kept.lines["majority:badezimmer"].level_k >= bath.level_k
+
+
+def test_a_trial_stored_before_the_heat_was_measured_is_judged_as_before():
+    """A line stored by an older version has no burner share for its trial: judged by the room alone, as then, so no
+    one-off correction of what was learned is needed."""
+    line = LoadLine(level_k=0.6, slope_k=0.75, last_step_k=1.0, last_step_ts=NOW, trial=(0.0, 0.0, 0.0))
+    stored = LoadLine.from_storage({k: v for k, v in line.to_storage().items() if k not in ("trial_share", "trial_open")})
+    assert stored.trial_share is None and stored.trial_open is False
+    mem = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200, lines={"single:badezimmer": stored})
+    later = NOW + 5460
+    cmd, back = _bathroom_lagging(mem, later, 6.5, runs=_runs(later, NOV15_BEFORE_S))
+    assert (_bath(back).level_k, _bath(back).slope_k) == (0.0, 0.0) and cmd.held_back == "flow_no_help"
 
 
 def test_a_room_more_flow_did_not_help_does_not_hold_back_the_rooms_it_may_help():
@@ -1359,7 +1516,7 @@ def test_a_target_set_by_hand_or_by_a_quick_heat_up_is_no_evidence_that_the_curv
 
 
 def test_after_a_pause_the_learning_waits_a_whole_window_and_judges_only_what_came_since():
-    """Seen 2026-10-13: back from "plan only", the curve went up by 4 K in the same cycle, on the knob's burner runs."""
+    """Seen 2026-10-13: back from "observe only", the curve went up by 4 K in the same cycle, on the knob's burner runs."""
     behind = replace(rr(temp=20.5, target=21.0, trend=0.0), boiler_call="calling")
     knob_runs = tuple((NOW - 3000 + i * 600, NOW - 2950 + i * 600) for i in range(4))  # short runs during the pause
     mem = BoilerMemory(state="heat", state_since_ts=NOW - 7200, burns=knob_runs, last_review_ts=NOW - 3600)
@@ -1626,3 +1783,132 @@ def test_a_restart_inside_the_first_window_gives_no_second_step_at_once():
     assert cmd.plan == "hands_off"
     cmd, _ = decide(inp([rr(demand=1.0)], mode="active", outdoor=-10.0, now=NOW + 90), mem)
     assert cmd.flow_setpoint == 35.0 and cmd.waiting == "ramp_limit"
+
+
+def test_the_starts_say_what_they_are_counted_from():
+    """Decided 15.11.: not everyone has a gas meter. The best sign counts; where it is coarse, the sensor says so."""
+    cmd, _ = decide(replace(inp((rr(),)), gas_power_w=0.0), heating_memory())
+    assert (cmd.starts_source, cmd.short_runs_may_be_missed) == ("gas_meter", False)
+    cmd, _ = decide(replace(inp((rr(),)), status_known=True), heating_memory())
+    assert (cmd.starts_source, cmd.short_runs_may_be_missed) == ("status_code", True)
+    cmd, _ = decide(inp((rr(),)), heating_memory())
+    assert (cmd.starts_source, cmd.short_runs_may_be_missed) == ("burner_sign", True)
+
+
+def test_a_trial_judged_while_other_rooms_began_to_heat_along_says_nothing():
+    """Heating along (16.11.) runs the burner longer for other radiators: a step judged by the burner after a room
+    began to heat along, or opened further, would be taken back for heat the bathroom never got. Then the trial is
+    left unjudged: the step stays, the next one is no larger, and no hold follows."""
+    start = BoilerMemory(state="heat", state_since_ts=NOW - 7200, learning_since_ts=NOW - 7200)
+    _, mem = _bathroom_lagging(start, NOW, 6.5, runs=_runs(NOW, OCT22_BEFORE_S))
+    assert _bath(mem).trial is not None and _bath(mem).trial_along == ()
+    t1 = NOW + 5460
+    runs = _runs(t1, OCT22_BEFORE_S, OCT22_AFTER_S, NOW)  # more burner time ...
+    cmd, mem = _bathroom_lagging(mem, t1, 6.5, runs=runs, along=(("kuche", 30.0),))  # ... with the kitchen heating along
+    line = _bath(mem)
+    assert line.no_help_ts is None and line.level_k > 0.0 and cmd.held_back != "flow_no_help"
+    assert line.trial_open or len(mem.adjustments) == 2  # unjudged: it goes on, at most one more step of the same size
+    if len(mem.adjustments) == 2:
+        assert mem.adjustment_steps[-1] == mem.adjustment_steps[0]
+    # an opening stage that changed is a change as well
+    _, mem2 = _bathroom_lagging(start, NOW, 6.5, runs=_runs(NOW, OCT22_BEFORE_S), along=(("kuche", 30.0),))
+    _, mem2 = _bathroom_lagging(mem2, t1, 6.5, runs=runs, along=(("kuche", 60.0),))
+    assert _bath(mem2).no_help_ts is None
+    # unchanged, the trial is judged as before: more heat and no rise goes back with the day's hold
+    _, mem3 = _bathroom_lagging(start, NOW, 6.5, runs=_runs(NOW, OCT22_BEFORE_S), along=(("kuche", 30.0),))
+    _, mem3 = _bathroom_lagging(mem3, t1, 6.5, runs=runs, along=(("kuche", 30.0),))
+    assert _bath(mem3).no_help_ts == t1
+
+
+def test_the_rooms_heating_along_at_a_trial_are_stored_with_it():
+    line = LoadLine(level_k=1.0, trial=(0.0, 0.0, 0.0), trial_share=0.05, trial_along=(("kuche", 30.0),))
+    back = BoilerMemory.from_storage(BoilerMemory(lines={"single:badezimmer": line}).to_storage())
+    assert back.lines["single:badezimmer"].trial_along == (("kuche", 30.0),)
+
+
+# ------------------------------------------------------------------ heating up is no holding (16.11.)
+def _study(temp=19.4, target=20.0, trend=0.15, **kw):
+    """The study at noon on 16.11.: preheating for 17:30, its call running for 90 minutes and more."""
+    base = replace(rr(key="arbeitszimmer", temp=temp, target=target, demand=0.3, trend=trend), boiler_call="calling",
+                   calling_s=7200.0, target_steady_s=7200.0)
+    if "trend" in kw:
+        kw["trend_k_per_h"] = kw.pop("trend")
+    return replace(base, **kw)
+
+
+def test_a_room_heating_up_on_its_plan_does_not_lag_one_behind_it_does():
+    """The curve is for holding a temperature (16.11.: the study, preheating at its planned 0.1-0.2 K/h, counted as
+    not getting there and its line went from 0 to +4.6 K). Preheating, after a raised target or in a quick heat-up, a
+    room lags only once it rises slower than the pace its heat-up is planned with."""
+    on_plan = _study(preheat_for_ts=NOW + 5 * 3600, preheat_pace_k_per_h=0.15, heat_rate_k_h=0.117)
+    assert load.heats_up(on_plan) and load.lagging_rooms((on_plan,)) == []
+    behind = replace(on_plan, heat_rate_k_h=0.57)  # planned with the mixed rate: it is behind
+    assert load.lagging_rooms((behind,)) == [behind]
+    # the end of a setback without a preheat, a target raised: the same, by its trend
+    raised = _study(heating_up=True, trend=0.3, heat_rate_k_h=0.3)
+    assert load.lagging_rooms((raised,)) == []
+    assert load.lagging_rooms((replace(raised, trend_k_per_h=0.1),)) == [replace(raised, trend_k_per_h=0.1)]
+    # holding: as before
+    holding = _study(trend=0.0)
+    assert not load.heats_up(holding) and load.lagging_rooms((holding,)) == [holding]
+
+
+def test_a_raised_target_is_heated_up_to_until_the_room_gets_there():
+    room = rr(key="arbeitszimmer", temp=19.0, target=20.0)
+    assert load.heating_up(False, 19.0, room, reached_k=0.1)  # from 19 to 20: a heat-up begins
+    assert not load.heating_up(False, 19.8, replace(room, temperature=19.9), reached_k=0.1)  # 0.1 below a raise: holding
+    assert load.heating_up(True, 20.0, replace(room, temperature=19.6), reached_k=0.1)  # it goes on
+    assert not load.heating_up(True, 20.0, replace(room, temperature=19.9), reached_k=0.1)  # there
+    assert not load.heating_up(True, 20.0, replace(room, temperature=18.0, target=19.0), reached_k=0.1)  # the target went down
+
+
+def test_a_trial_taken_while_the_room_heated_up_is_never_judged_helped_and_goes_back_after():
+    """16.11. 11:50: a step for the study in its preheat, lifted from 0 to +4.6 K. Stored before this rule, it is found
+    heating up at its review: unjudged, it waits; once the heat-up is over or the trial runs out, the line goes back to
+    where it started, without a day's hold."""
+    line = LoadLine(level_k=4.42, slope_k=1.13, hours=13.0, last_step_k=0.5, last_step_ts=NOW - 5460,
+                    trial=(0.103, 0.0, 0.0), trial_share=0.12, trial_run_k=0.5)
+    start = replace(heating_memory(NOW - 7200), learning_since_ts=NOW - 7200, lines={"few:arbeitszimmer": line},
+                    class_in_use="few", cell_rooms=("arbeitszimmer", "badezimmer"))
+    bath = replace(rr(key="badezimmer", temp=19.0, target=20.0, demand=0.4, trend=0.0), boiler_call="calling",
+                   calling_s=7200.0, target_steady_s=7200.0)
+    up = _study(trend=0.4, preheat_for_ts=NOW + 4 * 3600, preheat_pace_k_per_h=0.4, heat_rate_k_h=0.57)
+    mem = learning.review_trials(inp([up, bath], mode="active", now=NOW), start, "few:badezimmer")
+    kept = mem.lines["few:arbeitszimmer"]
+    assert (kept.level_k, kept.slope_k, kept.no_help_ts) == (4.42, 1.13, None)  # not "helped" by a heat-up
+    assert kept.trial_heat_up and kept.trial_open
+    there = _study(temp=20.0, trend=0.4)  # comfort reached, the preheat over
+    mem = learning.review_trials(inp([there, bath], mode="active", now=NOW + 1800), mem, "few:badezimmer")
+    back = mem.lines["few:arbeitszimmer"]
+    assert (back.level_k, back.slope_k, back.no_help_ts, back.trial) == (0.0, 0.0, None, None)
+
+
+def test_the_heat_up_mark_of_a_trial_is_stored():
+    line = LoadLine(level_k=1.0, trial=(0.1, 0.0, 0.0), trial_heat_up=True)
+    back = BoilerMemory.from_storage(BoilerMemory(lines={"few:arbeitszimmer": line}).to_storage())
+    assert back.lines["few:arbeitszimmer"].trial_heat_up
+
+
+def test_a_trial_heating_up_goes_no_further_than_a_trial_holding():
+    """Review 2026-11-18: in the heat-up branch the trial was set open and passed over, RUN_MAX_K never checked: a
+    bathroom 0.3 below its raised target at a cycling boiler had its line go up by 1 K every 91 minutes, +10 K in 13.7
+    hours, and "more flow did not help" never showed. At RUN_MAX_K it goes back to its start and is held for a day."""
+    line = LoadLine(level_k=2.0, slope_k=0.5, hours=13.0, last_step_k=1.0, last_step_ts=NOW - 5460,
+                    trial=(0.0, 0.0, 0.0), trial_share=0.12, trial_run_k=2.0, trial_heat_up=True, trial_open=True)
+    start = replace(heating_memory(NOW - 7200), learning_since_ts=NOW - 7200, lines={"single:badezimmer": line},
+                    class_in_use="single", cell_rooms=("badezimmer",))
+    bath = _study(temp=20.7, target=21.0, trend=0.0, heating_up=True, heat_rate_k_h=0.2)
+    bath = replace(bath, key="badezimmer")
+    mem = learning.review_trials(inp([bath], mode="active", now=NOW), start, "single:badezimmer")
+    back = mem.lines["single:badezimmer"]
+    assert (back.level_k, back.slope_k, back.trial) == (0.0, 0.0, None)
+    assert back.no_help_ts == NOW and mem.last_adjust_reason == "flow_no_help"
+
+
+def test_a_raised_target_the_room_stands_still_below_is_held_not_heated_up_to():
+    """Review 2026-11-18: the heat-up mark ended only 0.1 K below the target, so a bathroom standing 0.2-0.3 below all day
+    counted as heating up. An hour on its target with no rise (below heat_call.STALL_RATE_K_H) is holding."""
+    room = rr(key="badezimmer", temp=20.7, target=21.0, trend=0.05)
+    assert load.heating_up(True, 21.0, room, reached_k=0.1, steady_s=1800.0)  # not long enough to tell
+    assert not load.heating_up(True, 21.0, room, reached_k=0.1, steady_s=3700.0)  # an hour without a rise
+    assert load.heating_up(True, 21.0, replace(room, trend_k_per_h=0.3), reached_k=0.1, steady_s=3700.0)  # rising

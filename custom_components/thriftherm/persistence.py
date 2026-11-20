@@ -24,6 +24,7 @@ from .engines.common import as_dict, as_float
 from .engines.heat_call import CallMemory
 from .engines.heat_pump_control import ControlMemory
 from .engines.room_control import RoomCtrlMemory
+from .engines.valve_plan import ValveMemory
 from .engines.learning import AcCoolRateStats, CoolRateStats, CopMap, HeatRateStats
 from .engines.season import FreeRunDays, OutdoorHours
 from .const import SEASON_AUTO, SEASON_COOLING, SEASON_HEATING, SOURCE_BOILER, SOURCE_HEAT_PUMP, STORAGE_VERSION
@@ -137,12 +138,17 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
     coord.boosts = {
         k: v for k, raw in as_dict(data.get("boosts")).items() if (v := as_float(raw)) is not None and v > now and k in rooms
     }
+    coord.builder.restore_valve_memory(data.get("valve_memory"), now)
     stored_rooms = data.get("room_ctrl_memory")
     if isinstance(stored_rooms, dict):
         coord.room_ctrl_memory = {room: RoomCtrlMemory.from_storage(mem) for room, mem in stored_rooms.items() if room in rooms}
+    _restore_valves(coord, data)
     stored_calls = data.get("call_memory")
     if isinstance(stored_calls, dict):
         coord.call_memory = {room: CallMemory.from_storage(mem) for room, mem in stored_calls.items() if room in rooms}
+    stored_up = data.get("heating_up")
+    if isinstance(stored_up, list):
+        coord._heating_up = {room for room in stored_up if isinstance(room, str) and room in rooms}
     # What a decision leans on from one cycle to the next. Without it a restart flipped the advice
     # (the hysteresis around the break-even started from nothing, so a heat pump just above it
     # read as dearer and was stopped) and dropped a pre-heating that had begun.
@@ -169,6 +175,14 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
     coord._stored_heat_pump_watch = as_dict(data.get("heat_pump_watch"))  # taken up when the listeners start
     last_reset = data.get("last_learning_reset")
     coord.last_learning_reset = last_reset if isinstance(last_reset, dict) else None
+
+
+def _restore_valves(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
+    """What each valve driven directly was given, for the valves still configured (docs/PHASE13_VALVES.md)."""
+    valves = {v for r in coord.builder.rooms for v in r.valve_entities}
+    coord.valve_ctrl_memory = {
+        valve: ValveMemory.from_storage(mem) for valve, mem in as_dict(data.get("valve_ctrl_memory")).items() if valve in valves
+    }
 
 
 def _drying(raw: Any) -> DryingState | None:
@@ -242,7 +256,11 @@ def to_store(coord: ThrifthermCoordinator) -> dict[str, Any]:
         "room_control_mode": coord.room_control_mode,
         "room_temps": coord.room_temps,
         "room_ctrl_memory": {room: mem.to_storage() for room, mem in coord.room_ctrl_memory.items()},
+        # when each valve last spoke and what it showed: a restart of Home Assistant repeats its values (inputs.py)
+        "valve_memory": coord.builder.valve_memory(),
+        "valve_ctrl_memory": {valve: mem.to_storage() for valve, mem in coord.valve_ctrl_memory.items()},
         "call_memory": {room: mem.to_storage() for room, mem in coord.call_memory.items()},
+        "heating_up": sorted(coord._heating_up),  # heating up to a raised target: no holding (boiler_load.heating_up)
         "last_cheaper": coord._last_cheaper,
         "heat_pump_watch": coord.heat_pump_watch(),
         "drying_states": {room: asdict(state) for room, state in coord.drying_states.items() if state != DryingState()},

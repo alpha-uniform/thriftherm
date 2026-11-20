@@ -4,6 +4,49 @@
 
 Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
 
+## 0.8.0 – 2026-11-20
+
+**Coming from 0.7.5:**
+
+- Every room gets a new thermostat `climate.thriftherm_<room>_room_climate`. Rooms with Better Thermostat then show twice in Apple Home: leave one of the two out of the HomeKit Bridge, best Better Thermostat's.
+- Going back to 0.7.5 loses the new options (tolerance below/above the target, the window with valves driven directly, the lead at the thermostat, valves driven directly); rooms driven directly then need Better Thermostat again.
+
+- Fixed: a room preheating as planned or heating up to a raised target counted as lagging for the heating curve (study +4.6 K); now only once it rises slower than planned, and such steps go back after the heat-up, at most 2 degrees above their start; a room standing still for an hour holds.
+- Fixed: a trial of the heating curve was taken back when the burner ran longer because other rooms heated along; then it now says nothing.
+- Fixed: a room with only one learned heat-up preheated for hours (bedroom 5.6 h) or too late (bathroom); until three are learned the median with the default counts, a single heat-up moves nothing.
+- Fixed: with the boiler a room preheats 4 hours at most by default, as with the heat pump (a slow rate would have had the bathroom preheat for 10 hours); a *Longest preheat* set still counts, and before a return from *Away* it preheats as long as it takes.
+- Fixed: the bathroom began its preheat too late: a shower counted as a quick heat-up (1.99 K/h), and slow heat-ups well below the target were never learned; both count right now, with sensors in 0.5 or 1 degree steps too, slow ones only where the radiator can heat, and nothing is planned below 0.2 degrees an hour.
+- New: every room has a room climate of its own for Apple Home and Siri, rooms with Better Thermostat too; *off* stays off until you switch it on again; leave one of the two out of the HomeKit Bridge, best Better Thermostat.
+- New: heating along in the setback too, up to the setback target, never past it; a valve driven directly with an opening limit (Sonoff TRVZB/TRVZBT) opens only in part then and gets your value back afterwards, also where a radio command is lost.
+- New: lead at the thermostat. While the boiler runs for a room, its thermostat gets 0.5 degrees more so that it does not throttle early (per room, 0 = off).
+- Fixed: a thermostat that came back with another setpoint after a restart or a change of batteries (or Better Thermostat switched on again) counted as turned by hand; it now gets Thriftherm's setpoint again.
+- Fixed: after a restart of MQTT or Home Assistant a silent valve was noticed only hours later.
+- New (preview): drive radiator valves directly, without Better Thermostat. The valve gets the target and the room temperature, an offset or a corrected setpoint; the child lock and mode at the valve stay untouched. With the window open the valves are off (or at the frost limit, if you like), and every 7 days they are moved.
+- New: *tolerance below the target* and *tolerance above the target* (expert) set when a room calls for the boiler (default as before, 0.3 below to 0.1 below); the learning goes by the band set.
+- Fixed: a valve driven directly could shut before its room stopped calling; it now stays open until the end. With district heating or without a boiler it gets the target.
+- While a valve is exercised or its battery is nearly flat, the heating curve learns nothing from its room.
+- Fixed: with a cycling boiler a step up was taken back as no help even when the burner ran no longer after it; a room heating alone stayed just below its target for days.
+- Fixed: a valve on a corrected setpoint could shut while the room was still below its target; there the correction is now rounded up to the valve's next step.
+- The mode *Plan only* is now called *Observe only*; in automations the value stays `shadow`.
+- The heating curve no longer has "found" values that only yielded to lasting evidence; the rule never acted in weeks. The learning state no longer shows it.
+- *Boiler heating starts today* says what it counts from and whether short burner runs may be missed (without a gas meter).
+- Fixed: without a gas meter, burner runs under a minute were not counted; now every one the status number shows counts, for cycling and learning too.
+- *Boiler heating active* shows the burner by the same sign as the heating starts.
+- Fixed: a valve driven directly fell back on its own sensor although the room sensor still held (a sensor whose value stood longer than 30 minutes, a ZHA sensor unchanged for over 6 hours, sensors that report only on a change).
+- Fixed: a valve without an "off" went on heating with the window open; it now gets the frost limit.
+- Fixed: a value a valve did not take went out again every minute; now further and further apart.
+- Fixed: the valve exercise never ran on a Sonoff TRVZB.
+- For a test the offset or the corrected setpoint can be forced per room.
+- When Thriftherm goes (room back on Better Thermostat, disabled, deleted, Home Assistant stopping), the valves get their own sensor and old offset back.
+- New: the room temperature sensor is optional; without one the thermostat or the valve measures.
+- Fixed: moving a room from Better Thermostat to its valves (or choosing another thermostat) forgot the room's learned heat-up rates; they now stay.
+- New: a notice when a valve behind Better Thermostat opens only more than 0.5 degrees below its setpoint, with the advice to set it to −0.4.
+- Fixed: a valve that opens only 1 degree below its setpoint (Sonoff TRVZB) kept its room just below the target; Thriftherm now allows for the threshold.
+- Fixed: a room sensor next to an open window called the boiler when it froze outside; a room with its window open now counts as no frost room for 30 minutes, after that it does again.
+- New: when the boiler cycles on its least power far below the flow sent, Thriftherm sends more step by step (2 degrees once the last step has shown after 45 minutes) while a room does not get there (up to 55 °C for a condensing boiler, new option *Condensing boiler*) instead of lifting the heating curve; lifts made so go back. Once the rooms rise with room to spare it gives a step back; what was enough is remembered per room and outdoor temperature, and the next heating begins with it; another room calling along keeps it; a heating within two hours of the last begins a step below what that one ended with.
+- Fixed: a room whose temperature did not change counted as a silent sensor after 90 minutes and taught nothing, though its device went on reporting (Zigbee2MQTT writes no unchanged value anew); now what counts is when the device last reported.
+- Fixed: Home Assistant stopping during a quick heat-up or a drying left the heat pump at 30 °C; it now gets the rooms' target.
+
 ## 0.7.5 – 2026-11-15
 
 - The operating mode *Summer* is now called *Off (frost protection only)*.

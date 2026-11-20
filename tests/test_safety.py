@@ -136,3 +136,20 @@ def test_a_heat_pump_away_for_ten_seconds_or_less_is_no_degradation(two_rooms):
     alone = replace(snap, prices=replace(snap.prices, system_type="none"))  # where it counts: the only heat source
     assert safety.evaluate(alone, _rooms_results(alone), heat_pump_gone_s=8.0).state == "ok"
     assert safety.evaluate(alone, _rooms_results(alone), heat_pump_gone_s=11.0).state == "degraded"
+
+
+# ---------------------------------------------------------------- frost and an open window (2026-11-15)
+@pytest.mark.parametrize(
+    ("open_since", "frost"),
+    [
+        (None, True),  # no time known for the open contact: as before, a frost room
+        (10 * 60.0, False),  # aired for ten minutes: the cold is the window's
+        (29 * 60.0, False),
+        (31 * 60.0, True),  # open past half an hour: a window forgotten in the frost
+    ],
+)
+def test_a_room_with_its_window_open_is_no_frost_room_for_half_an_hour(two_rooms, open_since, frost):
+    """Decided 2026-11-15: a sensor by the open window at −20 °C outside fired the boiler for the frost rule."""
+    two_rooms["kueche"] = room_state(room_config("kueche"), temp=5.0, window="on", window_open_since=open_since)
+    snap = snapshot(two_rooms)
+    assert (safety.evaluate(snap, _rooms_results(snap)).frost_rooms == ("kueche",)) is frost

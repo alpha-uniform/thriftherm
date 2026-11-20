@@ -31,12 +31,15 @@ jobs:
   tests:
     name: Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20  # a test that hangs stops the run (review 2026-11-18)
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.14"
       - name: Install test dependencies
-        run: pip install -U pytest-homeassistant-custom-component pytest-xdist
+        # always the newest test package: it brings the newest Home Assistant it is made for (2026.10 until one for
+        # 2026.11 is out; bridged by hand, 0.13.375 under 2026.11 stops at importing httpx before Home Assistant)
+        run: pip install -U pytest-homeassistant-custom-component pytest-xdist pytest-timeout
       - name: Run tests
-        run: pytest -q -n auto  # in parallel: 8 s instead of 30
+        run: pytest -q -n auto --timeout=120  # in parallel: 8 s instead of 30; a test hanging fails after 2 minutes
