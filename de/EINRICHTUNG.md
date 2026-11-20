@@ -133,7 +133,7 @@ Den Reiter **Konfiguration** der ebusd-App öffnen:
 | Einstellung | Was du einträgst |
 |---|---|
 | Adapter / Gerät | deinen eBUS-Adapter: das USB-Gerät, oder bei einem Netzwerk-Adapter seine Adresse, zum Beispiel `ens:192.0.2.10:9999` |
-| Kommandozeilen-Optionen | `--accesslevel=*` ergänzen – nötig, damit Thriftherm der Therme ihren Sollwert schicken kann. Die Testanlage hat zusätzlich `--mqttretain`: Dann bleiben alle Werte im Broker liegen und stehen nach einem Neustart von Home Assistant sofort wieder da – auch veraltete, siehe den Hinweis unten |
+| Kommandozeilen-Optionen | `--accesslevel=*` ergänzen – nötig, damit Thriftherm der Therme ihren Sollwert schicken kann. Zusätzlich kannst du `--mqttretain` setzen: Dann bleiben alle Werte im Broker liegen und stehen nach einem Neustart von Home Assistant sofort wieder da – auch veraltete, siehe den Hinweis unten |
 | MQTT | nichts einzutragen: Die App findet den Mosquitto broker von Home Assistant selbst. Einen anderen Broker gibst du in den Kommandozeilen-Optionen an (`--mqtthost=…`, `--mqttport=…`, `--mqttuser=…`, `--mqttpass=…`) |
 | `mqtt-hassio.cfg` kopieren (`seed_mqtt_cfg`) | an – damit liegt eine bearbeitbare Kopie der MQTT-Konfiguration im Ordner der App |
 
@@ -162,7 +162,7 @@ Ist Thriftherm schon eingerichtet? Dann *Thriftherm → Konfigurieren → Gasthe
 
 ### 2.5 Weniger Werte abfragen, damit Vorlauf und Rücklauf frischer sind
 
-Optional, für Fortgeschrittene. ebusd fragt die Werte der Therme reihum ab; je kürzer seine Liste, desto öfter kommen Vorlauf und Rücklauf (auf der Testanlage pausieren sie nach dem Kürzen nur noch 1 Minute 48 Sekunden statt 4 Minuten). Für die Regelung brauchst du das nicht, Thriftherm holt sich seine Werte selbst; es hilft, wenn du sie zeitnah im Dashboard sehen willst. Was weg kann, was bleiben muss und wie du kürzt: [Weniger ebusd-Werte abfragen](EBUSD.md).
+Optional, für Fortgeschrittene. ebusd fragt die Werte der Therme reihum ab; je kürzer seine Liste, desto öfter kommen Vorlauf und Rücklauf (Beispiel in [Weniger ebusd-Werte abfragen](EBUSD.md): 1 Minute 48 Sekunden statt 4 Minuten Pause). Für die Regelung brauchst du das nicht, Thriftherm holt sich seine Werte selbst; es hilft, wenn du sie zeitnah im Dashboard sehen willst. Was weg kann, was bleiben muss und wie du kürzt: [Weniger ebusd-Werte abfragen](EBUSD.md).
 
 ## 3. Thriftherm installieren
 
@@ -222,7 +222,7 @@ Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme un
 | Heizungspumpe läuft (ebusd WP, on/off) | ebusd **WP** |
 | Status-Nummer der Therme (ebusd Statenumber, S.xx) | ebusd **Statenumber** |
 | Warmwasser aktiv (ebusd hwcmode oder ein Binärsensor) | ebusd **Status02 hwcmode** |
-| eBUS-Signal (Binärsensor) | **das Signal von ebusd selbst** (`binary_sensor.…_global_signal`), nicht den Verbindungssensor des Adapters: Fällt der Adapter aus dem WLAN, bleibt sein eigener Sensor auf seinem letzten Wert „an“ stehen (gemessen) |
+| eBUS-Signal (Binärsensor) | **das Signal von ebusd selbst** (`binary_sensor.…_global_signal`), nicht den Verbindungssensor des Adapters: Fällt der Adapter aus dem WLAN, bleibt sein eigener Sensor auf seinem letzten Wert „an“ stehen |
 | Nenn-Umlaufwassermenge der Pumpe | den Standardwert lassen, außer die Anleitung deiner Therme sagt etwas anderes |
 | Gaszähler Volumen (m³, Gesamt), Gaszähler Momentanfluss (m³/h) | deine Gaszähler-Entitäten, falls vorhanden; sonst leer lassen. Die Steuerung braucht keinen Gaszähler: Brennerlauf und Warmwasser erkennt sie an Pumpe und Statuscode. Ohne Zähler gibt es die Sensoren *Gasleistung* und *Gasenergie* nicht |
 | Ohne Gaszähler: Nennwärmebelastung der Therme (Typenschild, kW) | nur ohne Gaszähler und nur bei einer Vaillant-Therme: der Wert **Q** oder **Qn** vom Typenschild, bei einem Bereich der größere (atmoTEC plus VCW 194/4-5: 22,2). Damit schätzt Thriftherm *Gas für Heizung* und *Gas für Warmwasser* aus den Zählern der Therme ([wie genau](ANLEITUNG.md#wichtige-anzeigen)). Dafür müssen die sechs ebusd-Nachrichten PrEnergySumHc1 bis 3 und PrEnergySumHwc1 bis 3 in Home Assistant ankommen, schließ sie also nicht aus ([Weniger ebusd-Werte abfragen](EBUSD.md#was-thriftherm-braucht)); Thriftherm findet sie selbst. Mit Gaszähler leer lassen |
@@ -316,7 +316,7 @@ Je Raum gibt es drei Wege: die Ventile direkt (ohne weitere Integration), Better
 
 ### Ventile direkt (Vorschau)
 
-Seit 15.11.2026 an Sonoff TRVZB/TRVZBT mit Zigbee2MQTT im Betrieb; andere Ventile (ZHA, Shelly und weitere) sind bisher nur nachgestellt getestet.
+Mit Sonoff TRVZB/TRVZBT und Zigbee2MQTT erprobt; andere Ventile (ZHA, Shelly und weitere) sind bisher nur nachgestellt getestet.
 
 1. Am Ventil in Home Assistant die Entitäten *Fühlerauswahl* und *Fremdtemperatur-Eingang* aktivieren, falls sie deaktiviert sind (*Einstellungen → Geräte → Entitäten*).
 2. Beim TRVZB/TRVZBT die *Temperaturgenauigkeit* auf −0,4 stellen.
@@ -342,7 +342,7 @@ Als Thermostat eines Raums kannst du auch die Klima-Entität von [Versatile Ther
 
 Nur für eine Gastherme mit eBUS.
 
-1. **Den Drehknopf auf die höchste Vorlauftemperatur stellen, die du zulassen willst**, zum Beispiel 55 °C. Der Knopf bleibt die Obergrenze und ist das, worauf die Therme zurückfällt, wenn Home Assistant ausfällt. Nicht an den linken Anschlag drehen: An der getesteten Therme ist das Sommerbetrieb und sperrt die Heizung, egal was Thriftherm sendet.
+1. **Den Drehknopf auf die höchste Vorlauftemperatur stellen, die du zulassen willst**, zum Beispiel 55 °C. Der Knopf bleibt die Obergrenze und ist das, worauf die Therme zurückfällt, wenn Home Assistant ausfällt. Nicht an den linken Anschlag drehen: Bei einer Vaillant atmoTEC ist das Sommerbetrieb und sperrt die Heizung, egal was Thriftherm sendet.
 2. **Einmal den Pumpenmodus prüfen.** Mit der Werkseinstellung bleibt die Pumpe womöglich zusammen mit dem Brenner stehen: Die Therme taktet den ganzen Tag, aber die Heizkörper weit hinten im Kreis bleiben kalt. Warum das passiert: [Anleitung, Pumpenmodus](ANLEITUNG.md#warum-der-pumpenmodus-zählt).
    - Vaillant: d.18 = 0 „Nachlauf“ ist die Werkseinstellung – die Pumpe läuft nur mit dem Brenner, plus kurzem Nachlauf. d.18 = 1 „durchlaufend“ – die Pumpe läuft, solange der Heizbetrieb freigegeben ist, und steht, wenn Thriftherm den Heizbetrieb sperrt.
    - Ändern im Servicemenü der Therme oder einmalig über ebusd (Nachricht `HcPumpMode`, Werte `post_run`, `permanent`, `winter`).

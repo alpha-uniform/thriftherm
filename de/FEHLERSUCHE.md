@@ -38,11 +38,11 @@ Abhilfe:
 
 Für eine Push-Nachricht legst du eine Automation auf *ebusd Signal* an, zum Beispiel „5 Minuten aus“.
 
-**So sah das auf der Testanlage aus:** Der Router vergab die Adressen nachts neu, der eBUS-Adapter bekam eine andere IP, und der WLAN-Gaszähler bekam die alte Adresse des Adapters.
+**So kann das aussehen:** Der Router vergibt die Adressen nachts neu, der eBUS-Adapter bekommt eine andere IP, und der WLAN-Gaszähler bekommt die alte Adresse des Adapters.
 
-- ebusd fand den Adapter nicht mehr („unable to open …“ im Log). Thriftherm gab die Therme nach wenigen Minuten ab, und sie heizte eine gute Stunde lang nach ihrem Drehknopf.
-- ebusd klopfte alle 5 Sekunden beim Gaszähler an. Der verlor dadurch immer wieder seine MQTT-Verbindung, und seine Werte standen in Home Assistant auf „nicht verfügbar“.
-- Home Assistant zeigte die ganze Zeit die letzten gespeicherten eBUS-Werte weiter an (Vorlauf 22 °C, Status 31), weil ebusd seine Werte im Broker hinterlegt. Tatsächlich lag der Vorlauf bei fast 50 °C.
+- ebusd findet den Adapter nicht mehr („unable to open …“ im Log). Thriftherm gibt die Therme nach wenigen Minuten ab, und sie heizt nach ihrem Drehknopf.
+- ebusd klopft alle paar Sekunden beim Gaszähler an. Der verliert dadurch immer wieder seine MQTT-Verbindung, und seine Werte stehen in Home Assistant auf „nicht verfügbar“.
+- Home Assistant zeigt die ganze Zeit die letzten gespeicherten eBUS-Werte weiter an, weil ebusd seine Werte im Broker hinterlegt, auch wenn der tatsächliche Vorlauf längst anders ist.
 
 ### Ein WLAN-Gerät verliert ständig die Verbindung
 
