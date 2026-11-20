@@ -205,88 +205,17 @@ def test_operation_is_booked_to_the_class_and_gaps_are_not_operation():
     assert mem.lines == {}
     _, mem = decide(replace(on, now_ts=NOW + 3660.0), mem)
     bath = mem.lines["single:badezimmer"]  # the room's own line
-    assert bath.hours == pytest.approx(1 / 60) and bath.calm_hours == pytest.approx(1 / 60)
+    assert bath.hours == pytest.approx(1 / 60)
     assert set(mem.lines) == {"single:badezimmer"}
     _, mem = decide(replace(on, now_ts=NOW + 3720.0, learning_allowed=False), mem)  # a setpoint just moved
     _, mem = decide(replace(on, now_ts=NOW + 3780.0), mem)
     assert mem.lines["single:badezimmer"].hours == pytest.approx(1 / 60)
 
     lines = load.observe({}, "few", 2.0, False, 1.0, 0.0)
-    assert (lines["few"].level_k, lines["few"].hours, lines["few"].calm_hours) == (1.0, 2.0, 2.0)
+    assert (lines["few"].level_k, lines["few"].hours) == (1.0, 2.0)
     lines = load.observe(lines, "few", 0.5, True, 1.0, 0.0)  # a called room did not get there
-    assert (lines["few"].hours, lines["few"].lag_hours, lines["few"].calm_hours, lines["few"].lag_share) == (2.5, 0.5, 0.0, 0.2)
+    assert (lines["few"].hours, lines["few"].lag_hours, lines["few"].lag_share) == (2.5, 0.5, 0.2)
     assert load.observe(lines, None, 1.0, False, 1.0, 0.0) == lines  # no room calls: no class
-
-
-def test_a_value_that_was_found_only_yields_to_evidence_that_lasts():
-    """Without this the learning answers every small deviation and the flow keeps going up and down."""
-    fresh = load.observe({"single": LoadLine()}, "single", 2.9, False, 0.0, 0.0)["single"]
-    found = load.observe({"single": fresh}, "single", 0.1, False, 0.0, 0.0)["single"]
-    assert not fresh.found and found.found  # three hours without a lagging room and without a step
-    assert load.observe({"single": found}, "single", 0.5, True, 0.0, 0.0)["single"].found  # a lagging room does not unfind it
-    assert load.ask(fresh, 1, NOW) == (True, fresh)  # still being found: every step is taken
-
-    allowed, line = load.ask(found, 1, NOW)  # a room starts lagging
-    assert not allowed and (line.asked, line.asked_since_ts) == (1, NOW)
-    assert load.ask(line, 1, NOW + 2699)[0] is False and load.ask(line, 1, NOW + 2700)[0] is True  # 45 minutes of it
-    allowed, turned = load.ask(line, -1, NOW + 2000)  # the verdict turns: the wait starts over
-    assert not allowed and (turned.asked, turned.asked_since_ts) == (-1, NOW + 2000)
-    for minutes in (20, 40, 60, 80, 100):  # asked again at every review
-        allowed, turned = load.ask(turned, -1, NOW + 2000 + minutes * 60)
-        assert not allowed
-    assert load.ask(turned, -1, NOW + 2000 + 7200)[0] is True  # two hours of it
-
-    after = load.stepped(line, 1.0, 0.5, 1.0, NOW + 2700)
-    assert (after.level_k, after.slope_k, after.calm_hours, after.asked, after.found) == (1.0, 0.5, 0.0, 0, False)
-    assert (after.last_step_k, after.last_step_ts) == (1.0, NOW + 2700)  # only a step unfinds it
-
-
-def test_the_asking_may_pause_but_not_for_long():
-    """Review 2026-10-11: one good cycle in 41 minutes, or a sensor reading 0.2 and 0.1 K below target in turn
-    every half hour (the bathroom on 2026-10-10), kept a found line from ever being raised."""
-    found = LoadLine(found=True)
-    _, line = load.ask(found, 1, NOW)
-    _, line = load.ask(line, 1, NOW + 1200)  # asked again at the next review
-    allowed, line = load.ask(line, 1, NOW + 1200 + 2700)  # then 45 minutes of nothing: still the same asking
-    assert allowed and line.asked_since_ts == NOW
-    allowed, again = load.ask(line, 1, NOW + 1200 + 2700 + 2701)  # a longer pause: it starts over
-    assert not allowed and again.asked_since_ts == NOW + 1200 + 2700 + 2701
-
-
-def test_only_time_in_which_the_rooms_could_have_complained_counts_towards_found():
-    """Review 2026-10-11: a bathroom calling 25 minutes at a time, stuck a kelvin below target, was found after eight calls."""
-    line = load.observe({}, "single", 4.0, False, 0.0, 0.0, judged=False)["single"]
-    assert (line.hours, line.calm_hours, line.found) == (4.0, 0.0, False)  # released, but no verdict was possible
-
-    stuck = [replace(r, temperature=r.target - 1.0, trend_k_per_h=0.0) if i == 0 else r for i, r in enumerate(flat(1))]
-    mem = heating_memory()
-    for call in range(10):  # ten calls of 25 minutes with a block in between
-        start = NOW + call * 3600
-        for minute in range(25):
-            _, mem = decide(inp(stuck, mode="active", now=start + minute * 60, learning=True), replace(mem, adjustments=()))
-        _, mem = decide(inp(flat(0), mode="active", advice="none", now=start + 1800), mem)
-    assert mem.lines["single:badezimmer"].hours > 3.0 and not mem.lines["single:badezimmer"].found
-
-
-def test_a_found_line_is_not_moved_by_a_short_lag_but_by_a_lasting_one():
-    lines = {"single:badezimmer": LoadLine(level_k=3.0, hours=10.0, calm_hours=5.0, found=True)}
-    bath = flat(1, demand=0.5, trend=0.1)
-
-    def run(minutes, mem, rooms=bath):
-        for minute in minutes:
-            _, mem = decide(inp(rooms, mode="active", now=NOW + minute * 60, flow=45.0, ret=42.0, burner=True), mem)
-        return mem
-
-    mem = run(range(0, 60), replace(heating_memory(start=NOW - 3600), lines=lines))
-    assert mem.adjustments == () and mem.lines["single:badezimmer"].asked == 1  # an hour of reviews: not yet long enough
-    mem = run(range(60, 100), mem)
-    after = mem.lines["single:badezimmer"]
-    assert len(mem.adjustments) == 1 and after.level_k > 3.0 and not after.found
-
-    mem = run(range(0, 40), replace(heating_memory(start=NOW - 3600), lines=lines))  # a short lag ...
-    assert mem.lines["single:badezimmer"].asked == 1
-    mem = run(range(40, 200), mem, flat(1, demand=0.5, trend=0.4))  # ... and the room gets going again
-    assert mem.adjustments == () and mem.lines["single:badezimmer"].level_k == 3.0
 
 
 def test_a_new_class_has_to_hold_before_it_counts():
@@ -366,10 +295,9 @@ def test_the_safe_flow_limits_hold_for_every_line():
 
 # ------------------------------------------------------------------ storage
 def test_lines_survive_a_restart_and_what_was_stored_before_is_kept():
-    line = LoadLine(level_k=3.8, slope_k=0.97, hours=2.5, lag_hours=1.7, calm_hours=0.4, found=True,
-                    last_step_k=2.0, last_step_ts=NOW - 60, asked=1, asked_since_ts=NOW)
+    line = LoadLine(level_k=3.8, slope_k=0.97, hours=2.5, lag_hours=1.7, last_step_k=2.0, last_step_ts=NOW - 60)
     back = BoilerMemory.from_storage(BoilerMemory(offset_k=1.0, lines={"single:kuche": line}).to_storage())
-    assert back.lines == {"single:kuche": replace(line, asked=0, asked_since_ts=None)}  # a request starts over
+    assert back.lines == {"single:kuche": line}
     assert back.offset_k == 1.0
 
     before = {"offset_k": 2.0, "adjustments": [1.0, 2.0], "burn_starts": [1.0], "burn_durations": [60.0]}
@@ -405,25 +333,6 @@ def test_a_room_exactly_two_tenths_below_target_lags():
         room = replace(rr(temp=round(target - 0.2, 1), target=target, trend=0.0), boiler_call="calling")
         assert load.lagging((room,)), target
     assert not load.lagging((replace(rr(temp=20.9, target=21.0, trend=0.0), boiler_call="calling"),))
-
-
-def test_a_found_line_goes_on_asking_while_another_guard_stops_its_step():
-    """Granted by its hold but stopped by the cooldown of another class's step, the line forgot that it was asked;
-    the asking lapsed and started over, and the step came after the cooldown had ended and not with it."""
-    mem = BoilerMemory(lines={"single": LoadLine(level_k=2.0, found=True)})
-    on = inp(flat(1), mode="active")
-    minute = 0
-    while mem.lines["single"].found and minute < 240:
-        if minute == 44:  # another class takes a step a minute before the hold is over: 90 minutes without a step up
-            mem = replace(mem, adjustments=(NOW + 44 * 60,), adjustment_steps=(1.0,))
-        mem = learning.apply(replace(on, now_ts=NOW + minute * 60), mem, 1, "rooms_lagging", "single")
-        minute += 1
-    # as the cooldown ends; forgotten, the asking lapsed at minute 90 and its 45 minutes ended a minute later
-    assert minute - 1 == 134 and mem.lines["single"].last_step_ts == NOW + 134 * 60
-
-    cooling = BoilerMemory(adjustments=(NOW - 60,), adjustment_steps=(1.0,))
-    assert learning.apply(on, cooling, 1, "rooms_lagging", "single") is cooling  # a class without a line gets none this way
-
 
 
 # ---- what counts as a room that does not get there (2026-10-14)
@@ -626,32 +535,16 @@ def test_each_room_books_its_own_operation_with_whether_it_got_there():
 
 
 # ---- review 2026-10-14
-def test_a_room_whose_progress_says_nothing_is_not_found_by_calm_time():
-    """A wish by hand 2 K off and a valve Better Thermostat keeps shut booked calm hours and were found."""
-    by_hand = [replace(r, target_reason="override", temperature=r.target - 2.0, trend_k_per_h=0.0) if r.key == "badezimmer" else r
-               for r in flat(1)]
-    shut = [replace(r, temperature=r.target - 0.5, trend_k_per_h=0.0, thermostat_heating=False) if r.key == "badezimmer" else r
-            for r in flat(1)]
-    moved = [replace(r, target_steady_s=600.0) if r.key == "badezimmer" else r for r in flat(1)]  # its target, lately
-    silent = [replace(r, temperature_age_s=7200.0) if r.key == "badezimmer" else r for r in flat(1)]  # its sensor
-    for rooms in (by_hand, shut, moved, silent):
-        mem = heating_memory(start=NOW - 3600)
-        for minute in range(200):
-            _, mem = decide(inp(rooms, mode="active", now=NOW + minute * 60, learning=True), replace(mem, adjustments=()))
-        bath = mem.lines["single:badezimmer"]
-        assert bath.hours > 3.0 and bath.calm_hours == 0.0 and not bath.found
-
-
-def test_only_the_value_is_taken_from_another_line_not_that_it_was_found():
-    lines = {"majority:kuche": LoadLine(level_k=4.0, hours=30.0, calm_hours=5.0, found=True)}
+def test_only_the_value_is_taken_from_another_line():
+    lines = {"majority:kuche": LoadLine(level_k=4.0, hours=30.0)}
     start = load.line_of(lines, "few:kuche", 0.0, 0.0)
-    assert (start.level_k, start.found, start.calm_hours, start.hours) == (4.0, False, 0.0, 0.0)
-    # Review 2026-11-12: nor is a borrowed value found by the hours of the line that borrows it. Found at +4 K it
-    # stayed found when its source went to -2 K, and its own first step waited out a hold for a value it never served.
-    served = load.observe(lines, "few:kuche", 5.0, False, 0.0, 0.0)
-    assert served["few:kuche"].calm_hours == 5.0 and not served["few:kuche"].found
-    own = load.observe({"few:kuche": LoadLine(level_k=4.0)}, "few:kuche", 5.0, False, 0.0, 0.0)
-    assert own["few:kuche"].found
+    assert (start.level_k, start.hours) == (4.0, 0.0)
+
+
+def test_lines_stored_with_the_found_value_of_before_load():
+    """The "found" value, its calm hours and the asking went on 2026-11-15 (they never acted in weeks of use)."""
+    stored = {"lines": {"single:kuche": {"level_k": 2.0, "hours": 3.0, "calm_hours": 4.0, "found": True}}}
+    assert BoilerMemory.from_storage(stored).lines == {"single:kuche": LoadLine(level_k=2.0, hours=3.0)}
 
 
 def test_a_room_catching_up_with_another_line_stays_within_the_bound():
@@ -674,3 +567,12 @@ def test_while_a_room_with_a_limited_preheat_wants_heat_the_curve_learns_nothing
     assert seen == [True]
     decide(_inp([replace(room, short_preheat=True)], mode="active", flow=45.0, ret=40.0, burner=True), heating_memory())
     assert seen == [True, False]
+
+
+def test_a_direct_room_whose_valve_cannot_be_open_does_not_lag():
+    """Review 2026-11-15 item 4: a valve in its exercise or on a flat battery is no evidence that the flow is too low
+    (an off or silent valve already takes the room's heating away)."""
+    behind = replace(rr(temp=20.6, target=21.0, trend=0.0), boiler_call="calling")
+    assert load.lagging((behind,))
+    for why in ("exercise", "battery"):
+        assert not load.lagging((replace(behind, valve_unable=why),))

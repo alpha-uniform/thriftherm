@@ -18,9 +18,9 @@
 
 **Plus a heat pump.** Thriftherm measures its COP and lets it heat when its heat is cheaper than the boiler's right now. Without sensors at the unit, a Midea PortaSplit can use values measured on a PortaSplit. It dries a bathroom it heats after a shower.
 
-**District heating, central heating or no own boiler.** Thriftherm heats the rooms to their schedules through [Better Thermostat](https://github.com/KartoffelToby/better_thermostat), with pre-heating and away mode; nothing is ever sent to the heat supply. It really pays off with a heat pump: Thriftherm then compares electricity with the marginal price of district heat. Without a boiler, the heat pump can also heat on its own.
+**District heating, central heating or no own boiler.** Thriftherm heats the rooms to their schedules through their radiator valves, directly or through [Better Thermostat](https://github.com/KartoffelToby/better_thermostat), with pre-heating and away mode; nothing is ever sent to the heat supply. It really pays off with a heat pump: Thriftherm then compares electricity with the marginal price of district heat. Without a boiler, the heat pump can also heat on its own.
 
-One temperature sensor per room is enough, and smart thermostats can be added later. What exactly works with which equipment is in the [overview in the setup guide](en/SETUP.md#what-works-with-your-equipment).
+To start, one temperature sensor or one smart valve per room is enough. Thriftherm drives smart valves directly (preview, Sonoff TRVZB/TRVZBT in use since 2026-11-15) or through Better Thermostat; both can be added later, room by room. What exactly works with which equipment is in the [overview in the setup guide](en/SETUP.md#what-works-with-your-equipment).
 
 **Everything stays with you.** Thriftherm runs entirely locally in Home Assistant and sends no data anywhere: no cloud, no account, no usage statistics. The dashboard card loads nothing from the internet either.
 
@@ -42,7 +42,7 @@ Every decision comes with a reason you can read in Home Assistant. When boiler d
 From the first day Thriftherm heats with starting values: your heating curve, a typical heat-up rate and a COP curve from the data sheet. What it learns on top comes only from real heating runs and with *Active*:
 
 - **Heating curve per room:** first corrections on the first heating day, stable after about 1 to 2 weeks of heating season. It learns the slope for cold days only in frost.
-- **Heat-up rates:** a first value after 1 to 2 days with a setback, a reliable one after 1 to 2 weeks.
+- **Heat-up rates:** a value of its own after 2 to 4 days with a setback, a reliable one after 1 to 2 weeks.
 - **COP map of the heat pump:** the frequent outdoor temperatures after 2 to 4 weeks, frost only in frost.
 
 The times are estimated from the rules and depend on the weather ([details](en/GUIDE.md#how-long-learning-takes)).
@@ -57,7 +57,7 @@ Nothing is written to the boiler or the thermostats until you switch to *Active*
    [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
 
 3. **Add the integration:** *Settings → Devices & services → Add integration → Thriftherm*. When ebusd entities are found, the boiler step is filled in for you – check it and continue.
-4. **Plan only for a few days:** compare *Boiler command*, *Thermostat plan* and *Decision reason* with what you would have done.
+4. **Observe only for a few days** (Thriftherm works out and shows what it would do, but controls nothing)**:** compare *Boiler command*, *Thermostat plan* and *Decision reason* with what you would have done.
 5. **Switch to *Active*:** release active control in the options, then set *Boiler control* and *Room control* to *Active*.
 6. **Card on the dashboard:** *Add card → Thriftherm*. It comes with the integration and finds your rooms by itself ([step 9](en/SETUP.md#9-dashboard)).
 
@@ -99,7 +99,7 @@ This is what the tested installation runs on. Other devices work the same way as
 | Boiler | Vaillant atmoTEC plus VCW 194/4-5 (non-condensing) |
 | eBUS adapter | [eBUS Adapter Shield C6](https://adapter.ebusd.eu/v5-c6/index.en.html), stick version, by ebusd.eu – sold in the [Elecrow shop](https://www.elecrow.com/store/ebusd) |
 | Gas meter reading | [WiFi ACM-ESP](https://www.seegel-systeme.de/produkt/wlan-acm-esp-kommunikationsmodul-fuer-elster-gaszaehler/) by Seegel Systeme, for Elster/Honeywell BK-G4A(T) |
-| Radiator thermostats | [SONOFF TRV Gen2 (TRV-ZBT)](https://sonoff.tech/en-us/products/sonoff-trv-gen2-zigbee-thermostatic-radiator-valve-trv-zbt), Zigbee, with Better Thermostat |
+| Radiator thermostats | [SONOFF TRV Gen2 (TRV-ZBT)](https://sonoff.tech/en-us/products/sonoff-trv-gen2-zigbee-thermostatic-radiator-valve-trv-zbt), Zigbee2MQTT, driven directly (up to 0.7 with Better Thermostat) |
 
 ## Supported boilers
 
@@ -115,7 +115,7 @@ Each boiler is added as a profile: which ebusd messages carry its values and whi
 
 - Home Assistant 2026.9 or newer
 - With an own boiler: an eBUS adapter and the ebusd app with MQTT
-- One temperature sensor per room; Better Thermostat if Thriftherm should set the radiator thermostats
+- Per room a temperature sensor, a smart valve or a thermostat (something has to measure the room); Better Thermostat is no longer needed
 - Optional: a heat pump with a few sensors
 
 The full list is in the [setup guide, step 1](en/SETUP.md#1-what-you-need).
@@ -124,7 +124,7 @@ The full list is in the [setup guide, step 1](en/SETUP.md#1-what-you-need).
 
 **Writing to a gas boiler is your responsibility.** Over ebusd only the `SetMode` message is used and no installer parameters are written; with a boiler through entities (preview) only the two entities you choose. Changing the pump mode is a one-time decision you make yourself.
 
-**What has been tried.** All controllers start in *Plan only*: they compute and publish what they would do and write nothing until you release active control. Blocking, flow control and the safety fallbacks are verified on the maintainer's boiler. The learned corrections have so far seen outdoor temperatures down to 2 °C, no frost yet. The heat pump add-on controls the maintainer's Midea PortaSplit, icing and defrosting included; other units have not been tried yet.
+**What has been tried.** All controllers start in *Observe only*: they compute and publish what they would do and write nothing until you release active control. Blocking, flow control and the safety fallbacks are verified on the maintainer's boiler. The learned corrections have so far seen outdoor temperatures down to 2 °C, no frost yet. The heat pump add-on controls the maintainer's Midea PortaSplit, icing and defrosting included; other units have not been tried yet.
 
 ## Development
 

@@ -6,9 +6,9 @@ import asyncio
 import logging
 import time
 from collections import deque
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import replace
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -22,7 +22,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from . import boiler_profiles, const, executors, issues, learning_reset, persistence
 from .adapters.config import system_type_from_config
-from .adapters.inputs import SnapshotBuilder, whole_number
+from .adapters.inputs import SnapshotBuilder, valve_driver, valve_view, whole_number
 from .const import (
     CONF_COOL_AWAY_TEMP,
     CONF_COOL_FLOOR_TEMP,
@@ -71,7 +71,10 @@ from .const import (
     CONF_ROOM_ALLOW_ACTIVE,
     CONF_ROOM_ECHO_FILTER,
     BOILER_PLAN_BLOCK,
+    BOILER_PLAN_HANDS_OFF,
+    ROOM_PLAN_HOLD,
     BOILER_PLAN_HEAT,
+    BOILER_REPORTS_HEATING,
     CTRL_ACTIVE,
     CTRL_OFF,
     CTRL_SHADOW,
@@ -117,6 +120,7 @@ from .engines import (
     boiler as boiler_engine,
     boiler_control,
     boiler_learning,
+    boiler_load,
     economics,
     gas_split,
     heat_call,
@@ -126,6 +130,8 @@ from .engines import (
     room as room_engine,
     room_control,
     safety,
+    valve_plan,
+    valve_tpi,
 )
 from .engines import season as season_engine
 from .engines.heat_pump_tracking import HeatPumpTracker
@@ -149,6 +155,7 @@ from .engines.heat_pump_control import ControlInputs, ControlMemory
 from .engines import heat_pump_cooling, room_cooling
 from .engines.room_control import RoomCtrlMemory
 from .models import (
+    ROOM_OFF_UNTIL_TS,
     Advice,
     BoilerCommand,
     BoilerResult,
@@ -160,6 +167,7 @@ from .models import (
     Override,
     Reason,
     RoomCommand,
+    RoomConfig,
     RoomResult,
     RoomState,
     SafetyResult,
@@ -193,7 +201,7 @@ SETTING_PAIR_S = 15.0  # a setpoint and a mode changed this close may reach one 
 SETPOINT_SETTLE_S = 1200.0  # after a setpoint change the rooms and their thermostats settle first
 # How long an unload waits for the cycle under way: one call times out after 30 s, and none follows it
 UNLOAD_WAIT_S = 120.0
-EVALUATION_FAILURES_LET_GO = 3  # cycles in a row whose evaluation raised: the heat pump is let go of, as on Plan only
+EVALUATION_FAILURES_LET_GO = 3  # cycles in a row whose evaluation raised: the heat pump is let go of, as on Observe only
 
 type ThrifthermConfigEntry = ConfigEntry["ThrifthermCoordinator"]
 
@@ -244,10 +252,50 @@ def cancel_hand_back_retry(hass: HomeAssistant, entry_id: str, entities: tuple[s
         retries.pop(key)[1]()
 
 
+COARSE_THRESHOLD_K = 0.5  # a valve opening further below its setpoint than this gets a hint behind Better Thermostat
+
+
+def _radiator_can_heat(res: RoomResult) -> bool:
+    """Whether the boiler's heat reaches the room's radiator, as for the heating curve (boiler_load.counts): not with its
+    thermostat or valve saying it does not heat, nor with a valve driven directly being exercised or on a flat battery.
+    Review 2026-11-18: a room well below its target drifting 0.2 K in six hours by the sun, its valve shut, was learned
+    as 0.1 K/h of the boiler."""
+    return res.thermostat_heating is not False and res.valve_unable is None
+
+
+def _burned_within(burns: Iterable[tuple[float, float]], now_ts: float, within_s: float = 3600.0) -> bool:
+    """Whether the burner ran in the last `within_s`: only then does a room well below its target count as heating up."""
+    return any(end >= now_ts - within_s for _, end in burns)
+
+
+def _memory_after_part(
+    before: valve_plan.ValveMemory, nxt: valve_plan.ValveMemory, sent: Iterable[valve_plan.Write]
+) -> valve_plan.ValveMemory:
+    """A valve's memory where its plan went out in part: as before, but the exercise as planned (it goes by the room's
+    setpoint whatever became of the writes, review 2026-11-15) and what the writes sent stand for (`Write.memo`):
+    the opening sent and the setpoint held back, the opening was taken for the person's next cycle (review 2026-11-18)."""
+    kept = replace(before, exercise_step=nxt.exercise_step, exercise_ts=nxt.exercise_ts, opened_ts=nxt.opened_ts)
+    fields = {name for write in sent for name in write.memo}
+    return replace(kept, **{name: getattr(nxt, name) for name in fields}) if fields else kept
+
+
+def _measures_the_room(issues: Iterable[str]) -> bool:
+    """The room's temperature is what it is controlled by: its own sensor, or the valve in a room set up without one
+    (2026-11-15). Not the valve standing in for a failed sensor."""
+    return not any(
+        i.startswith("using_trv_local_temperature") and i != "using_trv_local_temperature:not_configured" for i in issues
+    )
+
+
+def _exercise_hours(now: datetime) -> bool:
+    """A valve exercise begins between 10 and 18 o'clock local time: its motor is heard (§5.6)."""
+    return 10 <= dt_util.as_local(now).hour < 18
+
+
 def _commanded_elsewhere(hass: HomeAssistant, entities: tuple[str, str]) -> bool:
     """A loaded entry commands one of these entities: what it writes is not ours to undo.
 
-    Only one whose boiler control is active: an entry added again starts in Plan only with a fresh store and never
+    Only one whose boiler control is active: an entry added again starts in Observe only with a fresh store and never
     hands back, and the block stayed on the switch for good (verifier of 0.7.3b, #R4, #R23).
     """
     for entry in hass.config_entries.async_loaded_entries(DOMAIN):
@@ -296,6 +344,14 @@ def retry_hand_back(hass: HomeAssistant, entry_id: str, entities: tuple[str, str
     remove = async_track_state_change_event(hass, list(entities), _changed)
     hass.data.setdefault(HAND_BACK_RETRIES, {})[entities] = (entry_id, remove)
 
+
+
+def direct_margin(hass: HomeAssistant, cfg: RoomConfig, wants: bool, end_above_k: float, step: float) -> float:
+    """What a room driven directly gets above its target (valve_plan.direct_on_top): by the coarsest of its valves (one
+    left at the factory's 1 K opened below the call's start; review 2026-11-15, second round), in half degrees at least,
+    as the setpoint goes out rounded to them (room_control.decide)."""
+    threshold = max((valve_view(hass, valve).hysteresis_k for valve in cfg.valve_entities), default=0.0)
+    return valve_plan.direct_on_top(wants, threshold, end_above_k, max(step, room_control.KNOB_STEP_K))
 
 class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Owns the state between cycles, runs the engines once per cycle and sends what is released."""
@@ -357,6 +413,24 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # room control via the room thermostats
         self.room_control_mode: str = CTRL_SHADOW
         self.room_ctrl_memory: dict[str, RoomCtrlMemory] = {}
+        # valves driven directly (docs/PHASE13_VALVES.md): what each was given, kept over a restart; what a cycle plans
+        # goes in force once it is sent (`_valve_memory_next`)
+        self.valve_ctrl_memory: dict[str, valve_plan.ValveMemory] = {}
+        self._valve_unanswered: dict[tuple[str, str], tuple[int, float]] = {}  # a valve's write it did not show yet
+        self._own_targets: dict[str, float] = {}  # each room's own target of the last cycle, before heating along
+        self._no_exercise: set[str] = set()  # rooms in which no valve exercise may begin this cycle
+        self._valve_memory_next: dict[str, valve_plan.ValveMemory] = {}
+        # the rooms heating along last cycle and their valves' opening: a trial of the heating curve is judged by the
+        # burner only while these stay as they were (boiler_learning.review_trials)
+        self._heating_along: tuple[tuple[str, float], ...] = ()
+        # the rooms heating up to a raised target they have not reached yet (boiler_load.heating_up): the heating curve
+        # learns from holding a temperature, not from heating up to it (16.11.)
+        self._heating_up: set[str] = set()
+        self._valve_corrected: dict[str, valve_plan.ValveMemory] = {}  # way c learned for a first valve this cycle
+        self._valve_steps: dict[str, str | None] = {}  # the step of its exercise this cycle
+        self._exercise_begun = False  # an exercise began this cycle: the next valve waits a cycle
+        # a valve whose write failed waits 2, 4, 8 ... minutes, an hour at most (review 2026-11-15: 30 s timeouts a cycle)
+        self._valve_retry: dict[str, tuple[int, float]] = {}  # valve -> (failures in a row, next try)
         # which rooms call the boiler (hysteresis, stall, end of comfort), kept over a restart
         self.call_memory: dict[str, heat_call.CallMemory] = {}
         # echo filter: setpoint changes of each room thermostat and the valves behind it
@@ -420,6 +494,20 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._cool_precool_latch: dict[str, float] = {}  # room -> the block start or return a begun pre-cool is for
         self._failed_cycles = 0  # cycles in a row whose evaluation raised
         self._run_on_after_cooling = False  # the fan runs on after a cooling run: no heat, whatever the season says now
+
+    @property
+    def room_climate_rooms(self) -> tuple[str, ...]:
+        """The rooms with a room climate of Thriftherm's own (climate.py): every room. First those the heat pump cools,
+        then every room driven directly (steered by Siri, 2026-11-15), since 2026-11-17 every room: the living room
+        with Better Thermostat had none, and a target set there would have gone past Thriftherm."""
+        return tuple(r.key for r in self.builder.rooms)
+
+    def own_target(self, room: str) -> float | None:
+        """The room's own target of the last cycle, before heating along raised it for the boiler's sake."""
+        if room in self._own_targets:
+            return self._own_targets[room]
+        res = (self.data or {}).get("rooms", {}).get(room)
+        return None if res is None else res.target
 
     @property
     def cooling_allowed(self) -> bool:
@@ -702,9 +790,14 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._leave_away()
             self.hass.async_create_task(self.async_request_refresh())
 
+    def _room_thermostats(self) -> frozenset[str]:
+        return frozenset(room.climate_entity for room in self.builder.rooms if room.climate_entity)
+
     def _track_settings(self) -> None:
         """Record who changes the mode or the setpoint of what the control commands."""
         commanded = {room.climate_entity for room in self.builder.rooms if room.climate_entity}
+        # the further valves of a room driven directly: a change asked meanwhile is not written over (review 2026-11-15)
+        commanded.update(v for room in self.builder.rooms for v in room.valve_entities)
         if self.has_heat_pump and self.config.get(CONF_HEAT_PUMP_CLIMATE):
             commanded.add(self.config[CONF_HEAT_PUMP_CLIMATE])
         if not commanded:
@@ -809,6 +902,13 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Back from being unreachable: nobody's change in itself. But if the device returns with
             # another setting than it left with, somebody changed it meanwhile, at the device.
             if before is None or before == setting:
+                return None
+            if new.entity_id in self._room_thermostats():
+                # A room thermostat or valve that comes back with another setpoint restarted (a valve after a change of
+                # batteries comes with its factory 15 °C) or kept one of its own (Better Thermostat switched on again with
+                # the 21 °C it had stored): neither is a hand (2026-11-13). The room gets ours again; a knob turned while
+                # it was away is lost that way, turned again it counts (docs/PHASE13_VALVES.md §5.3).
+                self._setting_changes.pop(new.entity_id, None)
                 return None
             change = SettingChange(ts, hand.DEVICE, setpoint=before[1] != setting[1], mode=before[0] != setting[0])
             self._setting_changes[new.entity_id] = change
@@ -995,8 +1095,23 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 return
             if RANGE_FLOW_TEMP[0] <= value <= RANGE_FLOW_TEMP[1]:
                 self._note_boiler_signs(value, False, now_ts)
-        elif not self.boiler_entities and whole_number(new.state) in self.boiler_profile.water_wait_states:
+            return
+        if not self.boiler_entities and whole_number(new.state) in self.boiler_profile.water_wait_states:
             self._note_boiler_signs(None, True, now_ts)
+        if self._burner_turned(event.data.get("old_state"), new):
+            # Without a gas meter the status number is the burner's best sign: a run between two cycles (under a
+            # minute) counted no start (decided 15.11.2026). A cycle where the burner goes on or off, not for every code
+            # it ticks through (as the gas flow, measured 3-13 Nov 2026)
+            self.hass.async_create_task(self.async_request_refresh())
+
+    def _burner_turned(self, old: State | None, new: State) -> bool:
+        """The status number says the heating burner went on or off; only where it is the sign the burns go by."""
+        if old is None or self.boiler_entities or self.config.get(CONF_GAS_FLOW):
+            return False
+        heating = self.boiler_profile.reported_mode
+        return (heating(whole_number(old.state)) == BOILER_REPORTS_HEATING) != (
+            heating(whole_number(new.state)) == BOILER_REPORTS_HEATING
+        )
 
     def _gas_burns(self, flow_m3h: float) -> bool:
         """A gas flow that counts as the burner running, by the measure of the boiler control."""
@@ -1097,7 +1212,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_let_go_after_the_cycle(self, mem: ControlMemory, before: ControlMemory) -> None:
         """Let go once the cycle under way has sent what it was sending.
 
-        Review 2026-11-13: Plan only chosen while a quick heat-up's start went out found the unit not yet at 30 °C
+        Review 2026-11-13: Observe only chosen while a quick heat-up's start went out found the unit not yet at 30 °C
         and left it; the cycle then sent the rest, and nobody set the unit down. `mem` is what that cycle planned,
         so the unit is judged against what it was really left with. `before` is the memory that plan began with: a
         cycle that had planned the end of a quick heat-up and could no longer send it left the unit as `before`
@@ -1138,10 +1253,44 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 # also the memory a switch of the control began anew with: it kept the run-on on record
                 self.control_memory = replace(self.control_memory, fan_until_ts=None, last_hvac_mode="off")
 
-    async def async_let_go_of_heat_pump(self, mem: ControlMemory | None = None) -> None:
+    async def async_hand_back_valves(
+        self, only: set[str] | None = None, leaving: bool = False, sent: Mapping[str, float | None] | None = None
+    ) -> None:
+        """Give the valves driven directly back what they had (concept §7) as Thriftherm goes: disabled, deleted, Home
+        Assistant stopping, active room control left (`leaving`), or (`only`) the valves a new configuration drives no
+        more. Only where Thriftherm drove them, in active room control; never a valve Better or Versatile Thermostat drives
+        again. A write that fails ends that valve's hand-back (it falls back by itself). `sent`: the setpoint last sent
+        to each room's first valve, taken along where the room memory is cleared meanwhile (final review #4)."""
+        if sent is None:
+            sent = {key: mem.last_sent_target for key, mem in self.room_ctrl_memory.items()}
+        if self.room_control_mode != CTRL_ACTIVE and not leaving:
+            return
+        for valve, mem in list(self.valve_ctrl_memory.items()):
+            if (only is not None and valve not in only) or valve_driver(self.hass, valve) is not None:
+                continue
+            cfg = next((r for r in self.builder.rooms if valve in r.valve_entities), None)
+            first = cfg is not None and cfg.valve_entities[0] == valve
+            ours_c = (sent.get(cfg.key) if cfg is not None else None) if first else mem.setpoint_c
+            target = self._own_targets.get(cfg.key) if cfg is not None else None
+            for write in valve_plan.hand_back(valve_view(self.hass, valve), mem, target, ours_c):
+                if not await executors.async_write_valve(self.hass, valve, write, self._own_context()):
+                    break
+
+    @property
+    def direct_valves(self) -> set[str]:
+        """The valves this configuration drives directly."""
+        return {v for cfg in self.builder.rooms if cfg.direct for v in cfg.valve_entities}
+
+    def _rooms_target(self) -> float | None:
+        """The normal target of the rooms the unit serves: the highest of their own (heating along not counted)."""
+        served = [r.key for r in self.builder.rooms if r.served_by_heat_pump]
+        targets = [t for key in served if (t := self.own_target(key)) is not None]
+        return max(targets) if targets else None
+
+    async def async_let_go_of_heat_pump(self, mem: ControlMemory | None = None, to_rooms_target: bool = False) -> None:
         """Set a unit our last command left above its least speed down to its floor, as the control lets go of it.
 
-        Review 2026-11-08: switched to Plan only or Off, or unloaded, mid-way through a quick heat-up (30 °C, the
+        Review 2026-11-08: switched to Observe only or Off, or unloaded, mid-way through a quick heat-up (30 °C, the
         fan high) or a drying, the unit kept heating to that setpoint for good: their time limits run here only.
         As the boiler is handed back on the same transitions, the unit gets one last setpoint, the lowest, where
         it rests. A unit held at its least speed is left as it is, and so is one somebody set meanwhile.
@@ -1163,7 +1312,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if state is None or state.state != "heat" or state.attributes.get("temperature") != mem.last_target:
             return  # not as we left it: somebody's now
         step = state.attributes.get("target_temp_step")
-        floor = heat_pump_control.to_step(heat_pump_control.SETPOINT_MIN, step if isinstance(step, (int, float)) else None)
+        step = step if isinstance(step, (int, float)) else None
+        floor = heat_pump_control.to_step(heat_pump_control.SETPOINT_MIN, step)
+        # Home Assistant stopping (decided 19.11.): the rooms' normal target, not the floor, and remembered
+        if to_rooms_target and (aim := self._rooms_target()) is not None:
+            floor = max(heat_pump_control.to_step(aim, step), floor)
         command = HeatPumpCommand("off", "adjust", None, floor, None, None, "control_let_go")
         # ... and its fan back to where the quick heat-up or the drying turned it up from, while it still shows their
         # stage: left on it, that stage read as one chosen by hand once the control was back (review 2026-11-13).
@@ -1188,6 +1341,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.boiler_memory = replace(self.boiler_memory, last_payload=None, last_send_ts=None)
 
     def set_room_control_mode(self, mode: str) -> None:
+        was_active = self.room_control_mode == CTRL_ACTIVE
+        if was_active and mode != CTRL_ACTIVE and self.valve_ctrl_memory:
+            # the valves driven directly get back what they had, with what was sent still known (§7, review #6)
+            sent = {key: mem.last_sent_target for key, mem in self.room_ctrl_memory.items()}
+            self.hass.async_create_task(self.async_hand_back_valves(leaving=True, sent=sent))
         if self._switch_mode("room", self.room_control_mode, mode, self.room_control_modes):
             self.room_control_mode = mode
             self.room_ctrl_memory.clear()
@@ -1238,6 +1396,24 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.overrides[room] = Override(target=float(temperature), until_ts=now + minutes * 60.0, set_at_ts=now, by=hand.ACTION)
         _LOGGER.info("thriftherm override: %s -> %.1f °C for %d min", room, temperature, minutes)
         await self._async_changed()
+
+    async def async_switch_room_off(self, room: str, cooling: bool = False) -> None:
+        """"Off" on a room's climate: held until it is switched on again (decided 19.11.), at the frost limit, or not
+        cooled. An override with no end shown (ROOM_OFF_UNTIL_TS)."""
+        now = time.time()
+        if cooling:
+            self.cool_overrides[room] = Override(room_cooling.NO_COOLING_C, ROOM_OFF_UNTIL_TS, now, hand.ACTION)
+        else:
+            self.overrides[room] = Override(self.builder.params.frost_temp, ROOM_OFF_UNTIL_TS, now, hand.ACTION)
+        _LOGGER.info("thriftherm room %s: switched off on its room climate", room)
+        await self._async_changed()
+
+    async def async_switch_room_on(self, room: str, cooling: bool = False) -> None:
+        """Back on: its off ends, and only that (decided 19.11.: "heat" ended a quick heat-up and a drying as well)."""
+        held = (self.cool_overrides if cooling else self.overrides).pop(room, None)
+        if held is not None:
+            _LOGGER.info("thriftherm room %s: switched on again on its room climate", room)
+            await self._async_changed()
 
     async def async_clear_override(self, room: str | None) -> None:
         """End what was changed by hand: one room's override, or everything and the heat pump's too."""
@@ -1465,6 +1641,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         self.room_ctrl_memory[room_cmd.room] = self._room_memory_before[room_cmd.room]
                     continue
                 await executors.async_set_thermostat(self.hass, entity, room_cmd, self._own_context())
+            await self._async_send_valves(result.get("valve_plans", {}), cycle_ts)
         await self.async_save_store()
         await issues.async_sync(self.hass, self, result)
         return result
@@ -1679,7 +1856,9 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             # Projected onto the weather only at the heat pump's fixed least speed: a boiler's heating curve raises
             # the flow in frost, and a leaky radiator room fell to the floor of 0.1 an hour (review 2026-10-30).
-            rate = self.heat_rates.rate(key, HEAT_BY_BOILER)
+            # Few heat-ups mixed with the default (learning.HEAT_RATE_TRUSTED): one at a cycling boiler had the
+            # bedroom preheat 5.6 hours (16.11.).
+            rate = self.heat_rates.trusted_rate(key, HEAT_BY_BOILER, self.builder.params.default_heat_rate_radiator_k_h)
         return replace(state, heat_rate_k_h=rate, preheat_by_heat_pump=by_heat_pump)
 
     def _heated_by_hand(self, room: str) -> bool:
@@ -1750,7 +1929,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             res = rooms.get(cfg.key)
             if res is None or not cfg.served_by_heat_pump:
                 continue
-            own = res.temperature is not None and not any(i.startswith("using_trv_local_temperature") for i in res.issues)
+            own = res.temperature is not None and _measures_the_room(res.issues)
             learnable = own and ac_cool_learnable(
                 own_cool_run=own_cool_run, resting=mem.resting, lifted=mem.cool_lifted, compressor_ran_s=ran,
                 override=cfg.key in self.cool_overrides, window_open=bool(res.window_open), cheap_power=cheap,
@@ -1786,7 +1965,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if res is None:
                 continue
             served = cfg.served_by_heat_pump and self.has_heat_pump
-            own = res.temperature is not None and not any(i.startswith("using_trv_local_temperature") for i in res.issues)
+            own = res.temperature is not None and _measures_the_room(res.issues)
             op = season_engine.room_operation(
                 served=served, unit=sample_unit, thermostat_heating=res.thermostat_heating,
                 calling=res.boiler_call == "calling", boiler_released=boiler_released, drying=res.drying.active,
@@ -1904,7 +2083,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         snapshot = replace(
             snapshot,
             rooms={
-                key: self._with_preheat_rate(state, snapshot.mode, heat_pump_heat_possible, outdoor)
+                key: self._while_exercised(self._with_preheat_rate(state, snapshot.mode, heat_pump_heat_possible, outdoor))
                 for key, state in snapshot.rooms.items()
             },
         )
@@ -2022,8 +2201,15 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         boiler_can_help = boiler_can_help and not boiler_held  # no peak to promise from a boiler held back
         helped = set(heat_pump_room_keys) if self.control_memory.boiler_helps and boiler_can_help else set()
         for key, res in rooms.items():
+            before = self.call_memory.get(key, heat_call.CallMemory())
+            up = boiler_load.heating_up(
+                key in self._heating_up, before.target, res, params.call_off_k,
+                steady_s=None if before.target_since_ts is None else now_ts - before.target_since_ts,
+            )
+            self._heating_up = (self._heating_up | {key}) if up else (self._heating_up - {key})
             state, memory = heat_call.update(
-                res, self.call_memory.get(key, heat_call.CallMemory()), now_ts, res.comfort_end_ts, helping=key in helped
+                res, self.call_memory.get(key, heat_call.CallMemory()), now_ts, res.comfort_end_ts, helping=key in helped,
+                call_on_k=params.call_on_k, call_off_k=params.call_off_k,
             )
             if memory != self.call_memory.get(key):
                 self._store_dirty = True
@@ -2034,6 +2220,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 res, boiler_call=call_states[key], stalled_target=self.call_memory[key].stalled_target,
                 last_call=self.call_memory[key].last,
                 calling_s=now_ts - since if (since := self.call_memory[key].since_ts) is not None else None,
+                heating_up=key in self._heating_up,
                 target_steady_s=None if (stood := self.call_memory[key].target_since_ts) is None else now_ts - stood,
             )
             for key, res in rooms.items()
@@ -2176,7 +2363,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         seen = self.boiler_memory.hot_water_seen_ts
         hot_water_recent = seen is not None and now_ts - seen < boiler_control.HOT_WATER_HOLDOFF_S
 
-        # --- boiler control: plan only or active ----------------------------------------------
+        # --- boiler control: observe only or active ----------------------------------------------
         # Right after a start, a heat pump whose run is kept while its entity is not loaded yet
         # counts as data still missing, like a room sensor that has not reported: the advice would
         # name the boiler for the rooms the unit serves, and the boiler would hold that for its
@@ -2240,6 +2427,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ),
                 learning_allowed=learning_allowed,
                 no_new_release=no_new_release,
+                heating_along=self._heating_along,
             ),
             self.boiler_memory,
         )
@@ -2260,6 +2448,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ])
 
         # --- heat along: while the boiler runs anyway, more open radiators mean fewer starts ---
+        self._own_targets = {key: res.target for key, res in rooms.items()}  # what a valve handed back gets (§7)
         sent_rooms = rooms
         if boiler_cmd.plan == BOILER_PLAN_HEAT:
             comfort = {
@@ -2269,21 +2458,79 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             joining = {key: res for key, res in rooms.items() if key not in left_to_unit}
             sent_rooms = {**rooms, **heat_call.join(joining, call_states, comfort, now_ts)}
 
+        # No valve exercise begins in a room whose window is open or that calls, nor while the boiler heats: its "shut"
+        # would close a radiator the boiler heats for (concept §5.6; final review 2026-11-15 #6).
+        heating = boiler_cmd.plan == BOILER_PLAN_HEAT
+        self._no_exercise = {
+            k for k, r in rooms.items() if heating or r.window_open or call_states.get(k) == heat_call.CALL_CALLING
+        }
+
         # --- room control via the room thermostats ----------------------------------------------
         room_commands: dict[str, RoomCommand] = {}
+        self._valve_corrected, self._valve_steps, self._exercise_begun = {}, {}, False
         for cfg in self.builder.rooms:
             state = snapshot.rooms.get(cfg.key)
             res = sent_rooms.get(cfg.key)
             if state is None or res is None:
                 continue
-            before = self.room_ctrl_memory.get(cfg.key, RoomCtrlMemory())
+            before = self._room_memory(cfg.key, cfg.climate_entity)
             self._room_memory_before[cfg.key] = before
+            # the lead (heat_call.lead_k): while the boiler runs for the room, its thermostat should not throttle early
+            own = rooms.get(cfg.key)
+            ours = self.boiler_control_mode == CTRL_ACTIVE
+            # the boiler waits for its data (restart, ebusd gap): the lead the thermostat has is held, not sent anew
+            waiting = (
+                ours and boiler_cmd.plan == BOILER_PLAN_HANDS_OFF
+                and set(boiler_cmd.blockers) <= {"waiting_for_room_data", "boiler_data_unavailable"}
+            )
+            # a room on its own controller keeps the target at its valves: their own control is the net (§3.4)
+            lead = 0.0 if own is None or cfg.valve_opening else heat_call.lead_k(
+                call_states.get(cfg.key, heat_call.CALL_IDLE), res, own, cfg.lead_k,
+                # Only while the boiler is ours to run: in "observe only" it goes by its own knob (review 2026-11-13)
+                boiler_cmd.plan == BOILER_PLAN_HEAT and ours, cfg.key in left_to_unit,
+                leading=before.sent_extra_k - before.sent_correction_k > 0.0,
+                held_k=before.sent_extra_k - before.sent_correction_k if waiting else None,
+            )
+            if cfg.direct and not cfg.valve_opening:
+                # one rule for a valve driven directly (review 2026-11-15 §3.4): wanting heat, safely above where it
+                # shuts; else the target. The lead of a room thermostat is no number of its own here.
+                # Only where a call starts a burner Thriftherm runs (decided 15.11.): with district heating, no central heat
+                # source or a boiler only observed, the valve is the one thing that controls the room. It gets the target
+                # and controls by the room's reading by itself, as behind Better Thermostat.
+                wants = self.has_boiler and ours and (
+                    call_states.get(cfg.key) == heat_call.CALL_CALLING or (own is not None and res.target > own.target)
+                    # heating along in the setback up to its own target (decided 16.11.): open until the target
+                    or res.target_reason in heat_call.JOINED_REASONS
+                )
+                # a room the boiler helps calls until the target (heat_call: HELP_ON_K .. 0.0)
+                end_above = 0.0 if cfg.key in helped else -params.call_off_k
+                lead = direct_margin(self.hass, cfg, wants, end_above, state.thermostat_step or 0.5)
+            elif cfg.climate_entity and self.has_boiler and ours and call_states.get(cfg.key) == heat_call.CALL_CALLING:
+                # A valve opens only its hysteresis below its setpoint: while the room calls, the larger of it and the lead
+                # on top, not both (2026-11-15). 0 for Better or Versatile Thermostat, whose device has no such entity.
+                lead = valve_plan.on_top_while_calling(lead, valve_view(self.hass, cfg.climate_entity).hysteresis_k)
+            # not learned while the window is open: cold air at the room sensor (review 2026-11-15)
+            correction = self._valve_correction(cfg, res.target, snapshot.now) if cfg.direct and not res.window_open else 0.0
+            hold, hold_reason = None, "window_open_frost"
+            # no Better Thermostat to shut its valves while the window is open (§5.1): off, or the frost limit
+            window_off = cfg.direct and bool(res.window_open) and params.window_valve_off and self._valves_go_off(cfg)
+            hvac_mode = state.trv_hvac_mode
+            if cfg.direct and not window_off and hvac_mode == "off":
+                first = self.valve_ctrl_memory.get(cfg.valve_entities[0])
+                if first is not None and first.off_by_window:
+                    hvac_mode = "heat"  # its own off of the window: switched on again this cycle (engines/valve_plan.py)
+            if cfg.direct and res.window_open and not window_off:
+                hold = params.frost_temp
+            elif cfg.direct and not res.window_open and (step := self._valve_exercise(cfg, state, snapshot.now)) is not None:
+                # moved, so that it does not stick (§5.6): the ends of its range
+                low, high = state.thermostat_min_temp or 5.0, state.thermostat_max_temp or 30.0
+                hold, hold_reason = (high if step == "open" else low), "valve_exercise"
             room_cmd, self.room_ctrl_memory[cfg.key] = room_control.decide(
                 cfg.key,
                 self.room_control_mode,
                 res,
                 bool(cfg.climate_entity),
-                state.trv_hvac_mode,
+                hvac_mode,
                 state.trv_target_temp,
                 now_ts,
                 before,
@@ -2293,8 +2540,22 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 step=state.thermostat_step,
                 wrapped=state.thermostat_wrapped,
                 held_by_hand=cooling and self._heated_by_hand(cfg.key),
+                lead_k=lead,
+                own_c=None if own is None else own.target,
+                hold_c=hold,
+                correction_k=correction,
+                hold_reason=hold_reason,
             )
-            if self.room_ctrl_memory[cfg.key].last_sent_target != before.last_sent_target:
+            if window_off:
+                # the valves are switched off by their plans (engines/valve_plan.py): no setpoint meanwhile
+                room_cmd = RoomCommand(cfg.key, ROOM_PLAN_HOLD, None, False, "window_open_off", state.trv_target_temp)
+                self.room_ctrl_memory[cfg.key] = before
+            after = self.room_ctrl_memory[cfg.key]
+            if after.thermostat != cfg.climate_entity:
+                self.room_ctrl_memory[cfg.key] = after = replace(after, thermostat=cfg.climate_entity)
+            if (after.last_sent_target, after.sent_extra_k, after.sent_correction_k) != (
+                before.last_sent_target, before.sent_extra_k, before.sent_correction_k
+            ):
                 # A sent setpoint must survive a restart at once: measured 2026-09-26, the store
                 # still held 21.0 while the thermostat had 21.5 from us, and the restart took it
                 # for a change by hand (a two-hour override).
@@ -2310,6 +2571,32 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     room_cmd.reason,
                 )
             self._last_room_plans[cfg.key] = plan
+
+        # rooms that want heat now, for way d: they call, or heat along (heat_call.join)
+        opening_rooms = {r.key for r in self.builder.rooms if r.valve_opening}
+        wanting = {
+            k for k, r in rooms.items()
+            if call_states.get(k) == heat_call.CALL_CALLING or (k in sent_rooms and sent_rooms[k].target > r.target)
+            or (k in sent_rooms and sent_rooms[k].target_reason in heat_call.JOINED_REASONS)
+            # on its own controller a valve says idle because of our small opening (TRVZB: unreliable): no lock-out
+            or (call_states.get(k) == heat_call.CALL_THERMOSTAT_IDLE and k in opening_rooms)
+        }
+        windows_open = {k for k, r in rooms.items() if r.window_open}
+        # off where every valve of the room offers it; one that heats only gets the frost limit (final review #1)
+        windows_off = {
+            r.key for r in self.builder.rooms if r.key in windows_open and params.window_valve_off and self._valves_go_off(r)
+        }
+        # heating along, not calling: a valve with an opening limit opens in part (valve_plan.join_opening)
+        joined = {
+            k: to for k, r in sent_rooms.items()
+            if k in rooms and call_states.get(k) != heat_call.CALL_CALLING
+            and (to := heat_call.heats_along_to(r, rooms[k])) is not None
+        }
+        valve_plans = self._plan_valves(
+            snapshot, room_commands, {k: r.target for k, r in rooms.items()}, wanting, windows_off, windows_open,
+            joined,
+        )
+        self._heating_along = tuple(sorted((k, self._opening_along(k)) for k in joined))
 
         # --- learning: heat-up rates (heating = a source that reaches the room is on) ----
         # Another room's call heats nothing here: a radiator gets the boiler's heat only where it may open,
@@ -2346,15 +2633,20 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             heating = reached and wants
             by_heat_pump = compressor_heats and key in heat_pump_room_keys
             source = None
-            if wants and by_boiler:
+            if wants and by_boiler and _radiator_can_heat(res):
                 source = HEAT_BY_BOTH if by_heat_pump else HEAT_BY_BOILER
             elif wants and by_heat_pump and at_minimum:
                 source = HEAT_BY_HEAT_PUMP
-            # the valve's own reading stands in for a failed room sensor, but it sits at the
-            # radiator: rates learned from it would not be the room's
-            measured = None if any(i.startswith("using_trv_local_temperature") for i in res.issues) else res.temperature
+            # the valve's own reading stands in for a failed room sensor, but it sits at the radiator: rates learned
+            # from it would not be the room's. A room set up without a sensor is controlled by it, and learns by it.
+            measured = res.temperature if _measures_the_room(res.issues) else None
             episode = self.heat_rates.episodes.get(key)
-            learned = self.heat_rates.observe(key, now_ts, measured, source, bool(res.window_open), outdoor)
+            # behind its target, a room heats up only while something heats it: with the boiler, its burner ran lately
+            fired = source != HEAT_BY_BOILER or _burned_within(self.boiler_memory.burns, now_ts)
+            short = None if measured is None or not fired else round(res.target - measured, 2)
+            learned = self.heat_rates.observe(
+                key, now_ts, measured, source, bool(res.window_open), outdoor, short_k=short
+            )
             if learned is not None and episode is not None:
                 _LOGGER.info("thriftherm learned heat-up rate %s from the %s: %.2f K/h", key, episode.source, learned)
                 self._store_dirty = True
@@ -2439,6 +2731,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "reason_state": reason_state,
             "reason_texts": reason_texts,
             "room_commands": room_commands,
+            "valve_plans": valve_plans,
             "echoes_ignored": dict(self.echoes_ignored),
             "room_control_mode": self.room_control_mode,
             "season": self.season,
@@ -2447,6 +2740,209 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "season_reason": self.season_reason,
             "cool_overrides": {k: {"target": o.target, "until_ts": o.until_ts} for k, o in self.cool_overrides.items()},
         }
+
+    def _valves_go_off(self, cfg: RoomConfig) -> bool:
+        """Every valve of the room offers the mode "off" (one that does not say counts as offering it)."""
+        for valve in cfg.valve_entities:
+            state = self.hass.states.get(valve)
+            modes = state.attributes.get("hvac_modes") if state is not None else None
+            if isinstance(modes, (list, tuple)) and modes and "off" not in modes:
+                return False
+        return True
+
+    def _plan_valves(
+        self, snapshot: HeatingSnapshot, room_commands: Mapping[str, RoomCommand], targets: Mapping[str, float],
+        wanting: frozenset[str] | set[str] = frozenset(),
+        windows_off: frozenset[str] | set[str] = frozenset(),
+        windows_open: frozenset[str] | set[str] = frozenset(),
+        joined: Mapping[str, float] | None = None,
+    ) -> dict[str, valve_plan.ValvePlan]:
+        """What the valves of the rooms driven directly get besides the first one's setpoint (engines/valve_plan.py).
+
+        `joined`: the rooms heating along without a call of their own, with what they heat to (heat_call.heats_along_to);
+        their valves open in part where they can, by how little the room lacks of it."""
+        joined = joined or {}
+        plans: dict[str, valve_plan.ValvePlan] = {}
+        corrected, self._valve_corrected = self._valve_corrected, {}
+        self._valve_memory_next = {}
+        now_ts = snapshot.now.timestamp()
+        for cfg in self.builder.rooms:
+            if not cfg.direct:
+                continue
+            room_c, fresh = self.builder.valve_room_reading(cfg.temperature_sensor, snapshot.now)
+            room_cmd = room_commands.get(cfg.key)
+            setpoint = None if room_cmd is None or room_cmd.plan not in ("set", "hold") else room_cmd.target
+            if room_cmd is not None and room_cmd.reason == "valve_exercise":
+                # the first valve's exercise holds the room's ends: the further ones keep the target (final review #5)
+                setpoint = targets.get(cfg.key, setpoint)
+            # without a fresh room reading the valve is handed to its own control: fully open, its setpoint limits it
+            # (review 2026-11-15: left at 3 % a room whose sensor died was never heated again)
+            opening = 100.0 if cfg.valve_opening else None
+            lacks = None
+            if cfg.key in joined and not cfg.valve_opening and fresh and room_c is not None:
+                lacks = round(joined[cfg.key] - room_c, 2)
+            if cfg.valve_opening and fresh and room_c is not None and cfg.key in targets:
+                opening = valve_tpi.opening(
+                    targets[cfg.key], room_c, snapshot.outdoor_temp.value_or_none, cfg.key in wanting
+                )
+            for index, valve in enumerate(cfg.valve_entities):
+                if (driver := valve_driver(self.hass, valve)) is not None:
+                    # Better Thermostat switched on again after the form: two controllers at one valve (review 2026-11-15)
+                    plans[valve] = valve_plan.ValvePlan(valve, "driven_elsewhere", f"driven_by:{driver}")
+                    continue
+                view = replace(valve_view(self.hass, valve), force=cfg.valve_force)
+                mem = corrected.get(valve) or self.valve_ctrl_memory.get(valve, valve_plan.ValveMemory())
+                if index and cfg.key not in windows_open and setpoint is not None:
+                    # not while the window is open, nor for a room left alone (review 2026-11-15)
+                    step, mem = self._exercise_step(valve, view, mem, snapshot.rooms.get(cfg.key), snapshot.now)
+                elif index:
+                    step = None
+                else:
+                    step = self._valve_steps.get(valve)
+                plans[valve], self._valve_memory_next[valve] = valve_plan.plan(
+                    view, mem, room_c, fresh, now_ts, setpoint if index else None,
+                    target=targets.get(cfg.key) if index else None, opening=opening, exercise=step,
+                    setpoint_limits=view.setpoint_limits, window_off=cfg.key in windows_off,
+                    room_sensor=bool(cfg.temperature_sensor), window_open=cfg.key in windows_open, join_deficit_k=lacks,
+                )
+        return plans
+
+    def _opening_along(self, room: str) -> float:
+        """How far the valves of a room heating along open (valve_plan.join_opening), 100 where nothing limits them."""
+        cfg = next((r for r in self.builder.rooms if r.key == room), None)
+        limits = [
+            mem.opening_pct for v in (cfg.valve_entities if cfg is not None and cfg.direct else ())
+            if (mem := self._valve_memory_next.get(v)) is not None and mem.opening_ts is not None
+            and mem.opening_pct is not None
+        ]
+        return min(limits) if limits else 100.0
+
+    def disabled_valve_entities(self, room: RoomConfig) -> tuple[str, ...]:
+        """The sensor selections and inputs for the room temperature of the room's valves driven directly that are
+        switched off in Home Assistant (issues.py; seen 2026-11-15)."""
+        if not room.direct:
+            return ()
+        wanted = ("sensor_select", "sensor_switch", "external_temperature")
+        return tuple(
+            entity for valve in room.valve_entities
+            for role, entity in valve_view(self.hass, valve).caps.disabled_roles if role in wanted
+        )
+
+    def coarse_valves(self, room: RoomConfig) -> tuple[tuple[str, float], ...]:
+        """The valves behind the room's Better or Versatile Thermostat that open only more than 0.5 K below their
+        setpoint, with that threshold (issues.py; seen 2026-11-15). Valves Thriftherm drives itself allow for it."""
+        if room.direct or not room.climate_entity or not self.builder.wraps_thermostats(room.climate_entity):
+            return ()
+        found = []
+        for valve in self.builder.valves_behind(room.climate_entity):
+            if valve.startswith("climate.") and valve != room.climate_entity:
+                k = valve_view(self.hass, valve).hysteresis_k
+                if k > COARSE_THRESHOLD_K:
+                    found.append((valve, k))
+        return tuple(found)
+
+    def _valve_exercise(self, cfg: RoomConfig, state: RoomState, now: datetime) -> str | None:
+        """The step of the valve exercise for the room's first valve (engines/valve_plan.py `exercise`), None if none."""
+        valve = cfg.valve_entities[0]
+        if valve_driver(self.hass, valve) is not None:
+            return None
+        mem = self._valve_corrected.get(valve) or self.valve_ctrl_memory.get(valve, valve_plan.ValveMemory())
+        step, self._valve_corrected[valve] = self._exercise_step(valve, valve_view(self.hass, valve), mem, state, now)
+        self._valve_steps[valve] = step
+        return step
+
+    def _while_exercised(self, state: RoomState) -> RoomState:
+        """A room driven directly whose valve is in its exercise: it cannot be open for the room (review item 4)."""
+        cfg = state.config
+        if not cfg.direct or state.valve_unable is not None:
+            return state
+        moving = any(self.valve_ctrl_memory.get(v, valve_plan.ValveMemory()).exercise_step for v in cfg.valve_entities)
+        return replace(state, valve_unable="exercise") if moving else state
+
+    def _exercise_step(
+        self, valve: str, view: valve_plan.ValveView, mem: valve_plan.ValveMemory, state: RoomState | None,
+        now: datetime,
+    ) -> tuple[str | None, valve_plan.ValveMemory]:
+        """One step of a valve's exercise. A new one begins (review 2026-11-15) in the day, not during an override or a
+        quick heat-up, not while the valve's writes wait for a retry, and for one valve a cycle: rooms due together
+        move one after the other."""
+        now_ts = now.timestamp()
+        quiet = state is not None and state.override is None and (state.boost_until_ts or 0.0) <= now_ts
+        quiet = quiet and state is not None and state.config.key not in self._no_exercise
+        retry = self._valve_retry.get(valve, (0, 0.0))[1] > now_ts
+        may_start = _exercise_hours(now) and quiet and not retry and not self._exercise_begun
+        step, after = valve_plan.exercise(view, mem, now_ts, may_start)
+        if after.exercise_step == 1 and mem.exercise_step == 0:
+            self._exercise_begun = True
+        return step, after
+
+    def _valve_correction(self, cfg: RoomConfig, target: float, now: datetime) -> float:
+        """Way c for the room's first valve (engines/valve_plan.py `setpoint_correction`), its memory held for the plan."""
+        valve = cfg.valve_entities[0]
+        if valve_driver(self.hass, valve) is not None:
+            return 0.0
+        room_c, fresh = self.builder.valve_room_reading(cfg.temperature_sensor, now)
+        mem = self.valve_ctrl_memory.get(valve, valve_plan.ValveMemory())
+        correction, self._valve_corrected[valve] = valve_plan.setpoint_correction(
+            replace(valve_view(self.hass, valve), force=cfg.valve_force), mem, room_c, fresh, target, now.timestamp()
+        )
+        return correction
+
+    async def _async_send_valves(self, plans: Mapping[str, valve_plan.ValvePlan], cycle_ts: float) -> None:
+        """Carry out the valve plans; what was sent goes into the memory, what was not stays planned anew.
+
+        A write the valve does not show is planned again next cycle. A call over MQTT never fails, so the backoff below
+        never held: a valve fallen back on its own sensor or out of reach got the same value every minute (final review
+        2026-11-15 #2). The same value goes out once more at once, then after 5, 10, 20 ... minutes, an hour at most;
+        once the plan no longer asks for it, the next asking starts afresh."""
+        wanted = {(w.entity_id, str(w.value)) for plan in plans.values() for w in plan.writes}
+        self._valve_unanswered = {k: v for k, v in self._valve_unanswered.items() if k in wanted}
+        for valve, plan in plans.items():
+            nxt = self._valve_memory_next.get(valve)
+            if nxt is None:
+                continue
+            failures, retry_ts = self._valve_retry.get(valve, (0, 0.0))
+            waiting = bool(plan.writes) and cycle_ts < retry_ts
+            sent = not waiting
+            went: list[valve_plan.Write] = []
+            for write in () if waiting else plan.writes:
+                # a temperature goes out in °C only (see _writes_held), the selection in any unit
+                temperature = write.value if write.domain in ("number", "climate") else None
+                asked = self._asked_meanwhile(write.entity_id, cycle_ts, setpoint_only=write.domain == "climate")
+                if self._writes_held(temperature) or asked:
+                    sent = False
+                    break
+                key = (write.entity_id, str(write.value))
+                times, last_ts = self._valve_unanswered.get(key, (0, 0.0))
+                if times and cycle_ts - last_ts < valve_plan.unanswered_wait_s(times):
+                    sent = False
+                    break
+                self._valve_unanswered[key] = (times + 1, cycle_ts)
+                if not await executors.async_write_valve(self.hass, valve, write, self._own_context()):
+                    # stop at the first failure: the selection after a value that did not arrive put a valve on 0 °C
+                    # (review 2026-11-15)
+                    wait = min(60.0 * 2 ** min(failures + 1, 6), 3600.0)
+                    self._valve_retry[valve] = (failures + 1, cycle_ts + wait)
+                    sent = False
+                    break
+                went.append(write)
+            else:
+                if not waiting:
+                    self._valve_retry.pop(valve, None)
+            if not sent:
+                nxt = _memory_after_part(self.valve_ctrl_memory.get(valve, valve_plan.ValveMemory()), nxt, went)
+            if nxt != self.valve_ctrl_memory.get(valve):
+                self._store_dirty = True
+            self.valve_ctrl_memory[valve] = nxt
+
+    def _room_memory(self, key: str, thermostat: str | None) -> RoomCtrlMemory:
+        """What was sent to the room's thermostat; nothing where it was another one (review 2026-11-13: the memory stayed
+        when the room got another thermostat in the form, and its value was weighed against the new one's)."""
+        mem = self.room_ctrl_memory.get(key)
+        if mem is None or (mem.thermostat is not None and mem.thermostat != thermostat):
+            self.room_ctrl_memory.pop(key, None)
+            return RoomCtrlMemory()
+        return mem
 
     def _adopt_manual_thermostat_changes(self, snapshot: HeatingSnapshot, now_ts: float) -> HeatingSnapshot:
         """Turn a manual change on a room thermostat into an override (active room control only)."""
@@ -2471,6 +2967,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 limits = (state.thermostat_min_temp, state.thermostat_max_temp)
                 value = room_control.thermostat_setpoint(state.trv_target_temp + turn[1], *limits) if usable else None
                 if value is not None and abs(value - state.trv_target_temp) > room_control.TOLERANCE_K:
+                    # the room's wish: without the lead the thermostat had from us
+                    value = room_control.without_extra(value, self.room_ctrl_memory.get(key, RoomCtrlMemory()))
                     minutes = self._override_default_min
                     override = Override(value, now_ts + minutes * 60.0, now_ts, hand.DEVICE)
                     self.overrides[key] = override
@@ -2480,8 +2978,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                         "thriftherm room %s: knob turned by %+.1f K -> override %.1f °C for %d min", key, turn[1], value, minutes
                     )
                     continue
-            mem = self.room_ctrl_memory.get(key)
-            if mem is None:
+            cfg = next((r for r in self.builder.rooms if r.key == key), None)
+            if key not in self.room_ctrl_memory or cfg is None:
+                continue
+            mem = self._room_memory(key, cfg.climate_entity)
+            if mem.last_sent_target is None:
                 continue
             # The thermostat's answer to our own setpoint is nobody's hand, whatever value it shows.
             # A late echo of its valve is no answer: our setpoint is what makes Better Thermostat
@@ -2511,9 +3012,17 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.echoes_ignored[key] = (now_ts, value)
                 continue
             minutes = self._override_default_min
-            override = Override(value, now_ts + minutes * 60.0, now_ts, asked or hand.DEVICE)
+            # A turn of the knob at a thermostat that had the lead from us is a wish for the room: 22 turned to from
+            # 21.5 is 21.5 for the room, and its thermostat shows 22 for as long as the boiler goes on running for it.
+            # A value a person or an automation asks for is meant as it is (review 2026-11-13).
+            wish = value if asked is not None else room_control.without_extra(value, mem)
+            override = Override(wish, now_ts + minutes * 60.0, now_ts, asked or hand.DEVICE)
             self.overrides[key] = override
-            self.room_ctrl_memory[key] = RoomCtrlMemory(last_sent_target=value, last_sent_ts=now_ts, confirmed=True)
+            # the extra of a turn holds the correction of way c as it did (review 2026-11-15): lost, it read as a lead
+            self.room_ctrl_memory[key] = RoomCtrlMemory(
+                last_sent_target=value, last_sent_ts=now_ts, confirmed=True, sent_extra_k=round(value - wish, 2),
+                thermostat=mem.thermostat, sent_correction_k=mem.sent_correction_k if asked is None else 0.0,
+            )
             changed[key] = replace(state, override=override)
             self._store_dirty = True
             _LOGGER.info(

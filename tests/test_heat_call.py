@@ -561,3 +561,118 @@ def test_a_call_keeps_where_it_began_through_a_restart():
     assert step(rr(temp=20.9), old, NOW + 18 * 60)[1].last is None
     spoiled = CallMemory.from_storage(replace(mem, spoiled="helped").to_storage())
     assert spoiled.spoiled == "helped" and CallMemory.from_storage({"spoiled": 5, "start_c": "x"}) == CallMemory()
+
+
+# ------------------------------------------------------------------ the band as a setting (2026-11-15)
+def test_the_band_of_the_call_can_be_set_wider_against_cycling():
+    """Decided 2026-11-15: ±0.5 against cycling. The call begins 0.5 below the target and ends 0.5 above it."""
+    band = {"call_on_k": 0.5, "call_off_k": -0.5}
+    state, mem = step(rr(temp=20.6), CallMemory(), **band)
+    assert state == "idle"  # 0.4 K below: not yet
+    state, mem = step(rr(temp=20.5), mem, **band)
+    assert state == "calling"
+    state, mem = step(rr(temp=21.4), mem, NOW + 60, **band)
+    assert state == "calling"  # above the target, within the band
+    state, mem = step(rr(temp=21.5), mem, NOW + 120, **band)
+    assert state == "idle"
+
+
+def test_the_band_of_before_is_the_default():
+    from custom_components.thriftherm.adapters.config import parameters_from_config
+
+    params = parameters_from_config({})
+    assert (params.call_on_k, params.call_off_k) == (heat_call.CALL_ON_K, heat_call.CALL_OFF_K)
+    params = parameters_from_config({"tolerance_below_k": 0.2, "tolerance_above_k": -0.3})  # an end before the start
+    assert (params.call_on_k, params.call_off_k) == (heat_call.CALL_ON_K, heat_call.CALL_OFF_K)
+
+
+def test_the_band_is_two_tolerances_in_a_narrow_range():
+    """Review 2026-11-15 §3.8: named as in Home Assistant, "tolerance below / above the target", in a narrow range."""
+    from custom_components.thriftherm.adapters.config import parameters_from_config
+
+    params = parameters_from_config({"tolerance_below_k": 0.5, "tolerance_above_k": 0.5})
+    assert (params.call_on_k, params.call_off_k) == (0.5, -0.5)
+    params = parameters_from_config({"tolerance_below_k": 0.3, "tolerance_above_k": 0.0})
+    assert (params.call_on_k, params.call_off_k) == (0.3, 0.0)  # to the target, the default proposed for direct rooms
+    for wrong in ({"tolerance_below_k": 1.0}, {"tolerance_above_k": 0.9}, {"tolerance_below_k": 0.1}):
+        assert parameters_from_config(wrong).call_on_k == heat_call.CALL_ON_K
+
+
+def test_a_wider_band_makes_no_hold_call_a_heat_up_for_the_learning():
+    """Review 2026-11-15 §3.8: with the call beginning 0.5 below, every call counted as a heat-up (HOLD_START_K 0.5)."""
+    state, mem = step(rr(temp=20.5), CallMemory(target=21.0), call_on_k=0.5, call_off_k=-0.5)
+    assert state == "calling" and mem.spoiled is None
+    state, mem = step(rr(temp=20.5), CallMemory(target=21.0))  # the band of before: 0.5 below is a heat-up
+    assert mem.spoiled is None  # 0.5 is not past HOLD_START_K
+    state, mem = step(rr(temp=20.4), CallMemory(target=21.0))
+    assert mem.spoiled == "heat_up"
+    state, mem = step(rr(temp=20.4), CallMemory(target=21.0), call_on_k=0.5, call_off_k=-0.5)
+    assert mem.spoiled is None  # within the band's start + 0.2
+
+
+def test_the_lagging_rule_follows_the_band():
+    from custom_components.thriftherm.engines import boiler_load
+
+    room = replace(rr(temp=20.7, trend=0.0), boiler_call="calling", calling_s=3600.0)
+    assert boiler_load.lagging_rooms((room,))  # 0.3 below with the band of before: it does not get there
+    assert not boiler_load.lagging_rooms((room,), lag_k=boiler_load.lag_deficit_k(0.5))  # within a band of 0.5
+
+
+def test_a_reload_in_the_last_half_hour_of_comfort_loses_no_call():
+    """16.11. 07:03:03: the options were saved and Thriftherm loaded anew, and until 07:30 no flow was planned. No call was
+    lost: the bathroom and the bedroom had stood on comfort_ending since 07:00:44, before the reload, and the kitchen's call
+    ended as it read 18.6 °C at a target of 18.5. A running call comes back from the store with its hysteresis."""
+    end = NOW + 30 * 60  # comfort until 07:30, now 07:00
+    reload = lambda mem: CallMemory.from_storage(mem.to_storage())  # noqa: E731 - the save of the unload, the load of the start
+    _, bath = step(rr(temp=19.4, target=21.0), CallMemory(), NOW - 120, end)
+    assert bath.calling
+    state, bath = step(rr(temp=19.4, target=21.0), bath, NOW + 44, end)
+    assert state == "comfort_ending"  # 07:00:44, the reload came later
+    state, bath = step(rr(temp=19.4, target=21.0), reload(bath), NOW + 183, end)
+    assert state == "comfort_ending"  # 07:03:03: as before the reload, no call lost and none begun
+    # the kitchen in its setback: a call that runs keeps its hysteresis over a reload (a new one begins only 0.3 below)
+    _, kitchen = step(rr("kuche", temp=18.2, target=18.5, reason="schedule_setback"), CallMemory(), NOW - 600)
+    assert kitchen.calling
+    state, _ = step(rr("kuche", temp=18.3, target=18.5, reason="schedule_setback"), reload(kitchen), NOW + 183)
+    assert state == "calling"
+    state, _ = step(rr("kuche", temp=18.3, target=18.5, reason="schedule_setback"), CallMemory(), NOW + 183)
+    assert state == "idle"  # without the store it would have ended
+    state, _ = step(rr("kuche", temp=18.6, target=18.5, reason="schedule_setback"), reload(kitchen), NOW + 183)
+    assert state == "idle"  # 07:03:03: 18.6 at 18.5, the call ends as it should
+
+
+def test_a_room_in_its_setback_heats_along_up_to_its_target_never_above():
+    """Decided 16.11.: the kitchen at 18.4 of 18.5 and the living room just below do not call, while the boiler runs for the
+    bathroom anyway. They heat along up to their setback target, not past it: no raised target, the valve driven
+    directly opens until the target (coordinator), a thermostat of its own gets the target only."""
+    rooms = {
+        "badezimmer": rr("badezimmer", temp=19.4, target=20.0, reason="schedule_setback"),  # calls
+        "kuche": rr("kuche", temp=18.4, target=18.5, reason="schedule_setback"),
+        "wohnzimmer": rr("wohnzimmer", temp=18.5, target=18.5, reason="schedule_setback"),  # at its target
+        "arbeitszimmer": rr("arbeitszimmer", temp=19.6, target=19.0, reason="schedule_setback"),  # above
+    }
+    states = {"badezimmer": "calling", "kuche": "idle", "wohnzimmer": "idle", "arbeitszimmer": "idle"}
+    comfort = {"badezimmer": 21.0, "kuche": 19.5, "wohnzimmer": 20.0, "arbeitszimmer": 20.0}
+    out = heat_call.join(rooms, states, comfort, NOW)
+    assert out["badezimmer"] is rooms["badezimmer"]
+    assert (out["kuche"].target, out["kuche"].target_reason) == (18.5, heat_call.JOINED_SETBACK)
+    assert out["wohnzimmer"] is rooms["wohnzimmer"] and out["arbeitszimmer"] is rooms["arbeitszimmer"]
+    # a thermostat of its own (Better Thermostat) gets the target only, no lead: it opens in part by itself
+    lead = heat_call.lead_k("idle", out["kuche"], rooms["kuche"], 0.5, boiler_heats=True, left_to_unit=False)
+    assert lead == 0.0
+
+
+def test_a_room_heating_along_heats_to_its_own_target_one_preheating_early_to_the_comfort_it_pulls_forward():
+    """16.11. 09:43: the study preheating early (joined_preheat) at 19.2 °C, 0.2 above its setback of 19, got its valve
+    at 30 % as if it lacked a tenth: measured to its setback target, not to the comfort it heats up to."""
+    own = rr("arbeitszimmer", temp=19.2, target=19.0, reason="schedule_setback", preheat=NOW + 1800)
+    joined = heat_call.join({"arbeitszimmer": own}, {"arbeitszimmer": "idle"}, {"arbeitszimmer": 20.5}, NOW)["arbeitszimmer"]
+    assert joined.target_reason == heat_call.JOINED_PREHEAT
+    assert heat_call.heats_along_to(joined, own) == 20.5
+    kitchen = rr("kuche", temp=18.3, target=18.5, reason="schedule_setback")
+    along = heat_call.join({"kuche": kitchen}, {"kuche": "idle"}, {"kuche": 19.5}, NOW)["kuche"]
+    assert heat_call.heats_along_to(along, kitchen) == 18.5  # up to its setback, never past it
+    living = rr("wohnzimmer", temp=18.3, target=18.5)
+    along = heat_call.join({"wohnzimmer": living}, {"wohnzimmer": "idle"}, {"wohnzimmer": 18.5}, NOW)["wohnzimmer"]
+    assert heat_call.heats_along_to(along, living) == 18.5  # in comfort: until its own target, as the join ends there
+    assert heat_call.heats_along_to(living, living) is None  # not heating along

@@ -20,6 +20,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry, async_
 from custom_components.thriftherm.const import CONF_ROOMS, DOMAIN
 from custom_components.thriftherm.engines.room_control import is_echo
 
+from .conftest import climate_loaded
 from .test_integration import _entry_data, _set_states
 
 T0 = 1_000_000.0
@@ -102,6 +103,7 @@ def start(freezer):
 
 @pytest.mark.parametrize("enabled", [True, False])
 async def test_an_echo_is_ignored_and_a_knob_turn_is_taken(hass: HomeAssistant, start, enabled: bool) -> None:
+    await climate_loaded(hass)
     set_temp = async_mock_service(hass, "climate", "set_temperature")
     _register(hass)
     _set_states(hass)
@@ -150,6 +152,7 @@ async def test_a_late_echo_the_thermostat_adopts_seconds_after_our_setpoint_is_s
     Adopted within the few seconds Home Assistant keeps our context on the entity, the stale value
     is marked as ours. It is no rendering of what we sent all the same, and must not be held as one.
     """
+    await climate_loaded(hass)
     set_temp = async_mock_service(hass, "climate", "set_temperature")
     _register(hass)
     _set_states(hass)
@@ -187,6 +190,7 @@ async def test_a_late_echo_the_thermostat_adopts_seconds_after_our_setpoint_is_s
 async def test_a_setpoint_the_thermostat_would_refuse_is_sent_at_its_limit(hass: HomeAssistant) -> None:
     """Found in the code 2026-10-13: frost protection at 7 °C for a thermostat that starts at 8 °C was
     refused every five minutes, for good."""
+    await climate_loaded(hass)
     set_temp = async_mock_service(hass, "climate", "set_temperature")
     _register(hass)
     _set_states(hass)

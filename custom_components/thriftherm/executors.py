@@ -14,6 +14,7 @@ from typing import Any
 
 from homeassistant.core import Context, HomeAssistant
 
+from .engines.valve_plan import Write
 from .models import HeatPumpCommand, RoomCommand
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,6 +57,15 @@ async def async_set_thermostat(
     what = f"room {room_cmd.room}: setpoint {room_cmd.target:.1f}"
     if await _call(hass, "climate", "set_temperature", data, what, context=context):
         _LOGGER.info("thriftherm room %s: thermostat set to %.1f °C (%s)", room_cmd.room, room_cmd.target, room_cmd.reason)
+
+
+async def async_write_valve(hass: HomeAssistant, valve: str, write: Write, context: Context | None = None) -> bool:
+    """One write of a valve plan (engines/valve_plan.py): its room temperature, sensor selection, offset or setpoint."""
+    what = f"valve {valve}: {write.entity_id} {write.value}"
+    if await _call(hass, write.domain, write.service, write.data(), what, context=context):
+        _LOGGER.debug("thriftherm %s", what)
+        return True
+    return False
 
 
 async def async_send_setmode(hass: HomeAssistant, topic: str, text: str) -> bool:

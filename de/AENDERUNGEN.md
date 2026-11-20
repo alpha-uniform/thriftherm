@@ -4,6 +4,49 @@
 
 Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
 
+## 0.8.0 – 2026-11-20
+
+**Von 0.7.5 kommend:**
+
+- Jeder Raum bekommt ein neues Thermostat `climate.thriftherm_<raum>_room_climate`. Räume mit Better Thermostat stehen in Apple Home dann doppelt: in der HomeKit-Bridge eines der beiden ausschließen, am besten das von Better Thermostat.
+- Zurück auf 0.7.5 gehen die neuen Optionen verloren (Toleranz unter/über dem Ziel, Fenster bei direkten Ventilen, Vorhalt am Thermostat, Ventile direkt); direkt gesteuerte Räume brauchen dann wieder Better Thermostat.
+
+- Behoben: Ein Raum, der planmäßig vorheizte oder auf ein höheres Ziel aufheizte, galt fürs Heizkurven-Lernen als zurückliegend (Arbeitszimmer +4,6 K); jetzt erst, wenn er langsamer steigt als geplant, und solche Schritte gehen nach dem Aufheizen zurück, höchstens 2 Grad über ihrem Anfang; steht der Raum eine Stunde still, hält er.
+- Behoben: Ein Lernversuch der Heizkurve wurde zurückgenommen, wenn der Brenner länger lief, weil andere Räume mitheizten; dann sagt er jetzt nichts.
+- Behoben: Ein Raum mit nur einer gelernten Aufheizphase heizte stundenlang vor (Schlafzimmer 5,6 h) oder zu spät (Bad); bis drei Phasen gelernt sind, zählt der mittlere Wert mit der Start-Aufheizrate, eine einzelne Phase verschiebt nichts.
+- Behoben: Mit der Therme heizt ein Raum ab Werk höchstens 4 Stunden vor wie mit der Wärmepumpe (eine langsame Rate hätte das Bad 10 Stunden vorheizen lassen); ein gesetztes *Längstes Vorheizen* gilt weiter, und vor der Rückkehr aus *Abwesend* heizt er so lange wie nötig.
+- Behoben: Das Bad begann zu spät vorzuheizen: Eine Dusche zählte als schnelles Aufheizen (1,99 K/h), langsame Phasen weit unter dem Ziel wurden nie gelernt; jetzt zählen beide richtig, auch bei Fühlern in 0,5- oder 1-Grad-Schritten, langsame nur, wenn der Heizkörper heizen kann, und geplant wird nie unter 0,2 Grad je Stunde.
+- Neu: Jeder Raum hat ein eigenes Raumklima für Apple Home und Siri, auch Räume mit Better Thermostat; *Aus* bleibt aus, bis du wieder einschaltest; in der HomeKit-Bridge eines der beiden ausschließen, am besten Better Thermostat.
+- Neu: Mitheizen auch in der Absenkung, bis zum Absenkungsziel, nie darüber; ein direkt gesteuertes Ventil mit Öffnungsgrenze (Sonoff TRVZB/TRVZBT) öffnet dabei nur anteilig und bekommt danach deinen Wert zurück, auch wenn ein Funkbefehl verloren geht.
+- Neu: Vorhalt am Thermostat. Solange die Therme für einen Raum läuft, bekommt sein Thermostat 0,5 Grad mehr, damit es nicht vorher drosselt (je Raum einstellbar, 0 = aus).
+- Behoben: Ein Thermostat, das nach einem Neustart oder Batteriewechsel mit anderem Sollwert zurückkam (oder Better Thermostat, wieder eingeschaltet), galt als Dreh von Hand; es bekommt jetzt wieder Thriftherms Sollwert.
+- Behoben: Nach einem Neustart von MQTT oder Home Assistant merkte Thriftherm ein verstummtes Ventil erst Stunden später.
+- Neu (Vorschau): Heizkörperventile direkt steuern, ohne Better Thermostat. Das Ventil bekommt Sollwert und Raumtemperatur, einen Offset oder einen korrigierten Sollwert; Kindersicherung und Modus am Ventil bleiben unangetastet. Bei offenem Fenster sind die Ventile aus (oder auf Wunsch auf der Frostgrenze), alle 7 Tage werden sie bewegt.
+- Neu: *Toleranz unter dem Ziel* und *Toleranz über dem Ziel* (Experte) legen fest, wann ein Raum die Therme anfordert (Standard wie bisher 0,3 darunter bis 0,1 darunter); das Lernen rechnet mit dem eingestellten Band.
+- Behoben: Ein direkt gesteuertes Ventil konnte schließen, bevor der Raum aufhörte anzufordern; es bleibt jetzt bis zum Ende offen. Bei Fernwärme oder ohne Therme bekommt es das Ziel.
+- Während des Ventilschutzes oder bei fast leerer Batterie lernt die Heizkurve nicht aus dem Raum.
+- Behoben: Bei taktender Therme wurde ein Schritt nach oben als „half nicht“ zurückgenommen, auch wenn der Brenner danach nicht länger lief; ein Raum, der allein heizt, blieb so tagelang knapp unter dem Ziel.
+- Behoben: Ein Ventil mit korrigiertem Sollwert konnte schließen, solange der Raum noch unter dem Ziel lag; die Korrektur wird dort jetzt auf den nächsten Ventilschritt aufgerundet.
+- Der Modus *Nur planen* heißt jetzt *Nur beobachten*; in Automationen bleibt der Wert `shadow`.
+- Die Heizkurve kennt keine „gefundenen“ Werte mehr, die nur nach langer Bestätigung nachgaben; die Regel griff in Wochen nie. Im Lernstatus fällt die Angabe weg.
+- *Therme Heizstarts heute* sagt, wonach gezählt wird und ob kurze Brennerläufe fehlen können (ohne Gaszähler).
+- Behoben: Ohne Gaszähler zählten Brennerläufe unter einer Minute nicht; jetzt zählt jeder, den die Statusnummer zeigt, auch fürs Takten und Lernen.
+- *Therme Heizbetrieb aktiv* zeigt den Brenner nach demselben Zeichen wie die Heizstarts.
+- Behoben: Ein direkt gesteuertes Ventil fiel auf seinen eigenen Fühler zurück, obwohl der Raumfühler noch galt (Fühler, deren Wert länger als 30 Minuten gleich blieb, ZHA-Fühler unverändert über 6 Stunden, Fühler, die nur bei Änderung melden).
+- Behoben: Ein Ventil ohne „aus“ heizte bei offenem Fenster weiter; es bekommt jetzt die Frostgrenze.
+- Behoben: Ein Wert, den ein Ventil nicht übernahm, ging jede Minute neu raus; jetzt in wachsenden Abständen.
+- Behoben: Der Ventilschutz lief beim Sonoff TRVZB nie.
+- Zum Testen lässt sich je Raum der Offset oder der korrigierte Sollwert erzwingen.
+- Geht Thriftherm (Raum zurück auf Better Thermostat, deaktiviert, gelöscht, Home Assistant stoppt), bekommen die Ventile ihren eigenen Fühler und alten Offset zurück.
+- Neu: Der Raumtemperatursensor ist optional; ohne ihn misst das Thermostat oder das Ventil.
+- Behoben: Wer einen Raum von Better Thermostat auf seine Ventile umstellte (oder ein anderes Thermostat wählte), verlor die gelernten Aufheizraten des Raums; das Gelernte bleibt jetzt.
+- Neu: Hinweis, wenn ein Ventil hinter Better Thermostat erst mehr als 0,5 Grad unter seinem Soll öffnet, mit dem Rat, es auf −0,4 zu stellen.
+- Behoben: Ein Ventil, das erst 1 Grad unter seinem Soll öffnet (Sonoff TRVZB), hielt seinen Raum knapp unter dem Ziel; Thriftherm rechnet die Schwelle jetzt ein.
+- Behoben: Ein Raumfühler neben dem offenen Fenster rief bei Frost draußen die Therme; ein Raum mit offenem Fenster zählt jetzt 30 Minuten lang nicht als Frostraum, danach wieder.
+- Neu: Taktet die Therme auf kleinster Leistung weit unter dem gesendeten Vorlauf, schickt Thriftherm schrittweise mehr (2 Grad, sobald der letzte Schritt nach 45 Minuten zu sehen ist), solange ein Raum nicht hinkommt (bis 55 °C bei einer Brennwerttherme, neue Option *Brennwerttherme*), statt die Heizkurve anzuheben; so entstandene Anhebungen gehen zurück. Steigen die Räume mit Reserve, geht es einen Schritt zurück; was gereicht hat, merkt sich Thriftherm je Raum und Außentemperatur und beginnt das nächste Heizen damit; ruft ein weiterer Raum mit, bleibt es dabei; heizt die Therme binnen zwei Stunden wieder, beginnt Thriftherm einen Schritt unter dem, womit das letzte Heizen endete.
+- Behoben: Ein Raum, dessen Temperatur sich nicht änderte, galt nach 90 Minuten als stummer Fühler und zählte fürs Lernen nicht, obwohl sein Gerät weiter meldete (Zigbee2MQTT schreibt einen gleichen Wert nicht neu); jetzt zählt, wann das Gerät zuletzt gemeldet hat.
+- Behoben: Stoppte Home Assistant während Schnellaufheizen oder Trocknen, blieb die Wärmepumpe auf 30 °C; jetzt bekommt sie das Raumziel.
+
 ## 0.7.5 – 2026-11-15
 
 - Der Betriebsmodus *Sommerbetrieb* heißt jetzt *Aus (nur Frostschutz)*.

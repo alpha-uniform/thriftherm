@@ -427,9 +427,12 @@ async def test_gone_and_back_is_nobodys_change_unless_the_setting_is_another(has
     bath._attr_available = False
     bath.async_write_ha_state()
     bath._attr_available = True
-    bath.at_the_device(target=19.0)  # back with another setpoint: somebody at the device meanwhile
-    back = coordinator._setting_changes["climate.bath"]
-    assert (back.origin, back.setpoint, back.mode) == ("device", True, False) and back.ts > by_person.ts
+    # Back with another setpoint. Until 2026-11-13 that was taken for somebody at the device meanwhile; a room thermostat
+    # that restarts (a valve after a change of batteries: 15 °C) or is switched on again (Better Thermostat with its
+    # stored target) does just that, and became a two-hour override. A room thermostat's comeback is no change now; the
+    # heat pump keeps the rule (test_a_unit_switched_off_while_unreachable_is_not_switched_on_again).
+    bath.at_the_device(target=19.0)
+    assert "climate.bath" not in coordinator._setting_changes
 
 
 async def test_a_person_overrides_a_rule_of_the_thermostats_own_and_it_shows_who(hass, freezer, hass_admin_user) -> None:
@@ -785,3 +788,33 @@ async def test_a_setpoint_and_then_a_mode_in_one_go_stay_a_hand_on_the_setpoint(
     await hass.services.async_call("climate", "set_hvac_mode", switch_on, blocking=True, context=context)
     await _cycle(hass, coordinator, freezer, 70)
     assert coordinator.overrides["badezimmer"].target == 24.0 and bath.target_temperature == 24.0
+
+
+async def test_a_setpoint_on_the_room_climate_of_a_room_with_its_own_thermostat_is_one_override_that_reaches_it(
+    hass: HomeAssistant, freezer, hass_admin_user
+) -> None:
+    """Every room has a room climate of Thriftherm's own (decided 2026-11-17: the living room with Better Thermostat had
+    none). Set there, a target is what a turn on the room's own thermostat is: an override for the override time. Its
+    thermostat gets it from us, and its answer is no second override; a turn on the thermostat after it wins as before."""
+    coordinator, bath, _ = await _setup(hass, freezer)
+    entity = "climate.thriftherm_badezimmer_room_climate"
+    assert hass.states.get(entity).attributes["hvac_modes"] == ["heat", "off"]
+    freezer.tick(timedelta(minutes=5))
+    await hass.services.async_call(
+        "climate", "set_temperature", {"entity_id": entity, "temperature": 23.0}, blocking=True,
+        context=Context(user_id=hass_admin_user.id),
+    )
+    override = coordinator.overrides["badezimmer"]
+    minutes = coordinator._override_default_min
+    assert (override.target, override.by) == (23.0, hand.ACTION)
+    assert override.until_ts == pytest.approx(override.set_at_ts + minutes * 60.0)
+    for _ in range(4):
+        await _cycle(hass, coordinator, freezer, 60)
+    assert bath.target_temperature >= 23.0  # passed on, with the lead while the boiler runs for it
+    assert coordinator.overrides["badezimmer"] == override  # its answer is ours, nobody's hand
+    assert hass.states.get(entity).attributes["temperature"] == 23.0
+    freezer.tick(timedelta(minutes=5))
+    await _set(hass, "climate.bath", 20.0, Context(user_id=hass_admin_user.id))
+    await _cycle(hass, coordinator, freezer, 60)
+    assert (coordinator.overrides["badezimmer"].target, coordinator.overrides["badezimmer"].by) == (20.0, hand.PERSON)
+    assert hass.states.get(entity).attributes["temperature"] == 20.0

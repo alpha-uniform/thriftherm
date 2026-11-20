@@ -247,3 +247,17 @@ def test_a_decided_setpoint_or_target_changes_the_decision_reason_at_once():
 def test_a_cop_close_to_its_break_even_is_shown_with_as_many_decimals_as_tell_them_apart(code, cop, break_even, expected):
     """Second review 2026-11-08 (#R18): "erwarteter COP (gelernt) 3,0 > Break-even 3,0" contradicted itself near break-even."""
     assert texts.render_reason(reason(code, basis="measured", cop=cop, break_even=break_even), "de", {}) == expected
+
+
+def test_the_mode_that_steers_nothing_is_called_observe_only():
+    """Decided 15.11.2026: "Nur planen" / "Plan only" is now "Nur beobachten" / "Observe only"; the value shadow stays."""
+    from custom_components.thriftherm import texts
+
+    root = Path(__file__).parent.parent / "custom_components" / "thriftherm"
+    for lang, name, old in (("de", "Nur beobachten", "Nur planen"), ("en", "Observe only", "Plan only")):
+        raw = (root / "translations" / f"{lang}.json").read_text(encoding="utf-8")
+        assert name in raw and old not in raw and old.lower() not in raw
+    raw = (root / "strings.json").read_text(encoding="utf-8")
+    assert "Observe only" in raw and "Plan only" not in raw
+    source = Path(texts.__file__).read_text(encoding="utf-8")
+    assert '"shadow": "Nur beobachten"' in source and '"shadow": "Observe only"' in source

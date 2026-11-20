@@ -903,3 +903,27 @@ def test_the_automatic_season_cools_on_the_card_and_says_why() -> None:
     assert result["headline"] == texts.CARD["en"]["heat_pump_cools"]
     assert result["season"] == f"auto: cooling · {texts.label('season_rooms_warm_up', 'en')}"
     assert result["chosen"] == "auto"
+
+
+def test_a_room_that_cannot_be_shown_does_not_take_the_card_down() -> None:
+    """Asked 2026-11-15: one room failing showed only Home Assistant's configuration error for the whole card."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass();
+      const format = hass.formatEntityAttributeValue;
+      hass.formatEntityAttributeValue = (s, a) => {
+        if (s.entity_id.includes("badezimmer")) throw new TypeError("broken room");
+        return format(s, a);
+      };
+      hass.states["sensor.thriftherm_decision_reason"] = { entity_id: "sensor.thriftherm_decision_reason", state: "-",
+        attributes: { reason_codes: "not a list" }, last_updated: "t0" };
+      hass.entities["sensor.thriftherm_decision_reason"] = { entity_id: "sensor.thriftherm_decision_reason",
+        platform: "thriftherm", translation_key: "decision_reason" };
+      let error = null;
+      try { await shown(main, hass); } catch (e) { error = String(e); }
+      const html = main.shadowRoot.innerHTML;
+      console.log(JSON.stringify({ error, living: html.includes("Wohnzimmer") }));
+    """)
+
+    assert result == {"error": None, "living": True}

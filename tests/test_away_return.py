@@ -40,6 +40,7 @@ from custom_components.thriftherm.const import (
 )
 from custom_components.thriftherm.datetime import return_meant
 
+from .conftest import climate_loaded
 from .test_integration import _entry_data, _set_states, _setup
 
 RETURN = "datetime.thriftherm_planned_return"
@@ -637,6 +638,7 @@ async def test_a_slow_thermostat_does_not_hold_back_the_planned_return(hass: Hom
             entered.set()
             await release.wait()
 
+    await climate_loaded(hass)
     hass.services.async_register("climate", "set_temperature", slow_set_temperature)
     _set_states(hass)
     hass.states.async_set("climate.bath_bt", "heat", {"temperature": 21.0, "current_temperature": 18.5})

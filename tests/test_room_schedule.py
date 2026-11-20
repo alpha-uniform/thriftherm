@@ -46,7 +46,8 @@ def test_outside_a_block_the_setback_applies():
     res = room_engine.evaluate_room(st, MON_NIGHT, "auto", PARAMS)
     assert res.target == 17.0 and res.target_reason == "schedule_setback"
     # the preheat start is published even while the setback is still active
-    assert res.preheat_start_ts == pytest.approx(far.timestamp() - 3.75 * 3600 - 1200, abs=1)
+    # 3.75 h + 20 min, four hours at most (17.11.)
+    assert res.preheat_start_ts == pytest.approx(far.timestamp() - 4 * 3600, abs=1)
 
 
 def test_without_next_start_no_preheating():

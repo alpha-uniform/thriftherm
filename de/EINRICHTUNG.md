@@ -2,9 +2,22 @@
 
 [English](../en/SETUP.md) | **Deutsch**
 
-Diese Anleitung bringt dich Schritt für Schritt von null zu einer laufenden Thriftherm-Installation. Du musst dich weder mit ebusd noch mit den Innereien von Home Assistant auskennen.
+Diese Anleitung bringt dich Schritt für Schritt von null zu einer laufenden Thriftherm-Installation. Du musst dich weder mit ebusd noch mit den Innereien von Home Assistant auskennen, und du liest nur die Schritte, die zu deiner Heizung passen.
 
 **An Therme und Thermostate geht nichts, bis du in Schritt 7 selbst auf *Aktiv* stellst.** Bis dahin rechnet Thriftherm nur und zeigt an, was es tun würde – du kannst also jeden Schritt gefahrlos ausprobieren.
+
+## Dein Weg
+
+Die erste Frage im Einrichtungsdialog ist „Was für eine Heizung hast du?“. Danach richtet sich, welche Schritte du brauchst:
+
+| Deine Heizung | Im Dialog wählen | Deine Schritte |
+|---|---|---|
+| Gastherme mit eBUS (Vaillant, Saunier Duval, Wolf und andere eBUS-Thermen) | *Eigene Gas- oder Ölheizung* | 1, 2, 3, 4, 5, 6, 7, 9 |
+| Therme ohne eBUS, über OpenTherm oder zwei Entitäten (Vorschau) | *Eigene Gas- oder Ölheizung*, dann [4.3a](#43a-therme-ohne-ebusd-über-entitäten-vorschau) | 1, 3, 4, 5, 7, 9 |
+| Fernwärme, Zentralheizung, Wärme vom Vermieter | *Zentralheizung, Fernwärme oder Wärme vom Vermieter* | 1, 3, 4, 5, 7, 9 |
+| Nur eine Wärmepumpe oder ein Klimagerät, keine Therme | *Keine – nur Wärmepumpe und Raumsteuerung* | 1, 3, 4, 5, 7, 9 |
+
+Für jeden Raum wählst du in Schritt 5, wie Thriftherm ihn steuert: Ventile direkt, Better Thermostat, Versatile Thermostat oder nur mit einem Fühler. Der Dialog lässt Schritte, die nicht passen, von selbst weg.
 
 | Schritt | Was du tust | Wo |
 |---|---|---|
@@ -12,39 +25,46 @@ Diese Anleitung bringt dich Schritt für Schritt von null zu einer laufenden Thr
 | [2](#2-ebusd-einrichten) | Home Assistant mit der Therme verbinden | ebusd-App |
 | [3](#3-thriftherm-installieren) | Thriftherm installieren | HACS (Marketplace) |
 | [4](#4-integration-hinzufügen) | Den Einrichtungsdialog durchgehen | Home Assistant |
-| [5](#5-better-thermostat-je-raum-optional) | Ein Better Thermostat je Raum | Better Thermostat |
+| [5](#5-ventile-oder-thermostate-je-raum-optional) | Ventile direkt oder ein Thermostat je Raum | Home Assistant, Better Thermostat |
 | [6](#6-an-der-therme) | Drehknopf stellen, Pumpenmodus prüfen | an der Therme |
-| [7](#7-erst-nur-planen-dann-aktiv) | Ein paar Tage beobachten, dann aktiv schalten | Home Assistant |
+| [7](#7-erst-nur-beobachten-dann-aktiv) | Ein paar Tage beobachten, dann aktiv schalten | Home Assistant |
 | [8](#8-wenn-etwas-nicht-klappt) | Wenn etwas nicht klappt | – |
 | [9](#9-dashboard) | Die Thriftherm-Karte aufs Dashboard legen | Home Assistant |
 
-Fernwärme oder keine eigene Therme? Dann überspringst du die Schritte 2 und 6; der Einrichtungsdialog lässt die Therme von selbst weg.
-
 ## 1. Was du brauchst
+
+**Für alle:**
 
 | Was | Nötig? | Hinweis |
 |---|---|---|
-| Therme mit eBUS | bei eigener Therme | für die Thermensteuerung |
-| eBUS-Adapter | bei eigener Therme | zum Beispiel ein ebusd Adapter Shield, an die eBUS-Klemmen der Therme angeschlossen |
 | Home Assistant 2026.9 oder neuer | ja | *Einstellungen → Über* zeigt deine Version. Temperaturen in °C (metrisches Einheitensystem): Thriftherm rechnet nur in °C und bricht die Einrichtung sonst ab; später umgestellt, sendet es keine Sollwerte mehr (eine laufende Wärmepumpe wird gestoppt, eine Therme über Entitäten zurückgegeben) und zeigt eine Reparaturmeldung |
-| MQTT-Broker | bei eigener Therme | die App **Mosquitto broker** |
-| App **ebusd** | bei eigener Therme | liest die Therme und schickt ihr den Sollwert |
-| Ein Temperaturfühler je Raum | ja | jeder Sensor, der in Home Assistant die Raumtemperatur zeigt |
+| Ein Temperaturfühler je Raum | empfohlen | jeder Sensor, der in Home Assistant die Raumtemperatur zeigt. Ohne ihn misst das Ventil oder Thermostat am Heizkörper, ungenauer. Etwas muss den Raum messen; die Bad-Trocknung braucht den Fühler |
 | Fensterkontakte | optional | solange ein Fenster offen ist, pausiert das Heizen in diesem Raum |
 | Feuchtesensoren | optional | Schutz gegen Feuchte, während du weg bist |
-| Heizkörperthermostate mit **Better Thermostat** | optional | nötig, wenn Thriftherm die Raumtemperaturen vorgeben soll; ohne sie funktioniert die Thermensteuerung trotzdem |
-| Gaszähler-Werte | optional | Gesamtvolumen (m³ oder Liter) und Momentanfluss (m³/h oder L/min), falls dein Gaszähler in Home Assistant ist. Ein Sensor in einer anderen Einheit (etwa kWh) wird nicht gelesen |
+| Smarte Heizkörperventile | optional | damit Thriftherm die Raumtemperaturen vorgibt: direkt gesteuert (Vorschau, ohne weitere Integration) oder über **Better Thermostat** bzw. Versatile Thermostat. Ohne sie funktioniert die Thermensteuerung trotzdem |
 | Außentemperaturfühler | optional | sonst dient eine Wetter-Entität |
+
+**Mit eigener Gastherme über eBUS zusätzlich:**
+
+| Was | Nötig? | Hinweis |
+|---|---|---|
+| Therme mit eBUS | ja | für die Thermensteuerung |
+| eBUS-Adapter | ja | zum Beispiel ein ebusd Adapter Shield, an die eBUS-Klemmen der Therme angeschlossen |
+| MQTT-Broker | ja | die App **Mosquitto broker** |
+| App **ebusd** | ja | liest die Therme und schickt ihr den Sollwert |
+| Gaszähler-Werte | optional | Gesamtvolumen (m³ oder Liter) und Momentanfluss (m³/h oder L/min), falls dein Gaszähler in Home Assistant ist. Ein Sensor in einer anderen Einheit (etwa kWh) wird nicht gelesen |
+
+Eine Therme ohne eBUS braucht stattdessen eine Zahl-Entität für den Vorlauf und einen Schalter für die Heizung, etwa von einem OpenTherm-Adapter ([4.3a](#43a-therme-ohne-ebusd-über-entitäten-vorschau)); auch ein Gaszähler geht dort.
 
 **Ein zentraler Raumregler an der eBUS-Klemme muss weichen.** Hängt an der eBUS-Klemme deiner Therme schon ein Raumregler, klemmst du ihn ab; an dieselbe Klemme kommt der eBUS-Adapter. Thriftherm übernimmt die Aufgabe des Reglers, und zwei Regler am eBUS würden sich gegenseitig die Vorgaben überschreiben.
 
-Die **Wärmepumpen**-Erweiterung steuert eine Klimaanlage im Heizbetrieb, erprobt an einer Midea PortaSplit. Du kannst sie ganz weglassen. Willst du sie nutzen, braucht sie die Climate-Entität der Wärmepumpe, einen Zwischenstecker, der ihre Leistung misst, Temperatur und Feuchte ihrer Ansaugluft und die Temperatur ihrer Ausblasluft.
+**Mit Wärmepumpe:** Die **Wärmepumpen**-Erweiterung steuert eine Klimaanlage im Heizbetrieb, erprobt an einer Midea PortaSplit. Du kannst sie ganz weglassen. Willst du sie nutzen, braucht sie die Climate-Entität der Wärmepumpe, einen Zwischenstecker, der ihre Leistung misst, Temperatur und Feuchte ihrer Ansaugluft und die Temperatur ihrer Ausblasluft.
 
 ### Was mit deiner Ausstattung geht
 
 Im ersten Einrichtungsschritt wählst du, welche Heizung du hast. Schritte, die nicht passen, lässt der Dialog weg. Die Tabelle zeigt, was Thriftherm dann für dich tut.
 
-| Funktion | Eigene Therme über ebusd (Kern) | + Better Thermostat | + Wärmepumpe | Nur Wärmepumpe, keine Therme | Zentral- oder Fernwärme¹ |
+| Funktion | Eigene Therme über ebusd (Kern) | + smarte Ventile | + Wärmepumpe | Nur Wärmepumpe, keine Therme | Zentral- oder Fernwärme¹ |
 |---|:-:|:-:|:-:|:-:|:-:|
 | **Räume** | | | | | |
 | Solltemperaturen aus Zeitplänen (Komfort, Absenkung, Zeitplan-Helfer) | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -70,11 +90,11 @@ Im ersten Einrichtungsschritt wählst du, welche Heizung du hast. Schritte, die 
 | Kostenvergleich mit der zentralen Wärmequelle | – | – | ✓ | – | ✓² |
 | Bad-Trocknung | – | – | ✓ | ✓ | ✓² |
 | **Immer** | | | | | |
-| Erst *Nur planen*, *Aktiv* erst nach deiner Freigabe; ein Grund für jede Entscheidung; Reparaturmeldungen | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Erst *Nur beobachten* (Thriftherm rechnet und zeigt, was es tun würde, steuert aber nichts), *Aktiv* erst nach deiner Freigabe; ein Grund für jede Entscheidung; Reparaturmeldungen | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ✓ geht · – nicht verfügbar. Jede „+“-Spalte enthält die Spalten links davon. In der Spalte „Nur Wärmepumpe“ gelten die Raum-Zeilen für die Räume, die die Wärmepumpe erreicht.
 
-¹ Zentralheizung, Fernwärme oder Wärme vom Vermieter: keine eigene Therme. Die Räume steuert Thriftherm über Better Thermostat, an die Wärmeversorgung wird nie etwas geschrieben.
+¹ Zentralheizung, Fernwärme oder Wärme vom Vermieter: keine eigene Therme. Die Räume steuert Thriftherm über ihre Ventile (direkt oder über Better Thermostat), an die Wärmeversorgung wird nie etwas geschrieben.
 
 ² Mit der Wärmepumpen-Erweiterung. Der Kostenvergleich rechnet dann mit dem Grenzpreis der Fernwärme, siehe [Bei Fernwärme](#bei-fernwärme).
 
@@ -86,11 +106,13 @@ Im ersten Einrichtungsschritt wählst du, welche Heizung du hast. Schritte, die 
 
 ### Bei Fernwärme
 
-Bei Fernwärme bringt Thriftherm vor allem mit einer Wärmepumpe etwas. Dann entscheidet es laufend, ob Wärme aus Strom oder aus der Fernwärme gerade günstiger ist, und lässt die Wärmepumpe nur heizen, wenn sie sich rechnet. Ausgenommen sind „Schnell aufheizen“, Bad-Trocknung und Lernläufe. Ohne Wärmepumpe bleibt nur die Raumsteuerung. Die Ventile regelt dabei ohnehin Better Thermostat, Thriftherm ergänzt Zeitpläne mit Vorheizen und die Abwesenheit. Viel mehr, als Better Thermostat mit einem Zeitplan schon kann, ist das nicht.
+Bei Fernwärme bringt Thriftherm vor allem mit einer Wärmepumpe etwas. Dann entscheidet es laufend, ob Wärme aus Strom oder aus der Fernwärme gerade günstiger ist, und lässt die Wärmepumpe nur heizen, wenn sie sich rechnet. Ausgenommen sind „Schnell aufheizen“, Bad-Trocknung und Lernläufe. Ohne Wärmepumpe bleibt nur die Raumsteuerung: Thriftherm gibt den Ventilen (direkt oder über Better Thermostat) Zeitpläne mit Vorheizen und die Abwesenheit. Viel mehr, als Better Thermostat mit einem Zeitplan schon kann, ist das nicht.
 
 Der Kostenvergleich rechnet mit dem **Grenzpreis** der Wärme, nicht mit dem Preis, der auf der Rechnung steht. Nach der Heizkostenverordnung folgt nur der Verbrauchsanteil der Gebäudeabrechnung deinem eigenen Zähler, und vom Flächenanteil trägt deine Wohnung ihren Miteigentumsanteil. Eine gesparte kWh spart deshalb weniger, als der Preis je kWh vermuten lässt. Das *erhöht* den COP, den die Wärmepumpe erreichen muss. Beide Anteile stellst du bei den Preisen ein ([Schritt 4.2](#42-preise)); wer sie ignoriert, rechnet die Wärmepumpe schön.
 
 ## 2. ebusd einrichten
+
+Nur für eine Gastherme mit eBUS. Alle anderen machen bei [Schritt 3](#3-thriftherm-installieren) weiter.
 
 ### 2.1 MQTT-Broker installieren
 
@@ -117,11 +139,7 @@ Den Reiter **Konfiguration** der ebusd-App öffnen:
 
 Speichern und die App starten.
 
-> **Feste Adressen vergeben.** Ein Netzwerk-Adapter braucht eine feste IP-Adresse. Lege im Router eine **DHCP-Reservierung** für den eBUS-Adapter an, ebenso für jedes andere Netzwerkgerät, von dem Thriftherm Werte bekommt, etwa einen WLAN-Gaszähler.
-> Warum das wichtig ist, zeigt eine Nacht auf der Testanlage: Der Router vergab die Adressen neu, der eBUS-Adapter bekam eine andere IP, und der WLAN-Gaszähler bekam die alte Adresse des Adapters.
-> - ebusd fand den Adapter nicht mehr („unable to open …“ im Log). Thriftherm gab die Therme nach wenigen Minuten ab, und sie heizte eine gute Stunde lang nach ihrem Drehknopf.
-> - ebusd klopfte alle 5 Sekunden beim Gaszähler an. Der verlor dadurch immer wieder seine MQTT-Verbindung, und seine Werte standen in Home Assistant auf „nicht verfügbar“.
-> - Home Assistant zeigte die ganze Zeit die letzten gespeicherten eBUS-Werte weiter an (Vorlauf 22 °C, Status 31), weil ebusd seine Werte im Broker hinterlegt. Tatsächlich lag der Vorlauf bei fast 50 °C.
+> **Feste Adressen vergeben.** Ein Netzwerk-Adapter braucht eine feste IP-Adresse. Lege im Router eine **DHCP-Reservierung** für den eBUS-Adapter an, ebenso für jedes andere Netzwerkgerät, von dem Thriftherm Werte bekommt, etwa einen WLAN-Gaszähler. Was sonst passiert: [Fehlersuche, Keine Daten von der Therme](FEHLERSUCHE.md#reparaturmeldung-keine-daten-von-der-therme).
 >
 > Ob ebusd die Therme wirklich erreicht, zeigt nur *ebusd Signal* (`binary_sensor.…_global_signal`). Fällt es länger als zehn Minuten aus, meldet Thriftherm das unter Einstellungen → Reparaturen (*Keine Daten von der Therme*). Wer eine Push-Nachricht möchte, legt dafür eine Automation auf dieses Signal an, zum Beispiel „5 Minuten aus“.
 
@@ -148,7 +166,7 @@ Optional, für Fortgeschrittene. ebusd fragt die Werte der Therme reihum ab; je 
 
 ## 3. Thriftherm installieren
 
-**Mit HACS (empfohlen):** Thriftherm steht seit dem 21.10.2026 in der Standardliste von HACS, ein benutzerdefiniertes Repository braucht es nicht mehr. Seit Home Assistant 2026.11 ist HACS eingebaut und heißt *Marketplace*: Dort steht *Marketplace*, wo dieser Abschnitt HACS sagt. Bei älteren Versionen ist es HACS.
+**Mit HACS (empfohlen):** Thriftherm steht seit dem 21.10.2026 in der Standardliste von HACS. Seit Home Assistant 2026.11 ist HACS eingebaut und heißt *Marketplace*; wo hier HACS steht, gilt dort *Marketplace*.
 
 Am schnellsten mit diesem Knopf, er öffnet Thriftherm direkt in HACS; dann *Herunterladen* klicken und bei Punkt 3 der Liste unten weitermachen:
 
@@ -207,17 +225,18 @@ Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme un
 | eBUS-Signal (Binärsensor) | **das Signal von ebusd selbst** (`binary_sensor.…_global_signal`), nicht den Verbindungssensor des Adapters: Fällt der Adapter aus dem WLAN, bleibt sein eigener Sensor auf seinem letzten Wert „an“ stehen (gemessen) |
 | Nenn-Umlaufwassermenge der Pumpe | den Standardwert lassen, außer die Anleitung deiner Therme sagt etwas anderes |
 | Gaszähler Volumen (m³, Gesamt), Gaszähler Momentanfluss (m³/h) | deine Gaszähler-Entitäten, falls vorhanden; sonst leer lassen. Die Steuerung braucht keinen Gaszähler: Brennerlauf und Warmwasser erkennt sie an Pumpe und Statuscode. Ohne Zähler gibt es die Sensoren *Gasleistung* und *Gasenergie* nicht |
-| Ohne Gaszähler: Nennwärmebelastung der Therme (Typenschild, kW) | nur ohne Gaszähler und nur bei einer Vaillant-Therme: der Wert **Q** oder **Qn** vom Typenschild, bei einem Bereich der größere (atmoTEC plus VCW 194/4-5: 22,2). Damit schätzt Thriftherm *Gas für Heizung* und *Gas für Warmwasser* aus den Zählern der Therme. Dafür müssen die sechs ebusd-Nachrichten PrEnergySumHc1 bis 3 und PrEnergySumHwc1 bis 3 in Home Assistant ankommen, schließ sie also nicht aus ([Weniger ebusd-Werte abfragen](EBUSD.md#was-thriftherm-braucht)); Thriftherm findet sie selbst. Auf der Testanlage lag die Schätzung in 32 Tagen (95,8 kWh am Gaszähler) insgesamt 1 % über dem Zähler und an keinem Tag mehr als 0,3 kWh daneben. Mit Gaszähler leer lassen |
-| Leistung der Heizungspumpe (W, optional) | dann kommt der Strom der Heizungspumpe zum Preis der Thermenwärme dazu: Thriftherm zählt die Laufzeit der Pumpe und die Wärme der Therme und rechnet den Pumpenstrom je kWh Wärme hinzu (höchstens 0,06 kWh), sodass eine Wärmepumpe, die übernimmt, auch ihn spart. Lohnt nur mit Wärmepumpe; eine Pumpe im Dauerbetrieb braucht oft 20 bis 50 W (Typenschild oder Zwischenstecker). Leer lassen, um nur das Gas zu vergleichen |
+| Ohne Gaszähler: Nennwärmebelastung der Therme (Typenschild, kW) | nur ohne Gaszähler und nur bei einer Vaillant-Therme: der Wert **Q** oder **Qn** vom Typenschild, bei einem Bereich der größere (atmoTEC plus VCW 194/4-5: 22,2). Damit schätzt Thriftherm *Gas für Heizung* und *Gas für Warmwasser* aus den Zählern der Therme ([wie genau](ANLEITUNG.md#wichtige-anzeigen)). Dafür müssen die sechs ebusd-Nachrichten PrEnergySumHc1 bis 3 und PrEnergySumHwc1 bis 3 in Home Assistant ankommen, schließ sie also nicht aus ([Weniger ebusd-Werte abfragen](EBUSD.md#was-thriftherm-braucht)); Thriftherm findet sie selbst. Mit Gaszähler leer lassen |
+| Leistung der Heizungspumpe (W, optional) | nur mit Wärmepumpe: Dann kommt der Strom der Heizungspumpe zum Preis der Thermenwärme dazu ([wie](ANLEITUNG.md#wärmepumpe-optional)). Eine Pumpe im Dauerbetrieb braucht oft 20 bis 50 W (Typenschild oder Zwischenstecker). Leer lassen, um nur das Gas zu vergleichen |
 | Warmwasser bereithalten (Warmhalten der Kombitherme, Speicherladung) | eingeschaltet lassen. Ausschalten nur bei einer Kombitherme ohne Speicher, die dich nachts mit ihrem Warmhalten stört (etwa ein Brennerstart pro Stunde ohne Heizbedarf); wirkt nur bei aktiver Thermensteuerung |
 | ebusd-Kreis der Therme (meist bai) | `bai` lassen, außer dein ebusd-Gerät nutzt einen anderen Kreisnamen |
 | Heizkurve: Vorlauf bei -10 °C außen | mit dem Standardwert 55 °C beginnen |
 | Heizkurve: Vorlauf bei +15 °C außen | mit dem Standardwert 30 °C beginnen |
 | Minimale Vorlauftemperatur | **etwa 45 °C bei einer Heizwerttherme, etwa 30 °C bei einem Brennwertgerät** |
 | Maximale Vorlauftemperatur | Standard 60 °C. Besser deine Drehknopf-Stellung aus Schritt 6 (zum Beispiel 55 °C) oder etwas darunter; höhere Werte wirken nicht, denn der Knopf ist die Obergrenze |
+| Brennwerttherme | an lassen bei einem Brennwertgerät, bei einer älteren Therme ohne Brennwert ausschalten. Begrenzt, wie weit Thriftherm den Vorlauf an der [Grenze der Therme](FUNKTIONSWEISE.md#grenze-der-therme) anhebt: bis 55 °C, sonst bis zum Maximum |
 | Aufheiztempo (Grad pro Stunde, 0 = aus) | mit 0 beginnen. Wird dir ein Raum nach dem Hochstellen zu langsam warm, 0,5 bis 2 einstellen; mehr Tempo kostet mehr Gas ([Anleitung, Aufheiztempo](ANLEITUNG.md#aufheiztempo)) |
 | Anteil der Räume, die anfordern müssen, bevor die Spreizung die Kurve bewertet | den Standardwert 0,5 lassen |
-| Aktive Thermensteuerung freigeben (sonst nur planen) | **vorerst aus lassen** – das schaltest du in Schritt 7 ein |
+| Aktive Thermensteuerung freigeben (sonst nur beobachten) | **vorerst aus lassen** – das schaltest du in Schritt 7 ein |
 
 **Warum das Minimum vom Gerätetyp abhängt:** Ein Brennwertgerät profitiert von niedrigem Vorlauf, ein Heizwertgerät spart dort kaum etwas, und bei kurzen Brennerläufen kommt die Wärme womöglich nicht bis zu den fernen Heizkörpern – siehe [Anleitung, Thermensteuerung](ANLEITUNG.md#thermensteuerung).
 
@@ -240,7 +259,7 @@ Hat deine Therme kein eBUS, lässt sie sich über zwei Entitäten steuern, die s
 
 Sind Zahl und Schalter gewählt, geht nichts mehr an ebusd; der ebusd-Kreis und *Warmwasser bereithalten* haben dann keine Wirkung. Es braucht immer beide.
 
-Ein Unterschied zu ebusd: Ein ebusd-Befehl läuft nach einigen Minuten ab, und die Therme heizt wieder nach ihrem Drehknopf. Eine Entität behält, was ihr gesendet wurde. Thriftherm gibt die Therme deshalb selbst zurück (Heizung an), sobald es nicht mehr steuert: beim Umschalten auf *Nur planen* und ohne Thermendaten mit dem Vorlauf der Heizkurve, der dann weiter der Außentemperatur folgt; beim Beenden von Home Assistant mit dem maximalen Vorlauf, so wie ein Drehknopf stünde. Sind Zahl oder Schalter in diesem Moment nicht erreichbar, sagt das eine Reparaturmeldung, und Thriftherm gibt die Therme zurück, sobald sie wieder da sind, solange Home Assistant läuft. Entitäten, die Thriftherm nie gesteuert hat, fasst es nicht an. Stürzt Home Assistant ab oder fällt der Strom aus, bleibt der letzte Zustand stehen – auch eine gesperrte Heizung. Prüfe, ob dein Adapter für diesen Fall eine eigene Zeitüberwachung hat.
+Ein Unterschied zu ebusd: Ein ebusd-Befehl läuft nach einigen Minuten ab, und die Therme heizt wieder nach ihrem Drehknopf. Eine Entität behält, was ihr gesendet wurde. Thriftherm gibt die Therme deshalb selbst zurück (Heizung an), sobald es nicht mehr steuert: beim Umschalten auf *Nur beobachten* und ohne Thermendaten mit dem Vorlauf der Heizkurve, der dann weiter der Außentemperatur folgt; beim Beenden von Home Assistant mit dem maximalen Vorlauf, so wie ein Drehknopf stünde. Sind Zahl oder Schalter in diesem Moment nicht erreichbar, sagt das eine Reparaturmeldung, und Thriftherm gibt die Therme zurück, sobald sie wieder da sind, solange Home Assistant läuft. Entitäten, die Thriftherm nie gesteuert hat, fasst es nicht an. Stürzt Home Assistant ab oder fällt der Strom aus, bleibt der letzte Zustand stehen – auch eine gesperrte Heizung. Prüfe, ob dein Adapter für diesen Fall eine eigene Zeitüberwachung hat.
 
 ### 4.4 Wärmepumpe (optionales Zusatzmodul)
 
@@ -268,15 +287,17 @@ Du legst einen Raum pro Seite an. Mit dem Haken **Weiteren Raum hinzufügen** ko
 |---|---|
 | Raumname | zum Beispiel `Wohnzimmer` |
 | Priorität (1 = höchste) | wichtigere Räume bekommen eine kleinere Zahl; 5 passt für den Anfang |
-| Raumtemperatursensor | der Temperaturfühler des Raums (Pflicht) |
+| Raumtemperatursensor | optional: Ein eigener Fühler im Raum misst genauer als das Ventil am Heizkörper. Jeder Temperatursensor in Home Assistant geht. Die Bad-Trocknung braucht ihn |
 | Raumfeuchtesensor | optional |
 | Fenster-/Türkontakte | optional, alle Kontakte des Raums |
-| Thermostat (TRV oder Better Thermostat) | die **Better-Thermostat**-Entität des Raums. Noch kein Better Thermostat? Leer lassen und später ergänzen (Optionen → *Räume* → Raum → *Bearbeiten*) |
+| Thermostat (TRV oder Better Thermostat) | die **Better-Thermostat**- oder Versatile-Thermostat-Entität des Raums. Steuert Thriftherm die Ventile direkt, bleibt es leer (siehe *Heizkörperventile, direkt gesteuert*). Noch nichts davon? Leer lassen und später ergänzen (Optionen → *Räume* → Raum → *Bearbeiten*) |
 | Leistungssensoren interner Wärmequellen | optional, sonst leer lassen: Leistung von Geräten, die den Raum mitheizen (etwa ein Rechner). Über 150 W senkt jedes weitere Watt den Heizbedarf des Raums um 0,1 % (*Regelparameter → Für Fortgeschrittene*: *Schwelle interne Wärmegewinne*, *Bedarfsreduktion je W interner Gewinne*) |
 | Zeitplan-Helfer (optional; ersetzt die Komfortfenster unten) | ein Zeitplan-Helfer von Home Assistant, dessen Blöcke die Komfortzeiten sind |
 | Längstes Vorheizen | optional, für einen Raum, den du nur kurz warm brauchst ([Einzelheiten](ANLEITUNG.md#vorheizen)) |
 | Komforttemperatur | Temperatur, wenn der Raum genutzt wird, zum Beispiel 20 °C |
 | Absenktemperatur | Temperatur außerhalb der Komfortzeiten, zum Beispiel 17 °C; nie über der Komforttemperatur |
+| Heizkörperventile, direkt gesteuert | statt eines Thermostats, Vorschau ([Einzelheiten](ANLEITUNG.md#ventile-direkt-ohne-raumthermostat-vorschau)). Vorher am Ventil in HA die *Fühlerauswahl* und den *Fremdtemperatur-Eingang* aktivieren, falls deaktiviert (Einstellungen → Geräte → Entitäten), und die *Temperaturgenauigkeit* auf −0,4 stellen |
+| Vorhalt am Thermostat | 0,5 K lassen ([Einzelheiten](ANLEITUNG.md#vorhalt-am-thermostat)); 0 schaltet ihn aus |
 | Komfortzeiten Mo–Fr / Sa–So | Zeiten als `HH:MM-HH:MM`, mehrere mit Komma getrennt, zum Beispiel `06:00-08:00,17:00-22:00`. Vorgegeben sind 06:00-22:00 und 08:00-23:00 |
 
 Der Raum ist warm, *wenn* eine Komfortzeit beginnt: Thriftherm fängt rechtzeitig vorher an zu heizen.
@@ -285,11 +306,23 @@ Der Raum ist warm, *wenn* eine Komfortzeit beginnt: Thriftherm fängt rechtzeiti
 
 Nur wenn eine Wärmepumpe eingerichtet ist, zeigt das Formular zusätzlich *Wird von der Wärmepumpe beheizt*, *Bad-Trocknung mit der Wärmepumpe* und *Trocknung nach dem Duschen von selbst starten*. Die Bad-Trocknung läuft über die Wärmepumpe, ohne sie erscheint keins der Felder. Mit ihr bekommt der Raum den Knopf *Jetzt trocknen*; ist der dritte Schalter aus, trocknet nur der Knopf. Sie braucht außerdem *Wird von der Wärmepumpe beheizt* und den Raumfeuchtesensor, sonst lehnt das Formular sie ab.
 
-**Prüfen:** Nach dem letzten Raum zeigt *Einstellungen → Geräte & Dienste* **Thriftherm**. Sein Gerät zeigt *Thermensteuerung* und *Raumsteuerung* auf **Nur planen**.
+**Prüfen:** Nach dem letzten Raum zeigt *Einstellungen → Geräte & Dienste* **Thriftherm**. Sein Gerät zeigt *Thermensteuerung* und *Raumsteuerung* auf **Nur beobachten**.
 
-## 5. Better Thermostat je Raum (optional)
+## 5. Ventile oder Thermostate je Raum (optional)
 
-Überspringen, wenn du keine smarten Heizkörperthermostate hast. Die Thermensteuerung funktioniert auch ohne; dann die Handventile weit genug öffnen und die Vorlauftemperatur die Arbeit machen lassen.
+Überspringen, wenn du keine smarten Heizkörperventile hast. Die Thermensteuerung funktioniert auch ohne; dann die Handventile weit genug öffnen und die Vorlauftemperatur die Arbeit machen lassen.
+
+Je Raum gibt es drei Wege: die Ventile direkt (ohne weitere Integration), Better Thermostat oder Versatile Thermostat. Ein Raum hat entweder ein *Thermostat* oder Ventile, nicht beides. Was im Alltag gilt: [Anleitung, Raumthermostate](ANLEITUNG.md#raumthermostate).
+
+### Ventile direkt (Vorschau)
+
+Seit 15.11.2026 an Sonoff TRVZB/TRVZBT mit Zigbee2MQTT im Betrieb; andere Ventile (ZHA, Shelly und weitere) sind bisher nur nachgestellt getestet.
+
+1. Am Ventil in Home Assistant die Entitäten *Fühlerauswahl* und *Fremdtemperatur-Eingang* aktivieren, falls sie deaktiviert sind (*Einstellungen → Geräte → Entitäten*).
+2. Beim TRVZB/TRVZBT die *Temperaturgenauigkeit* auf −0,4 stellen.
+3. In Thriftherm unter Optionen → *Räume* → Raum → *Bearbeiten* das Feld *Thermostat* leeren und die Ventile unter *Heizkörperventile, direkt gesteuert* wählen. Ein Ventil, das ein aktiver Better-Thermostat-Eintrag noch steuert, lehnt das Formular ab.
+
+### Better Thermostat
 
 Für jeden Raum:
 
@@ -307,6 +340,8 @@ Als Thermostat eines Raums kannst du auch die Klima-Entität von [Versatile Ther
 
 ## 6. An der Therme
 
+Nur für eine Gastherme mit eBUS.
+
 1. **Den Drehknopf auf die höchste Vorlauftemperatur stellen, die du zulassen willst**, zum Beispiel 55 °C. Der Knopf bleibt die Obergrenze und ist das, worauf die Therme zurückfällt, wenn Home Assistant ausfällt. Nicht an den linken Anschlag drehen: An der getesteten Therme ist das Sommerbetrieb und sperrt die Heizung, egal was Thriftherm sendet.
 2. **Einmal den Pumpenmodus prüfen.** Mit der Werkseinstellung bleibt die Pumpe womöglich zusammen mit dem Brenner stehen: Die Therme taktet den ganzen Tag, aber die Heizkörper weit hinten im Kreis bleiben kalt. Warum das passiert: [Anleitung, Pumpenmodus](ANLEITUNG.md#warum-der-pumpenmodus-zählt).
    - Vaillant: d.18 = 0 „Nachlauf“ ist die Werkseinstellung – die Pumpe läuft nur mit dem Brenner, plus kurzem Nachlauf. d.18 = 1 „durchlaufend“ – die Pumpe läuft, solange der Heizbetrieb freigegeben ist, und steht, wenn Thriftherm den Heizbetrieb sperrt.
@@ -315,11 +350,11 @@ Als Thermostat eines Raums kannst du auch die Klima-Entität von [Versatile Ther
 
    Thriftherm schreibt nie Installateur-Parameter: Den Pumpenmodus zu ändern ist deine Entscheidung.
 
-## 7. Erst nur planen, dann aktiv
+## 7. Erst nur beobachten, dann aktiv
 
-### 7.1 Ein paar Tage „Nur planen“
+### 7.1 Ein paar Tage „Nur beobachten“
 
-Alles auf *Nur planen* lassen und ein- bis zweimal am Tag auf diese Entitäten schauen:
+Alles auf *Nur beobachten* lassen und ein- bis zweimal am Tag auf diese Entitäten schauen:
 
 | Entität | Worauf du achtest |
 |---|---|
@@ -332,9 +367,9 @@ Sieht etwas falsch aus, in den Optionen anpassen, bevor du aktiv schaltest.
 ### 7.2 Aktiv schalten
 
 1. Die Better-Thermostat-Entitäten auf **Heizen** schalten.
-2. Thriftherm → *Konfigurieren* → **Gastherme und Gaszähler**: *Aktive Thermensteuerung freigeben (sonst nur planen)* einschalten. Absenden.
+2. Thriftherm → *Konfigurieren* → **Gastherme und Gaszähler**: *Aktive Thermensteuerung freigeben (sonst nur beobachten)* einschalten. Absenden.
 3. Thriftherm → *Konfigurieren* → **Regelparameter**, Abschnitt *Freigaben*: *Aktive Raumsteuerung freigeben (Sollwerte an die Thermostate schreiben)* einschalten. Absenden.
-4. Mit Wärmepumpe: Thriftherm → *Konfigurieren* → **Wärmepumpe: Feineinstellung**: *Aktive Steuerung freigeben (sonst nur planen)* einschalten. Absenden.
+4. Mit Wärmepumpe: Thriftherm → *Konfigurieren* → **Wärmepumpe: Feineinstellung**: *Aktive Steuerung freigeben (sonst nur beobachten)* einschalten. Absenden.
 5. Am Thriftherm-Gerät **Thermensteuerung** und **Raumsteuerung** (mit Wärmepumpe auch **Wärmepumpen-Steuerung**) auf **Aktiv** stellen.
 
 **Nach ein paar Minuten prüfen:**

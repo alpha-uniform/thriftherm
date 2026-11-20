@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Iterable, Mapping
-from typing import Any
+from typing import Any, Final
 
 import voluptuous as vol
 from homeassistant.data_entry_flow import section
@@ -12,49 +12,47 @@ from homeassistant.helpers import selector
 from homeassistant.util import slugify
 
 from . import const
+from .adapters.config import system_type_from_config
 from .const import (
     CHEAP_POWER_DOMAINS,
+    CONF_AWAY_DEWPOINT_MARGIN,
+    CONF_AWAY_RETURN_PERSONS,
+    CONF_AWAY_TEMP,
+    CONF_BOILER_ALLOW_ACTIVE,
+    CONF_BOILER_CIRCULATION_L_H,
+    CONF_BOILER_CURVE_COLD,
+    CONF_BOILER_CURVE_WARM,
+    CONF_BOILER_EBUS_CIRCUIT,
+    CONF_BOILER_EFFICIENCY,
+    CONF_BOILER_FILL_DECLINED,
+    CONF_BOILER_FLAME,
+    CONF_BOILER_FLOW_MAX,
+    CONF_BOILER_FLOW_MIN,
+    CONF_BOILER_FLOW_SETPOINT_ENTITY,
+    CONF_BOILER_FLOW_TEMP,
+    CONF_BOILER_HEAT_UP_RATE,
+    CONF_BOILER_HEATING_ENABLE_ENTITY,
+    CONF_BOILER_HOT_WATER_STANDBY,
+    CONF_BOILER_CONDENSING,
+    CONF_BOILER_HWC_MODE,
+    CONF_BOILER_NOMINAL_INPUT_KW,
+    CONF_BOILER_PROFILE,
+    CONF_BOILER_PUMP_POWER_W,
+    CONF_BOILER_PUMP_RUNNING,
+    CONF_BOILER_PUMP_STATE,
+    CONF_BOILER_RETURN_TEMP,
+    CONF_BOILER_SIGNAL,
+    CONF_BOILER_SPREAD_MIN_ROOM_SHARE,
+    CONF_BOILER_STATE_NUMBER,
+    CONF_BOOST_DURATION_MIN,
+    CONF_BREAK_EVEN_MARGIN_OFF,
+    CONF_BREAK_EVEN_MARGIN_ON,
     CONF_COOL_AWAY_TEMP,
+    CONF_COOL_FLOOR_TEMP,
     CONF_COOLING_CHEAP_POWER_ENTITY,
     CONF_COOLING_CHEAP_POWER_K,
     CONF_COOLING_SEASON_FROM_C,
     CONF_COOLING_SEASON_VETO_C,
-    CONF_HEATING_SEASON_FROM_C,
-    CONF_COOL_FLOOR_TEMP,
-    CONF_HEAT_PUMP_COOL_FAN_STAGE,
-    CONF_HEAT_PUMP_COOL_SHORTFALL,
-    CONF_HEAT_PUMP_COOLING_ALLOWED,
-    CONF_ROOM_COOLING_SCHEDULE_ENTITY,
-    COOL_FAN_STAGE_CHOICES,
-    COOL_SHORTFALL_CHOICES,
-    COOL_SHORTFALL_LIFT,
-    DEFAULT_COOL_AWAY_TEMP,
-    DEFAULT_COOLING_CHEAP_POWER_K,
-    DEFAULT_COOLING_SEASON_FROM_C,
-    DEFAULT_COOLING_SEASON_VETO_C,
-    DEFAULT_HEATING_SEASON_FROM_C,
-    DEFAULT_COOL_FLOOR_TEMP,
-    CONF_AWAY_DEWPOINT_MARGIN,
-    CONF_AWAY_RETURN_PERSONS,
-    CONF_AWAY_TEMP,
-    CONF_BOILER_CIRCULATION_L_H,
-    CONF_BOILER_FILL_DECLINED,
-    CONF_BOILER_NOMINAL_INPUT_KW,
-    CONF_BOILER_PUMP_POWER_W,
-    CONF_BOILER_EFFICIENCY,
-    CONF_BOILER_FLOW_TEMP,
-    CONF_BOILER_HWC_MODE,
-    CONF_BOILER_PROFILE,
-    CONF_BOILER_PUMP_RUNNING,
-    CONF_BOILER_PUMP_STATE,
-    CONF_BOILER_STATE_NUMBER,
-    CONF_BOILER_RETURN_TEMP,
-    CONF_BOILER_FLAME,
-    CONF_BOILER_FLOW_SETPOINT_ENTITY,
-    CONF_BOILER_HEATING_ENABLE_ENTITY,
-    CONF_BOILER_SIGNAL,
-    CONF_BREAK_EVEN_MARGIN_OFF,
-    CONF_BREAK_EVEN_MARGIN_ON,
     CONF_COP_INTAKE_MAX_AGE_MIN,
     CONF_COP_MIN_DELTA_T,
     CONF_COP_MIN_POWER_W,
@@ -62,9 +60,9 @@ from .const import (
     CONF_COP_OUTLET_MAX_AGE_MIN,
     CONF_COP_SETTLE_MAX_K_PER_MIN,
     CONF_COP_WARMUP_S,
-    CONF_DEFROST_COIL_RISE_K,
     CONF_DEFAULT_HEAT_RATE_HEAT_PUMP,
     CONF_DEFAULT_HEAT_RATE_RADIATOR,
+    CONF_DEFROST_COIL_RISE_K,
     CONF_DEFROST_MAX_CYCLES_90MIN,
     CONF_DEMAND_FULL_DELTA,
     CONF_DRYING_ABS_HUMIDITY_RISE,
@@ -82,71 +80,91 @@ from .const import (
     CONF_HEAT_CONSUMPTION_SHARE,
     CONF_HEAT_OWNERSHIP_SHARE,
     CONF_HEAT_PRICE,
-    CONF_SYSTEM_TYPE,
-    CONF_ICING_BLOCK_MIN,
-    CONF_ICING_COIL_DEPRESSION_K,
     CONF_HEAT_PUMP_AIRFLOW_CURVE,
+    CONF_HEAT_PUMP_ALLOW_ACTIVE,
+    CONF_HEAT_PUMP_CLIMATE,
+    CONF_HEAT_PUMP_COOL_FAN_STAGE,
+    CONF_HEAT_PUMP_COOL_SHORTFALL,
+    CONF_HEAT_PUMP_COOLING_ALLOWED,
     CONF_HEAT_PUMP_COP_PROFILE,
     CONF_HEAT_PUMP_DUCT_FACTOR,
-    CONF_HEAT_PUMP_CLIMATE,
+    CONF_HEAT_PUMP_FAN_RUN_ON_MIN,
+    CONF_HEAT_PUMP_FAN_STAGE,
     CONF_HEAT_PUMP_INTAKE_RH,
     CONF_HEAT_PUMP_INTAKE_TEMP,
-    CONF_HEAT_PUMP_MIN_OUTDOOR_TEMP,
-    CONF_HEAT_PUMP_OUTLET_TEMP,
-    CONF_HEAT_PUMP_ROOM,
-    CONF_HEAT_PUMP_POWER,
-    CONF_OUTDOOR_RH_SENSOR,
-    CONF_OVERRIDE_DEFAULT_MIN,
-    CONF_BOOST_DURATION_MIN,
-    CONF_BOILER_ALLOW_ACTIVE,
-    CONF_BOILER_CURVE_COLD,
-    CONF_BOILER_CURVE_WARM,
-    CONF_BOILER_EBUS_CIRCUIT,
-    CONF_BOILER_FLOW_MAX,
-    CONF_BOILER_FLOW_MIN,
-    CONF_BOILER_HEAT_UP_RATE,
-    CONF_BOILER_HOT_WATER_STANDBY,
-    CONF_BOILER_SPREAD_MIN_ROOM_SHARE,
-    CONF_HEAT_PUMP_ALLOW_ACTIVE,
-    CONF_ROOM_ALLOW_ACTIVE,
-    CONF_ROOM_ECHO_FILTER,
-    CONF_ROOM_SENSORS_ON_CHANGE,
     CONF_HEAT_PUMP_LEARNING_RUNS,
-    CONF_HEAT_PUMP_SHORTFALL,
-    CONF_HEAT_PUMP_FAN_STAGE,
-    CONF_HEAT_PUMP_FAN_RUN_ON_MIN,
     CONF_HEAT_PUMP_MIN_OFF_MIN,
+    CONF_HEAT_PUMP_MIN_OUTDOOR_TEMP,
     CONF_HEAT_PUMP_MIN_RUN_MIN,
-    CONF_PREHEAT_MARGIN_MIN,
+    CONF_HEAT_PUMP_OUTLET_TEMP,
+    CONF_HEAT_PUMP_POWER,
+    CONF_HEAT_PUMP_ROOM,
+    CONF_HEAT_PUMP_SHORTFALL,
+    CONF_HEATING_SEASON_FROM_C,
+    CONF_ICING_BLOCK_MIN,
+    CONF_ICING_COIL_DEPRESSION_K,
+    CONF_OUTDOOR_RH_SENSOR,
     CONF_OUTDOOR_TEMP_SENSORS,
+    CONF_OVERRIDE_DEFAULT_MIN,
+    CONF_PREHEAT_MARGIN_MIN,
+    CONF_ROOM_ALLOW_ACTIVE,
     CONF_ROOM_CLIMATE,
     CONF_ROOM_COMFORT_TEMP,
+    CONF_ROOM_COOLING_SCHEDULE_ENTITY,
     CONF_ROOM_DRYING,
     CONF_ROOM_DRYING_AUTO,
+    CONF_ROOM_ECHO_FILTER,
     CONF_ROOM_GAIN_SENSORS,
+    CONF_ROOM_HEAT_PUMP,
     CONF_ROOM_HUMIDITY,
     CONF_ROOM_KEY,
-    CONF_ROOM_HEAT_PUMP,
+    CONF_ROOM_LEAD_K,
     CONF_ROOM_NAME,
     CONF_ROOM_PREHEAT_MAX_MIN,
     CONF_ROOM_PRIORITY,
     CONF_ROOM_SCHEDULE_ENTITY,
     CONF_ROOM_SCHEDULE_WEEKDAY,
     CONF_ROOM_SCHEDULE_WEEKEND,
+    CONF_ROOM_SENSORS_ON_CHANGE,
     CONF_ROOM_SETBACK_TEMP,
     CONF_ROOM_TEMP,
+    CONF_ROOM_VALVE_CONTROL,
+    CONF_ROOM_VALVES,
     CONF_ROOM_WINDOWS,
     CONF_ROOMS,
     CONF_SENSOR_MAX_AGE_MIN,
+    CONF_SYSTEM_TYPE,
     CONF_TREND_WEIGHT_H,
     CONF_WEATHER_ENTITY,
     CONF_WINDOW_GRACE_S,
+    CONF_TOLERANCE_ABOVE_K,
+    CONF_TOLERANCE_BELOW_K,
+    CONF_WINDOW_VALVE_ACTION,
+    COOL_FAN_STAGE_CHOICES,
+    COOL_SHORTFALL_CHOICES,
+    COOL_SHORTFALL_LIFT,
     DEFAULT_AWAY_DEWPOINT_MARGIN,
     DEFAULT_AWAY_TEMP,
+    DEFAULT_BOILER_ALLOW_ACTIVE,
     DEFAULT_BOILER_CIRCULATION_L_H,
+    DEFAULT_BOILER_CURVE_COLD,
+    DEFAULT_BOILER_CURVE_WARM,
+    DEFAULT_BOILER_EBUS_CIRCUIT,
     DEFAULT_BOILER_EFFICIENCY,
+    DEFAULT_BOILER_FLOW_MAX,
+    DEFAULT_BOILER_FLOW_MIN,
+    DEFAULT_BOILER_HEAT_UP_RATE,
+    DEFAULT_BOILER_HOT_WATER_STANDBY,
+    DEFAULT_BOILER_CONDENSING,
+    DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE,
+    DEFAULT_BOOST_DURATION_MIN,
     DEFAULT_BREAK_EVEN_MARGIN_OFF,
     DEFAULT_BREAK_EVEN_MARGIN_ON,
+    DEFAULT_COOL_AWAY_TEMP,
+    DEFAULT_COOL_FLOOR_TEMP,
+    DEFAULT_COOLING_CHEAP_POWER_K,
+    DEFAULT_COOLING_SEASON_FROM_C,
+    DEFAULT_COOLING_SEASON_VETO_C,
     DEFAULT_COP_INTAKE_MAX_AGE_MIN,
     DEFAULT_COP_MIN_DELTA_T,
     DEFAULT_COP_MIN_POWER_W,
@@ -154,9 +172,9 @@ from .const import (
     DEFAULT_COP_OUTLET_MAX_AGE_MIN,
     DEFAULT_COP_SETTLE_MAX_K_PER_MIN,
     DEFAULT_COP_WARMUP_S,
-    DEFAULT_DEFROST_COIL_RISE_K,
     DEFAULT_DEFAULT_HEAT_RATE_HEAT_PUMP,
     DEFAULT_DEFAULT_HEAT_RATE_RADIATOR,
+    DEFAULT_DEFROST_COIL_RISE_K,
     DEFAULT_DEFROST_MAX_CYCLES_90MIN,
     DEFAULT_DEMAND_FULL_DELTA,
     DEFAULT_DRYING_ABS_HUMIDITY_RISE,
@@ -172,49 +190,46 @@ from .const import (
     DEFAULT_HEAT_CONSUMPTION_SHARE,
     DEFAULT_HEAT_OWNERSHIP_SHARE,
     DEFAULT_HEAT_PRICE,
-    DEFAULT_SYSTEM_TYPE,
-    SYSTEM_DISTRICT,
-    SYSTEM_GAS,
-    SYSTEM_TYPES,
-    SHORTFALL_CHOICES,
-    DEFAULT_HEAT_PUMP_SHORTFALL,
-    DEFAULT_HEAT_PUMP_FAN_STAGE,
-    FAN_STAGE_CHOICES,
-    DEFAULT_ICING_BLOCK_MIN,
-    DEFAULT_ICING_COIL_DEPRESSION_K,
+    DEFAULT_HEAT_PUMP_ALLOW_ACTIVE,
     DEFAULT_HEAT_PUMP_COP_PROFILE,
     DEFAULT_HEAT_PUMP_DUCT_FACTOR,
-    DEFAULT_HEAT_PUMP_MIN_OUTDOOR_TEMP,
-    DEFAULT_OVERRIDE_DEFAULT_MIN,
-    DEFAULT_BOOST_DURATION_MIN,
-    DEFAULT_BOILER_ALLOW_ACTIVE,
-    DEFAULT_BOILER_CURVE_COLD,
-    DEFAULT_BOILER_CURVE_WARM,
-    DEFAULT_BOILER_EBUS_CIRCUIT,
-    DEFAULT_BOILER_FLOW_MAX,
-    DEFAULT_BOILER_FLOW_MIN,
-    DEFAULT_BOILER_HEAT_UP_RATE,
-    DEFAULT_BOILER_HOT_WATER_STANDBY,
-    DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE,
-    DEFAULT_HEAT_PUMP_ALLOW_ACTIVE,
-    DEFAULT_ROOM_ALLOW_ACTIVE,
-    DEFAULT_ROOM_ECHO_FILTER,
-    DEFAULT_ROOM_SENSORS_ON_CHANGE,
-    DEFAULT_HEAT_PUMP_LEARNING_RUNS,
     DEFAULT_HEAT_PUMP_FAN_RUN_ON_MIN,
+    DEFAULT_HEAT_PUMP_FAN_STAGE,
+    DEFAULT_HEAT_PUMP_LEARNING_RUNS,
     DEFAULT_HEAT_PUMP_MIN_OFF_MIN,
+    DEFAULT_HEAT_PUMP_MIN_OUTDOOR_TEMP,
     DEFAULT_HEAT_PUMP_MIN_RUN_MIN,
+    DEFAULT_HEAT_PUMP_SHORTFALL,
+    DEFAULT_HEATING_SEASON_FROM_C,
+    DEFAULT_ICING_BLOCK_MIN,
+    DEFAULT_ICING_COIL_DEPRESSION_K,
+    DEFAULT_OVERRIDE_DEFAULT_MIN,
     DEFAULT_PREHEAT_MARGIN_MIN,
+    DEFAULT_ROOM_ALLOW_ACTIVE,
     DEFAULT_ROOM_COMFORT_TEMP,
+    DEFAULT_ROOM_ECHO_FILTER,
+    DEFAULT_ROOM_LEAD_K,
+    DEFAULT_ROOM_SENSORS_ON_CHANGE,
     DEFAULT_ROOM_SETBACK_TEMP,
-    ROOM_TEMP_RANGES,
     DEFAULT_SCHEDULE_WEEKDAY,
     DEFAULT_SCHEDULE_WEEKEND,
     DEFAULT_SENSOR_MAX_AGE_MIN,
+    DEFAULT_SYSTEM_TYPE,
     DEFAULT_TREND_WEIGHT_H,
     DEFAULT_WINDOW_GRACE_S,
+    FAN_STAGE_CHOICES,
+    ROOM_LEAD_MAX_K,
+    ROOM_TEMP_RANGES,
+    SHORTFALL_CHOICES,
+    SYSTEM_DISTRICT,
+    SYSTEM_GAS,
+    SYSTEM_TYPES,
+    WINDOW_VALVE_FROST,
+    WINDOW_VALVE_OFF,
+    VALVE_CONTROL_AUTO,
+    VALVE_CONTROL_OFFSET,
+    VALVE_CONTROL_SETPOINT,
 )
-from .adapters.config import system_type_from_config
 from .engines import cop_profiles
 from .engines.cop import parse_airflow_curve
 from .engines.room import parse_schedule
@@ -372,6 +387,7 @@ def schema_boiler(cur: Mapping[str, Any]) -> vol.Schema:
                 )
             ),
             _req(CONF_BOILER_HOT_WATER_STANDBY, cur, DEFAULT_BOILER_HOT_WATER_STANDBY): selector.BooleanSelector(),
+            _req(CONF_BOILER_CONDENSING, cur, DEFAULT_BOILER_CONDENSING): selector.BooleanSelector(),
             _req(CONF_BOILER_SPREAD_MIN_ROOM_SHARE, cur, DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE): _number(0, 1, 0.05),
             _req(CONF_BOILER_ALLOW_ACTIVE, cur, DEFAULT_BOILER_ALLOW_ACTIVE): selector.BooleanSelector(),
         }
@@ -468,6 +484,12 @@ def schema_parameters(cur: Mapping[str, Any]) -> vol.Schema:
             vol.Required(SECTION_WINDOWS): _section(
                 {
                     _req(CONF_WINDOW_GRACE_S, cur, DEFAULT_WINDOW_GRACE_S): _number(0, 900, 1, "s"),
+                    _req(CONF_WINDOW_VALVE_ACTION, cur, WINDOW_VALVE_OFF): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[WINDOW_VALVE_OFF, WINDOW_VALVE_FROST], translation_key="window_valve_action",
+                            mode=selector.SelectSelectorMode.LIST,
+                        )
+                    ),
                     _req(CONF_PREHEAT_MARGIN_MIN, cur, DEFAULT_PREHEAT_MARGIN_MIN): _number(0, 120, 5, "min"),
                     _req(CONF_DEFAULT_HEAT_RATE_RADIATOR, cur, DEFAULT_DEFAULT_HEAT_RATE_RADIATOR): _number(0.1, 5, 0.1, "°C/h"),
                 }
@@ -480,6 +502,8 @@ def schema_parameters(cur: Mapping[str, Any]) -> vol.Schema:
             ),
             vol.Required(SECTION_EXPERT): _section(
                 {
+                    _req(CONF_TOLERANCE_BELOW_K, cur, 0.3): _number(0.2, 0.5, 0.1, "K"),
+                    _req(CONF_TOLERANCE_ABOVE_K, cur, -0.1): _number(-0.1, 0.5, 0.1, "K"),
                     _req(CONF_DEMAND_FULL_DELTA, cur, DEFAULT_DEMAND_FULL_DELTA): _number(0.5, 5, 0.1, "°C"),
                     _req(CONF_TREND_WEIGHT_H, cur, DEFAULT_TREND_WEIGHT_H): _number(0, 2, 0.1, "h"),
                     _req(CONF_GAIN_THRESHOLD_W, cur, DEFAULT_GAIN_THRESHOLD_W): _number(0, 2000, 10, "W"),
@@ -620,6 +644,11 @@ def has_heat_pump(cur: Mapping[str, Any]) -> bool:
     return bool(cur.get(CONF_HEAT_PUMP_CLIMATE))
 
 
+# How the valves driven directly are controlled: the best way, or one forced for a test (review 2026-11-15 item 6). The own
+# controller on the opening (way d) is no choice any more (§3.5): two controllers on one quantity, the curve would learn
+# against it. A room stored with it opens with the best way, so that the form can be saved.
+VALVE_CONTROL_CHOICES: Final = (VALVE_CONTROL_AUTO, VALVE_CONTROL_OFFSET, VALVE_CONTROL_SETPOINT)
+
 def schema_room(cur: Mapping[str, Any], allow_add_another: bool, heat_pump: bool = True) -> vol.Schema:
     """Fields for one room.
 
@@ -630,10 +659,22 @@ def schema_room(cur: Mapping[str, Any], allow_add_another: bool, heat_pump: bool
     fields: dict[Any, Any] = {
         _req(CONF_ROOM_NAME, cur): _text(),
         _req(CONF_ROOM_PRIORITY, cur, 5): _number(1, 10, 1),
-        _req(CONF_ROOM_TEMP, cur): _entity("sensor"),
+        # optional since 2026-11-15, as Better Thermostat asks for its external sensor: without one the valve measures
+        _opt(CONF_ROOM_TEMP, cur): _entity("sensor"),
         _opt(CONF_ROOM_HUMIDITY, cur): _entity("sensor"),
         _opt(CONF_ROOM_WINDOWS, cur): _entity("binary_sensor", multiple=True),
         _opt(CONF_ROOM_CLIMATE, cur): _entity("climate"),
+        _opt(CONF_ROOM_VALVES, cur): _entity("climate", multiple=True),
+        vol.Required(
+            CONF_ROOM_VALVE_CONTROL,
+            default=cur.get(CONF_ROOM_VALVE_CONTROL) if cur.get(CONF_ROOM_VALVE_CONTROL) in VALVE_CONTROL_CHOICES
+            else VALVE_CONTROL_AUTO,
+        ): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=list(VALVE_CONTROL_CHOICES), translation_key="valve_control",
+                mode=selector.SelectSelectorMode.LIST,
+            )
+        ),
     }
     if heat_pump:
         fields[_req(CONF_ROOM_HEAT_PUMP, cur, False)] = selector.BooleanSelector()
@@ -646,6 +687,7 @@ def schema_room(cur: Mapping[str, Any], allow_add_another: bool, heat_pump: bool
         _opt(CONF_ROOM_PREHEAT_MAX_MIN, cur): _number(0, 720, 5, "min"),
         _req(CONF_ROOM_COMFORT_TEMP, cur, DEFAULT_ROOM_COMFORT_TEMP): _number(*ROOM_TEMP_RANGES["comfort"], 0.5, "°C"),
         _req(CONF_ROOM_SETBACK_TEMP, cur, DEFAULT_ROOM_SETBACK_TEMP): _number(*ROOM_TEMP_RANGES["setback"], 0.5, "°C"),
+        _req(CONF_ROOM_LEAD_K, cur, DEFAULT_ROOM_LEAD_K): _number(0.0, ROOM_LEAD_MAX_K, 0.5, "K"),
         _req(CONF_ROOM_SCHEDULE_WEEKDAY, cur, DEFAULT_SCHEDULE_WEEKDAY): _text(),
         _req(CONF_ROOM_SCHEDULE_WEEKEND, cur, DEFAULT_SCHEDULE_WEEKEND): _text(),
     })
@@ -664,11 +706,14 @@ def validate_room(
     heat_pump_climate: str | None = None,
     drives: Callable[[str], Iterable[str]] = lambda _: (),
     room_key: str | None = None,
+    driver: Callable[[str], str | None] = lambda _: None,
 ) -> dict[str, str]:
     """Check one room; pass the other rooms, so its name stays unique (also when one is renamed).
 
     `drives` names the entities a room thermostat drives besides itself (Better Thermostat, Versatile
     Thermostat: adapters.inputs.driven_by). `room_key` is the key of a room that exists already, None for a new one.
+    `driver` names the room thermostat of an active Better or Versatile Thermostat entry driving a valve, None if
+    none does (adapters.inputs.valve_driver).
     """
     existing = list(existing)
     errors: dict[str, str] = {}
@@ -695,15 +740,40 @@ def validate_room(
             errors[CONF_ROOM_DRYING] = "drying_needs_heat_pump"
         if not user_input.get(CONF_ROOM_HUMIDITY):
             errors[CONF_ROOM_HUMIDITY] = "drying_needs_humidity"
+        elif not user_input.get(CONF_ROOM_TEMP):
+            # the humidity belongs to the room's air: with the valve's warm reading a drying started for nothing
+            errors[CONF_ROOM_TEMP] = "drying_needs_temperature"
     # One climate entity, one controller (review 2026-11-08): the heat pump's unit as a room's thermostat,
     # or one thermostat in two rooms, got two setpoints a minute, each taken for a hand at the device.
     # A room thermostat in front of the unit (Better Thermostat around it) writes it all the same.
     climate = user_input.get(CONF_ROOM_CLIMATE)
     if climate and heat_pump_climate and (climate == heat_pump_climate or heat_pump_climate in drives(climate)):
         errors[CONF_ROOM_CLIMATE] = "climate_is_heat_pump"
-    elif climate and any(r.get(CONF_ROOM_CLIMATE) == climate for r in existing):
+    elif climate and any(
+        climate == r.get(CONF_ROOM_CLIMATE) or climate in _valves(r) or set(drives(climate)) & set(_valves(r))
+        for r in existing
+    ):
+        # also a Better Thermostat whose valve another room drives directly (review 2026-11-15)
         errors[CONF_ROOM_CLIMATE] = "climate_used_twice"
+    if not user_input.get(CONF_ROOM_TEMP) and not climate and not _valves(user_input):
+        errors.setdefault(CONF_ROOM_TEMP, "room_needs_a_temperature")  # nothing that measures the room
+    # Valves driven directly (docs/PHASE13_VALVES.md §4, §7): one controller per valve as well
+    valves = _valves(user_input)
+    taken = {e for r in existing for e in (r.get(CONF_ROOM_CLIMATE), *_valves(r)) if e}
+    if valves and climate:
+        errors[CONF_ROOM_VALVES] = "valves_and_thermostat"
+    elif heat_pump_climate and heat_pump_climate in valves:
+        errors[CONF_ROOM_VALVES] = "climate_is_heat_pump"
+    elif any(v in taken for v in valves):
+        errors[CONF_ROOM_VALVES] = "valve_used_twice"
+    elif any(driver(v) for v in valves):
+        errors[CONF_ROOM_VALVES] = "valve_driven_elsewhere"
     return errors
+
+
+def _valves(room: Mapping[str, Any]) -> tuple[str, ...]:
+    raw = room.get(CONF_ROOM_VALVES) or ()
+    return (raw,) if isinstance(raw, str) else tuple(v for v in raw if isinstance(v, str) and v)
 
 
 _EBUS_CIRCUIT = re.compile(r"[A-Za-z0-9_.-]+")

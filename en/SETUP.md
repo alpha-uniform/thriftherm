@@ -2,9 +2,22 @@
 
 **English** | [Deutsch](../de/EINRICHTUNG.md)
 
-This guide takes you from nothing to a working Thriftherm installation, one step at a time. You do not need to know ebusd or Home Assistant internals.
+This guide takes you from nothing to a working Thriftherm installation, one step at a time. You do not need to know ebusd or Home Assistant internals, and you only read the steps that fit your heating.
 
 **Nothing is sent to your boiler or thermostats until you switch to *Active* yourself in step 7.** Until then Thriftherm only calculates and shows what it would do, so you can try every step safely.
+
+## Your path
+
+The first question in the setup dialog is "What kind of heating do you have?". It decides which steps you need:
+
+| Your heating | Choose in the dialog | Your steps |
+|---|---|---|
+| Gas boiler with eBUS (Vaillant, Saunier Duval, Wolf and other eBUS boilers) | *Own gas or oil boiler* | 1, 2, 3, 4, 5, 6, 7, 9 |
+| Boiler without eBUS, over OpenTherm or two entities (preview) | *Own gas or oil boiler*, then [4.3a](#43a-a-boiler-without-ebusd-through-entities-preview) | 1, 3, 4, 5, 7, 9 |
+| District heating, central heating, heat supplied by the landlord | *Central or district heating, or heat supplied by the landlord* | 1, 3, 4, 5, 7, 9 |
+| Only a heat pump or an air conditioner, no boiler | *None – heat pump and room control only* | 1, 3, 4, 5, 7, 9 |
+
+In step 5 you choose for every room how Thriftherm controls it: valves directly, Better Thermostat, Versatile Thermostat or with a sensor only. The dialog leaves out the steps that do not fit by itself.
 
 | Step | What you do | Where |
 |---|---|---|
@@ -12,39 +25,46 @@ This guide takes you from nothing to a working Thriftherm installation, one step
 | [2](#2-set-up-ebusd) | Connect Home Assistant to the boiler | ebusd app |
 | [3](#3-install-thriftherm) | Install Thriftherm | HACS (Marketplace) |
 | [4](#4-add-the-integration) | Walk through the setup dialog | Home Assistant |
-| [5](#5-better-thermostat-per-room-optional) | One Better Thermostat per room | Better Thermostat |
+| [5](#5-valves-or-thermostats-per-room-optional) | Valves directly or one thermostat per room | Home Assistant, Better Thermostat |
 | [6](#6-at-the-boiler) | Set the knob, check the pump mode | at the boiler |
-| [7](#7-plan-only-first-then-active) | Watch for a few days, then go active | Home Assistant |
+| [7](#7-observe-only-first-then-active) | Watch for a few days, then go active | Home Assistant |
 | [8](#8-troubleshooting) | If something does not work | – |
 | [9](#9-dashboard) | Put the Thriftherm card on a dashboard | Home Assistant |
 
-Have district heating or no own boiler? Skip steps 2 and 6; the setup dialog leaves out the boiler for you.
-
 ## 1. What you need
+
+**For everyone:**
 
 | Item | Needed? | Notes |
 |---|---|---|
-| Boiler with eBUS | with an own boiler | for boiler control |
-| eBUS adapter | with an own boiler | for example an ebusd adapter shield, connected to the boiler's eBUS terminals |
 | Home Assistant 2026.9 or newer | yes | *Settings → About* shows your version. Temperatures in °C (metric unit system): Thriftherm works in °C only and stops the setup otherwise; switched later, it sends no more setpoints (a running heat pump is stopped, a boiler through entities handed back) and shows a repair notice |
-| MQTT broker | with an own boiler | the **Mosquitto broker** app |
-| **ebusd** app | with an own boiler | reads the boiler and sends it the setpoint |
-| One temperature sensor per room | yes | any sensor that shows the room temperature in Home Assistant |
+| One temperature sensor per room | recommended | any sensor that shows the room temperature in Home Assistant. Without it the valve or thermostat measures at the radiator, less exactly. Something has to measure the room; bathroom drying needs the sensor |
 | Window contacts | optional | heating in a room pauses while its window is open |
 | Humidity sensors | optional | protection against damp while you are away |
-| Radiator thermostats with **Better Thermostat** | optional | needed if Thriftherm should set the room temperatures; without them the boiler control still works |
-| Gas meter reading | optional | total volume (m³ or litres) and current flow (m³/h or L/min), if your gas meter is in Home Assistant. A sensor in another unit (kWh, say) is not read |
+| Smart radiator valves | optional | so that Thriftherm sets the room temperatures: driven directly (preview, no other integration) or through **Better Thermostat** or Versatile Thermostat. Without them the boiler control still works |
 | Outdoor temperature sensor | optional | otherwise a weather entity is used |
+
+**Also, with an own gas boiler on eBUS:**
+
+| Item | Needed? | Notes |
+|---|---|---|
+| Boiler with eBUS | yes | for boiler control |
+| eBUS adapter | yes | for example an ebusd adapter shield, connected to the boiler's eBUS terminals |
+| MQTT broker | yes | the **Mosquitto broker** app |
+| **ebusd** app | yes | reads the boiler and sends it the setpoint |
+| Gas meter reading | optional | total volume (m³ or litres) and current flow (m³/h or L/min), if your gas meter is in Home Assistant. A sensor in another unit (kWh, say) is not read |
+
+A boiler without eBUS needs a number entity for the flow and a switch for the heating instead, from an OpenTherm adapter, say ([4.3a](#43a-a-boiler-without-ebusd-through-entities-preview)); a gas meter works there too.
 
 **A central room controller on the eBUS terminal has to go.** If a room controller is already connected to your boiler's eBUS terminal, disconnect it; the eBUS adapter goes on the same terminal. Thriftherm takes over the controller's job, and two controllers on the eBUS would keep overwriting each other's setpoints.
 
-The **heat pump** add-on controls an air conditioner in heating mode, tried on a Midea PortaSplit. You can skip it completely. If you want to use it, it needs the heat pump's climate entity, a smart plug measuring its power, the temperature and humidity of its intake air and the temperature of its outlet air.
+**With a heat pump:** the **heat pump** add-on controls an air conditioner in heating mode, tried on a Midea PortaSplit. You can skip it completely. If you want to use it, it needs the heat pump's climate entity, a smart plug measuring its power, the temperature and humidity of its intake air and the temperature of its outlet air.
 
 ### What works with your equipment
 
 The first setup step asks which heating you have. The dialog leaves out the steps that do not apply. The table shows what Thriftherm then does for you.
 
-| Feature | Own boiler on ebusd (core) | + Better Thermostat | + heat pump | Heat pump only, no boiler | Central or district heating¹ |
+| Feature | Own boiler on ebusd (core) | + smart valves | + heat pump | Heat pump only, no boiler | Central or district heating¹ |
 |---|:-:|:-:|:-:|:-:|:-:|
 | **Rooms** | | | | | |
 | Room targets from schedules (comfort, setback, schedule helper) | ✓ | ✓ | ✓ | ✓ | ✓ |
@@ -70,11 +90,11 @@ The first setup step asks which heating you have. The dialog leaves out the step
 | Cost comparison with the central heat source | – | – | ✓ | – | ✓² |
 | Bathroom drying | – | – | ✓ | ✓ | ✓² |
 | **Always** | | | | | |
-| *Plan only* first, *Active* only after you release it; a reason for every decision; repair notices | ✓ | ✓ | ✓ | ✓ | ✓ |
+| *Observe only* first (Thriftherm works out and shows what it would do, but controls nothing), *Active* only after you release it; a reason for every decision; repair notices | ✓ | ✓ | ✓ | ✓ | ✓ |
 
 ✓ works · – not available. Each “+” column includes the columns to its left. In the heat-pump-only column the room rows apply to the rooms the heat pump reaches.
 
-¹ Central or district heating, or heat supplied by the landlord: no own boiler. Rooms are controlled through Better Thermostat, and nothing is ever written to the heat supply.
+¹ Central or district heating, or heat supplied by the landlord: no own boiler. Rooms are controlled through their valves (directly or through Better Thermostat), and nothing is ever written to the heat supply.
 
 ² With the heat pump add-on. The cost comparison then uses the marginal price of district heat, see [With district heating](#with-district-heating).
 
@@ -86,11 +106,13 @@ The first setup step asks which heating you have. The dialog leaves out the step
 
 ### With district heating
 
-With district heating, Thriftherm pays off mainly with a heat pump. It then keeps deciding whether heat from electricity or from the district heating is cheaper right now, and lets the heat pump heat only when it pays. Quick heat-up, bathroom drying and learning runs are the exceptions. Without a heat pump, only room control is left. Better Thermostat already regulates the valves, and Thriftherm adds schedules with pre-heating and away mode. That is not much beyond what Better Thermostat with a schedule can already do.
+With district heating, Thriftherm pays off mainly with a heat pump. It then keeps deciding whether heat from electricity or from the district heating is cheaper right now, and lets the heat pump heat only when it pays. Quick heat-up, bathroom drying and learning runs are the exceptions. Without a heat pump, only room control is left: Thriftherm gives the valves (directly or through Better Thermostat) schedules with pre-heating and away mode. That is not much beyond what Better Thermostat with a schedule can already do.
 
 The cost comparison uses the **marginal** price of heat, not the headline one. Under the German Heizkostenverordnung only the consumption share of the building's bill follows your own meter, and of the floor-area share your flat carries its ownership fraction. Saving a kWh therefore saves less than the price per kWh suggests. That *raises* the COP the heat pump has to reach. You set both shares with the prices ([step 4.2](#42-prices)); ignoring them would flatter the heat pump.
 
 ## 2. Set up ebusd
+
+Only for a gas boiler with eBUS. Everyone else continues with [step 3](#3-install-thriftherm).
 
 ### 2.1 Install the MQTT broker
 
@@ -117,11 +139,7 @@ Open the **Configuration** tab of the ebusd app:
 
 Save and start the app.
 
-> **Give fixed addresses.** A network adapter needs a fixed IP address. Create a **DHCP reservation** in your router for the eBUS adapter, and for every other network device Thriftherm reads from, such as a Wi-Fi gas meter.
-> Why this matters, one night on the test installation shows: the router handed out new addresses, the eBUS adapter got a different IP, and the Wi-Fi gas meter got the adapter's old one.
-> - ebusd no longer found the adapter ("unable to open …" in its log). Thriftherm handed the boiler back within minutes, and it heated for over an hour by its own knob.
-> - ebusd knocked on the gas meter every 5 seconds. The meter kept losing its MQTT connection, and its values showed "unavailable" in Home Assistant.
-> - All the while Home Assistant kept showing the last stored eBUS values (flow 22 °C, status 31), because ebusd keeps its values in the broker. In fact the flow was close to 50 °C.
+> **Give fixed addresses.** A network adapter needs a fixed IP address. Create a **DHCP reservation** in your router for the eBUS adapter, and for every other network device Thriftherm reads from, such as a Wi-Fi gas meter. What happens otherwise: [troubleshooting, no data from the boiler](TROUBLESHOOTING.md#repair-notice-no-data-from-the-boiler).
 >
 > Only *ebusd signal* (`binary_sensor.…_global_signal`) tells whether ebusd really reaches the boiler. When it stays off for more than ten minutes, Thriftherm reports it under Settings → Repairs (*No data from the boiler*). For a push notification, add an automation on that signal, for example "off for 5 minutes".
 
@@ -148,7 +166,7 @@ Optional, for advanced users. ebusd polls the boiler's values in turn; the short
 
 ## 3. Install Thriftherm
 
-**With HACS (recommended):** Thriftherm has been in the HACS default list since 2026-10-21; no custom repository is needed any more. Since Home Assistant 2026.11 HACS is built in and called *Marketplace*: there, read *Marketplace* wherever this section says HACS. On older versions it is HACS.
+**With HACS (recommended):** Thriftherm has been in the HACS default list since 2026-10-21. Since Home Assistant 2026.11 HACS is built in and called *Marketplace*; wherever HACS is said here, read *Marketplace* there.
 
 Quickest with this button, it opens Thriftherm in HACS directly; then click *Download* and continue with point 3 of the list below:
 
@@ -207,17 +225,18 @@ The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fill
 | eBUS signal (binary sensor) | **ebusd's own signal** (`binary_sensor.…_global_signal`), not the adapter's connectivity sensor: when the adapter drops off Wi-Fi, its own sensor keeps its last value "on" (measured) |
 | Nominal circulation flow of the pump | keep the default unless your boiler's manual says otherwise |
 | Gas meter volume (m³, total), Gas meter instantaneous flow (m³/h) | your gas meter entities, if you have them; otherwise leave empty. The control needs no gas meter: it tells burner runs and hot water from the pump and the status code. Without a meter, the *Gas power* and *Gas energy* sensors are not created |
-| Without a gas meter: nominal heat input of the boiler (type plate, kW) | only without a gas meter and only for a Vaillant boiler: the value **Q** or **Qn** from the type plate, the larger one of a range (atmoTEC plus VCW 194/4-5: 22.2). With it Thriftherm estimates *Gas for heating* and *Gas for hot water* from the boiler's counters. For that the six ebusd messages PrEnergySumHc1 to 3 and PrEnergySumHwc1 to 3 must reach Home Assistant, so do not exclude them ([Poll fewer ebusd values](EBUSD.md#what-thriftherm-needs)); Thriftherm finds them by itself. On the test installation the estimate was 1 % above the gas meter over 32 days (95.8 kWh on the meter) and off by no more than 0.3 kWh on any day. Leave empty with a gas meter |
-| Power of the heating pump (W, optional) | the electricity of the boiler's heating pump then joins the price of boiler heat: Thriftherm counts the pump's running time and the boiler's heat and adds the pump's electricity per kWh of heat (at most 0.06 kWh), so a heat pump that takes over also saves it. Only worth it with a heat pump; a pump in permanent mode often draws 20 to 50 W (type plate or a smart plug). Leave empty to compare gas alone |
+| Without a gas meter: nominal heat input of the boiler (type plate, kW) | only without a gas meter and only for a Vaillant boiler: the value **Q** or **Qn** from the type plate, the larger one of a range (atmoTEC plus VCW 194/4-5: 22.2). With it Thriftherm estimates *Gas for heating* and *Gas for hot water* from the boiler's counters ([how exact](GUIDE.md#dashboard-sensors-worth-knowing)). For that the six ebusd messages PrEnergySumHc1 to 3 and PrEnergySumHwc1 to 3 must reach Home Assistant, so do not exclude them ([Poll fewer ebusd values](EBUSD.md#what-thriftherm-needs)); Thriftherm finds them by itself. Leave empty with a gas meter |
+| Power of the heating pump (W, optional) | only with a heat pump: the electricity of the boiler's heating pump then joins the price of boiler heat ([how](GUIDE.md#heat-pump-optional)). A pump in permanent mode often draws 20 to 50 W (type plate or a smart plug). Leave empty to compare gas alone |
 | Keep hot water ready (keep-warm of a combi boiler, cylinder loading) | leave it on. Switch it off only on a combi boiler without a cylinder whose keep-warm bothers you at night (about one burner start an hour with no heating demand); it only acts with active boiler control |
 | ebusd circuit of the boiler (usually bai) | keep `bai` unless your ebusd device uses another circuit name |
 | Heating curve: flow temperature at -10 °C outdoor | start with the default 55 °C |
 | Heating curve: flow temperature at +15 °C outdoor | start with the default 30 °C |
 | Minimum flow temperature | **about 45 °C for a non-condensing boiler, about 30 °C for a condensing boiler** |
 | Maximum flow temperature | 60 °C by default. Better your knob setting from step 6 (for example 55 °C) or a bit lower; higher values have no effect because the knob is the upper limit |
+| Condensing boiler | leave on for a condensing boiler, untick for an older boiler without condensing. Limits how far Thriftherm raises the flow at the [boiler's own limit](HOW_IT_WORKS.md#the-boilers-own-limit): up to 55 °C, otherwise up to the maximum |
 | Heat-up speed (°C per hour, 0 = off) | start with 0. If a room warms up too slowly after you raise it, set 0.5 to 2; more speed burns more gas ([guide, heat-up speed](GUIDE.md#heat-up-speed)) |
 | Share of rooms that must call before the spread judges the curve | keep the default 0.5 |
-| Release active boiler control (otherwise plan only) | **leave off for now** – you switch it on in step 7 |
+| Release active boiler control (otherwise observe only) | **leave off for now** – you switch it on in step 7 |
 
 **Why the minimum depends on the boiler type:** a condensing boiler gains from a low flow, but a non-condensing boiler hardly saves anything there, and with short burner runs the heat may not reach distant radiators – see the [user guide, boiler control](GUIDE.md#boiler-control).
 
@@ -240,7 +259,7 @@ A boiler without eBUS can be controlled through two entities that have to exist 
 
 With the number and the switch chosen nothing goes to ebusd any more; the ebusd circuit and *Keep hot water ready* have no effect then. Both are always needed.
 
-One difference to ebusd: an ebusd command runs out after a few minutes and the boiler heats by its knob again. An entity keeps what it was sent. So Thriftherm hands the boiler back itself (heating on) whenever it stops controlling: when switched to *Plan only* and without boiler data with the flow of the heating curve, which then keeps following the outdoor temperature; when Home Assistant stops with the maximum flow, as a knob would stand. If the number or the switch cannot be reached at that moment, a repair notice says so, and Thriftherm hands the boiler back as soon as they are back while Home Assistant runs. Entities Thriftherm never commanded are not touched. If Home Assistant crashes or loses power, the last state stays – a blocked heating included. Check whether your adapter has a timeout of its own for that case.
+One difference to ebusd: an ebusd command runs out after a few minutes and the boiler heats by its knob again. An entity keeps what it was sent. So Thriftherm hands the boiler back itself (heating on) whenever it stops controlling: when switched to *Observe only* and without boiler data with the flow of the heating curve, which then keeps following the outdoor temperature; when Home Assistant stops with the maximum flow, as a knob would stand. If the number or the switch cannot be reached at that moment, a repair notice says so, and Thriftherm hands the boiler back as soon as they are back while Home Assistant runs. Entities Thriftherm never commanded are not touched. If Home Assistant crashes or loses power, the last state stays – a blocked heating included. Check whether your adapter has a timeout of its own for that case.
 
 ### 4.4 Heat pump (optional add-on)
 
@@ -268,15 +287,17 @@ You add one room per page. Tick **Add another room** to get the next page; submi
 |---|---|
 | Room name | for example `Living room` |
 | Priority (1 = highest) | rooms that matter most get a lower number; 5 is fine to start |
-| Room temperature sensor | the room's temperature sensor (required) |
+| Room temperature sensor | optional: a sensor of its own in the room measures more exactly than the valve at the radiator. Any temperature sensor in Home Assistant will do. The bathroom drying needs it |
 | Room humidity sensor | optional |
 | Window / door contacts | optional, all contacts of the room |
-| Thermostat (TRV or Better Thermostat) | the room's **Better Thermostat** entity. No Better Thermostat yet? Leave it empty and add it later (options → *Rooms* → room → *Edit*) |
+| Thermostat (TRV or Better Thermostat) | the room's **Better Thermostat** or Versatile Thermostat entity. If Thriftherm drives the valves directly, it stays empty (see *Radiator valves, driven directly*). None of these yet? Leave it empty and add it later (options → *Rooms* → room → *Edit*) |
 | Power sensors of internal heat sources | optional, otherwise leave empty: the power of devices that heat the room as well (a computer, say). Above 150 W every further watt lowers the room's heat demand by 0.1 % (*Control parameters → Advanced*: *Internal gain threshold*, *Internal gain demand reduction per W*) |
 | Weekly schedule helper (optional; replaces the comfort windows below) | a Home Assistant schedule helper whose blocks are the comfort times |
 | Longest preheat | optional, for a room wanted only briefly ([details](GUIDE.md#pre-heating)) |
 | Comfort temperature | temperature while the room is in use, for example 20 °C |
 | Setback temperature | temperature outside the comfort times, for example 17 °C; never above comfort |
+| Radiator valves, driven directly | instead of a thermostat, preview ([details](GUIDE.md#valves-driven-directly-without-a-room-thermostat-preview)). First enable the valve's *sensor selection* and *external temperature input* in HA if they are disabled (Settings → Devices → Entities), and set its *temperature accuracy* to −0.4 |
+| Lead at the thermostat | leave it at 0.5 K ([details](GUIDE.md#lead-at-the-thermostat)); 0 switches it off |
 | Comfort windows Mon–Fri / Sat–Sun | times as `HH:MM-HH:MM`, several separated by commas, for example `06:00-08:00,17:00-22:00`. The defaults are 06:00-22:00 and 08:00-23:00 |
 
 The room is warm *when* a comfort time starts: Thriftherm starts heating early enough.
@@ -285,11 +306,23 @@ The room is warm *when* a comfort time starts: Thriftherm starts heating early e
 
 Only with a heat pump set up does the form also show *Heated by the heat pump*, *Bathroom drying with the heat pump* and *Start the drying by itself after a shower*. Bathroom drying runs on the heat pump, so without one none of the fields appears. With it the room gets the button *Dry now*; with the third switch off, only the button dries. It also needs *Heated by the heat pump* switched on and the room humidity sensor; the form refuses it otherwise.
 
-**Check:** after the last room *Settings → Devices & services* lists **Thriftherm**. Its device shows *Boiler control* and *Room control* set to **Plan only**.
+**Check:** after the last room *Settings → Devices & services* lists **Thriftherm**. Its device shows *Boiler control* and *Room control* set to **Observe only**.
 
-## 5. Better Thermostat per room (optional)
+## 5. Valves or thermostats per room (optional)
 
-Skip this if you have no smart radiator thermostats. The boiler control works without them; open the manual valves far enough and let the flow temperature do the work.
+Skip this if you have no smart radiator valves. The boiler control works without them; open the manual valves far enough and let the flow temperature do the work.
+
+There are three ways per room: the valves directly (no other integration), Better Thermostat or Versatile Thermostat. A room has either a *Thermostat* or valves, not both. What applies day to day: [user guide, room thermostats](GUIDE.md#room-thermostats).
+
+### Valves directly (preview)
+
+In use on Sonoff TRVZB/TRVZBT with Zigbee2MQTT since 2026-11-15; other valves (ZHA, Shelly and more) have only been tested with simulated ones so far.
+
+1. On the valve in Home Assistant, enable the entities *sensor selection* and *external temperature input* if they are disabled (*Settings → Devices → Entities*).
+2. On a TRVZB/TRVZBT, set the *temperature accuracy* to −0.4.
+3. In Thriftherm, under options → *Rooms* → room → *Edit*, empty the field *Thermostat* and choose the valves under *Radiator valves, driven directly*. The form refuses a valve an active Better Thermostat entry still drives.
+
+### Better Thermostat
 
 For each room:
 
@@ -307,6 +340,8 @@ A room's thermostat can also be the climate entity of [Versatile Thermostat](htt
 
 ## 6. At the boiler
 
+Only for a gas boiler with eBUS.
+
 1. **Turn the front knob to the highest flow temperature you want to allow**, for example 55 °C. The knob stays the upper limit, and it is what the boiler falls back to if Home Assistant stops. Do not turn it to the left stop: on the tested boiler that is summer mode and blocks heating whatever Thriftherm sends.
 2. **Check the pump mode once.** With the factory setting the pump may stop together with the burner: the boiler cycles all day, but the radiators far down the circuit stay cold. Why this happens: [user guide, pump mode](GUIDE.md#why-the-pump-mode-matters).
    - Vaillant: d.18 = 0 "post-run" is the factory setting – the pump runs only with the burner, plus a short overrun. d.18 = 1 "permanent" – the pump runs while heating is released and stops when Thriftherm blocks heating.
@@ -315,11 +350,11 @@ A room's thermostat can also be the climate entity of [Versatile Thermostat](htt
 
    Thriftherm never writes installer parameters: changing the pump mode is your decision.
 
-## 7. Plan only first, then Active
+## 7. Observe only first, then Active
 
-### 7.1 A few days in "Plan only"
+### 7.1 A few days in "Observe only"
 
-Leave everything in *Plan only* and look at these entities once or twice a day:
+Leave everything in *Observe only* and look at these entities once or twice a day:
 
 | Entity | What to look for |
 |---|---|
@@ -332,9 +367,9 @@ If something looks wrong, adjust it in the options before going active.
 ### 7.2 Going active
 
 1. Switch the Better Thermostat entities to **heat**.
-2. Thriftherm → *Configure* → **Gas boiler and gas meter**: switch on *Release active boiler control (otherwise plan only)*. Submit.
+2. Thriftherm → *Configure* → **Gas boiler and gas meter**: switch on *Release active boiler control (otherwise observe only)*. Submit.
 3. Thriftherm → *Configure* → **Control parameters**, section *Releases*: switch on *Release active room control (write setpoints to the thermostats)*. Submit.
-4. With a heat pump: Thriftherm → *Configure* → **Heat pump: fine tuning**: switch on *Release active control (otherwise plan only)*. Submit.
+4. With a heat pump: Thriftherm → *Configure* → **Heat pump: fine tuning**: switch on *Release active control (otherwise observe only)*. Submit.
 5. On the Thriftherm device, set **Boiler control** and **Room control** (with a heat pump also **Heat pump control**) to **Active**.
 
 **Check after a few minutes:**

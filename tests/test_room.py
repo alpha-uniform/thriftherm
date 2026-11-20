@@ -304,3 +304,12 @@ def test_a_preheat_has_no_pace_until_it_has_risen_for_most_of_half_an_hour():
     assert out["bath"].preheat_pace_k_per_h is None  # no history given
     out, _ = room_engine.preheat_began(rooms, {}, {}, now, {"bath": climbing(began, now, 0.5)})
     assert out["bath"].preheat_pace_k_per_h is None  # it begins only now
+
+
+def test_the_room_age_is_when_its_sensor_device_was_last_heard():
+    """19.11.2026: the bathroom's temperature unchanged for 2.5 h while its device sent the humidity a minute ago: the
+    room stood still, its sensor was not silent (the boiler's limit and the curve judge it)."""
+    now = datetime(2026, 11, 19, 8, 15)
+    cfg = room_config("bad")
+    heard = replace(room_state(cfg, temp=19.7), temperature=replace(reading(19.7, age_s=9060.0), heard_s=60.0))
+    assert room_engine.evaluate_room(heard, now, "auto", PARAMS).temperature_age_s == 60.0

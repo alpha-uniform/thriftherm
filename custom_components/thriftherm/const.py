@@ -6,7 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "thriftherm"
 PLATFORMS: Final = ["sensor", "binary_sensor", "select", "button", "number", "datetime"]
-COOLING_PLATFORMS: Final = ["climate"]  # only where cooling is allowed: the room climate (docs/PHASE12_COOLING.md §3.6)
+COOLING_PLATFORMS: Final = ["climate"]  # the room climate of every room (docs/PHASE12_COOLING.md §3.6), since 2026-11-17
 STORAGE_KEY: Final = "thriftherm.learning"
 STORAGE_VERSION: Final = 1
 # Minor: an older version with the same major version still loads the store (see persistence.migrate_store).
@@ -146,6 +146,7 @@ CONF_BOILER_CURVE_WARM: Final = "boiler_curve_flow_at_plus15"
 CONF_BOILER_FLOW_MIN: Final = "boiler_flow_min"
 CONF_BOILER_FLOW_MAX: Final = "boiler_flow_max"
 CONF_BOILER_HOT_WATER_STANDBY: Final = "boiler_hot_water_standby"
+CONF_BOILER_CONDENSING: Final = "boiler_condensing"  # a condensing boiler: sent less above the curve at its limit
 CONF_BOILER_HEAT_UP_RATE: Final = "boiler_heat_up_rate_k_h"
 CONF_BOILER_SPREAD_MIN_ROOM_SHARE: Final = "boiler_spread_min_room_share"
 CONF_BOILER_ALLOW_ACTIVE: Final = "boiler_allow_active_control"
@@ -156,6 +157,7 @@ DEFAULT_BOILER_CURVE_WARM: Final = 30.0
 DEFAULT_BOILER_FLOW_MIN: Final = 30.0  # minimum of the atmoTEC (d.05)
 DEFAULT_BOILER_FLOW_MAX: Final = 60.0  # below d.71 (75 °C)
 DEFAULT_BOILER_HOT_WATER_STANDBY: Final = True  # what the boiler does without us
+DEFAULT_BOILER_CONDENSING: Final = True  # most boilers sold are; an old one is unticked
 DEFAULT_BOILER_HEAT_UP_RATE: Final = 0.0  # off: the flow as before, curve and demand boost
 DEFAULT_BOILER_SPREAD_MIN_ROOM_SHARE: Final = 0.5
 DEFAULT_BOILER_ALLOW_ACTIVE: Final = False
@@ -184,11 +186,23 @@ CONF_ROOMS: Final = "rooms"
 CONF_ROOM_KEY: Final = "key"
 CONF_ROOM_NAME: Final = "name"
 CONF_ROOM_PRIORITY: Final = "priority"
-CONF_ROOM_PREHEAT_MAX_MIN: Final = "preheat_max_min"  # longest preheat of a room; absent: as long as it takes
+CONF_ROOM_PREHEAT_MAX_MIN: Final = "preheat_max_min"  # longest preheat of a room; absent: four hours (PREHEAT_LEAD_MAX_S)
 CONF_ROOM_TEMP: Final = "temperature_sensor"
 CONF_ROOM_HUMIDITY: Final = "humidity_sensor"
 CONF_ROOM_WINDOWS: Final = "window_sensors"
 CONF_ROOM_CLIMATE: Final = "climate_entity"
+# the room's radiator valves, driven by Thriftherm without a room thermostat in between (docs/PHASE13_VALVES.md)
+CONF_ROOM_VALVES: Final = "valve_entities"
+# how the valves of a room driven directly are controlled: the most exact way each can take, or Thriftherm's own
+# controller on their opening (docs/PHASE13_VALVES.md §3.4, a preview)
+CONF_ROOM_VALVE_CONTROL: Final = "valve_control"
+VALVE_CONTROL_AUTO: Final = "auto"
+VALVE_CONTROL_OPENING: Final = "opening"  # way d, no choice in the form since 2026-11-15; a value stored still applies
+# a way forced for a test (review 2026-11-15 item 6): the offset (b) or the corrected setpoint (c)
+VALVE_CONTROL_OFFSET: Final = "offset"
+VALVE_CONTROL_SETPOINT: Final = "setpoint"
+# how far above the room's target its thermostat is asked for while the boiler runs for the room (docs/PHASE13_VALVES.md §6)
+CONF_ROOM_LEAD_K: Final = "thermostat_lead_k"
 CONF_ROOM_HEAT_PUMP: Final = "served_by_midea"
 CONF_ROOM_GAIN_SENSORS: Final = "internal_gain_sensors"
 CONF_ROOM_COMFORT_TEMP: Final = "comfort_temp"
@@ -201,6 +215,8 @@ CONF_ROOM_SCHEDULE_ENTITY: Final = "schedule_entity"
 
 ROOM_TEMP_RANGES: Final = {"comfort": (10.0, 28.0), "setback": (5.0, 25.0)}  # the room form and the number entities
 DEFAULT_ROOM_COMFORT_TEMP: Final = 20.0
+DEFAULT_ROOM_LEAD_K: Final = 0.5
+ROOM_LEAD_MAX_K: Final = 1.0
 DEFAULT_ROOM_SETBACK_TEMP: Final = 17.0
 DEFAULT_SCHEDULE_WEEKDAY: Final = "06:00-22:00"
 DEFAULT_SCHEDULE_WEEKEND: Final = "08:00-23:00"
@@ -212,6 +228,15 @@ CONF_SENSOR_MAX_AGE_MIN: Final = "sensor_max_age_min"
 # room sensors that report only on a change (Shelly H&T: 1 K or 1 %): room temperatures hold up to the max. sensor age
 CONF_ROOM_SENSORS_ON_CHANGE: Final = "room_sensors_report_on_change"
 CONF_WINDOW_GRACE_S: Final = "window_grace_s"
+# what a valve driven directly does while its window is open: off (the default, as Better and Versatile Thermostat do)
+# or the frost limit (docs/PHASE13_VALVES.md §5.1)
+CONF_WINDOW_VALVE_ACTION: Final = "window_valve_action"
+# the band of a room's call for the boiler (engines/heat_call.py), a setting since 2026-11-15, named as Home Assistant's
+# generic thermostat names it (review 2026-11-15 §3.8): the call begins this far below the target and ends this far above
+CONF_TOLERANCE_BELOW_K: Final = "tolerance_below_k"
+CONF_TOLERANCE_ABOVE_K: Final = "tolerance_above_k"
+WINDOW_VALVE_OFF: Final = "off"
+WINDOW_VALVE_FROST: Final = "frost"
 CONF_FROST_TEMP: Final = "frost_protection_temp"
 CONF_AWAY_TEMP: Final = "away_temp"
 CONF_AWAY_RETURN_PERSONS: Final = "away_return_persons"  # person.* whose arrival home ends away mode

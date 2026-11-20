@@ -89,7 +89,7 @@ views:
                 attribute: frost_rooms
                 name: Frostgefahr in
 
-      # Block: Betriebsmodus und die drei Steuerungen (Aus, Nur planen, Aktiv).
+      # Block: Betriebsmodus und die drei Steuerungen (Aus, Nur beobachten, Aktiv).
       - type: grid
         cards:
           - type: heading
@@ -130,7 +130,7 @@ views:
               perform_action: button.press
               target:
                 entity_id: button.thriftherm_back_to_automatic
-          # Die drei Steuerungen. "Nur planen" rechnet nur, sendet aber nichts.
+          # Die drei Steuerungen. "Nur beobachten" rechnet nur, sendet aber nichts.
           # Ohne Wärmepumpe oder ohne Therme fehlt die jeweilige Zeile: löschen.
           - type: entities
             entities:
@@ -535,7 +535,7 @@ views:
     max_columns: 2
     sections:
       # Je Raum: gemessene Temperatur, Soll und wann geheizt wurde (vom Thermostat),
-      # dazu das Soll von Thriftherm (weicht im Modus "Nur planen" ab).
+      # dazu das Soll von Thriftherm (weicht im Modus "Nur beobachten" ab).
       - type: grid
         cards:
           - type: history-graph

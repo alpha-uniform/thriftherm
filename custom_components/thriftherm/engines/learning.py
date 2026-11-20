@@ -52,7 +52,24 @@ EPISODE_MIN_RISE_K = 0.5
 # its target (review 2026-11-08). Even a slow 0.1 degree an hour reaches a sensor's next tenth within it.
 HEAT_PLATEAU_S = 3600.0
 HEAT_END_FALL_K = 0.3  # this far below its highest point the room is cooling, whatever heats it
+# A room this far below its target, its source on, is heating up, however slowly: no plateau ends that, and up to its
+# last sample there its pace counts. Only quick heat-ups were learned before: a bathroom at a cycling boiler rose 0.1-0.3
+# an hour, never half a degree before an hour without a new highest point ended it (16.11.).
+HEAT_BEHIND_K = 0.5
+SLOW_EPISODE_S = 2 * 3600.0  # this long, a smaller rise counts, and a pace below HEAT_RATE_MIN is stored as that
+SLOW_EPISODE_MIN_RISE_K = 0.2
+# Half a degree within ten minutes no radiator gives and no heat pump at its least speed: warmth from elsewhere (16.11.:
+# hot water in the bathroom, 1.4 degrees in five minutes, stored as a boiler heat-up of 1.99 K/h). The heat-up so far
+# goes without a value; one begins anew from there. It takes two rising reports within the ten minutes: a sensor in 0.5
+# or 1 K steps (a Shelly H&T, a valve in half degrees) jumps a whole step after a long quiet, that is its resolution
+# (review 2026-11-18: no heat-up of such a room was learned any more).
+FOREIGN_RISE_K = 0.5
+FOREIGN_WITHIN_S = 600.0
+FOREIGN_REPORTS = 2
 HEAT_RATE_KEEP = 10
+# A preheat planned with a rate from fewer heat-ups than this takes the default in the places of those missing
+# (16.11.: one heat-up of the bedroom at a cycling boiler, 0.196 K/h, had it preheat 5.6 hours for one degree).
+HEAT_RATE_TRUSTED = 3
 HEAT_RATE_MIN = 0.1
 HEAT_RATE_MAX = 6.0
 
@@ -612,6 +629,21 @@ class HeatEpisode(Episode):
     source: str = HEAT_BY_BOILER
     since_high_sum: float = 0.0
     since_high_samples: int = 0
+    behind_ts: float | None = None  # the last sample well below its target (HEAT_BEHIND_K)
+    recent: list[tuple[float, float]] = field(default_factory=list)  # the samples of the last FOREIGN_WITHIN_S
+
+
+def _foreign_rise(recent: list[float], temp: float) -> bool:
+    """Half a degree up within the window, in two rising reports at least (FOREIGN_REPORTS)."""
+    low = min(recent)
+    if temp - low < FOREIGN_RISE_K - 1e-9:
+        return False
+    reports, last = 0, low
+    for value in (*recent, temp):
+        if value > last + 1e-9:
+            reports += 1
+        last = value
+    return reports >= FOREIGN_REPORTS
 
 
 @dataclass
@@ -625,9 +657,17 @@ class HeatRateStats:
     episodes: dict[str, HeatEpisode] = field(default_factory=dict)
 
     def observe(
-        self, room: str, ts: float, temp: float | None, source: str | None, window_open: bool, outdoor: float | None = None
+        self,
+        room: str,
+        ts: float,
+        temp: float | None,
+        source: str | None,
+        window_open: bool,
+        outdoor: float | None = None,
+        short_k: float | None = None,
     ) -> float | None:
-        """Feed one sample: `source` is the heat source that heats the room now, None for none.
+        """Feed one sample: `source` is the heat source that heats the room now, None for none; `short_k` how far the
+        room is below its target, None where that is not known.
 
         Returns a newly learned rate when an episode closes, else None. A change of source, or both
         at once, ends the episode without a value: the radiator gives off its heat for a while after
@@ -641,18 +681,29 @@ class HeatRateStats:
             return self._close(room, ep)
         gradient = None if outdoor is None else temp - outdoor
         fresh = HeatEpisode(ts, temp, ts, temp, gradient or 0.0, 1 if gradient is not None else 0, source)
+        fresh.recent.append((ts, temp))
         if ep is None:
             self.episodes[room] = fresh
             return None
-        if temp < ep.last_temp - HEAT_END_FALL_K or (temp <= ep.last_temp and ts - ep.last_ts >= HEAT_PLATEAU_S):
+        behind = short_k is not None and short_k >= HEAT_BEHIND_K - 1e-9
+        plateau = temp <= ep.last_temp and ts - ep.last_ts >= HEAT_PLATEAU_S and not behind
+        if temp < ep.last_temp - HEAT_END_FALL_K or plateau:
             learned = self._close(room, ep)  # the heat-up ended at its highest point
             self.episodes[room] = fresh
             return learned
+        ep.recent = [(t, v) for t, v in ep.recent if ts - t <= FOREIGN_WITHIN_S + 1e-6]
+        if ep.recent and _foreign_rise([v for _, v in ep.recent], temp):
+            self.episodes[room] = fresh  # warmth from elsewhere: what came so far goes without a value
+            return None
+        ep.recent.append((ts, temp))
         if gradient is not None:
             ep.since_high_sum += gradient
             ep.since_high_samples += 1
-        if temp > ep.last_temp:
-            ep.last_ts, ep.last_temp = ts, temp
+        if temp > ep.last_temp or behind:
+            if temp > ep.last_temp:
+                ep.last_ts, ep.last_temp = ts, temp
+            else:
+                ep.behind_ts = ts
             ep.gradient_sum += ep.since_high_sum
             ep.samples += ep.since_high_samples
             ep.since_high_sum, ep.since_high_samples = 0.0, 0
@@ -662,11 +713,16 @@ class HeatRateStats:
         if ep is None:
             return None
         del self.episodes[room]
-        duration = ep.last_ts - ep.start_ts
+        # well below its target after its highest point, the room still tried: that time is part of its pace
+        end_ts = ep.last_ts if ep.behind_ts is None else max(ep.last_ts, ep.behind_ts)
+        duration = end_ts - ep.start_ts
         rise = ep.last_temp - ep.start_temp
-        if duration < EPISODE_MIN_S or rise < EPISODE_MIN_RISE_K:
+        slow = duration >= SLOW_EPISODE_S
+        if duration < EPISODE_MIN_S or rise < (SLOW_EPISODE_MIN_RISE_K if slow else EPISODE_MIN_RISE_K) - 1e-9:
             return None
         rate = rise / (duration / 3600.0)
+        if slow:
+            rate = max(rate, HEAT_RATE_MIN)
         if not HEAT_RATE_MIN <= rate <= HEAT_RATE_MAX:
             return None
         lst = self.rates.setdefault(room, {}).setdefault(ep.source, [])
@@ -692,6 +748,20 @@ class HeatRateStats:
     def rate(self, room: str, source: str) -> float | None:
         lst = self.rates.get(room, {}).get(source)
         return round(median(lst), 3) if lst else None
+
+    def trusted_rate(self, room: str, source: str, default: float) -> float | None:
+        """The rate a preheat is planned with: the median once HEAT_RATE_TRUSTED heat-ups are learned; with fewer, the
+        median of them and the default in the places of those missing; None with none (the room's default, as before).
+
+        One heat-up says little, either way: a boiler held in its lockout most of the time measures the burner, not the
+        room, and planned on it the bedroom preheated from noon for 17:30; a shower in a heat-up had the bathroom
+        planned at 1.2 K/h for a boiler giving it 0.1-0.3 (16.11.). One heat-up moves nothing, two that agree decide."""
+        lst = self.rates.get(room, {}).get(source)
+        if not lst:
+            return None
+        if len(lst) >= HEAT_RATE_TRUSTED:
+            return self.rate(room, source)
+        return round(median([*lst, *[default] * (HEAT_RATE_TRUSTED - len(lst))]), 3)
 
     def heating_power_k_h(self, room: str, source: str, cool_k: float | None) -> float | None:
         """Heat-up rate the room would reach from that source with no losses at all: rate + k * gradient.

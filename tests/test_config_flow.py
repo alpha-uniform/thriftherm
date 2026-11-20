@@ -39,7 +39,7 @@ BOILER_FIELDS = [
     "boiler_nominal_input_kw", "boiler_pump_power_w", "boiler_ebus_circuit",
     "boiler_flow_setpoint_entity", "boiler_heating_enable_entity",
     "boiler_curve_flow_at_minus10", "boiler_curve_flow_at_plus15", "boiler_flow_min", "boiler_flow_max",
-    "boiler_heat_up_rate_k_h", "boiler_hot_water_standby", "boiler_spread_min_room_share",
+    "boiler_heat_up_rate_k_h", "boiler_hot_water_standby", "boiler_condensing", "boiler_spread_min_room_share",
     "boiler_allow_active_control",
 ]
 OUTDOOR_FIELDS = ["outdoor_temp_sensors", "outdoor_rh_sensor", "weather_entity"]
@@ -47,16 +47,19 @@ OUTDOOR_FIELDS = ["outdoor_temp_sensors", "outdoor_rh_sensor", "weather_entity"]
 PARAMETER_DEFAULTS = {
     "override_default_min": 120.0, "boost_duration_min": 45.0, "away_temp": 15.0, "away_return_persons": None,
     "frost_protection_temp": 7.0,
-    "window_grace_s": 90.0, "preheat_margin_min": 20.0, "default_heat_rate_radiator_k_h": 0.8,
+    "window_grace_s": 90.0, "window_valve_action": "off", "preheat_margin_min": 20.0,
+    "default_heat_rate_radiator_k_h": 0.8,
     "room_allow_active_control": False, "room_echo_filter": True,
+    "tolerance_below_k": 0.3, "tolerance_above_k": -0.1,
     "demand_full_delta_k": 2.0, "trend_weight_h": 0.5, "internal_gain_threshold_w": 150.0,
     "internal_gain_factor_per_w": 0.001, "sensor_max_age_min": 720.0, "room_sensors_report_on_change": False,
     "away_dewpoint_margin_k": 3.0,
 }
 PARAMETER_SECTIONS = {
-    "windows_preheat": ["window_grace_s", "preheat_margin_min", "default_heat_rate_radiator_k_h"],
+    "windows_preheat": ["window_grace_s", "window_valve_action", "preheat_margin_min", "default_heat_rate_radiator_k_h"],
     "release": ["room_allow_active_control", "room_echo_filter"],
     "expert": [
+        "tolerance_below_k", "tolerance_above_k",
         "demand_full_delta_k", "trend_weight_h", "internal_gain_threshold_w", "internal_gain_factor_per_w",
         "sensor_max_age_min", "room_sensors_report_on_change", "away_dewpoint_margin_k",
     ],
@@ -238,7 +241,7 @@ async def test_options_boiler_step_clears_what_was_left_empty(hass: HomeAssistan
         "boiler_flow_setpoint_entity": None, "boiler_heating_enable_entity": None,
         "boiler_curve_flow_at_minus10": 55.0, "boiler_curve_flow_at_plus15": 30.0, "boiler_flow_min": 30.0,
         "boiler_flow_max": 60.0, "boiler_heat_up_rate_k_h": 0.0, "boiler_hot_water_standby": True,
-        "boiler_spread_min_room_share": 0.5,
+        "boiler_condensing": True, "boiler_spread_min_room_share": 0.5,
         "boiler_allow_active_control": False,
     }
     assert entry.options["midea_climate"] == "climate.midea"  # other groups untouched
@@ -313,7 +316,8 @@ async def test_config_flow_without_ebusd_asks_for_the_entities(hass: HomeAssista
     assert _prefilled(result) == {
         "boiler_circulation_l_h": 860.0, "boiler_ebus_circuit": "bai", "boiler_curve_flow_at_minus10": 55.0,
         "boiler_curve_flow_at_plus15": 30.0, "boiler_flow_min": 30.0, "boiler_flow_max": 60.0,
-        "boiler_heat_up_rate_k_h": 0.0, "boiler_hot_water_standby": True, "boiler_spread_min_room_share": 0.5,
+        "boiler_heat_up_rate_k_h": 0.0, "boiler_hot_water_standby": True, "boiler_condensing": True,
+        "boiler_spread_min_room_share": 0.5,
         "boiler_allow_active_control": False,
     }
     data = await _confirm_boiler_and_finish(hass, result, _prefilled(result))
@@ -928,3 +932,13 @@ def test_the_refusal_and_the_repair_have_wording_in_every_language() -> None:
             assert data["config"]["error"][key] and data["options"]["error"][key], (name, key)
         issue = data["issues"]["room_names_collide"]
         assert "{room}" in issue["title"] + issue["description"] and "{other}" in issue["description"], name
+
+
+def test_the_own_controller_on_the_opening_is_no_choice_any_more_a_test_may_force_a_way():
+    """Review 2026-11-15 §3.5: way d is not offered; item 6: offset or corrected setpoint forced for a test."""
+    schema = config_schema.schema_room({}, allow_add_another=False).schema
+    marker = next(m for m in schema if str(m) == "valve_control")
+    assert list(schema[marker].config["options"]) == ["auto", "offset", "setpoint"]
+    # a room stored with way d opens with the default, so that the form can be saved
+    schema = config_schema.schema_room({"valve_control": "opening"}, allow_add_another=False).schema
+    assert next(m for m in schema if str(m) == "valve_control").default() == "auto"

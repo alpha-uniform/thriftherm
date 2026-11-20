@@ -50,8 +50,8 @@ from ..const import (
 )
 from ..models import BoilerCommand
 from . import boiler_learning as learning
+from . import boiler_limit, heat_up
 from . import boiler_load as load
-from . import heat_up
 from .boiler_learning import BURNING_GAS_W
 from .boiler_memory import BoilerInputs, BoilerMemory, cold_weight, correction, curve_flow
 from .common import round_half
@@ -245,12 +245,18 @@ def decide(inp: BoilerInputs, mem: BoilerMemory) -> tuple[BoilerCommand, BoilerM
         mem = learning.drop_burn_in_progress(mem)
     # Where the boiler does not say itself what it burns for, a tap in the hour after hot water is
     # likely more hot water that the temperatures missed: those burns are left out as well.
-    mem = learning.track_burns(
-        mem, burning and (inp.status_known or not cooling_back), now, inp.day_start_ts, readable=inp.boiler_available
-    )
+    counted = burning and (inp.status_known or not cooling_back)
+    mem = learning.track_burns(mem, counted, now, inp.day_start_ts, readable=inp.boiler_available)
     cmd, mem = _decide(inp, mem, burning and not cooling_back, burning)
     share, starts = learning.burner_share(mem, now)
-    cmd = replace(cmd, burner_share=share, burner_starts_last_hour=starts, starts_today=mem.starts_today)
+    source = learning.burner_source(inp)
+    cmd = replace(
+        cmd, burner_share=share, burner_starts_last_hour=starts, starts_today=mem.starts_today, starts_source=source,
+        burner_heating=counted,
+        # read once a cycle (and ebusd as often as it polls), a burn shorter than a minute can fall between two readings;
+        # a gas meter's flow lasts longer than the flame (14.11.2026: 95 starts by the meter, 75 by ebusd's flag)
+        short_runs_may_be_missed=source != learning.BURNER_SOURCE_GAS,
+    )
     shown_for = HOT_WATER_SHOWN_WITH_STATUS_S if inp.status_known else HOT_WATER_SHOWN_S
     recent = mem.hot_water_seen_ts is not None and now - mem.hot_water_seen_ts < shown_for
     return replace(cmd, hot_water=recent, hot_water_seen_ts=mem.hot_water_seen_ts, warm_start=warm), mem
@@ -287,23 +293,21 @@ def _book_operation(inp: BoilerInputs, mem: BoilerMemory, cell: str | None) -> B
     if not inp.learning_allowed or not 0.0 < gap <= load.MAX_GAP_S:
         return replace(mem, lines_seen_ts=now if inp.learning_allowed else None)
     given_time = learning.given_time(mem, now)
-    calling = load.calling_rooms(inp.rooms)
-    behind = {r.key for r in load.lagging_rooms(inp.rooms)} if given_time else set()
-    judged = given_time and bool(calling)
+    behind = {r.key for r in load.lagging_rooms(inp.rooms, load.lag_deficit_k(inp.params.call_on_k))} if given_time else set()
     hours = gap / 3600.0
-    # Each room that wants heat books the time to its own line, with whether it got there. A room
-    # whose progress says nothing (a wish by hand still far off, its valve shut) books no verdict:
-    # it would count as calm and its line as found. While no room has called since the release there is no line to book to.
+    # Each room that wants heat books the time to its own line, with whether it got there. While no room has called
+    # since the release there is no line to book to.
     lines = mem.lines
     for r in load.wanting_rooms(inp.rooms) if cell is not None else ():
         own = load.room_cell(load.class_of(cell), r.key)
-        lines = load.observe(lines, own, hours, r.key in behind, mem.offset_k, mem.slope_k, judged and load.counts(r))
+        lines = load.observe(lines, own, hours, r.key in behind, mem.offset_k, mem.slope_k)
     return replace(mem, lines=lines, lines_seen_ts=now)
 
 
 def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bool) -> tuple[BoilerCommand, BoilerMemory]:
     p = inp.params
     now = inp.now_ts
+    at_limit = False  # the boiler at its own limit (engines/boiler_limit.py), judged below once the plan is known
     # the calls that ended, judged by the class, the rooms and the plan of the cycle before, in which they still ran
     mem = learning.count_calls(inp, mem)
     # only rooms that call count: one hanging below target (stalled), at the end of its comfort
@@ -350,8 +354,11 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
             learning_phase=learning.shown_phase(taught, mem, heating_run),
             adjustments_last_day=learning.adjustments_last_day(mem, now),
             moved_last_day_k=round(learning.moved_last_day(mem, now), 2),
+            limit_comp_k=mem.comp_k,
+            limit_learned=boiler_limit.summary(mem.comp_lines),
+            flow_mean_c=mem.flow_mean_c,
             last_adjust_reason=mem.last_adjust_reason,
-            held_back=learning.held_back(inp, mem, flow_cell, asked),
+            held_back=learning.held_back(inp, mem, flow_cell, asked, limited=at_limit),
             calling_rooms=len(heating_rooms),
             rooms_total=able,
             spread_rule=load.spread_rule(len(heating_rooms), able, share) if plan == BOILER_PLAN_HEAT else None,
@@ -408,7 +415,8 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
     frost = bool(inp.frost_rooms)
     # In heat pump only mode the user asked for no gas: only frost releases the boiler. The advice reaches
     # it as "boiler" there too while the unit is held by hand, waits or cannot deliver (advisor.boiler_source).
-    need = frost or (inp.op_mode not in (MODE_OFF, MODE_HEAT_PUMP_ONLY) and inp.advice_source in (SOURCE_BOILER, SOURCE_BOTH))
+    comfort = inp.op_mode not in (MODE_OFF, MODE_HEAT_PUMP_ONLY) and inp.advice_source in (SOURCE_BOILER, SOURCE_BOTH)
+    need = frost or comfort
     reason = "frost_protection" if frost and inp.advice_source not in (SOURCE_BOILER, SOURCE_BOTH) else ("room_demand" if need else "no_room_needs_boiler")
     if inp.op_mode == MODE_OFF and not frost:
         reason = "summer_mode"
@@ -424,6 +432,16 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
             wanted_state, waiting = mem.state, "min_state_time"
     if wanted_state != mem.state:
         mem = replace(mem, state=wanted_state, state_since_ts=now, last_review_ts=None, samples=0)
+    # the boiler's own limit (engines/boiler_limit.py): the flow measured, averaged while it heats; blocked, what was
+    # sent above the curve comes down a step at a time
+    if wanted_state == BOILER_PLAN_HEAT and inp.control_mode == CTRL_ACTIVE:
+        mean, mean_ts = boiler_limit.follow_mean(mem.flow_mean_c, mem.flow_mean_ts, inp.flow_c, now)
+        mem = replace(mem, flow_mean_c=mean, flow_mean_ts=mean_ts)
+    else:
+        mem = replace(mem, flow_mean_c=None, flow_mean_ts=None)
+    if wanted_state != BOILER_PLAN_HEAT:
+        mem = boiler_limit.end(mem, now)  # the phase goes to what was learned, nothing more is sent
+    at_limit = inp.control_mode == CTRL_ACTIVE and boiler_limit.limited(mem, now)
 
     # the curve as it is: the limits apply to the flow that is sent, not to a part of it
     curve = round(curve_flow(inp.outdoor_c, p, limited=False), 1)
@@ -446,7 +464,7 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
         if cell is not None and set_by is not None:
             flow_cell = load.room_cell(load.class_of(cell), set_by)
         mem = _book_operation(taught, mem, cell)
-        mem = learning.learn(taught, mem, heating_rooms, heating_run, flow_cell, boosts)
+        mem = learning.learn(taught, mem, heating_rooms, heating_run, flow_cell, boosts, limited=at_limit)
         if cell is not None:
             cell = load.deciding_cell(mem.lines, load.class_of(cell), mem.cell_rooms, mem.offset_k, mem.slope_k, cold)
         need, set_by = _need(inp, mem, boosts, cell)
@@ -455,7 +473,17 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
         others = {r.key for r in heating_rooms if r.key != set_by}
         if others - set(mem.outvoted):
             mem = replace(mem, outvoted=tuple(sorted({*mem.outvoted, *others})))
-        flow = asked = curve + need
+        # at its own limit, more is sent than the curve asks while a room is short of its plan, beginning with what
+        # the rooms rose reliably with before (engines/boiler_limit.py)
+        mem = boiler_limit.begin(mem, boiler_limit.key(flow_cell, inp.outdoor_c), now, start_learned=comfort)
+        most = boiler_limit.most_c(p)
+        lag_k = load.lag_deficit_k(p.call_on_k)
+        short, ample = boiler_limit.verdict(inp.rooms, lag_k)
+        if inp.control_mode == CTRL_ACTIVE:
+            judged = bool(boiler_limit.judged_rooms(inp.rooms, lag_k))
+            mem = boiler_limit.observe(mem, at_limit, short, ample, now, judged=judged)
+        mem = boiler_limit.compensate(mem, at_limit, short, ample, now, most - (curve + need + mem.comp_k))
+        flow = asked = curve + need + min(mem.comp_k, max(most - (curve + need), 0.0))
         if frost:
             flow = max(flow, 40.0)
         # more would not reach the radiators: at the maximum, or swallowed by the minimum

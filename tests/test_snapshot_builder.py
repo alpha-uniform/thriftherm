@@ -614,10 +614,13 @@ async def test_a_return_from_away_aims_at_the_target_the_helpers_week_gives_then
 
 @pytest.mark.parametrize(
     ("limit", "by_heat_pump", "lead"),
-    [(None, False, None), (45.0, False, 2700.0), (0.0, False, 0.0), (45.0, True, 2700.0), (600.0, True, 14400.0), (None, True, 14400.0)],
+    [(None, False, 14400.0), (45.0, False, 2700.0), (0.0, False, 0.0), (600.0, False, 36000.0),
+     (45.0, True, 2700.0), (600.0, True, 14400.0), (None, True, 14400.0)],
 )
 def test_the_longest_preheat_of_a_room_limits_it_with_either_source(limit, by_heat_pump, lead):
-    """Issue #6: a bathroom wanted from 06:00 to 06:30 began at 02:30."""
+    """Issue #6: a bathroom wanted from 06:00 to 06:30 began at 02:30. With the boiler too four hours at most unless the
+    room is given its own longest preheat, which counts beyond them as well (17.11.: a cycling boiler gains nothing
+    from a longer one); with the heat pump never more than four."""
     cfg = replace(room_config("badezimmer"), preheat_max_s=None if limit is None else limit * 60.0)
     assert room_engine._lead_max_s(replace(room_state(cfg), preheat_by_heat_pump=by_heat_pump)) == lead
 

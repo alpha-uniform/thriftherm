@@ -20,6 +20,7 @@ from custom_components.thriftherm.engines.heat_pump_control import ControlMemory
 from custom_components.thriftherm.engines.room_control import RoomCtrlMemory
 from custom_components.thriftherm.models import Override, SettingChange
 
+from .conftest import climate_loaded
 from .test_integration import _setup
 
 RELEASED = {"midea_allow_active_control": True, "boiler_allow_active_control": True, "room_allow_active_control": True}
@@ -176,6 +177,7 @@ async def test_ebusd_topics(hass: HomeAssistant) -> None:
 
 async def _off_for_two_hours(hass: HomeAssistant, unit: dict, answer, **learned) -> ThrifthermCoordinator:
     """The unit off for two hours under active control; every call to it goes to `answer`."""
+    await climate_loaded(hass)
     for service in ("set_hvac_mode", "set_temperature", "set_fan_mode"):
         hass.services.async_register("climate", service, answer)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
@@ -239,6 +241,7 @@ async def test_the_heat_pump_setpoint_goes_last_and_an_unchanged_fan_mode_is_not
         sent.append((call.service, {k: v for k, v in call.data.items() if k != "entity_id"}))
 
     for service in ("set_hvac_mode", "set_temperature", "set_fan_mode"):
+        await climate_loaded(hass)
         hass.services.async_register("climate", service, climate_service)
     command = HeatPumpCommand(plan="heat", action="adjust", hvac_mode="heat", target_temp=18.0, fan_mode="auto", load="eco", reason="x")
 
@@ -275,6 +278,7 @@ async def test_the_setpoint_waits_until_the_unit_shows_the_fan_stage(hass: HomeA
     async def set_temperature(call) -> None:
         shown_at_setpoint.append(hass.states.get(unit).attributes["fan_mode"])
 
+    await climate_loaded(hass)
     hass.services.async_register("climate", "set_fan_mode", set_fan_mode)
     hass.services.async_register("climate", "set_temperature", set_temperature)
     heat = {"plan": "heat", "hvac_mode": "heat", "load": "eco", "reason": "x"}
@@ -297,6 +301,7 @@ async def test_a_unit_gets_only_modes_and_fan_stages_it_offers(hass: HomeAssista
     from custom_components.thriftherm import executors
     from custom_components.thriftherm.models import HeatPumpCommand
 
+    await climate_loaded(hass)
     sent = {name: async_mock_service(hass, "climate", name) for name in ("set_hvac_mode", "set_fan_mode", "set_temperature")}
     unit = "climate.other_unit"
     hass.states.async_set(unit, "off", {"hvac_modes": ["off", "heat", "cool"], "fan_modes": ["1", "2", "3"], "fan_mode": "2"})
@@ -431,6 +436,7 @@ async def test_a_stop_that_went_through_although_it_reported_a_failure_ends_swit
             lost["answers"] -= 1
             raise HomeAssistantError("no answer from the unit")
 
+    await climate_loaded(hass)
     hass.services.async_register("climate", "set_hvac_mode", set_mode)
     coordinator = (await _setup(hass, options={**RELEASED, "midea_fan_run_on_min": 15})).runtime_data
     hass.states.async_set("climate.midea", "heat", cold)
@@ -499,13 +505,14 @@ async def test_our_own_fan_only_is_still_ours_after_a_restart(hass: HomeAssistan
 # ---- what the test day of 2026-10-13 showed --------------------------------------------------------
 
 
-def _climate_calls(hass: HomeAssistant) -> dict[str, list]:
+async def _climate_calls(hass: HomeAssistant) -> dict[str, list]:
+    await climate_loaded(hass)
     return {name: async_mock_service(hass, "climate", name) for name in ("set_hvac_mode", "set_fan_mode", "set_temperature")}
 
 
 async def test_a_fan_stage_chosen_by_hand_stays_when_a_setpoint_goes_out(hass: HomeAssistant) -> None:
     """Seen 2026-10-13: "full" chosen by hand stayed for 45 minutes, until the next setpoint of ours put "auto" back."""
-    sent = _climate_calls(hass)
+    sent = await _climate_calls(hass)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20, "fan_mode": "full"})
     coordinator.set_control_mode("active")
@@ -523,7 +530,7 @@ async def test_a_fan_stage_chosen_by_hand_stays_when_a_setpoint_goes_out(hass: H
 
 async def test_a_unit_not_loaded_yet_after_a_restart_keeps_its_run_and_gets_nothing_sent(hass: HomeAssistant) -> None:
     """Seen 2026-10-13 after three restarts: taken over anew, an "adjust" to what it had already, the lift clock reset."""
-    sent = _climate_calls(hass)
+    sent = await _climate_calls(hass)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     coordinator.set_control_mode("active")
     long_ago = time.time() - 7200
@@ -546,7 +553,7 @@ async def test_a_unit_not_loaded_yet_after_a_restart_keeps_its_run_and_gets_noth
 async def test_the_boiler_does_not_take_over_a_room_while_the_running_unit_is_not_loaded_yet(hass: HomeAssistant) -> None:
     """Review 2026-10-14: the unit's run was kept, but the boiler was switched to heat for the bathroom it serves,
     and held there for its minimum time in state after the unit was back."""
-    _climate_calls(hass)
+    await _climate_calls(hass)
     async_mock_service(hass, "mqtt", "publish")
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     coordinator.set_control_mode("active")
@@ -575,7 +582,7 @@ async def test_a_unit_run_by_hand_is_left_alone_while_the_room_sensors_have_not_
 ) -> None:
     """Review 2026-11-08 (#R5): the unit loaded before the Zigbee room sensors, every room unknown made the safety fall
     back, and the change by hand to heat was ended and the unit stopped. A sensor that was there and went away counts."""
-    sent = _climate_calls(hass)
+    sent = await _climate_calls(hass)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     coordinator.set_control_mode("active")
     hass.states.async_set("climate.midea", "heat", {**UNIT, "compressor_frequency": 28})
@@ -603,7 +610,7 @@ async def test_a_unit_run_by_hand_is_left_alone_while_the_room_sensors_have_not_
 async def test_a_dropout_of_the_running_unit_long_after_the_start_changes_nothing(hass: HomeAssistant) -> None:
     """Review 2026-11-08 (#R6): one cycle with the unit away, long after the start, forgot its run, switched the boiler to
     heat for the bathroom it serves, and the next cycle took the unit over anew and set it."""
-    sent = _climate_calls(hass)
+    sent = await _climate_calls(hass)
     async_mock_service(hass, "mqtt", "publish")
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     coordinator.set_control_mode("active")
@@ -632,7 +639,7 @@ async def test_a_dropout_of_the_running_unit_long_after_the_start_changes_nothin
 
 async def test_a_command_the_unit_has_all_of_already_is_not_on_record_as_sent(hass: HomeAssistant) -> None:
     """The record of commands lists what went out: an "adjust" without a call stood there as sent."""
-    sent = _climate_calls(hass)
+    sent = await _climate_calls(hass)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 21.5})  # the hold: its own 21 °C + half a degree
     coordinator.set_control_mode("active")
@@ -649,7 +656,7 @@ async def test_a_heat_pump_that_runs_through_is_named_instead_of_no_room_needing
 
     Held at its least speed it runs through whenever the rooms are warm but not warm enough to rest (2026-10-30).
     """
-    _climate_calls(hass)
+    await _climate_calls(hass)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20})
     hass.states.async_set("sensor.bath_temp", "21.2")  # every room warm: none calls
@@ -675,7 +682,7 @@ async def test_a_heat_pump_that_runs_through_is_named_instead_of_no_room_needing
 
 async def test_a_living_room_whose_radiator_stays_cold_learns_no_heat_up_rate_from_the_sun(hass: HomeAssistant, freezer) -> None:
     """In "heat pump only" the unit heats the bathroom and the boiler is blocked: the living room gets no heat."""
-    _climate_calls(hass)
+    await _climate_calls(hass)
     async_mock_service(hass, "mqtt", "publish")
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     hass.states.async_set("climate.midea", "heat", UNIT)
@@ -706,7 +713,7 @@ async def test_a_heat_up_counts_for_the_heat_pump_only_with_the_compressor_runni
     minutes of a run, which may boost, nor in a quick heat-up at 650-930 W."""
     from custom_components.thriftherm.engines.learning import HEAT_BY_HEAT_PUMP
 
-    _climate_calls(hass)
+    await _climate_calls(hass)
     async_mock_service(hass, "mqtt", "publish")
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     coordinator.set_control_mode("active")
@@ -746,7 +753,7 @@ async def test_preheat_plans_with_the_rate_of_the_source_expected_to_heat(hass: 
     monkeypatch.setattr(room_engine, "evaluate_room", recording)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     coordinator.heat_rates = HeatRateStats(
-        rates={"badezimmer": {"boiler": [0.3], "heat_pump": [0.6]}, "wohnzimmer": {"boiler": [0.9]}}
+        rates={"badezimmer": {"boiler": [0.3] * 3, "heat_pump": [0.6]}, "wohnzimmer": {"boiler": [0.9] * 3}}
     )
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20})
     coordinator.set_control_mode("active")
@@ -917,7 +924,7 @@ async def test_the_boiler_heats_a_heat_pump_room_it_helps_from_two_tenths_below_
     """It was said to help while the room did not call: the boiler started only at 0.3 below (simulation 2026-10-30).
     With the unit set higher it never helps, also not from a help left on record; warming up slower, a help begun at
     half a degree below holds until the room is there."""
-    _climate_calls(hass)
+    await _climate_calls(hass)
     async_mock_service(hass, "mqtt", "publish")
     chosen = {} if shortfall is None else {"heat_pump_shortfall": shortfall}
     coordinator = (await _setup(hass, options={**RELEASED, **chosen})).runtime_data
@@ -948,7 +955,7 @@ async def test_with_the_heat_pump_alone_the_boiler_leaves_its_rooms_to_it_and_he
 ) -> None:
     """2026-11-02: 20 burner starts by morning for a preheating bathroom, and the mode "heat pump only" left the
     living room without any heat. Here only the rooms the unit does not serve call the boiler."""
-    _climate_calls(hass)
+    await _climate_calls(hass)
     async_mock_service(hass, "mqtt", "publish")
     coordinator = (await _setup(hass, options={**RELEASED, "heat_pump_shortfall": shortfall})).runtime_data
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20, "compressor_frequency": 24})
@@ -979,7 +986,7 @@ async def test_with_the_heat_pump_alone_the_boiler_leaves_its_rooms_to_it_and_he
 
 
 async def _running_unit(hass: HomeAssistant, shortfall: str, **options):
-    _climate_calls(hass)
+    await _climate_calls(hass)
     async_mock_service(hass, "mqtt", "publish")
     coordinator = (await _setup(hass, options={**RELEASED, "heat_pump_shortfall": shortfall, **options})).runtime_data
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20, "compressor_frequency": 24})
@@ -1043,7 +1050,7 @@ async def test_with_the_heat_pump_alone_a_dearer_unit_leaves_its_rooms_to_the_bo
 
 async def test_a_room_the_heat_pump_heats_with_no_room_calling_learns_no_cool_down(hass: HomeAssistant) -> None:
     """Held at its least speed the compressor runs for hours with no room calling: the slow drift is no cool-down."""
-    _climate_calls(hass)
+    await _climate_calls(hass)
     async_mock_service(hass, "mqtt", "publish")
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20, "compressor_frequency": 24})
@@ -1065,7 +1072,7 @@ async def test_a_room_the_heat_pump_heats_with_no_room_calling_learns_no_cool_do
 
 async def test_a_heat_pump_resting_for_gas_cheaper_says_so_instead_of_no_room_needing_heat(hass: HomeAssistant) -> None:
     """Seen 2026-10-31: four stops for "gas cheaper" showed "no room needs heat" with the bathroom at 19.9/20."""
-    _climate_calls(hass)
+    await _climate_calls(hass)
     coordinator = (await _setup(hass, options={**RELEASED, "electricity_price": 1.5})).runtime_data
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20, "compressor_frequency": 24})
     hass.states.async_set("sensor.bath_temp", "21.2")  # wanted warm, none calls
@@ -1087,7 +1094,7 @@ async def test_a_heat_pump_resting_for_gas_cheaper_says_so_instead_of_no_room_ne
 
 async def test_a_resting_heat_pump_is_not_said_to_run_through(hass: HomeAssistant) -> None:
     """At the floor of 17 °C the compressor rests: "runs through, setpoint 17 °C" beside it read as a contradiction."""
-    _climate_calls(hass)
+    await _climate_calls(hass)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 17})
     hass.states.async_set("sensor.bath_temp", "21.6")
@@ -1120,11 +1127,42 @@ async def test_a_radiator_room_plans_its_preheat_with_its_median_rate_in_any_wea
 
     monkeypatch.setattr(room_engine, "evaluate_room", recording)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
-    coordinator.heat_rates = HeatRateStats(rates={"wohnzimmer": {"boiler": [0.55]}}, gradients={"wohnzimmer": {"boiler": [10.0]}})
+    coordinator.heat_rates = HeatRateStats(
+        rates={"wohnzimmer": {"boiler": [0.55] * 3}}, gradients={"wohnzimmer": {"boiler": [10.0] * 3}}
+    )
     coordinator.cool_rates = CoolRateStats(rates={"wohnzimmer": [0.04]})
     hass.states.async_set("sensor.outdoor", "-5.0")
     await coordinator.async_refresh()
     assert seen["wohnzimmer"].heat_rate_k_h == 0.55
+    # 16.11.: the bedroom planned 5.6 hours of preheat on 0.196 K/h from one heat-up at a cycling boiler. Until three
+    # are learned the default stands in for those missing, and the median is planned with: one heat-up moves nothing.
+    coordinator.heat_rates = HeatRateStats(rates={"wohnzimmer": {"boiler": [0.196]}})
+    await coordinator.async_refresh()
+    assert seen["wohnzimmer"].heat_rate_k_h == 0.8
+    coordinator.heat_rates = HeatRateStats(rates={"wohnzimmer": {"boiler": [0.196, 0.25]}})
+    await coordinator.async_refresh()
+    assert seen["wohnzimmer"].heat_rate_k_h == 0.25
+
+
+async def test_the_heat_up_learning_is_told_how_far_each_room_is_below_its_target(hass: HomeAssistant, monkeypatch) -> None:
+    """A room well below its target is heating up, however slowly (16.11., the bathroom at a cycling boiler), while the
+    burner ran lately (review 2026-11-18)."""
+    coordinator = (await _setup(hass, options=RELEASED)).runtime_data
+    now = time.time()
+    coordinator.boiler_memory = replace(coordinator.boiler_memory, burns=((now - 900.0, now - 600.0),))
+    told = {}
+    observe = coordinator.heat_rates.observe
+
+    def recording(room, ts, temp, source, window_open, outdoor=None, short_k=None):
+        told[room] = (temp, short_k)
+        return observe(room, ts, temp, source, window_open, outdoor, short_k=short_k)
+
+    monkeypatch.setattr(coordinator.heat_rates, "observe", recording)
+    await coordinator.async_refresh()
+    rooms = coordinator.data["rooms"]
+    assert told and any(short is not None for _, short in told.values())
+    for key, (temp, short) in told.items():
+        assert short == (None if temp is None else round(rooms[key].target - temp, 2))
 
 
 async def test_the_cop_is_told_when_a_quick_heat_up_runs_the_unit_above_its_least_speed(hass: HomeAssistant, monkeypatch) -> None:
@@ -1139,7 +1177,7 @@ async def test_the_cop_is_told_when_a_quick_heat_up_runs_the_unit_above_its_leas
         return cop(self, *args, **kwargs)
 
     monkeypatch.setattr(HeatPumpTracker, "cop", told)
-    _climate_calls(hass)
+    await _climate_calls(hass)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20, "compressor_frequency": 24})
     hass.states.async_set("sensor.bath_temp", "20.0")
@@ -1161,7 +1199,7 @@ async def test_the_cop_is_told_when_a_lift_runs_the_unit_above_its_least_speed(h
         return cop(self, *args, **kwargs)
 
     monkeypatch.setattr(HeatPumpTracker, "cop", told)
-    _climate_calls(hass)
+    await _climate_calls(hass)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20, "compressor_frequency": 24})
     hass.states.async_set("sensor.bath_temp", "20.0")
@@ -1172,7 +1210,7 @@ async def test_the_cop_is_told_when_a_lift_runs_the_unit_above_its_least_speed(h
 
 async def test_the_heat_pump_command_shows_its_hold(hass: HomeAssistant) -> None:
     """What it is held at and whether it rests; the eco offset and the learned aim are gone."""
-    _climate_calls(hass)
+    await _climate_calls(hass)
     coordinator = (await _setup(hass, options=RELEASED)).runtime_data
     hass.states.async_set("climate.midea", "heat", {**UNIT, "temperature": 20})
     hass.states.async_set("sensor.bath_temp", "21.2")
@@ -1188,3 +1226,59 @@ async def test_the_heat_pump_command_shows_its_hold(hass: HomeAssistant) -> None
     assert "eco_offset_k" not in shown and "aim_k" not in shown
     learning = hass.states.get("sensor.thriftherm_learning_state").attributes
     assert "midea_aim_k" not in learning and "midea_eco_offset_k" not in learning
+
+
+@pytest.mark.parametrize(
+    ("change", "boiler_source"), [({}, True), ({"thermostat_heating": False}, False), ({"valve_unable": "exercise"}, False)]
+)
+async def test_a_slow_heat_up_is_learned_only_where_the_radiator_can_heat(
+    hass: HomeAssistant, monkeypatch, change: dict, boiler_source: bool
+) -> None:
+    """Review 2026-11-18: well below its target a room's slow pace counts since 3b1bed8, also where its valve was shut or
+    being exercised: a drift of 0.2 K in six hours by the sun was stored as 0.1 K/h of the boiler. The boiler is its
+    source only where its radiator can heat, as for the heating curve (boiler_load.counts)."""
+    from custom_components.thriftherm.engines import room as room_engine
+    from custom_components.thriftherm.engines.learning import HEAT_BY_BOILER
+
+    evaluate = room_engine.evaluate_room
+
+    def changed(state, *args, **kwargs):
+        res = evaluate(state, *args, **kwargs)
+        return replace(res, demand=0.6, **change) if state.config.key == "wohnzimmer" else res
+
+    monkeypatch.setattr(room_engine, "evaluate_room", changed)
+    coordinator = (await _setup(hass, options=RELEASED)).runtime_data
+    told = {}
+    observe = coordinator.heat_rates.observe
+
+    def recording(room, ts, temp, source, window_open, outdoor=None, short_k=None):
+        told[room] = source
+        return observe(room, ts, temp, source, window_open, outdoor, short_k=short_k)
+
+    monkeypatch.setattr(coordinator.heat_rates, "observe", recording)
+    await coordinator.async_refresh()
+    assert (told.get("wohnzimmer") == HEAT_BY_BOILER) is boiler_source
+
+
+def test_a_room_counts_as_heating_up_behind_its_target_only_while_the_burner_ran_lately() -> None:
+    from custom_components.thriftherm import coordinator as module
+
+    assert module._burned_within(((1000.0, 1100.0),), 4000.0)
+    assert not module._burned_within(((1000.0, 1100.0),), 5000.0)
+    assert not module._burned_within((), 5000.0)
+
+
+def test_a_write_sequence_sent_in_part_keeps_the_memory_of_what_was_sent():
+    """Review 2026-11-18: a further valve's opening went out, its setpoint was held back, and the whole memory went back
+    to before: the 30 % shown next cycle was taken for the person's value, the real 100 were lost."""
+    from custom_components.thriftherm import coordinator as module
+    from custom_components.thriftherm.engines import valve_plan as vp
+
+    before = vp.ValveMemory(setpoint_c=21.0, setpoint_ts=1.0)
+    nxt = vp.ValveMemory(opening_pct=30.0, opening_ts=100.0, opening_before=100.0, opening_prev=100.0, setpoint_c=22.0,
+                         setpoint_ts=100.0, exercise_ts=50.0)
+    opening = vp.Write("number.v_heating_valve_position", "number", "set_value", 30.0, vp.OPENING_MEMO)
+    kept = module._memory_after_part(before, nxt, [opening])
+    assert (kept.opening_pct, kept.opening_ts, kept.opening_before, kept.opening_prev) == (30.0, 100.0, 100.0, 100.0)
+    assert (kept.setpoint_c, kept.setpoint_ts, kept.exercise_ts) == (21.0, 1.0, 50.0)  # held back: as before
+    assert module._memory_after_part(before, nxt, []) == replace(before, exercise_ts=50.0)

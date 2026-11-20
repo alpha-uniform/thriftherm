@@ -18,9 +18,9 @@
 
 **Dazu eine Wärmepumpe.** Thriftherm misst ihren COP und lässt sie heizen, wenn ihre Wärme gerade günstiger ist als die der Therme. Ohne eigene Fühler am Gerät rechnet es bei der Midea PortaSplit mit Werten, die an einer PortaSplit gemessen wurden. Ein Bad, das sie beheizt, trocknet sie nach dem Duschen.
 
-**Fernwärme, Zentralheizung oder keine eigene Therme.** Thriftherm heizt die Räume über [Better Thermostat](https://github.com/KartoffelToby/better_thermostat) nach Zeitplan, mit Vorheizen und Abwesenheit; an die Wärmeversorgung geht nie etwas. Richtig lohnt sich das mit einer Wärmepumpe: Dann vergleicht Thriftherm den Strom mit dem Grenzpreis der Fernwärme. Ohne Therme kann die Wärmepumpe auch allein heizen.
+**Fernwärme, Zentralheizung oder keine eigene Therme.** Thriftherm heizt die Räume über ihre Heizkörperventile nach Zeitplan, direkt oder über [Better Thermostat](https://github.com/KartoffelToby/better_thermostat), mit Vorheizen und Abwesenheit; an die Wärmeversorgung geht nie etwas. Richtig lohnt sich das mit einer Wärmepumpe: Dann vergleicht Thriftherm den Strom mit dem Grenzpreis der Fernwärme. Ohne Therme kann die Wärmepumpe auch allein heizen.
 
-Ein Temperaturfühler je Raum reicht, smarte Thermostate lassen sich später ergänzen. Was genau mit welcher Ausstattung geht, zeigt die [Übersicht in der Einrichtungsanleitung](de/EINRICHTUNG.md#was-mit-deiner-ausstattung-geht).
+Für den Anfang reicht ein Temperaturfühler oder ein smartes Ventil je Raum. Smarte Ventile steuert Thriftherm direkt (Vorschau, Sonoff TRVZB/TRVZBT seit 15.11.2026 im Betrieb) oder über Better Thermostat; beides lässt sich später Raum für Raum ergänzen. Was genau mit welcher Ausstattung geht, zeigt die [Übersicht in der Einrichtungsanleitung](de/EINRICHTUNG.md#was-mit-deiner-ausstattung-geht).
 
 **Alles bleibt bei dir.** Thriftherm läuft vollständig lokal in Home Assistant und sendet keine Daten nach außen: keine Cloud, kein Konto, keine Nutzungsstatistik. Auch die Dashboard-Karte lädt nichts aus dem Internet.
 
@@ -42,7 +42,7 @@ Jede Entscheidung hat einen Grund, den du in Home Assistant nachlesen kannst. Fe
 Vom ersten Tag an heizt Thriftherm mit Startwerten: deiner Heizkurve, einer typischen Aufheizrate und einer COP-Kurve nach Datenblatt. Was es dazulernt, kommt nur aus echten Heizläufen und mit *Aktiv*:
 
 - **Heizkurve je Raum:** erste Korrekturen am ersten Heiztag, stabil nach etwa 1 bis 2 Wochen Heizsaison. Die Steigung für kalte Tage lernt es erst bei Frost.
-- **Aufheizraten:** nach 1 bis 2 Tagen mit Absenkung ein erster Wert, nach 1 bis 2 Wochen ein sicherer.
+- **Aufheizraten:** nach 2 bis 4 Tagen mit Absenkung ein eigener Wert, nach 1 bis 2 Wochen ein sicherer.
 - **COP-Kennfeld der Wärmepumpe:** die häufigen Außentemperaturen nach 2 bis 4 Wochen, Frost erst bei Frost.
 
 Die Zeiten sind aus den Regeln abgeschätzt und hängen vom Wetter ab ([Einzelheiten](de/ANLEITUNG.md#wie-lange-das-lernen-dauert)).
@@ -56,7 +56,7 @@ An Therme und Thermostate werden keine Befehle gesendet, bis du selbst auf *Akti
 
    [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
 3. **Integration hinzufügen:** *Einstellungen → Geräte & Dienste → Integration hinzufügen → Thriftherm*. Findet Thriftherm ebusd-Entitäten, ist der Thermen-Schritt schon ausgefüllt – prüfen und weiter.
-4. **Einige Tage *Nur planen*:** *Therme-Steuerbefehl*, *Thermostat-Plan* und *Entscheidungsgrund* mit dem vergleichen, was du selbst getan hättest.
+4. **Einige Tage *Nur beobachten*** (Thriftherm rechnet und zeigt, was es tun würde, steuert aber nichts)**:** *Therme-Steuerbefehl*, *Thermostat-Plan* und *Entscheidungsgrund* mit dem vergleichen, was du selbst getan hättest.
 5. **Auf *Aktiv* schalten:** die aktive Steuerung in den Optionen freigeben, dann *Thermensteuerung* und *Raumsteuerung* auf *Aktiv* stellen.
 6. **Karte aufs Dashboard:** *Karte hinzufügen → Thriftherm*. Sie kommt mit der Integration und findet deine Räume selbst ([Schritt 9](de/EINRICHTUNG.md#9-dashboard)).
 
@@ -98,7 +98,7 @@ Damit lief die getestete Installation. Andere Geräte gehen genauso, solange sie
 | Therme | Vaillant atmoTEC plus VCW 194/4-5 (Heizwertgerät) |
 | eBUS-Adapter | [eBUS Adapter Shield C6](https://adapter.ebusd.eu/v5-c6/index.en.html), Stick-Ausführung, von ebusd.eu – erhältlich im [Elecrow-Shop](https://www.elecrow.com/store/ebusd) |
 | Gaszähler auslesen | [WiFi ACM-ESP](https://www.seegel-systeme.de/produkt/wlan-acm-esp-kommunikationsmodul-fuer-elster-gaszaehler/) von Seegel Systeme, für Elster/Honeywell BK-G4A(T) |
-| Heizkörperthermostate | [SONOFF TRV Gen2 (TRV-ZBT)](https://sonoff.tech/en-us/products/sonoff-trv-gen2-zigbee-thermostatic-radiator-valve-trv-zbt), Zigbee, mit Better Thermostat |
+| Heizkörperthermostate | [SONOFF TRV Gen2 (TRV-ZBT)](https://sonoff.tech/en-us/products/sonoff-trv-gen2-zigbee-thermostatic-radiator-valve-trv-zbt), Zigbee2MQTT, direkt gesteuert (bis 0.7 mit Better Thermostat) |
 
 ## Unterstützte Thermen
 
@@ -114,7 +114,7 @@ Jede Therme kommt als Profil dazu: welche ebusd-Nachrichten ihre Werte liefern u
 
 - Home Assistant 2026.9 oder neuer
 - Mit eigener Therme: eBUS-Adapter und die ebusd-App mit MQTT
-- Ein Temperaturfühler je Raum; Better Thermostat, wenn Thriftherm die Heizkörperthermostate stellen soll
+- Je Raum ein Temperaturfühler, ein smartes Ventil oder ein Thermostat (etwas muss den Raum messen); Better Thermostat ist nicht mehr nötig
 - Optional: eine Wärmepumpe mit ein paar Sensoren
 
 Die vollständige Liste steht in der [Einrichtungsanleitung, Schritt 1](de/EINRICHTUNG.md#1-was-du-brauchst).
@@ -123,7 +123,7 @@ Die vollständige Liste steht in der [Einrichtungsanleitung, Schritt 1](de/EINRI
 
 **Das Schreiben an eine Gastherme geschieht auf deine Verantwortung.** Über ebusd wird nur die Nachricht `SetMode` genutzt, Installateur-Parameter werden nie geschrieben; bei einer Therme über Entitäten (Vorschau) nur die zwei Entitäten, die du auswählst. Den Pumpenmodus zu ändern ist eine einmalige Entscheidung, die du selbst triffst.
 
-**Was erprobt ist.** Alle Steuerungen starten in *Nur planen*: Sie berechnen und zeigen an, was sie tun würden, und schreiben nichts, bis du die aktive Steuerung freigibst. Sperren, Vorlaufregelung und die Sicherheits-Fallbacks sind an der Therme des Entwicklers geprüft. Die gelernten Korrekturen kennen bisher Außentemperaturen bis hinunter zu 2 °C, noch keinen Frost. Die Wärmepumpen-Erweiterung steuert beim Entwickler eine Midea PortaSplit, auch mit Vereisung und Abtauen; andere Geräte sind noch nicht erprobt.
+**Was erprobt ist.** Alle Steuerungen starten in *Nur beobachten*: Sie berechnen und zeigen an, was sie tun würden, und schreiben nichts, bis du die aktive Steuerung freigibst. Sperren, Vorlaufregelung und die Sicherheits-Fallbacks sind an der Therme des Entwicklers geprüft. Die gelernten Korrekturen kennen bisher Außentemperaturen bis hinunter zu 2 °C, noch keinen Frost. Die Wärmepumpen-Erweiterung steuert beim Entwickler eine Midea PortaSplit, auch mit Vereisung und Abtauen; andere Geräte sind noch nicht erprobt.
 
 ## Entwicklung
 

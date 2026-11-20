@@ -101,3 +101,26 @@ def test_prior_is_calibrated_by_measured_bins():
     assert value == pytest.approx(prior_cop(5.0) * 0.55, abs=0.01)
     assert cm.estimate(17.0, 1.0) == (3.3, "learned")
     assert cm.learned(17.0, 1.0) and not cm.learned(5.0, 1.0)
+
+
+
+def test_a_heat_up_rate_from_few_heat_ups_takes_the_default_in_the_places_of_those_missing():
+    """16.11.: one heat-up of the bedroom at a cycling boiler (0.196 K/h) planned its preheat 5.6 hours ahead, one of the
+    bathroom with a shower in it (1.99 K/h) planned its preheat on 1.2 K/h when its boiler manages 0.1-0.3. One heat-up
+    says little, either way: until HEAT_RATE_TRUSTED are learned the default fills the places of those missing, and the
+    median of them all is planned with. One heat-up moves nothing; two that agree decide, slow or quick."""
+    from custom_components.thriftherm.engines.learning import HEAT_RATE_TRUSTED, HeatRateStats
+
+    assert HEAT_RATE_TRUSTED == 3
+    rates = HeatRateStats(rates={"schlafzimmer": {"boiler": [0.196]}, "badezimmer": {"boiler": [1.987]}})
+    assert rates.trusted_rate("schlafzimmer", "boiler", 0.8) == 0.8
+    assert rates.trusted_rate("badezimmer", "boiler", 0.8) == 0.8
+    rates.rates["schlafzimmer"]["boiler"].append(0.3)
+    assert rates.trusted_rate("schlafzimmer", "boiler", 0.8) == 0.3  # the median of 0.196, 0.3 and 0.8
+    rates.rates["badezimmer"]["boiler"].append(0.12)
+    assert rates.trusted_rate("badezimmer", "boiler", 0.8) == 0.8  # 0.12 and 1.99 do not agree
+    rates.rates["badezimmer"]["boiler"].append(0.15)
+    assert rates.trusted_rate("badezimmer", "boiler", 0.8) == 0.15  # three: their median alone
+    rates.rates["schlafzimmer"]["boiler"].append(0.25)
+    assert rates.trusted_rate("schlafzimmer", "boiler", 0.8) == 0.25
+    assert rates.trusted_rate("kuche", "boiler", 0.8) is None  # none learned: the room's default as before

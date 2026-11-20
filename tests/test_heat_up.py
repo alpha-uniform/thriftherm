@@ -71,7 +71,7 @@ def test_a_small_raise_is_no_heat_up_and_a_heat_up_ends_close_to_target():
 
 def test_a_rise_says_nothing_when_the_flow_was_not_ours_or_the_valve_shut():
     flat = [20.5] * 21
-    assert run({}, flat, judging=False)["wohnzimmer"].extra_k == 0.0  # plan only, or the boiler blocked
+    assert run({}, flat, judging=False)["wohnzimmer"].extra_k == 0.0  # observe only, or the boiler blocked
     assert run({}, flat, heating=False)["wohnzimmer"].extra_k == 0.0  # the boiler did not heat at all
     states = {}
     for i in range(21):  # the thermostat says its valve is shut
@@ -146,7 +146,7 @@ def test_a_stretch_counts_only_if_the_flow_was_ours_and_the_valve_open_all_throu
     """A verdict only looked at the moment it was due: 18 minutes on the boiler's own knob gave +4 K."""
     states = {}
     for minute in range(21):
-        ours = minute < 2 or minute == 20  # the boiler on its knob, plan only or blocked in between
+        ours = minute < 2 or minute == 20  # the boiler on its knob, observe only or blocked in between
         states = heat_up.follow(states, (living(20.5),), 1.0, NOW + minute * 60, True, ours)
     assert states["wohnzimmer"].extra_k == 0.0 and states["wohnzimmer"].mark_ts == NOW + 20 * 60  # measured afresh
     shut = {}
@@ -234,7 +234,7 @@ def test_a_heat_up_ended_by_a_lower_target_takes_no_step_off():
 
 
 def test_a_heat_up_that_raced_without_our_flow_or_the_boiler_takes_no_step_off():
-    """Review 2026-11-08: the end ignored what the verdicts rule out: a rise with Plan only, or from the sun."""
+    """Review 2026-11-08: the end ignored what the verdicts rule out: a rise with Observe only, or from the sun."""
     for heating, judging in ((True, False), (False, True)):
         states = {"wohnzimmer": HeatUp(extra_k=16.0)}
         for minute in range(23):

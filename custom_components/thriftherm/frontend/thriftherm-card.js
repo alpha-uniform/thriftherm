@@ -61,6 +61,7 @@ const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&
 const icon = (name, cls = "") => `<svg class="icon ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
 const fill = (template, values) => String(template ?? "").replace(/\{(\w+)\}/g, (_, key) => values[key] ?? "");
 const sentence = (text) => (text ? text.charAt(0).toUpperCase() + text.slice(1) : "");
+const list = (value) => (Array.isArray(value) ? value : []); // an attribute that should be a list, whatever came
 const num = (value) => (value === null || value === undefined || value === "" || Number.isNaN(Number(value)) ? null : Number(value));
 
 const formatters = new Map();
@@ -476,7 +477,7 @@ class ThrifthermCard extends HTMLElement {
   _learning(learning) {
     const state = this._state(learning);
     // "waiting for a heating run" says by itself that the boiler is not heating right now
-    const codes = (learning.attributes.paused_because || []).filter((c) => c !== "no_heating_run");
+    const codes = list(learning.attributes.paused_because).map(String).filter((c) => c !== "no_heating_run");
     if (!codes.length) return state;
     const clauses = this._texts.paused_because;
     const why = [...new Set(codes.map((c) => (c.startsWith("safety_") ? clauses.safety : clauses[c] || this._label(c))))];
@@ -544,7 +545,7 @@ class ThrifthermCard extends HTMLElement {
     }
 
     const decision = this._sys("decision_reason");
-    const codes = decision?.attributes.reason_codes || [];
+    const codes = list(decision?.attributes.reason_codes);
     if (codes.some((code) => !ORDINARY_REASONS.has(code) && !covered.has(code))) {
       const reasons = this._reasons(decision);
       reasons.codes.forEach((code, i) => {
@@ -591,7 +592,18 @@ class ThrifthermCard extends HTMLElement {
     const hidden = new Set(this._config.hidden_rooms || []);
     const rooms = orderedRooms(this._model.rooms, this._config).filter((r) => !hidden.has(r.key));
     if (!rooms.length) return "";
-    return `<div class="rooms">${rooms.map((r) => this._room(r)).join("")}</div>`;
+    return `<div class="rooms">${rooms.map((r) => this._safeRoom(r)).join("")}</div>`;
+  }
+
+  // a room that cannot be shown leaves the others on the card (2026-11-15: one room showed the card as a configuration
+  // error as a whole); what went wrong goes to the browser's console
+  _safeRoom(room) {
+    try {
+      return this._room(room);
+    } catch (err) {
+      console.error(`thriftherm-card: room ${room.key} could not be shown`, err);
+      return `<div class="room off"><div class="room-head"><span class="room-name"><span class="name">${esc(room.name)}</span></span></div></div>`;
+    }
   }
 
   _room(room) {
@@ -1100,7 +1112,7 @@ class ThrifthermRoomCard extends ThrifthermCard {
     const room = this._model.rooms.find((r) => r.key === this._config.room);
     if (!room) return `<div class="empty">${esc(this._t("room_not_found", { room: this._config.room }))}</div>`;
     const title = this._config.title ? `<div class="title">${esc(this._config.title)}</div>` : "";
-    return `${title}<div class="rooms single">${this._room(room)}</div>`;
+    return `${title}<div class="rooms single">${this._safeRoom(room)}</div>`;
   }
 }
 

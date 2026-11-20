@@ -13,7 +13,7 @@ from math import isfinite
 from ..const import BOILER_PLAN_BLOCK, BOILER_PLAN_HEAT
 from ..models import Parameters, RoomResult
 from . import heat_up
-from .boiler_load import LoadLine, line_of, lines_from_storage, lines_to_storage
+from .boiler_load import CLASSES, ROOM_MARK, LoadLine, class_of, line_of, lines_from_storage, lines_to_storage
 from .common import as_dict, as_float, as_floats
 
 CORRECTION_LIMIT_K = 10.0  # the level and the slope correction each stay within this
@@ -22,7 +22,53 @@ CURVE_COLD_C = -10.0
 ADJUSTMENTS_STORED = 48  # the steps of a day: the daily allowances of the learning are counted from them
 
 # restored as they are, anything that is not a number becomes None
-_STORED_FLOATS = ("state_since_ts", "last_flow", "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "starts_day_ts")
+_STORED_FLOATS = (
+    "state_since_ts", "last_flow", "ramp_from", "ramp_since_ts", "hot_water_seen_ts", "starts_day_ts", "comp_ts",
+    "comp_ok_k", "comp_short_k", "comp_floor_k", "comp_ample_ts", "comp_left_ts",
+)
+COMP_MOST_K = 40.0  # what is sent above the curve at the boiler's limit, and learned for it, stays within this
+COMP_PHASES_KEPT = 3
+BAND_MARK = "@"  # "single:badezimmer@0": what a room's line learned at the boiler's limit, outdoor 0 to 5 °C
+
+
+@dataclass(frozen=True)
+class CompLine:
+    """What the rooms rose reliably with above the curve at the boiler's limit, for a room's line and an outdoor band
+    (engines/boiler_limit.py): the value a heating begins with, and the phases not yet moved on."""
+
+    value_k: float = 0.0
+    phases: tuple[float, ...] = ()
+
+    def to_storage(self) -> dict:
+        return {"k": self.value_k, "p": list(self.phases)}
+
+
+def _comp_value(value: object) -> float | None:
+    number = None if isinstance(value, bool) else as_float(value)
+    return number if number is not None and isfinite(number) and 0.0 <= number <= COMP_MOST_K else None
+
+
+def comp_key_ok(key: object) -> bool:
+    """A room's line within one of the three classes, with or without an outdoor band."""
+    if not isinstance(key, str):
+        return False
+    cell, _, band = key.partition(BAND_MARK)
+    if ROOM_MARK not in cell or class_of(cell) not in CLASSES or not cell.split(ROOM_MARK, 1)[1]:
+        return False
+    return not band or band.lstrip("-").isdigit()
+
+
+def comp_lines_from_storage(data: object) -> dict[str, CompLine]:
+    lines = {}
+    for key, raw in as_dict(data).items():
+        row = as_dict(raw)
+        value = _comp_value(row.get("k"))
+        if not comp_key_ok(key) or value is None:
+            continue
+        phases = row.get("p") if isinstance(row.get("p"), list) else []
+        kept = tuple(v for v in (_comp_value(p) for p in phases) if v is not None)[-COMP_PHASES_KEPT:]
+        lines[key] = CompLine(value_k=value, phases=kept)
+    return lines
 
 
 @dataclass(frozen=True)
@@ -65,7 +111,7 @@ class BoilerMemory:
     last_review_ts: float | None = None
     burn_since_ts: float | None = None  # the burner is on for the heating since then; not stored
     burn_interrupted: bool = False  # it was on when Home Assistant stopped; its start is not counted yet (`track_burns`)
-    burns: tuple[tuple[float, float], ...] = ()  # (start, end) of the heating burns of the last hour
+    burns: tuple[tuple[float, float], ...] = ()  # (start, end) of the heating burns of the last three hours
     # the heating burner's starts since local midnight, and that midnight: a sensor shows them, the statistics a day each
     starts_today: int = 0
     starts_day_ts: float | None = None
@@ -81,6 +127,27 @@ class BoilerMemory:
     learning_since_ts: float | None = None  # the learning may act again since then, after a pause (not stored)
     heat_up: Mapping[str, heat_up.HeatUp] = field(default_factory=dict)  # each room's extra while it heats up
     flow_held: bool = False  # the flow sent stood at its maximum or was held by the ramp (not stored)
+    # the boiler's own limit (engines/boiler_limit.py): the flow measured, damped over half an hour while it heats (not
+    # stored), and what is sent above the curve as it cycles on its least power far below the flow sent
+    flow_mean_c: float | None = None
+    flow_mean_ts: float | None = None
+    comp_k: float = 0.0
+    comp_ts: float | None = None
+    # ... learned for good per room's line and outdoor band (`CompLine`), and the phase in progress: its key, the least
+    # the rooms rose reliably with and the most they fell short at, settled; the floor a step down stops at, since when
+    # they rise with room to spare, and whether the last step went up
+    comp_lines: Mapping[str, CompLine] = field(default_factory=dict)
+    comp_key: str | None = None
+    comp_ok_k: float | None = None
+    comp_short_k: float | None = None
+    comp_floor_k: float | None = None
+    comp_ample_ts: float | None = None
+    comp_last_up: bool | None = None
+    # what the last heating sent above the curve as it ended, when, and on which line: a heating soon after begins a step
+    # below it (`boiler_limit.begin`)
+    comp_left_k: float = 0.0
+    comp_left_ts: float | None = None
+    comp_left_key: str | None = None
 
     def to_storage(self) -> dict:
         # The timers go with it: after a restart the controller must still know that it
@@ -106,6 +173,12 @@ class BoilerMemory:
             "burn_interrupted": self.burn_since_ts is not None or self.burn_interrupted,
             "lines": lines_to_storage(self.lines),
             "heat_up": heat_up.to_storage(self.heat_up),
+            "comp_k": self.comp_k,
+            "comp_lines": {key: line.to_storage() for key, line in self.comp_lines.items()},
+            "comp_key": self.comp_key,
+            "comp_last_up": self.comp_last_up,
+            "comp_left_k": self.comp_left_k,
+            "comp_left_key": self.comp_left_key,
         }
 
     @classmethod
@@ -148,6 +221,12 @@ class BoilerMemory:
             burn_interrupted=data.get("burn_interrupted") is True,
             lines=lines_from_storage(data.get("lines")),
             heat_up=heat_up.from_storage(data.get("heat_up")),
+            comp_k=comp if (comp := _comp_value(data.get("comp_k"))) is not None else 0.0,
+            comp_lines=comp_lines_from_storage(data.get("comp_lines")),
+            comp_key=key if comp_key_ok(key := data.get("comp_key")) else None,
+            comp_last_up=last_up if isinstance(last_up := data.get("comp_last_up"), bool) else None,
+            comp_left_k=left if (left := _comp_value(data.get("comp_left_k"))) is not None else 0.0,
+            comp_left_key=left_key if comp_key_ok(left_key := data.get("comp_left_key")) else None,
             **{key: as_float(data.get(key)) for key in _STORED_FLOATS},
         )
 
@@ -180,6 +259,9 @@ class BoilerInputs:
     room_data_pending: bool = False
     day_start_ts: float | None = None  # local midnight of today: the day's starts are counted from it
     no_new_release: bool = False  # signs of a fault of the boiler: a block stays (engines/boiler.py)
+    # the rooms heating along last cycle (heat_call.join), each with its valve's opening in %: a trial of the curve is
+    # judged by the burner only while these stay as they were (boiler_learning.review_trials)
+    heating_along: tuple[tuple[str, float], ...] = ()
 
 
 def cold_weight(outdoor_c: float | None) -> float:

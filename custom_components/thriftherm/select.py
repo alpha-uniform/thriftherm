@@ -1,4 +1,4 @@
-"""Operating mode and the three control-mode selects (off, plan only, active)."""
+"""Operating mode and the three control-mode selects (off, observe only, active)."""
 
 from __future__ import annotations
 
@@ -102,7 +102,7 @@ class ModeSelect(SettingEntity, SelectEntity):
 
 
 class ControlSelect(SettingEntity, SelectEntity):
-    """Off / plan only (shadow) / active. "Active" appears only when released in the options.
+    """Off / observe only (shadow) / active. "Active" appears only when released in the options.
 
     The heat pump, the boiler and the room thermostats each have one; they differ in
     which coordinator attributes they use: prefix "" for the heat pump, "boiler_", "room_".

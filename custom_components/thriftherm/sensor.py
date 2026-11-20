@@ -149,6 +149,9 @@ def _learning_attrs(d: Data) -> dict[str, Any]:
         "heating_curve_slope_k": c.offset_slope_k,
         "adjustments_last_24h": c.adjustments_last_day,
         "moved_last_24h_k": c.moved_last_day_k,
+        "boiler_limit_k": c.limit_comp_k,
+        "flow_mean_c": c.flow_mean_c,
+        "boiler_limit_learned_k": c.limit_learned,
         "last_adjustment_reason": c.last_adjust_reason,
         "held_back_because": c.held_back,
         "flow_return_spread_k": c.spread_k,
@@ -371,6 +374,10 @@ SYSTEM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         state_class=SensorStateClass.TOTAL_INCREASING,
         icon="mdi:counter",
         value_fn=lambda d: d["boiler_command"].starts_today,
+        attr_fn=lambda d: {
+            "source": d["boiler_command"].starts_source,
+            "short_runs_may_be_missed": d["boiler_command"].short_runs_may_be_missed,
+        },
     ),
     _desc(
         "active_source_advice",
@@ -592,6 +599,7 @@ class ThermostatPlanSensor(ThrifthermEntity, SensorEntity):
             "control_mode": self.coordinator.data.get("room_control_mode"),
             "setpoint": cmd.target,
             "thermostat_setpoint": cmd.thermostat_target,
+            "lead_k": cmd.lead_k,
             "reason": cmd.reason,
             "commands_sent": self.coordinator.data.get("room_control_mode") == "active",
             # the last jump of the thermostat that was a late radio echo, not a hand on the knob

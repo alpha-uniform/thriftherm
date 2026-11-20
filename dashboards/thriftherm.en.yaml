@@ -90,7 +90,7 @@ views:
                 attribute: frost_rooms
                 name: Frost risk in
 
-      # Block: operating mode and the three controls (Off, Plan only, Active).
+      # Block: operating mode and the three controls (Off, Observe only, Active).
       - type: grid
         cards:
           - type: heading
@@ -131,7 +131,7 @@ views:
               perform_action: button.press
               target:
                 entity_id: button.thriftherm_back_to_automatic
-          # The three controls. "Plan only" calculates but sends nothing.
+          # The three controls. "Observe only" calculates but sends nothing.
           # Without a heat pump or a boiler that line is missing: delete it.
           - type: entities
             entities:
@@ -536,7 +536,7 @@ views:
     max_columns: 2
     sections:
       # Per room: measured temperature, target and when it heated (from the thermostat),
-      # plus Thriftherm's target (it differs in the mode "Plan only").
+      # plus Thriftherm's target (it differs in the mode "Observe only").
       - type: grid
         cards:
           - type: history-graph

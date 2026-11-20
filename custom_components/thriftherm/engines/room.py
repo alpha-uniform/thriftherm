@@ -20,7 +20,16 @@ from statistics import median
 from datetime import date, datetime, time, timedelta
 
 from ..const import MODE_AWAY, MODE_OFF
-from ..models import DryingState, Parameters, RoomConfig, RoomResult, RoomState, ScheduleState, TimeWindow
+from ..models import (
+    ROOM_OFF_UNTIL_TS,
+    DryingState,
+    Parameters,
+    RoomConfig,
+    RoomResult,
+    RoomState,
+    ScheduleState,
+    TimeWindow,
+)
 from . import psychrometrics as psy
 from .heat_call import COMFORT_END_GUARD_S
 from .safety import FROST_HYSTERESIS_K
@@ -51,7 +60,15 @@ SCHEDULE_PREHEAT_HORIZON_S = 12 * 3600.0
 # the simulation of 2026-10-30 preheated from 23:00 for 05:15 with a setback of 19: the rooms stood at 20.2-20.4
 # at its least speed all night, never got to 21, and the setback was gone. Four hours cost 0.07-0.30 EUR a day
 # less, at a few more minutes below target.
-PREHEAT_LEAD_MAX_HEAT_PUMP_S = 4 * 3600.0
+PREHEAT_LEAD_MAX_S = 4 * 3600.0
+# A heat-up is never planned slower than this (review 2026-11-18): the bathroom learned 0.1 K/h at a cycling boiler,
+# and planned with that, every rise from 0.1 an hour was on plan while it heated up, so the curve never learned. The
+# rate below which a holding room lags (boiler_load.LAG_RATE_K_H).
+PLAN_RATE_MIN_K_H = 0.2
+# With the boiler as well (17.11.): the bathroom learned 0.1 K/h from a night it stood still at a cycling boiler, and
+# would have preheated ten hours for one degree. A longer preheat brings a cycling boiler no more heat, it costs gas.
+# A longest preheat the room is given counts beyond it with the boiler; with the heat pump never more than this.
+PREHEAT_LEAD_MAX_HEAT_PUMP_S = PREHEAT_LEAD_MAX_S
 TREND_WINDOW_S = 5400.0  # trend_k_per_h
 # A preheat's pace needs readings over this long since it began: half an hour less a few samples, when
 # heat_pump_control.behind first judges it.
@@ -168,15 +185,18 @@ def _preheats_with_heat_pump(state: RoomState) -> bool:
 
 
 def _default_rate(state: RoomState, params: Parameters) -> float:
-    return state.heat_rate_k_h or (
+    rate = state.heat_rate_k_h or (
         params.default_heat_rate_heat_pump_k_h if _preheats_with_heat_pump(state) else params.default_heat_rate_radiator_k_h
     )
+    return max(rate, PLAN_RATE_MIN_K_H)
 
 
-def _lead_max_s(state: RoomState) -> float | None:
+def _lead_max_s(state: RoomState, away: bool = False) -> float | None:
+    """The longest preheat: the room's own, else four hours, the boiler's not for a return from away (decided 19.11.:
+    the four hours are for a schedule's preheat at a boiler holding, a return from days away is a heat-up)."""
     limit = state.config.preheat_max_s
     if not _preheats_with_heat_pump(state):
-        return limit
+        return limit if limit is not None or away else PREHEAT_LEAD_MAX_S
     return PREHEAT_LEAD_MAX_HEAT_PUMP_S if limit is None else min(limit, PREHEAT_LEAD_MAX_HEAT_PUMP_S)
 
 
@@ -309,7 +329,7 @@ def away_aim(
     at_return = _target_at_return(state, return_dt)
     # never lower than away before the return: a setback below the away temperature waits for the return
     target = max(at_return, params.away_temp)
-    rate, margin, lead_max = _default_rate(state, params), params.preheat_margin_s, _lead_max_s(state)
+    rate, margin, lead_max = _default_rate(state, params), params.preheat_margin_s, _lead_max_s(state, away=True)
     ahead = _comfort_after_return(state, return_dt) if at_return <= state.config.setback_temp else None
     if ahead is not None and ahead[1] > target and ahead[0].timestamp() - return_ts <= SCHEDULE_PREHEAT_HORIZON_S:
         start_ts = ahead[0].timestamp()
@@ -706,7 +726,8 @@ def evaluate_room(
     if (not heat_pump_allowed or cooled) and dem is not None:
         dem = 0.0
 
-    override_until = state.override.until_ts if state.override is not None and state.override.until_ts > now_ts else None
+    held = state.override
+    override_until = held.until_ts if held is not None and now_ts < held.until_ts < ROOM_OFF_UNTIL_TS else None
     end = comfort_end(cfg, now, state.schedule) if target_reason == "schedule_comfort" else None
     next_ts, next_target = next_schedule_change(state, now, mode)
 
@@ -736,9 +757,14 @@ def evaluate_room(
         comfort_end_ts=None if end is None else end.timestamp(),
         short_preheat=cfg.preheat_max_s is not None,
         thermostat_heating=state.thermostat_heating,
+        valve_unable=state.valve_unable,
         temperature_entity=temp_entity,
-        temperature_age_s=state.temperature.age_s if state.temperature.value_or_none is not None else None,
+        temperature_age_s=(
+            None if state.temperature.value_or_none is None
+            else state.temperature.age_s if state.temperature.heard_s is None else state.temperature.heard_s
+        ),
         schedule_entity=cfg.schedule_entity,
         next_change_ts=next_ts,
         next_target=next_target,
+        heat_rate_k_h=_default_rate(state, params),  # the pace a heat-up is planned with (boiler_load.on_heat_up_plan)
     )

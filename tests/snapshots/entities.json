@@ -235,6 +235,96 @@
    "unique_id": "ENTRY_badezimmer_boost",
    "unit_of_measurement": null
   },
+  "climate.thriftherm_badezimmer_room_climate": {
+   "attributes": {
+    "current_temperature": 18.5,
+    "friendly_name": "Badezimmer Room climate",
+    "hvac_action": "heating",
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "reason": "schedule_comfort",
+    "supported_features": 385,
+    "target_temp_step": 0.5,
+    "temperature": 21.0
+   },
+   "capabilities": {
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "target_temp_step": 0.5
+   },
+   "device": {
+    "child": true,
+    "identifiers": [
+     "thriftherm/ENTRY_room_badezimmer"
+    ],
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
+     "thriftherm/ENTRY"
+    ]
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": null,
+   "state": "heat",
+   "translation_key": "room_climate",
+   "unique_id": "ENTRY_badezimmer_room_climate",
+   "unit_of_measurement": null
+  },
+  "climate.thriftherm_wohnzimmer_room_climate": {
+   "attributes": {
+    "current_temperature": 17.0,
+    "friendly_name": "Wohnzimmer Room climate",
+    "hvac_action": "heating",
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "reason": "schedule_comfort",
+    "supported_features": 385,
+    "target_temp_step": 0.5,
+    "temperature": 18.5
+   },
+   "capabilities": {
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "target_temp_step": 0.5
+   },
+   "device": {
+    "child": true,
+    "identifiers": [
+     "thriftherm/ENTRY_room_wohnzimmer"
+    ],
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
+     "thriftherm/ENTRY"
+    ]
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": null,
+   "state": "heat",
+   "translation_key": "room_climate",
+   "unique_id": "ENTRY_wohnzimmer_room_climate",
+   "unit_of_measurement": null
+  },
   "datetime.thriftherm_planned_return": {
    "attributes": {
     "friendly_name": "Thriftherm Planned return",
@@ -1150,11 +1240,14 @@
   "sensor.thriftherm_learning_state": {
    "attributes": {
     "adjustments_last_24h": 0,
+    "boiler_limit_k": 0.0,
+    "boiler_limit_learned_k": null,
     "calling_rooms": 2,
     "cop_basis": "prior",
     "cop_bins": 0,
     "curve_by_load": {},
     "device_class": "enum",
+    "flow_mean_c": null,
     "flow_return_spread_k": null,
     "flow_set_by": null,
     "friendly_name": "Thriftherm Learning state",
@@ -1167,7 +1260,7 @@
     "last_adjustment_reason": null,
     "last_reset": null,
     "load_class": "majority",
-    "moved_last_24h_k": 0.0,
+    "moved_last_24h_k": 0,
     "options": [
      "learning",
      "refining",
@@ -1764,6 +1857,96 @@
    "unique_id": "ENTRY_badezimmer_boost",
    "unit_of_measurement": null
   },
+  "climate.thriftherm_badezimmer_room_climate": {
+   "attributes": {
+    "current_temperature": 18.5,
+    "friendly_name": "Badezimmer Room climate",
+    "hvac_action": "heating",
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "reason": "schedule_comfort",
+    "supported_features": 385,
+    "target_temp_step": 0.5,
+    "temperature": 21.0
+   },
+   "capabilities": {
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "target_temp_step": 0.5
+   },
+   "device": {
+    "child": true,
+    "identifiers": [
+     "thriftherm/ENTRY_room_badezimmer"
+    ],
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
+     "thriftherm/ENTRY"
+    ]
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": null,
+   "state": "heat",
+   "translation_key": "room_climate",
+   "unique_id": "ENTRY_badezimmer_room_climate",
+   "unit_of_measurement": null
+  },
+  "climate.thriftherm_wohnzimmer_room_climate": {
+   "attributes": {
+    "current_temperature": 17.0,
+    "friendly_name": "Wohnzimmer Room climate",
+    "hvac_action": "heating",
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "reason": "schedule_comfort",
+    "supported_features": 385,
+    "target_temp_step": 0.5,
+    "temperature": 18.5
+   },
+   "capabilities": {
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "target_temp_step": 0.5
+   },
+   "device": {
+    "child": true,
+    "identifiers": [
+     "thriftherm/ENTRY_room_wohnzimmer"
+    ],
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
+     "thriftherm/ENTRY"
+    ]
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": null,
+   "state": "heat",
+   "translation_key": "room_climate",
+   "unique_id": "ENTRY_wohnzimmer_room_climate",
+   "unit_of_measurement": null
+  },
   "datetime.thriftherm_planned_return": {
    "attributes": {
     "friendly_name": "Thriftherm Planned return",
@@ -2300,6 +2483,7 @@
     "echo_ignored_value": null,
     "friendly_name": "Badezimmer Thermostat plan",
     "icon": "mdi:thermostat",
+    "lead_k": 0.0,
     "options": [
      "set",
      "hold",
@@ -2493,6 +2677,8 @@
    "attributes": {
     "friendly_name": "Thriftherm Boiler heating starts today",
     "icon": "mdi:counter",
+    "short_runs_may_be_missed": false,
+    "source": "gas_meter",
     "state_class": "total_increasing"
    },
    "capabilities": {
@@ -2993,11 +3179,14 @@
   "sensor.thriftherm_learning_state": {
    "attributes": {
     "adjustments_last_24h": 0,
+    "boiler_limit_k": 0.0,
+    "boiler_limit_learned_k": null,
     "calling_rooms": 2,
     "cop_basis": "prior",
     "cop_bins": 0,
     "curve_by_load": {},
     "device_class": "enum",
+    "flow_mean_c": null,
     "flow_return_spread_k": null,
     "flow_set_by": "Badezimmer",
     "friendly_name": "Thriftherm Learning state",
@@ -3010,7 +3199,7 @@
     "last_adjustment_reason": null,
     "last_reset": null,
     "load_class": "majority",
-    "moved_last_24h_k": 0.0,
+    "moved_last_24h_k": 0,
     "options": [
      "learning",
      "refining",
@@ -3607,6 +3796,96 @@
    "unique_id": "ENTRY_badezimmer_boost",
    "unit_of_measurement": null
   },
+  "climate.thriftherm_badezimmer_room_climate": {
+   "attributes": {
+    "current_temperature": 18.5,
+    "friendly_name": "Badezimmer Room climate",
+    "hvac_action": "heating",
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "reason": "schedule_comfort",
+    "supported_features": 385,
+    "target_temp_step": 0.5,
+    "temperature": 21.0
+   },
+   "capabilities": {
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "target_temp_step": 0.5
+   },
+   "device": {
+    "child": true,
+    "identifiers": [
+     "thriftherm/ENTRY_room_badezimmer"
+    ],
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
+     "thriftherm/ENTRY"
+    ]
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": null,
+   "state": "heat",
+   "translation_key": "room_climate",
+   "unique_id": "ENTRY_badezimmer_room_climate",
+   "unit_of_measurement": null
+  },
+  "climate.thriftherm_wohnzimmer_room_climate": {
+   "attributes": {
+    "current_temperature": 17.0,
+    "friendly_name": "Wohnzimmer Room climate",
+    "hvac_action": "heating",
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "reason": "schedule_comfort",
+    "supported_features": 385,
+    "target_temp_step": 0.5,
+    "temperature": 18.5
+   },
+   "capabilities": {
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "target_temp_step": 0.5
+   },
+   "device": {
+    "child": true,
+    "identifiers": [
+     "thriftherm/ENTRY_room_wohnzimmer"
+    ],
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
+     "thriftherm/ENTRY"
+    ]
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": null,
+   "state": "heat",
+   "translation_key": "room_climate",
+   "unique_id": "ENTRY_wohnzimmer_room_climate",
+   "unit_of_measurement": null
+  },
   "datetime.thriftherm_planned_return": {
    "attributes": {
     "friendly_name": "Thriftherm Planned return",
@@ -4149,6 +4428,7 @@
     "echo_ignored_value": null,
     "friendly_name": "Badezimmer Thermostat plan",
     "icon": "mdi:thermostat",
+    "lead_k": 0.0,
     "options": [
      "set",
      "hold",
@@ -4342,6 +4622,8 @@
    "attributes": {
     "friendly_name": "Thriftherm Boiler heating starts today",
     "icon": "mdi:counter",
+    "short_runs_may_be_missed": false,
+    "source": "gas_meter",
     "state_class": "total_increasing"
    },
    "capabilities": {
@@ -4842,11 +5124,14 @@
   "sensor.thriftherm_learning_state": {
    "attributes": {
     "adjustments_last_24h": 0,
+    "boiler_limit_k": 0.0,
+    "boiler_limit_learned_k": null,
     "calling_rooms": 2,
     "cop_basis": "prior",
     "cop_bins": 0,
     "curve_by_load": {},
     "device_class": "enum",
+    "flow_mean_c": null,
     "flow_return_spread_k": null,
     "flow_set_by": "Badezimmer",
     "friendly_name": "Thriftherm Learning state",
@@ -4859,7 +5144,7 @@
     "last_adjustment_reason": null,
     "last_reset": null,
     "load_class": "majority",
-    "moved_last_24h_k": 0.0,
+    "moved_last_24h_k": 0,
     "options": [
      "learning",
      "refining",
@@ -5351,6 +5636,96 @@
    "state": "unknown",
    "translation_key": "resume_automatic",
    "unique_id": "ENTRY_resume_automatic",
+   "unit_of_measurement": null
+  },
+  "climate.thriftherm_badezimmer_room_climate": {
+   "attributes": {
+    "current_temperature": 18.5,
+    "friendly_name": "Badezimmer Room climate",
+    "hvac_action": "heating",
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "reason": "schedule_comfort",
+    "supported_features": 385,
+    "target_temp_step": 0.5,
+    "temperature": 21.0
+   },
+   "capabilities": {
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "target_temp_step": 0.5
+   },
+   "device": {
+    "child": true,
+    "identifiers": [
+     "thriftherm/ENTRY_room_badezimmer"
+    ],
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
+     "thriftherm/ENTRY"
+    ]
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": null,
+   "state": "heat",
+   "translation_key": "room_climate",
+   "unique_id": "ENTRY_badezimmer_room_climate",
+   "unit_of_measurement": null
+  },
+  "climate.thriftherm_wohnzimmer_room_climate": {
+   "attributes": {
+    "current_temperature": 17.0,
+    "friendly_name": "Wohnzimmer Room climate",
+    "hvac_action": "heating",
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "reason": "schedule_comfort",
+    "supported_features": 385,
+    "target_temp_step": 0.5,
+    "temperature": 18.5
+   },
+   "capabilities": {
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "target_temp_step": 0.5
+   },
+   "device": {
+    "child": true,
+    "identifiers": [
+     "thriftherm/ENTRY_room_wohnzimmer"
+    ],
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
+     "thriftherm/ENTRY"
+    ]
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": null,
+   "state": "heat",
+   "translation_key": "room_climate",
+   "unique_id": "ENTRY_wohnzimmer_room_climate",
    "unit_of_measurement": null
   },
   "datetime.thriftherm_planned_return": {
@@ -5999,6 +6374,8 @@
    "attributes": {
     "friendly_name": "Thriftherm Boiler heating starts today",
     "icon": "mdi:counter",
+    "short_runs_may_be_missed": false,
+    "source": "gas_meter",
     "state_class": "total_increasing"
    },
    "capabilities": {
@@ -6144,11 +6521,14 @@
   "sensor.thriftherm_learning_state": {
    "attributes": {
     "adjustments_last_24h": 0,
+    "boiler_limit_k": 0.0,
+    "boiler_limit_learned_k": null,
     "calling_rooms": 2,
     "cop_basis": "prior",
     "cop_bins": 0,
     "curve_by_load": {},
     "device_class": "enum",
+    "flow_mean_c": null,
     "flow_return_spread_k": null,
     "flow_set_by": "Badezimmer",
     "friendly_name": "Thriftherm Learning state",
@@ -6161,7 +6541,7 @@
     "last_adjustment_reason": null,
     "last_reset": null,
     "load_class": "majority",
-    "moved_last_24h_k": 0.0,
+    "moved_last_24h_k": 0,
     "options": [
      "learning",
      "refining",
@@ -6681,6 +7061,96 @@
    "state": "unknown",
    "translation_key": "room_boost",
    "unique_id": "ENTRY_badezimmer_boost",
+   "unit_of_measurement": null
+  },
+  "climate.thriftherm_badezimmer_room_climate": {
+   "attributes": {
+    "current_temperature": 18.5,
+    "friendly_name": "Badezimmer Room climate",
+    "hvac_action": "heating",
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "reason": "schedule_comfort",
+    "supported_features": 385,
+    "target_temp_step": 0.5,
+    "temperature": 21.0
+   },
+   "capabilities": {
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "target_temp_step": 0.5
+   },
+   "device": {
+    "child": true,
+    "identifiers": [
+     "thriftherm/ENTRY_room_badezimmer"
+    ],
+    "manufacturer": null,
+    "model": null,
+    "name": "Badezimmer",
+    "parent": [
+     "thriftherm/ENTRY"
+    ]
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": null,
+   "state": "heat",
+   "translation_key": "room_climate",
+   "unique_id": "ENTRY_badezimmer_room_climate",
+   "unit_of_measurement": null
+  },
+  "climate.thriftherm_wohnzimmer_room_climate": {
+   "attributes": {
+    "current_temperature": 17.0,
+    "friendly_name": "Wohnzimmer Room climate",
+    "hvac_action": "heating",
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "reason": "schedule_comfort",
+    "supported_features": 385,
+    "target_temp_step": 0.5,
+    "temperature": 18.5
+   },
+   "capabilities": {
+    "hvac_modes": [
+     "heat",
+     "off"
+    ],
+    "max_temp": 30.0,
+    "min_temp": 5.0,
+    "target_temp_step": 0.5
+   },
+   "device": {
+    "child": true,
+    "identifiers": [
+     "thriftherm/ENTRY_room_wohnzimmer"
+    ],
+    "manufacturer": null,
+    "model": null,
+    "name": "Wohnzimmer",
+    "parent": [
+     "thriftherm/ENTRY"
+    ]
+   },
+   "options": {},
+   "original_device_class": null,
+   "original_icon": null,
+   "state": "heat",
+   "translation_key": "room_climate",
+   "unique_id": "ENTRY_wohnzimmer_room_climate",
    "unit_of_measurement": null
   },
   "datetime.thriftherm_planned_return": {
@@ -7496,11 +7966,14 @@
   "sensor.thriftherm_learning_state": {
    "attributes": {
     "adjustments_last_24h": 0,
+    "boiler_limit_k": 0.0,
+    "boiler_limit_learned_k": null,
     "calling_rooms": 2,
     "cop_basis": "prior",
     "cop_bins": 0,
     "curve_by_load": {},
     "device_class": "enum",
+    "flow_mean_c": null,
     "flow_return_spread_k": null,
     "flow_set_by": null,
     "friendly_name": "Thriftherm Learning state",
@@ -7513,7 +7986,7 @@
     "last_adjustment_reason": null,
     "last_reset": null,
     "load_class": "majority",
-    "moved_last_24h_k": 0.0,
+    "moved_last_24h_k": 0,
     "options": [
      "learning",
      "refining",

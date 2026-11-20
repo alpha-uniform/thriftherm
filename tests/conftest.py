@@ -173,3 +173,11 @@ def two_rooms() -> dict[str, RoomState]:
     bath = room_config("badezimmer", heat_pump=True, priority=1, comfort=21.0)
     living = room_config("wohnzimmer", heat_pump=False, priority=3, comfort=18.5)
     return {"badezimmer": room_state(bath, temp=18.5), "wohnzimmer": room_state(living, temp=17.0)}
+
+
+async def climate_loaded(hass) -> None:
+    """The climate integration set up before its services are mocked. Since every room has a room climate of its own
+    (2026-11-17) Thriftherm loads the climate platform; mocked before, the services were replaced by the real ones."""
+    from homeassistant.setup import async_setup_component
+
+    assert await async_setup_component(hass, "climate", {})

@@ -7,7 +7,7 @@ from custom_components.thriftherm.engines import room as room_engine
 from custom_components.thriftherm.engines.learning import HEAT_BY_BOILER as BOILER
 from custom_components.thriftherm.engines.learning import HEAT_BY_BOTH as BOTH
 from custom_components.thriftherm.engines.learning import HEAT_BY_HEAT_PUMP as HEAT_PUMP
-from custom_components.thriftherm.engines.learning import HeatRateStats
+from custom_components.thriftherm.engines.learning import HEAT_RATE_MIN, HeatRateStats
 from custom_components.thriftherm.models import DryingState, Override, RoomConfig, ScheduleState
 
 from .conftest import MISSING, PARAMS, room_config, room_state
@@ -45,7 +45,8 @@ def test_away_preheat_starts_early_enough():
     # return at 18:00 Monday (comfort target 18.5); room at 15 °C; default radiator rate 0.8 K/h
     return_ts = MON_EVENING.timestamp()
     st = room_state(cfg, temp=15.0)
-    # 5 h before return: deficit 3.5 K / 0.8 K/h = 4.375 h + 20 min margin -> preheat starts ~4.7 h before
+    # 5 h before return: deficit 3.5 K / 0.8 K/h = 4.375 h + 20 min margin -> preheat starts ~4.7 h before: the four
+    # hours at most of a schedule's preheat (17.11.) do not hold for a return from away (decided 19.11.)
     six_h_before = datetime(2026, 1, 12, 12, 0)
     res = room_engine.evaluate_room(st, six_h_before, "away", PARAMS, away_return_ts=return_ts)
     assert res.target_reason == "mode_away" and res.target == PARAMS.away_temp
@@ -215,6 +216,77 @@ def test_a_heat_up_that_falls_back_from_its_highest_point_keeps_the_way_up():
     assert hs.observe("wz", 7 * 600.0, 19.2, BOILER, False) == pytest.approx(0.6, abs=0.01)  # 0.4 below its top
     assert hs.episodes["wz"].start_temp == 19.2  # and counted on from there
 
+
+def _replay(hs: HeatRateStats, room: str, changes, until: float, source=BOILER, target=None, outdoor=11.5, step=30.0):
+    """Feed a sensor's history as the coordinator does: a sample every `step` seconds with the value last reported.
+    `changes` are (seconds of the day, value); `target` the room's target, for how far it is short."""
+    learned = []
+    ts, i, temp = changes[0][0], 0, changes[0][1]
+    while ts <= until:
+        while i + 1 < len(changes) and changes[i + 1][0] <= ts:
+            i += 1
+            temp = changes[i][1]
+        short = None if target is None else round(target - temp, 2)
+        learned.append(hs.observe(room, ts, temp, source, False, outdoor, short_k=short))
+        ts += step
+    return [rate for rate in learned if rate is not None]
+
+
+def _hm(text: str) -> float:
+    h, m, *s = (int(x) for x in text.split(":"))
+    return h * 3600.0 + m * 60.0 + (s[0] if s else 0)
+
+
+def test_a_shower_in_a_heat_up_teaches_no_heat_up_rate():
+    """16.11.: the bathroom, preheating from the boiler, rose 1.4 degrees in five minutes (15:14-15:19, hot water
+    running) and was stored at 1.99 K/h from that one heat-up; mixed with the default its preheat was planned on 1.2
+    K/h, its boiler manages 0.1-0.3. A rise no radiator gives is warmth from elsewhere: that heat-up teaches nothing."""
+    bath = [("14:25", 19.1), ("14:43:23", 19.3), ("15:14:32", 19.5), ("15:15:32", 19.7), ("15:16:11", 19.9),
+            ("15:16:38", 20.1), ("15:17:11", 20.3), ("15:17:33", 20.5), ("15:18:17", 20.7), ("15:19:18", 20.9),
+            ("15:21:03", 20.7), ("15:21:53", 20.5), ("15:22:32", 20.3), ("15:22:59", 20.1), ("15:23:38", 19.9),
+            ("15:24:33", 19.7), ("15:26:01", 19.5), ("15:38:36", 19.3)]
+    hs = HeatRateStats()
+    assert _replay(hs, "badezimmer", [(_hm(t), v) for t, v in bath], _hm("15:45"), target=21.0) == []
+    assert hs.rate("badezimmer", BOILER) is None
+
+
+def test_a_room_held_well_below_its_target_learns_its_slow_pace():
+    """16.11. evening: the bathroom 1.3-1.9 below its comfort target, the boiler cycling, 19.1 at 16:00 to 19.7 at 21:00.
+    A heat-up ended after an hour without a new highest point, before it had risen half a degree: no slow pace was ever
+    learned, only quick ones. A room still well below its target is heating up, however slowly: up to its last
+    sample there, its pace counts."""
+    bath = [("16:00:38", 19.1), ("18:00:36", 19.2), ("19:00:35", 19.3), ("20:12:13", 19.5), ("21:00", 19.7)]
+    hs = HeatRateStats()
+    changes = [(_hm(t), v) for t, v in bath]
+    assert _replay(hs, "badezimmer", changes, _hm("21:30"), target=21.0) == []
+    learned = hs.observe("badezimmer", _hm("21:30:30"), 19.7, None, False, 11.5)
+    assert learned == pytest.approx(0.6 / 5.5, abs=0.01)  # 0.6 degrees in five and a half hours of trying
+    assert hs.rate("badezimmer", BOILER) == pytest.approx(0.109, abs=0.01)
+
+
+def test_a_room_just_below_its_target_still_ends_its_heat_up_at_the_highest_point():
+    # Review 2026-11-08 holds with the room's shortfall known: 0.1-0.2 below its target is holding, not heating up.
+    hs = HeatRateStats()
+    for i in range(13):
+        hs.observe("bad", i * 300.0, 19.0 + i / 12, HEAT_PUMP, False, 5.0, short_k=round(20.2 - (19.0 + i / 12), 2))
+    learned = [hs.observe("bad", i * 300.0, 20.0, HEAT_PUMP, False, 5.0, short_k=0.2) for i in range(13, 61)]
+    assert [rate for rate in learned if rate is not None] == [pytest.approx(1.0, abs=0.01)]
+
+
+def test_a_slow_rise_over_hours_too_small_for_a_quick_heat_up_counts_but_none_at_all_does_not():
+    hs = HeatRateStats()
+    for i in range(25):  # four hours, 0.4 degrees: well below the target all the time
+        hs.observe("bad", i * 600.0, 19.0 + (0.4 if i >= 20 else 0.2 if i >= 10 else 0.0), BOILER, False, short_k=1.5)
+    assert hs.observe("bad", 25 * 600.0, 19.4, None, False) == pytest.approx(0.4 / 4.0, abs=0.001)
+    slower = HeatRateStats()
+    for i in range(25):  # 0.2 in four hours: slower than HEAT_RATE_MIN, stored as that
+        slower.observe("bad", i * 600.0, 19.0 + (0.2 if i >= 20 else 0.0), BOILER, False, short_k=1.5)
+    assert slower.observe("bad", 25 * 600.0, 19.2, None, False) == HEAT_RATE_MIN
+    flat = HeatRateStats()
+    for i in range(25):  # four hours without a tenth: no heat-up to learn from
+        flat.observe("bad", i * 600.0, 19.0, BOILER, False, short_k=1.5)
+    assert flat.observe("bad", 25 * 600.0, 19.0, None, False) is None and flat.rates == {}
+
 def _heat_up(hs: HeatRateStats, room: str, source: str, t0: float, start: float, rise_k_h: float, outdoor=None) -> float | None:
     """An hour of heat-up from `source` in 10-minute samples, then the source goes off."""
     for i in range(7):
@@ -308,6 +380,7 @@ def test_heat_pump_preheat_lead_is_capped_at_four_hours():
     # than twelve and keep the night setback (2026-10-30)
     _, return_ts, by_heat_pump, by_boiler = _away_return_planned_by_each_source(16.0, datetime(2026, 1, 12, 6, 0))  # 10 h at 0.5
     assert by_heat_pump.preheat_start_ts == pytest.approx(return_ts - 4 * 3600, abs=1)
+    # the boiler's 6.6 hours for a return from away (decided 19.11.: the four hours are for a schedule's preheat)
     assert by_boiler.preheat_start_ts == pytest.approx(return_ts - 5.0 / 0.8 * 3600 - PARAMS.preheat_margin_s, abs=1)
 
 
@@ -529,7 +602,8 @@ def _aim(
     """The target a radiator room far below it heats to before the return, by default one minute before it.
 
     At 12 °C its preheat for the next comfort start begins up to 11.6 hours ahead; a warmer room (`temp`) shows the
-    target at the return alone, with no comfort start after it to preheat for yet.
+    target at the return alone, with no comfort start after it to preheat for yet. The four hours at most of a schedule's
+    preheat (17.11.) do not hold for a return from away (decided 19.11.): no constant lifted here.
     """
     cfg = room_config("badezimmer", comfort=21.0, setback=setback)
     st = _with(room_state(cfg, temp=temp), schedule=schedule)
@@ -691,3 +765,38 @@ def test_away_return_half_an_hour_before_the_end_counts_real_time_across_the_clo
     spring = datetime(2027, 3, 28, 1, 45, tzinfo=berlin)
     running = ScheduleState(active=True, next_end=spring.replace(hour=3), next_change=spring.replace(hour=3), week=night)
     assert _aim(running, spring) == (17.0, "away_preheat")
+
+
+@pytest.mark.parametrize(("step", "rate"), [(0.5, 0.5), (1.0, 1.0)])
+def test_a_coarse_sensor_rising_a_whole_step_at_a_time_teaches_its_heat_up_rate(step: float, rate: float):
+    """Review 2026-11-18: a sensor reporting in 0.5 or 1 K steps (a Shelly H&T, a valve in half degrees) jumps a whole
+    step after a long quiet: one report, the sensor's resolution, no shower. Every heat-up of such a room was taken for
+    warmth from elsewhere and none was learned. Foreign warmth takes two rising reports within the ten minutes."""
+    hs = HeatRateStats()
+    rise = 2.0 if step == 0.5 else 3.0
+    hours = rise / rate
+    changes = [(0.0, 18.0)] + [(k * step / rate * 3600.0, 18.0 + k * step) for k in range(1, int(rise / step) + 1)]
+    learned = _replay(hs, "bad", changes, hours * 3600.0, target=22.0, step=60.0)
+    learned.append(hs.observe("bad", hours * 3600.0 + 60.0, 18.0 + rise, None, False, 11.5))
+    assert [r for r in learned if r is not None] == [pytest.approx(rate, abs=0.02)]
+
+
+def test_a_coarse_sensor_with_a_shower_in_it_still_teaches_nothing():
+    """Two and more rising reports of a coarse sensor within ten minutes are still foreign warmth."""
+    hs = HeatRateStats()
+    changes = [(0.0, 19.0), (1800.0, 19.5), (1810.0, 20.0), (1900.0, 20.5), (1950.0, 21.0), (2400.0, 20.5), (2600.0, 20.0)]
+    assert _replay(hs, "bad", changes, 3000.0, target=22.0, step=30.0) == []
+    assert hs.rate("bad", BOILER) is None
+
+
+def test_a_return_from_away_preheats_as_long_as_it_takes_without_any_constant_lifted():
+    """Decided 19.11.: the four hours at most of a schedule's preheat (17.11., a cycling boiler holding) do not hold for
+    a return from away. Review 2026-11-18: at 16 °C for 21 at 0.8 K/h 6.6 hours are needed, four were planned and the
+    room was 1.8 K short at the return. A longest preheat of the room's own still counts, and the heat pump's four."""
+    cfg = room_config("wohnzimmer", comfort=21.0, setback=17.0)
+    st = room_state(cfg, temp=16.0)
+    return_ts = MON_EVENING.timestamp()
+    res = room_engine.evaluate_room(st, datetime(2026, 1, 12, 9, 0), "away", PARAMS, away_return_ts=return_ts)
+    assert res.preheat_start_ts == pytest.approx(return_ts - 5.0 / 0.8 * 3600 - PARAMS.preheat_margin_s, abs=1)
+    schedule = room_engine.evaluate_room(st, datetime(2026, 1, 12, 9, 0), "auto", PARAMS)  # the same room by its schedule
+    assert schedule.preheat_for_ts is None or schedule.preheat_start_ts >= schedule.preheat_for_ts - 4 * 3600 - 1
