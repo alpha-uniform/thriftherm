@@ -1047,7 +1047,7 @@ def test_every_field_and_heading_of_the_room_form_has_its_wording():
 
 # ------------------------------------------------------------------ one field for thermostat or valves (0.8.1)
 def _register_valve(hass: HomeAssistant, object_id: str, platform: str = "mqtt") -> str:
-    """A bare radiator valve, as Zigbee2MQTT or ZHA enter it."""
+    """A radiator valve itself, as Zigbee2MQTT or ZHA enter it."""
     from homeassistant.helpers import entity_registry as er
 
     return er.async_get(hass).async_get_or_create("climate", platform, object_id, suggested_object_id=object_id).entity_id

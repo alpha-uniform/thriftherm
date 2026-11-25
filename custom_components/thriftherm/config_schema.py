@@ -658,7 +658,7 @@ def has_heat_pump(cur: Mapping[str, Any]) -> bool:
 VALVE_CONTROL_CHOICES: Final = (VALVE_CONTROL_AUTO, VALVE_CONTROL_OFFSET, VALVE_CONTROL_SETPOINT)
 
 SECTION_ROOM_HEAT_PUMP = "heat_pump"
-# One field for the room thermostat or the valves driven directly: two fields invited bare valves in the thermostat's,
+# One field for the room thermostat or the valves driven directly: two fields invited radiator valves in the thermostat's,
 # where the window was left to them. Sorted by the integration on saving, stored as `climate_entity` or `valve_entities`.
 ROOM_THERMOSTAT_OR_VALVES = "thermostat_or_valves"
 ROOM_THERMOSTAT_PLATFORMS: Final = ("better_thermostat", "versatile_thermostat", "generic_thermostat")

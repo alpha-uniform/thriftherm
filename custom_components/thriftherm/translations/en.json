@@ -106,7 +106,7 @@
         },
         "data_description": {
           "temperature_sensor": "Optional: a sensor of its own in the room measures more exactly than the valve at the radiator. Any temperature sensor in Home Assistant will do.",
-          "thermostat_or_valves": "A Better Thermostat, Versatile Thermostat or Generic Thermostat is the room thermostat: Thriftherm gives it the target, the rest (window, valves) it does itself. Bare valves (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …) Thriftherm drives directly, the window included. One room thermostat or any number of valves, not both."
+          "thermostat_or_valves": "A Better Thermostat, Versatile Thermostat or Generic Thermostat is the room thermostat: Thriftherm gives it the target, the rest (window, valves) it does itself. Radiator valves themselves (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …) Thriftherm drives directly, the window included. One room thermostat or any number of valves, not both."
         },
         "sections": {
           "heat_pump": {
@@ -136,7 +136,7 @@
             },
             "data_description": {
               "thermostat_lead_k": "Only for a room thermostat (Better, Versatile or Generic Thermostat); valves driven directly get no lead.",
-              "valve_control": "Only for valves driven directly (bare valves in the field above); leave it on Automatic, the other ways are for testing."
+              "valve_control": "Only for valves driven directly (radiator valves in the field above); leave it on Automatic, the other ways are for testing."
             }
           }
         }
@@ -424,7 +424,7 @@
         },
         "data_description": {
           "temperature_sensor": "Optional: a sensor of its own in the room measures more exactly than the valve at the radiator. Any temperature sensor in Home Assistant will do.",
-          "thermostat_or_valves": "A Better Thermostat, Versatile Thermostat or Generic Thermostat is the room thermostat: Thriftherm gives it the target, the rest (window, valves) it does itself. Bare valves (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …) Thriftherm drives directly, the window included. One room thermostat or any number of valves, not both."
+          "thermostat_or_valves": "A Better Thermostat, Versatile Thermostat or Generic Thermostat is the room thermostat: Thriftherm gives it the target, the rest (window, valves) it does itself. Radiator valves themselves (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …) Thriftherm drives directly, the window included. One room thermostat or any number of valves, not both."
         },
         "sections": {
           "heat_pump": {
@@ -454,7 +454,7 @@
             },
             "data_description": {
               "thermostat_lead_k": "Only for a room thermostat (Better, Versatile or Generic Thermostat); valves driven directly get no lead.",
-              "valve_control": "Only for valves driven directly (bare valves in the field above); leave it on Automatic, the other ways are for testing."
+              "valve_control": "Only for valves driven directly (radiator valves in the field above); leave it on Automatic, the other ways are for testing."
             }
           }
         }

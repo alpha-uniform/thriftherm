@@ -106,7 +106,7 @@
         },
         "data_description": {
           "temperature_sensor": "Optional: Ein eigener Fühler im Raum misst genauer als das Ventil am Heizkörper. Jeder Temperatursensor in Home Assistant geht.",
-          "thermostat_or_valves": "Ein Better Thermostat, Versatile Thermostat oder Generic Thermostat ist das Raumthermostat: Thriftherm gibt ihm das Ziel, den Rest (Fenster, Ventile) macht es selbst. Nackte Ventile (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …) steuert Thriftherm direkt, samt Fenster. Ein Raumthermostat oder beliebig viele Ventile, nicht beides."
+          "thermostat_or_valves": "Ein Better Thermostat, Versatile Thermostat oder Generic Thermostat ist das Raumthermostat: Thriftherm gibt ihm das Ziel, den Rest (Fenster, Ventile) macht es selbst. Heizkörperventile selbst (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …) steuert Thriftherm direkt, samt Fenster. Ein Raumthermostat oder beliebig viele Ventile, nicht beides."
         },
         "sections": {
           "heat_pump": {
@@ -136,7 +136,7 @@
             },
             "data_description": {
               "thermostat_lead_k": "Nur für ein Raumthermostat (Better, Versatile oder Generic Thermostat); direkt gesteuerte Ventile bekommen keinen Vorhalt.",
-              "valve_control": "Nur für direkt gesteuerte Ventile (nackte Ventile im Feld oben); Automatisch lassen, die anderen Wege sind zum Testen."
+              "valve_control": "Nur für direkt gesteuerte Ventile (Heizkörperventile im Feld oben); Automatisch lassen, die anderen Wege sind zum Testen."
             }
           }
         }
@@ -424,7 +424,7 @@
         },
         "data_description": {
           "temperature_sensor": "Optional: Ein eigener Fühler im Raum misst genauer als das Ventil am Heizkörper. Jeder Temperatursensor in Home Assistant geht.",
-          "thermostat_or_valves": "Ein Better Thermostat, Versatile Thermostat oder Generic Thermostat ist das Raumthermostat: Thriftherm gibt ihm das Ziel, den Rest (Fenster, Ventile) macht es selbst. Nackte Ventile (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …) steuert Thriftherm direkt, samt Fenster. Ein Raumthermostat oder beliebig viele Ventile, nicht beides."
+          "thermostat_or_valves": "Ein Better Thermostat, Versatile Thermostat oder Generic Thermostat ist das Raumthermostat: Thriftherm gibt ihm das Ziel, den Rest (Fenster, Ventile) macht es selbst. Heizkörperventile selbst (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …) steuert Thriftherm direkt, samt Fenster. Ein Raumthermostat oder beliebig viele Ventile, nicht beides."
         },
         "sections": {
           "heat_pump": {
@@ -454,7 +454,7 @@
             },
             "data_description": {
               "thermostat_lead_k": "Nur für ein Raumthermostat (Better, Versatile oder Generic Thermostat); direkt gesteuerte Ventile bekommen keinen Vorhalt.",
-              "valve_control": "Nur für direkt gesteuerte Ventile (nackte Ventile im Feld oben); Automatisch lassen, die anderen Wege sind zum Testen."
+              "valve_control": "Nur für direkt gesteuerte Ventile (Heizkörperventile im Feld oben); Automatisch lassen, die anderen Wege sind zum Testen."
             }
           }
         }
