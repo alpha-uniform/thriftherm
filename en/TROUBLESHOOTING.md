@@ -124,7 +124,7 @@ The heating curve is made to hold temperatures, not to heat up fast. How fast it
 
 ### A room stays a few tenths below its target
 
-The card then shows *Nearly there, heats again below …*. When a room has heated for an hour, is at most 0.3 degrees below its target and hardly rises any more, it counts as reached: otherwise the boiler would cycle for hours over the last tenths. It calls again once it is 0.5 degrees below its target or the target changes. *Quick heat-up* is exempt from this rule.
+The card then shows *Counts as reached, heats again below …*. When a room has heated for an hour, is at most 0.3 degrees below its target and hardly rises any more, it counts as reached: otherwise the boiler would cycle for hours over the last tenths. It calls again once it is 0.5 degrees below its target or the target changes. *Quick heat-up* is exempt from this rule.
 
 If a room often falls a little short, the flow is usually too low. Set a *heat-up speed* (e.g. 1 degree per hour): Thriftherm then raises the flow while the room rises too slowly and remembers what it needs. That burns a little more gas.
 

@@ -124,7 +124,7 @@ Die Heizkurve ist dafür gemacht, Temperaturen zu halten, nicht für schnelles A
 
 ### Ein Raum bleibt ein paar Zehntel unter dem Soll
 
-Die Karte zeigt dann *Fast erreicht, heizt wieder unter …*. Hat ein Raum eine Stunde geheizt, liegt höchstens 0,3 Grad unter dem Soll und steigt kaum noch, gilt er als erreicht: Die Therme würde sonst stundenlang für die letzten Zehntel takten. Er ruft wieder, sobald er 0,5 Grad unter dem Soll liegt oder sich das Soll ändert. *Schnell aufheizen* ist von der Regel ausgenommen.
+Die Karte zeigt dann *Gilt als erreicht, heizt wieder unter …*. Hat ein Raum eine Stunde geheizt, liegt höchstens 0,3 Grad unter dem Soll und steigt kaum noch, gilt er als erreicht: Die Therme würde sonst stundenlang für die letzten Zehntel takten. Er ruft wieder, sobald er 0,5 Grad unter dem Soll liegt oder sich das Soll ändert. *Schnell aufheizen* ist von der Regel ausgenommen.
 
 Kommt ein Raum öfter nicht ganz hin, ist meist der Vorlauf zu niedrig. Stell ein *Aufheiztempo* ein (z. B. 1 Grad pro Stunde): Dann hebt Thriftherm den Vorlauf an, solange der Raum zu langsam steigt, und merkt sich, was er braucht. Das kostet etwas mehr Gas.
 
