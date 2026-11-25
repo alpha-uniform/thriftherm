@@ -14,7 +14,7 @@ from homeassistant.helpers import selector
 from . import boiler_profiles, learning_reset, texts
 from .adapters import ebusd_detect
 from .adapters.config import system_type_from_config
-from .adapters.inputs import driven_by, valve_driver
+from .adapters.inputs import driven_by, entity_platform, valve_driver
 from .config_schema import (
     BOILER_KEYS,
     HEAT_PUMP_KEYS,
@@ -27,6 +27,7 @@ from .config_schema import (
     has_heat_pump,
     keys_of,
     known_keys,
+    lift_section_errors,
     merge_present,
     merge_step,
     room_from_input,
@@ -39,6 +40,8 @@ from .config_schema import (
     schema_prices,
     schema_room,
     schema_system,
+    split_thermostat_or_valves,
+    thermostat_or_valves_errors,
     validate_boiler,
     validate_heat_pump,
     validate_heat_pump_tuning,
@@ -49,9 +52,11 @@ from .const import (
     CONF_BOILER_PROFILE,
     CONF_HEAT_PUMP_CLIMATE,
     CONF_HEAT_PUMP_ROOM,
+    CONF_ROOM_CLIMATE,
     CONF_ROOM_COMFORT_TEMP,
     CONF_ROOM_KEY,
     CONF_ROOM_SETBACK_TEMP,
+    CONF_ROOM_VALVES,
     CONF_ROOMS,
     CONFIG_VERSION,
     DEFAULT_ROOM_COMFORT_TEMP,
@@ -162,10 +167,13 @@ class ThrifthermConfigFlow(ConfigFlow, domain=DOMAIN):
 
     async def async_step_room(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
+        heat_pump = has_heat_pump(self._data)
         if user_input is not None:
-            errors = validate_room(
+            form = schema_room(user_input, allow_add_another=True, heat_pump=heat_pump)
+            user_input, refused = _room_answer(self.hass, form, user_input)
+            errors = lift_section_errors(form, {**thermostat_or_valves_errors(validate_room(
                 user_input, self._rooms, self._data.get(CONF_HEAT_PUMP_CLIMATE), self._drives, driver=self._driver
-            )
+            )), **refused})
             if not errors:
                 self._rooms.append(room_from_input(user_input))
                 if user_input.get("add_another"):
@@ -175,10 +183,17 @@ class ThrifthermConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(title="Thriftherm", data={}, options=self._data)
         return self.async_show_form(
             step_id="room",
-            data_schema=schema_room(user_input or {}, allow_add_another=True, heat_pump=has_heat_pump(self._data)),
+            data_schema=schema_room(user_input or {}, allow_add_another=True, heat_pump=heat_pump),
             errors=errors,
             description_placeholders={"count": str(len(self._rooms))},
         )
+
+
+def _room_answer(
+    hass: HomeAssistant, form: vol.Schema, user_input: Mapping[str, Any]
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """The room form's answer flat, the one field sorted into thermostat or valves, and what that refuses."""
+    return split_thermostat_or_valves(flatten_sections(form, user_input), lambda e: entity_platform(hass, e))
 
 
 # ---------------------------------------------------------------------------
@@ -381,16 +396,21 @@ class ThrifthermOptionsFlow(OptionsFlow):
         heat_pump = has_heat_pump(self._config)
         errors: dict[str, str] = {}
         if user_input is not None:
+            form = schema_room(user_input, allow_add_another=False, heat_pump=heat_pump)
+            user_input, refused = _room_answer(self.hass, form, user_input)
             others = [r for r in rooms if r[CONF_ROOM_KEY] != self._room_key]
-            errors = validate_room(
+            errors = lift_section_errors(form, {**thermostat_or_valves_errors(validate_room(
                 user_input, others, self._config.get(CONF_HEAT_PUMP_CLIMATE), self._drives, self._room_key, self._driver
-            )
+            )), **refused})
             if not errors:
                 # What the form does not show stays as it is stored: the cooling schedule while cooling is hidden,
                 # "served by the heat pump" and the drying while no heat pump is entered. Built from the answer
                 # alone, saving a room for any other reason dropped them (review 2026-11-13). A field that is
                 # shown and was emptied is left out of the answer, and goes.
-                shown = keys_of(lambda cur: schema_room(cur, allow_add_another=False, heat_pump=heat_pump))
+                shown = {
+                    *keys_of(lambda cur: schema_room(cur, allow_add_another=False, heat_pump=heat_pump)),
+                    CONF_ROOM_CLIMATE, CONF_ROOM_VALVES,  # the one field for both
+                }
                 hidden = {k: v for k, v in stored.items() if k not in shown}
                 room = {**hidden, **room_from_input(user_input, key=self._room_key)}
                 if self._room_key is None:

@@ -39,7 +39,6 @@ def test_vaillant_profile_is_what_was_hard_coded() -> None:
         "boiler_pump_state": ("Status01", "pumpstate"),
         "boiler_pump_running": ("WP", "value"),
         "boiler_state_number": ("Statenumber", "value"),
-        "boiler_hwc_mode": ("Status02", "hwcmode"),
     }
 
 

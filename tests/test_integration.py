@@ -83,6 +83,18 @@ def _entry_data() -> dict:
     }
 
 
+def _answer(result, flat: dict) -> dict:
+    """A flat answer as the frontend sends it: the fields under a heading inside that heading."""
+    from homeassistant.data_entry_flow import section
+
+    answer = dict(flat)
+    for marker, value in result["data_schema"].schema.items():
+        if isinstance(value, section):
+            inner = {str(m) for m in value.schema.schema}
+            answer[str(marker)] = {k: answer.pop(k) for k in list(answer) if k in inner}
+    return answer
+
+
 def _set_states(hass: HomeAssistant) -> None:
     hass.states.async_set("sensor.flow", "45.0", {"unit_of_measurement": "°C"})
     hass.states.async_set("sensor.return", "38.0", {"unit_of_measurement": "°C"})
@@ -279,13 +291,13 @@ async def test_config_flow_full_path(hass: HomeAssistant) -> None:
         "schedule_weekend": "09:00-22:00",
         "add_another": True,
     }
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], room)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], _answer(result, room))
     assert result["step_id"] == "room"
     bad = {**room, "name": "Küche", "schedule_weekday": "nonsense", "add_another": False}
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], bad)
-    assert result["errors"] == {"schedule_weekday": "invalid_schedule"}
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], _answer(result, bad))
+    assert result["errors"] == {"base": "invalid_schedule"}  # its heading may be folded
     good = {**bad, "schedule_weekday": "06:00-22:00", "served_by_midea": False}
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], good)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], _answer(result, good))
     assert result["type"] == "create_entry"
     assert result["data"] == {}  # everything in the options (config version 3)
     assert [r[CONF_ROOM_KEY] for r in result["options"][CONF_ROOMS]] == ["badezimmer", "kuche"]
@@ -329,9 +341,8 @@ async def test_options_flow_adds_a_room(hass: HomeAssistant) -> None:
     assert ROOM_ACTION_ADD == "add-room"
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": ROOM_ACTION_ADD, "action": "edit"})
     assert result["step_id"] == "room"
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"name": "Küche", "priority": 4, "temperature_sensor": "sensor.kitchen_temp", "comfort_temp": 21.0, "setback_temp": 17.0}
-    )
+    kitchen = {"name": "Küche", "priority": 4, "temperature_sensor": "sensor.kitchen_temp", "comfort_temp": 21.0, "setback_temp": 17.0}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], _answer(result, kitchen))
     assert result["type"] == "create_entry"
     await hass.async_block_till_done()
     assert [r[CONF_ROOM_KEY] for r in entry.options[CONF_ROOMS]] == ["badezimmer", "wohnzimmer", "kuche"]

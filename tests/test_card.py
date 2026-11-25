@@ -927,3 +927,52 @@ def test_a_room_that_cannot_be_shown_does_not_take_the_card_down() -> None:
     """)
 
     assert result == {"error": None, "living": True}
+
+
+def test_a_stalled_room_reads_right_while_it_cools_towards_its_next_call() -> None:
+    """A stalled room stays so until it falls half a degree under its target: falling, „nearly there“ read oddly."""
+    result = _run_card("""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({});
+      const hass = makeHass();
+      const demand = "sensor.thriftherm_badezimmer_heat_demand";
+      hass.entities[demand] = { entity_id: demand, platform: "thriftherm", translation_key: "room_demand", device_id: "badezimmer" };
+      hass.states[demand] = { entity_id: demand, state: "0", attributes: { boiler_call: "stalled", calls_again_below: 20.5 }, last_updated: "t0" };
+      await shown(main, hass);
+      const reasons = [...main.shadowRoot.innerHTML.matchAll(/class="reason">([^<]*)</g)].map((m) => m[1]);
+      console.log(JSON.stringify({ reasons }));
+    """)
+
+    assert result["reasons"][0].replace("\xa0", " ") == texts.CARD["en"]["stalled"].replace("{temp}", "20.5 °C")
+    for lang in ("en", "de"):
+        assert texts.CARD[lang]["stalled"] != {"en": "Nearly there, heats again below {temp}",
+                                               "de": "Fast erreicht, heizt wieder unter {temp}"}[lang]
+
+
+def _source_line(control: str, commands_sent: bool) -> dict:
+    return _run_card(f"""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({{}});
+      const hass = makeHass();
+      const cmd = "sensor.thriftherm_boiler_command";
+      hass.entities[cmd] = {{ entity_id: cmd, platform: "thriftherm", translation_key: "boiler_command" }};
+      hass.states[cmd] = {{ entity_id: cmd, state: "heat", last_updated: "t0",
+        attributes: {{ control_mode: "{control}", commands_sent: {str(commands_sent).lower()} }} }};
+      const demand = "sensor.thriftherm_badezimmer_heat_demand";
+      hass.entities[demand] = {{ entity_id: demand, platform: "thriftherm", translation_key: "room_demand", device_id: "badezimmer" }};
+      hass.states[demand] = {{ entity_id: demand, state: "60", attributes: {{ boiler_call: "calling" }}, last_updated: "t0" }};
+      await shown(main, hass);
+      const html = main.shadowRoot.innerHTML;
+      const headline = (html.match(/class="headline">([^<]*)</) || [])[1];
+      console.log(JSON.stringify({{ headline, flame: html.includes('icon flame') }}));
+    """)
+
+
+def test_a_boiler_thriftherm_only_observes_is_not_said_to_heat() -> None:
+    """Under „observe only“ the command is a plan: the card says the boiler would heat, not that it does."""
+    observed = _source_line("shadow", False)
+    active = _source_line("active", True)
+
+    assert active["headline"] == texts.CARD["en"]["boiler_heats"]
+    assert observed["headline"] == texts.CARD["en"]["boiler_would_heat"]
+    assert active["flame"] and not observed["flame"]

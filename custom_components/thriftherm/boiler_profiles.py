@@ -18,7 +18,6 @@ from .const import (
     BOILER_REPORTS_HEATING_AFTER,
     BOILER_REPORTS_HOT_WATER,
     CONF_BOILER_FLOW_TEMP,
-    CONF_BOILER_HWC_MODE,
     CONF_BOILER_PUMP_RUNNING,
     CONF_BOILER_PUMP_STATE,
     CONF_BOILER_RETURN_TEMP,
@@ -66,7 +65,6 @@ PROFILES: dict[str, BoilerProfile] = {
                 CONF_BOILER_PUMP_STATE: ("Status01", "pumpstate"),
                 CONF_BOILER_PUMP_RUNNING: ("WP", "value"),  # the heating pump itself (d.10)
                 CONF_BOILER_STATE_NUMBER: ("Statenumber", "value"),  # the S.xx display code
-                CONF_BOILER_HWC_MODE: ("Status02", "hwcmode"),
             },
             # ebusd reads its boiler values one after another, one every few seconds: with the
             # ~80 of the default configuration flow and return arrive only about every eight minutes.

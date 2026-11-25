@@ -30,7 +30,6 @@ Do not exclude these messages:
 | Status01 | field *pumpstate*: heating, overrun, hot water |
 | WP | heating pump running |
 | Statenumber | status number S.xx: heating, hot water or overrun |
-| Status02 | field *hwcmode*: hot water active |
 | SetMode | the command to the boiler – never exclude |
 | PrEnergySumHc1 to 3, PrEnergySumHwc1 to 3 | only without a gas meter: Thriftherm estimates the gas for heating and for hot water from them (see [below](#what-nobody-needs)) |
 

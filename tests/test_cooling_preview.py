@@ -26,14 +26,14 @@ def test_the_heat_pump_tuning_offers_no_cooling_while_hidden() -> None:
 
 
 def test_the_room_form_offers_no_cooling_schedule_while_hidden() -> None:
-    keys = {str(m) for m in config_schema.schema_room({}, allow_add_another=False, heat_pump=True).schema}
+    keys = {str(m) for m in config_schema._markers(config_schema.schema_room({}, allow_add_another=False, heat_pump=True))}
     assert const.CONF_ROOM_COOLING_SCHEDULE_ENTITY not in keys
 
 
 def test_both_appear_once_cooling_is_shown(monkeypatch) -> None:
     monkeypatch.setattr(const, "COOLING_PREVIEW", True)
     assert config_schema.SECTION_COOLING in {str(m) for m in config_schema.schema_heat_pump_tuning({}).schema}
-    room = {str(m) for m in config_schema.schema_room({}, allow_add_another=False, heat_pump=True).schema}
+    room = {str(m) for m in config_schema._markers(config_schema.schema_room({}, allow_add_another=False, heat_pump=True))}
     assert const.CONF_ROOM_COOLING_SCHEDULE_ENTITY in room
 
 

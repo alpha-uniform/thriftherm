@@ -335,3 +335,25 @@ async def test_without_a_meter_and_without_the_nominal_input_there_are_no_such_s
     coordinator = await _setup(hass, {})
     assert hass.states.get(HEATING) is None and hass.states.get(HOT_WATER) is None
     assert coordinator.gas_split == GasSplit()  # and nothing is counted
+
+
+async def test_the_hot_water_mode_of_status02_is_no_sign_of_hot_water(hass: HomeAssistant) -> None:
+    """Status02 hwcmode is the boiler's hot water mode (disabled, on, off, auto), not a run: a boiler with a cylinder
+    reported „on“ while it heated the radiators, its loading held off. Only a binary sensor says hot water is running."""
+    from custom_components.thriftherm.const import CONF_BOILER_HWC_MODE
+
+    hass.states.async_set("sensor.status02_hwcmode", "on")
+    coordinator = await _setup(hass, {CONF_BOILER_HWC_MODE: "sensor.status02_hwcmode"})
+    assert coordinator.data["snapshot"].boiler.hwc_mode is None
+
+    hass.states.async_set("binary_sensor.hot_water", "on")
+    coordinator = await _setup_again(hass, coordinator, {CONF_BOILER_HWC_MODE: "binary_sensor.hot_water"})
+    assert coordinator.data["snapshot"].boiler.hwc_mode == "on"
+
+
+async def _setup_again(hass: HomeAssistant, coordinator, data: dict):
+    entry = coordinator.config_entry
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    return await _setup(hass, data)

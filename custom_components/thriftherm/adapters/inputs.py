@@ -311,6 +311,12 @@ def driven_by(hass: HomeAssistant, climate_entity: str) -> tuple[str, ...]:
     return tuple(dict.fromkeys(e for e in _driven(hass, climate_entity) or () if e != climate_entity))
 
 
+def entity_platform(hass: HomeAssistant, entity_id: str) -> str | None:
+    """The integration an entity belongs to (entity registry), None for one the registry does not know."""
+    entry = er.async_get(hass).async_get(entity_id)
+    return entry.platform if entry is not None else None
+
+
 def valve_driver(hass: HomeAssistant, valve: str) -> str | None:
     """The room thermostat of an enabled Better or Versatile Thermostat entry that drives `valve`, None if none does.
 
@@ -1159,7 +1165,7 @@ class SnapshotBuilder:
             flow_temp=self.read_number(cfg.get(CONF_BOILER_FLOW_TEMP), RANGE_FLOW_TEMP, now, max_age),
             return_temp=self.read_number(cfg.get(CONF_BOILER_RETURN_TEMP), RANGE_FLOW_TEMP, now, max_age),
             pump_state=self.read_text(cfg.get(CONF_BOILER_PUMP_STATE)),
-            hwc_mode=self.read_text(cfg.get(CONF_BOILER_HWC_MODE)),
+            hwc_mode=self._hot_water_running(cfg.get(CONF_BOILER_HWC_MODE)),
             gas_volume_m3=gas_volume,
             gas_flow_m3h=gas_flow,
             circulation_l_h=float(cfg.get(CONF_BOILER_CIRCULATION_L_H, DEFAULT_BOILER_CIRCULATION_L_H)),
@@ -1169,6 +1175,14 @@ class SnapshotBuilder:
             energy_sums_heating=sums["hc"],
             energy_sums_hot_water=sums["hwc"],
         )
+
+    def _hot_water_running(self, entity_id: str | None) -> str | None:
+        """A binary sensor that says hot water is running. ebusd's Status02 hwcmode, chosen here before 0.8.1, is the
+        boiler's hot water mode (disabled, on, off, auto), not a run: a boiler with a cylinder stood at „on“ while it
+        heated the radiators, and every hour counted as hot water. A stored sensor of that kind is read as nothing."""
+        if not entity_id or not entity_id.startswith("binary_sensor."):
+            return None
+        return self.read_text(entity_id)
 
     def _boiler_energy_sums(self) -> dict[str, tuple[tuple[str, float], ...]]:
         """The boiler's own sums of burner output, found beside its flow temperature.

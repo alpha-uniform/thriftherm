@@ -212,7 +212,7 @@ With district heating you see *Heat price from your bill*, *Share billed by cons
 
 ### 4.3 Gas boiler (ebusd) and gas meter
 
-The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fills in what it finds: the boiler's values, its ebusd circuit, the eBUS signal and, if exactly one fits, the gas meter. The step's description says what was found, for example *Found: Vaillant (bai), 6 of 6 values — please check.* Check the fields and continue. If nothing was found, it says *No ebusd boiler found — select the entities yourself.*
+The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fills in what it finds: the boiler's values, its ebusd circuit, the eBUS signal and, if exactly one fits, the gas meter. The step's description says what was found, for example *Found: Vaillant (bai), 5 of 5 values — please check.* Check the fields and continue. If nothing was found, it says *No ebusd boiler found — select the entities yourself.*
 
 | Field | What to select or enter |
 |---|---|
@@ -221,7 +221,7 @@ The step *Gas boiler (ebusd) and gas meter* looks for your ebusd boiler and fill
 | Boiler state from Status01 (off/on/overrun/hwc) | ebusd **Status01 pumpstate** (Status01 delivers several entities; the others are temperatures) |
 | Heating pump running (ebusd WP, on/off) | ebusd **WP** |
 | Boiler status number (ebusd Statenumber, S.xx) | ebusd **Statenumber** |
-| Hot water active (ebusd hwcmode, or a binary sensor) | ebusd **Status02 hwcmode** |
+| Hot water running (binary sensor, optional) | leave empty with ebusd: Thriftherm tells hot water by Status01, the status number and the temperatures. *Status02 hwcmode* is the mode (on, off, auto), not hot water running |
 | eBUS signal (binary sensor) | **ebusd's own signal** (`binary_sensor.…_global_signal`), not the adapter's connectivity sensor: when the adapter drops off Wi-Fi, its own sensor keeps its last value "on" |
 | Nominal circulation flow of the pump | keep the default unless your boiler's manual says otherwise |
 | Gas meter volume (m³, total), Gas meter instantaneous flow (m³/h) | your gas meter entities, if you have them; otherwise leave empty. The control needs no gas meter: it tells burner runs and hot water from the pump and the status code. Without a meter, the *Gas power* and *Gas energy* sensors are not created |
@@ -283,28 +283,32 @@ Select at least one outdoor sensor or the weather entity – the heating curve n
 
 You add one room per page. Tick **Add another room** to get the next page; submit the last room with the tick off to finish.
 
+The fields every room needs stand at the top. Rarer ones lie in three folded sections below: *Heat pump and bathroom drying*, *Comfort windows without a schedule helper, longest preheat* and *Advanced*. Everything is stored as before.
+
 | Field | What to enter |
 |---|---|
 | Room name | for example `Living room` |
-| Priority (1 = highest) | rooms that matter most get a lower number; 5 is fine to start |
 | Room temperature sensor | optional: a sensor of its own in the room measures more exactly than the valve at the radiator. Any temperature sensor in Home Assistant will do. The bathroom drying needs it |
 | Room humidity sensor | optional |
 | Window / door contacts | optional, all contacts of the room |
-| Thermostat (TRV or Better Thermostat) | the room's **Better Thermostat** or Versatile Thermostat entity. If Thriftherm drives the valves directly, it stays empty (see *Radiator valves, driven directly*). None of these yet? Leave it empty and add it later (options → *Rooms* → room → *Edit*) |
-| Power sensors of internal heat sources | optional, otherwise leave empty: the power of devices that heat the room as well (a computer, say). Above 150 W every further watt lowers the room's heat demand by 0.1 % (*Control parameters → Advanced*: *Internal gain threshold*, *Internal gain demand reduction per W*) |
-| Weekly schedule helper (optional; replaces the comfort windows below) | a Home Assistant schedule helper whose blocks are the comfort times |
-| Longest preheat | optional, for a room wanted only briefly ([details](GUIDE.md#pre-heating)) |
+| Thermostat or radiator valves | the room's **Better Thermostat**, Versatile or Generic Thermostat, *or* its bare valves (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …), which Thriftherm then drives directly (preview, [details](GUIDE.md#valves-driven-directly-without-a-room-thermostat-preview)). Thriftherm sorts them by their integration; the form refuses a room thermostat together with valves. For valves, first enable the valve's *sensor selection* and *external temperature input* in HA if they are disabled (Settings → Devices → Entities), and set its *temperature accuracy* to −0.4. None of these yet? Leave it empty and add it later (options → *Rooms* → room → *Edit*) |
+| Weekly schedule helper (optional; replaces the comfort windows under the heading below) | a Home Assistant schedule helper whose blocks are the comfort times |
 | Comfort temperature | temperature while the room is in use, for example 20 °C |
 | Setback temperature | temperature outside the comfort times, for example 17 °C; never above comfort |
-| Radiator valves, driven directly | instead of a thermostat, preview ([details](GUIDE.md#valves-driven-directly-without-a-room-thermostat-preview)). First enable the valve's *sensor selection* and *external temperature input* in HA if they are disabled (Settings → Devices → Entities), and set its *temperature accuracy* to −0.4 |
-| Lead at the thermostat | leave it at 0.5 K ([details](GUIDE.md#lead-at-the-thermostat)); 0 switches it off |
+| **Section Comfort windows without a schedule helper, longest preheat** | |
 | Comfort windows Mon–Fri / Sat–Sun | times as `HH:MM-HH:MM`, several separated by commas, for example `06:00-08:00,17:00-22:00`. The defaults are 06:00-22:00 and 08:00-23:00 |
+| Longest preheat | optional, for a room wanted only briefly ([details](GUIDE.md#pre-heating)) |
+| **Section Advanced** | |
+| Priority (1 = highest) | rooms that matter most get a lower number; 5 is fine to start |
+| Power sensors of internal heat sources | optional, otherwise leave empty: the power of devices that heat the room as well (a computer, say). Above 150 W every further watt lowers the room's heat demand by 0.1 % (*Control parameters → Advanced*: *Internal gain threshold*, *Internal gain demand reduction per W*) |
+| Lead at the thermostat | leave it at 0.5 K ([details](GUIDE.md#lead-at-the-thermostat)); 0 switches it off |
+| How the valves are controlled | leave it on *Automatic*; only for valves driven directly, the other ways are for testing |
 
 The room is warm *when* a comfort time starts: Thriftherm starts heating early enough.
 
 **Sensors that report only on a change** (e.g. Shelly H&T: only at 1 °C or 1 %): normally an unchanged value holds for 6 hours at most, as long as the device reports nothing else (if it still reports the humidity, say, up to a day). Then switch on **Room sensors report only on a change** under *Options → Control parameters → Advanced*. Room temperatures then hold up to the *Max. sensor age*. With sensors that report every few minutes, leave it off.
 
-Only with a heat pump set up does the form also show *Heated by the heat pump*, *Bathroom drying with the heat pump* and *Start the drying by itself after a shower*. Bathroom drying runs on the heat pump, so without one none of the fields appears. With it the room gets the button *Dry now*; with the third switch off, only the button dries. It also needs *Heated by the heat pump* switched on and the room humidity sensor; the form refuses it otherwise.
+Only with a heat pump set up does the form also show the section *Heat pump and bathroom drying* with *Heated by the heat pump*, *Bathroom drying with the heat pump* and *Start the drying by itself after a shower*. Bathroom drying runs on the heat pump, so without one none of the fields appears. With it the room gets the button *Dry now*; with the third switch off, only the button dries. It also needs *Heated by the heat pump* switched on and the room humidity sensor; the form refuses it otherwise.
 
 **Check:** after the last room *Settings → Devices & services* lists **Thriftherm**. Its device shows *Boiler control* and *Room control* set to **Observe only**.
 
@@ -312,7 +316,7 @@ Only with a heat pump set up does the form also show *Heated by the heat pump*, 
 
 Skip this if you have no smart radiator valves. The boiler control works without them; open the manual valves far enough and let the flow temperature do the work.
 
-There are three ways per room: the valves directly (no other integration), Better Thermostat or Versatile Thermostat. A room has either a *Thermostat* or valves, not both. What applies day to day: [user guide, room thermostats](GUIDE.md#room-thermostats).
+There are three ways per room: the valves directly (no other integration), Better Thermostat or Versatile Thermostat. All go into the field *Thermostat or radiator valves*; Thriftherm sorts them by their integration: Better, Versatile and Generic Thermostat are room thermostats, anything else is a valve. A room has either a room thermostat or valves, not both. What applies day to day: [user guide, room thermostats](GUIDE.md#room-thermostats).
 
 ### Valves directly (preview)
 
@@ -320,7 +324,7 @@ In use on Sonoff TRVZB/TRVZBT with Zigbee2MQTT since 2026-11-15; other valves (Z
 
 1. On the valve in Home Assistant, enable the entities *sensor selection* and *external temperature input* if they are disabled (*Settings → Devices → Entities*).
 2. On a TRVZB/TRVZBT, set the *temperature accuracy* to −0.4.
-3. In Thriftherm, under options → *Rooms* → room → *Edit*, empty the field *Thermostat* and choose the valves under *Radiator valves, driven directly*. The form refuses a valve an active Better Thermostat entry still drives.
+3. In Thriftherm, under options → *Rooms* → room → *Edit*, remove a room thermostat from the field *Thermostat or radiator valves* and choose the valves. The form refuses a valve an active Better Thermostat entry still drives.
 
 ### Better Thermostat
 
@@ -329,14 +333,14 @@ For each room:
 1. Install **Better Thermostat** from HACS (Marketplace), if not done yet.
 2. Add one Better Thermostat for the room: select the room's radiator thermostat(s), the **same room temperature sensor** you gave Thriftherm, and the room's **window contacts**.
 3. If you give it an outdoor temperature sensor, set the outdoor temperature at which it switches off **high enough, for example 25 °C** – or leave the outdoor sensor empty. Otherwise Better Thermostat blocks heating that Thriftherm asks for.
-4. In Thriftherm, select this Better Thermostat as the room's thermostat (options → *Rooms* → room → *Edit*), if you left it empty in step 4.6.
+4. In Thriftherm, select this Better Thermostat in the field *Thermostat or radiator valves* (options → *Rooms* → room → *Edit*), if you left it empty in step 4.6.
 5. If turning the knob on a valve is to count as a change by hand, switch **off** the room's **Child lock** switch in Better Thermostat. With it on, Better Thermostat sets the valve back, and the turn does not count.
 
 A thermostat you switch **off** by hand is left alone by Thriftherm, and that room no longer calls the boiler. How Thriftherm deals with the thermostats day to day: [user guide, room thermostats](GUIDE.md#room-thermostats).
 
 ### Versatile Thermostat instead of Better Thermostat (preview)
 
-A room's thermostat can also be the climate entity of [Versatile Thermostat](https://github.com/jmcollin78/versatile_thermostat). Important when setting it up: Versatile Thermostat's "central boiler" feature stays off while Thriftherm controls the boiler, and you keep the schedule in Thriftherm. What else applies: [user guide, Versatile Thermostat](GUIDE.md#versatile-thermostat-instead-of-better-thermostat-preview).
+In the field *Thermostat or radiator valves* you can also choose the climate entity of [Versatile Thermostat](https://github.com/jmcollin78/versatile_thermostat). Important when setting it up: Versatile Thermostat's "central boiler" feature stays off while Thriftherm controls the boiler, and you keep the schedule in Thriftherm. What else applies: [user guide, Versatile Thermostat](GUIDE.md#versatile-thermostat-instead-of-better-thermostat-preview).
 
 ## 6. At the boiler
 

@@ -495,7 +495,7 @@ def detection_summary(name: str | None, circuit: str | None, found: int, total: 
 CARD: dict[str, dict[str, str]] = {
     "en": {
         "heat_pump_heats": "Heat pump is heating", "heat_pump_cools": "Air conditioner is cooling",
-        "cooling_rests": "Cooling season: air conditioner resting", "boiler_heats": "Boiler is heating",
+        "cooling_rests": "Cooling season: air conditioner resting", "boiler_heats": "Boiler is heating", "boiler_would_heat": "Boiler would heat (observing only)",
         "both_heat": "Heat pump and boiler are heating", "nothing_heats": "Nothing is heating",
         "cost_line": "{heat_pump} ct per kWh of heat, {central_name} {central} ct",
         "gas": "gas", "district": "district heating",
@@ -522,13 +522,13 @@ CARD: dict[str, dict[str, str]] = {
         "editor_header": "Head: temperature, target and reason",
         "info": "Next change and trend", "next_change": "From {time}: {temp}",
         "trend_rising": "rising {value} °C/h", "trend_falling": "falling {value} °C/h", "trend_steady": "steady",
-        "stalled": "Nearly there, heats again below {temp}",
+        "stalled": "Counts as reached, heats again below {temp}",
         "room_not_found": "No Thriftherm room \"{room}\". Choose one in the editor.",
         "room_choose": "Choose a room in the editor.",
     },
     "de": {
         "heat_pump_heats": "Wärmepumpe heizt", "heat_pump_cools": "Klimagerät kühlt",
-        "cooling_rests": "Kühlzeit: Klimagerät ruht", "boiler_heats": "Therme heizt",
+        "cooling_rests": "Kühlzeit: Klimagerät ruht", "boiler_heats": "Therme heizt", "boiler_would_heat": "Therme würde heizen (nur beobachten)",
         "both_heat": "Wärmepumpe und Therme heizen", "nothing_heats": "Gerade heizt nichts",
         "cost_line": "{heat_pump} ct je kWh Wärme, {central_name} {central} ct",
         "gas": "Gas", "district": "Fernwärme",
@@ -555,7 +555,7 @@ CARD: dict[str, dict[str, str]] = {
         "editor_header": "Kopfzeile: Temperatur, Soll und Grund",
         "info": "Nächster Wechsel und Trend", "next_change": "Ab {time}: {temp}",
         "trend_rising": "steigt {value} °C/h", "trend_falling": "fällt {value} °C/h", "trend_steady": "gleichbleibend",
-        "stalled": "Fast erreicht, heizt wieder unter {temp}",
+        "stalled": "Gilt als erreicht, heizt wieder unter {temp}",
         "room_not_found": "Kein Thriftherm-Raum „{room}“. Im Editor einen wählen.",
         "room_choose": "Im Editor einen Raum wählen.",
     },

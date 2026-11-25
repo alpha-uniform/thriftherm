@@ -4,6 +4,14 @@
 
 Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
 
+## 0.8.1 – 2026-11-25
+
+- A room's thermostat and radiator valves share one field; Thriftherm sorts them by their integration (Better, Versatile, Generic Thermostat are room thermostats, anything else is a valve). A bare valve entered as a thermostat so far is driven directly, window included, once the room is saved next; without saving nothing changes.
+- The room form is shorter: what every room needs stands at the top; heat pump and bathroom drying, comfort windows without a schedule helper, priority, internal heat sources, lead and valve control lie in folded sections. It is stored as before.
+- Fixed: Thriftherm took the boiler's hot water mode (ebusd Status02 hwcmode “on”) for hot water running; with a cylinder boiler every hour counted as hot water and learning stood still. The field now takes a binary sensor only, and a stored Status02 value is no longer read.
+- Fixed: for a room that counts as reached and is cooling again the card said “Nearly there”; now “Counts as reached, heats again below …”.
+- Fixed: under *Observe only* the card said “Boiler is heating” with flames although nothing went to the boiler; now “Boiler would heat (observing only)”.
+
 ## 0.8.0 – 2026-11-20
 
 **Coming from 0.7.5:**

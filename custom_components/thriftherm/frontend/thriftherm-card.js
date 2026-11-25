@@ -386,9 +386,12 @@ class ThrifthermCard extends HTMLElement {
         <span class="source-text"><span class="headline">${esc(this._t(cools ? "heat_pump_cools" : "cooling_rests"))}</span>${why ? `<span class="sub">${esc(why)}</span>` : ""}</span>
       </div>`;
     }
+    // under „observe only“ the boiler's command is a plan: nothing went to the boiler, whatever it does itself
+    const boilerPlanned = boilerHeats && boiler.attributes.commands_sent === false;
     let line;
-    if (hpHeats && boilerHeats) line = this._t("both_heat");
+    if (hpHeats && boilerHeats && !boilerPlanned) line = this._t("both_heat");
     else if (hpHeats) line = this._t("heat_pump_heats");
+    else if (boilerPlanned) line = this._t("boiler_would_heat");
     else if (boilerHeats) line = this._t("boiler_heats");
     else line = this._t("nothing_heats");
 
@@ -405,7 +408,7 @@ class ThrifthermCard extends HTMLElement {
     } else if (!hp && boiler) {
       sub = sentence(this._attr(boiler, "reason")); // without a heat pump: why the boiler does what it does
     }
-    const sourceIcon = hpHeats ? icon("heatPump", "hp") : boilerHeats ? icon("fire", "flame") : icon(hp ? "heatPump" : "boiler", "muted");
+    const sourceIcon = hpHeats ? icon("heatPump", "hp") : boilerHeats && !boilerPlanned ? icon("fire", "flame") : icon(hp ? "heatPump" : "boiler", "muted");
     return `
       <button class="source" data-action="compare" aria-expanded="${this._compare}">
         ${sourceIcon}
@@ -619,7 +622,10 @@ class ThrifthermCard extends HTMLElement {
     const demandState = this._s(room.ids.demand);
     const demand = num(demandState?.state);
     const byHand = a.reason === "override" || !!a.override_by;
-    const boilerHeats = this._sys("boiler_command")?.state === "heat" && demandState?.attributes.boiler_call === "calling";
+    const boilerCommand = this._sys("boiler_command");
+    // a flame only where the boiler was really told to heat, not under „observe only“
+    const boilerHeats = boilerCommand?.state === "heat" && boilerCommand.attributes.commands_sent !== false
+      && demandState?.attributes.boiler_call === "calling";
     const hp = this._sys("midea_command");
     const hpServes = hp?.state === "heat" && (hp.attributes.served_rooms || []).includes(room.key);
 

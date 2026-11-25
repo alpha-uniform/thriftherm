@@ -358,6 +358,13 @@ PRICE_KEYS = (
 )
 
 
+def _hot_water_running(cur: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The form without a stored ebusd Status02 hwcmode: the field takes it no more, and shown it could not be sent."""
+    if str(cur.get(CONF_BOILER_HWC_MODE) or "").startswith("binary_sensor."):
+        return cur
+    return {k: v for k, v in cur.items() if k != CONF_BOILER_HWC_MODE}
+
+
 def schema_boiler(cur: Mapping[str, Any]) -> vol.Schema:
     return vol.Schema(
         {
@@ -366,7 +373,8 @@ def schema_boiler(cur: Mapping[str, Any]) -> vol.Schema:
             _opt(CONF_BOILER_PUMP_STATE, cur): _entity("sensor"),
             _opt(CONF_BOILER_PUMP_RUNNING, cur): _entity(["sensor", "binary_sensor"]),
             _opt(CONF_BOILER_STATE_NUMBER, cur): _entity("sensor"),
-            _opt(CONF_BOILER_HWC_MODE, cur): _entity(["sensor", "binary_sensor"]),
+            # a binary sensor only: ebusd Status02 hwcmode, offered here before 0.8.1, is a mode, not a run
+            _opt(CONF_BOILER_HWC_MODE, _hot_water_running(cur)): _entity("binary_sensor"),
             _opt(CONF_BOILER_FLAME, cur): _entity(["binary_sensor", "sensor"]),
             _opt(CONF_BOILER_SIGNAL, cur): _entity("binary_sensor"),
             _req(CONF_BOILER_CIRCULATION_L_H, cur, DEFAULT_BOILER_CIRCULATION_L_H): _number(100, 5000, 1, "l/h"),
@@ -649,51 +657,127 @@ def has_heat_pump(cur: Mapping[str, Any]) -> bool:
 # against it. A room stored with it opens with the best way, so that the form can be saved.
 VALVE_CONTROL_CHOICES: Final = (VALVE_CONTROL_AUTO, VALVE_CONTROL_OFFSET, VALVE_CONTROL_SETPOINT)
 
-def schema_room(cur: Mapping[str, Any], allow_add_another: bool, heat_pump: bool = True) -> vol.Schema:
-    """Fields for one room.
+SECTION_ROOM_HEAT_PUMP = "heat_pump"
+# One field for the room thermostat or the valves driven directly: two fields invited bare valves in the thermostat's,
+# where the window was left to them. Sorted by the integration on saving, stored as `climate_entity` or `valve_entities`.
+ROOM_THERMOSTAT_OR_VALVES = "thermostat_or_valves"
+ROOM_THERMOSTAT_PLATFORMS: Final = ("better_thermostat", "versatile_thermostat", "generic_thermostat")
+SECTION_ROOM_TIMES = "times"
+SECTION_ROOM_ADVANCED = "advanced"
+ROOM_SECTIONS: Final = (SECTION_ROOM_HEAT_PUMP, SECTION_ROOM_TIMES, SECTION_ROOM_ADVANCED)
 
-    "Served by the heat pump" and bathroom drying only make sense once a heat pump
-    exists (drying runs on the heat pump); offering the ticks without one invites
-    settings that can never do anything.
+
+def schema_room(cur: Mapping[str, Any], allow_add_another: bool, heat_pump: bool = True) -> vol.Schema:
+    """Fields for one room: what every room needs open, the rest under folded headings.
+
+    Stored flat as before (`flatten_sections`). "Served by the heat pump" and bathroom drying only make sense once a
+    heat pump exists (drying runs on the heat pump); offering the ticks without one invites settings that can never
+    do anything. Their heading opens for a room the heat pump serves.
     """
     fields: dict[Any, Any] = {
         _req(CONF_ROOM_NAME, cur): _text(),
-        _req(CONF_ROOM_PRIORITY, cur, 5): _number(1, 10, 1),
         # optional since 2026-11-15, as Better Thermostat asks for its external sensor: without one the valve measures
         _opt(CONF_ROOM_TEMP, cur): _entity("sensor"),
         _opt(CONF_ROOM_HUMIDITY, cur): _entity("sensor"),
         _opt(CONF_ROOM_WINDOWS, cur): _entity("binary_sensor", multiple=True),
-        _opt(CONF_ROOM_CLIMATE, cur): _entity("climate"),
-        _opt(CONF_ROOM_VALVES, cur): _entity("climate", multiple=True),
-        vol.Required(
-            CONF_ROOM_VALVE_CONTROL,
-            default=cur.get(CONF_ROOM_VALVE_CONTROL) if cur.get(CONF_ROOM_VALVE_CONTROL) in VALVE_CONTROL_CHOICES
-            else VALVE_CONTROL_AUTO,
-        ): selector.SelectSelector(
-            selector.SelectSelectorConfig(
-                options=list(VALVE_CONTROL_CHOICES), translation_key="valve_control",
-                mode=selector.SelectSelectorMode.LIST,
-            )
+        _opt(ROOM_THERMOSTAT_OR_VALVES, {ROOM_THERMOSTAT_OR_VALVES: thermostat_or_valves(cur) or None}): _entity(
+            "climate", multiple=True
         ),
-    }
-    if heat_pump:
-        fields[_req(CONF_ROOM_HEAT_PUMP, cur, False)] = selector.BooleanSelector()
-        fields[_req(CONF_ROOM_DRYING, cur, False)] = selector.BooleanSelector()
-        fields[_req(CONF_ROOM_DRYING_AUTO, cur, True)] = selector.BooleanSelector()
-    fields.update({
-        _opt(CONF_ROOM_GAIN_SENSORS, cur): _entity("sensor", multiple=True),
         _opt(CONF_ROOM_SCHEDULE_ENTITY, cur): _entity("schedule"),
-        **({_opt(CONF_ROOM_COOLING_SCHEDULE_ENTITY, cur): _entity("schedule")} if heat_pump and const.COOLING_PREVIEW else {}),
-        _opt(CONF_ROOM_PREHEAT_MAX_MIN, cur): _number(0, 720, 5, "min"),
         _req(CONF_ROOM_COMFORT_TEMP, cur, DEFAULT_ROOM_COMFORT_TEMP): _number(*ROOM_TEMP_RANGES["comfort"], 0.5, "°C"),
         _req(CONF_ROOM_SETBACK_TEMP, cur, DEFAULT_ROOM_SETBACK_TEMP): _number(*ROOM_TEMP_RANGES["setback"], 0.5, "°C"),
-        _req(CONF_ROOM_LEAD_K, cur, DEFAULT_ROOM_LEAD_K): _number(0.0, ROOM_LEAD_MAX_K, 0.5, "K"),
-        _req(CONF_ROOM_SCHEDULE_WEEKDAY, cur, DEFAULT_SCHEDULE_WEEKDAY): _text(),
-        _req(CONF_ROOM_SCHEDULE_WEEKEND, cur, DEFAULT_SCHEDULE_WEEKEND): _text(),
-    })
+    }
+    if heat_pump:
+        fields[vol.Required(SECTION_ROOM_HEAT_PUMP)] = _section(
+            {
+                _req(CONF_ROOM_HEAT_PUMP, cur, False): selector.BooleanSelector(),
+                _req(CONF_ROOM_DRYING, cur, False): selector.BooleanSelector(),
+                _req(CONF_ROOM_DRYING_AUTO, cur, True): selector.BooleanSelector(),
+                **({_opt(CONF_ROOM_COOLING_SCHEDULE_ENTITY, cur): _entity("schedule")} if const.COOLING_PREVIEW else {}),
+            },
+            collapsed=not cur.get(CONF_ROOM_HEAT_PUMP),
+        )
+    fields[vol.Required(SECTION_ROOM_TIMES)] = _section(
+        {
+            _req(CONF_ROOM_SCHEDULE_WEEKDAY, cur, DEFAULT_SCHEDULE_WEEKDAY): _text(),
+            _req(CONF_ROOM_SCHEDULE_WEEKEND, cur, DEFAULT_SCHEDULE_WEEKEND): _text(),
+            _opt(CONF_ROOM_PREHEAT_MAX_MIN, cur): _number(0, 720, 5, "min"),
+        },
+        collapsed=True,
+    )
+    fields[vol.Required(SECTION_ROOM_ADVANCED)] = _section(
+        {
+            _req(CONF_ROOM_PRIORITY, cur, 5): _number(1, 10, 1),
+            _opt(CONF_ROOM_GAIN_SENSORS, cur): _entity("sensor", multiple=True),
+            _req(CONF_ROOM_LEAD_K, cur, DEFAULT_ROOM_LEAD_K): _number(0.0, ROOM_LEAD_MAX_K, 0.5, "K"),
+            vol.Required(
+                CONF_ROOM_VALVE_CONTROL,
+                default=cur.get(CONF_ROOM_VALVE_CONTROL) if cur.get(CONF_ROOM_VALVE_CONTROL) in VALVE_CONTROL_CHOICES
+                else VALVE_CONTROL_AUTO,
+            ): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=list(VALVE_CONTROL_CHOICES), translation_key="valve_control",
+                    mode=selector.SelectSelectorMode.LIST,
+                )
+            ),
+        },
+        collapsed=True,
+    )
     if allow_add_another:
         fields[vol.Required("add_another", default=False)] = selector.BooleanSelector()
     return vol.Schema(fields)
+
+
+def thermostat_or_valves(room: Mapping[str, Any]) -> list[str]:
+    """What the one field shows: the stored room thermostat and valves driven directly."""
+    climate = room.get(CONF_ROOM_CLIMATE)
+    return [*([climate] if isinstance(climate, str) and climate else []), *_valves(room)]
+
+
+def split_thermostat_or_valves(
+    user_input: Mapping[str, Any], platform: Callable[[str], str | None]
+) -> tuple[dict[str, Any], dict[str, str]]:
+    """The answer with the one field sorted into `climate_entity` and `valve_entities`, and what is refused.
+
+    `platform` names the integration of an entity (entity registry). Better, Versatile and Generic Thermostat are
+    room thermostats; anything else (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP ...) is a valve. An entity the registry
+    does not know (set up in YAML without an id) stays a room thermostat, as the field of that name took it before.
+    """
+    flat = {k: v for k, v in user_input.items() if k not in (ROOM_THERMOSTAT_OR_VALVES, CONF_ROOM_CLIMATE, CONF_ROOM_VALVES)}
+    chosen = list(dict.fromkeys(e for e in user_input.get(ROOM_THERMOSTAT_OR_VALVES) or () if isinstance(e, str) and e))
+    known = {e: platform(e) for e in chosen}
+    thermostats = [e for e in chosen if known[e] is None or known[e] in ROOM_THERMOSTAT_PLATFORMS]
+    valves = [e for e in chosen if e not in thermostats]
+    if thermostats:
+        flat[CONF_ROOM_CLIMATE] = thermostats[0]
+    if valves:
+        flat[CONF_ROOM_VALVES] = valves
+    if thermostats and valves:
+        return flat, {ROOM_THERMOSTAT_OR_VALVES: "valves_and_thermostat"}
+    if len(thermostats) > 1:
+        return flat, {ROOM_THERMOSTAT_OR_VALVES: "two_room_thermostats"}
+    return flat, {}
+
+
+def thermostat_or_valves_errors(errors: Mapping[str, str]) -> dict[str, str]:
+    """Messages about the room thermostat or the valves stand at the one field that took them."""
+    moved = {k: v for k, v in errors.items() if k not in (CONF_ROOM_CLIMATE, CONF_ROOM_VALVES)}
+    for key in (CONF_ROOM_CLIMATE, CONF_ROOM_VALVES):
+        if key in errors:
+            moved.setdefault(ROOM_THERMOSTAT_OR_VALVES, errors[key])
+    return moved
+
+
+def lift_section_errors(schema: vol.Schema, errors: Mapping[str, str]) -> dict[str, str]:
+    """A message for a field under a heading stands above the form: a folded heading would hide it at its field."""
+    inside = {
+        str(m) for marker, value in schema.schema.items() if isinstance(value, section) for m in _markers(value.schema)
+    }
+    lifted = {key: code for key, code in errors.items() if key not in inside}
+    for key, code in errors.items():
+        if key in inside:
+            lifted.setdefault("base", code)
+    return lifted
 
 
 # The keys of a room's cooling numbers begin with "cool_" (number.py): a room key that ends so collides with them.

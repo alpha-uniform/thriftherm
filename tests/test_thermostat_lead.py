@@ -355,9 +355,9 @@ def test_a_stored_lead_option_is_read_safely(raw, kept):
 
 
 def test_the_room_form_offers_the_lead_with_its_default():
-    from custom_components.thriftherm.config_schema import schema_room
+    from custom_components.thriftherm.config_schema import _markers, schema_room
 
-    fields = {str(key): key for key in schema_room({}, False).schema}
+    fields = {str(key): key for key in _markers(schema_room({}, False))}
     assert fields["thermostat_lead_k"].default() == 0.5
-    stored = {str(key): key for key in schema_room({"thermostat_lead_k": 1.0}, False).schema}
+    stored = {str(key): key for key in _markers(schema_room({"thermostat_lead_k": 1.0}, False))}
     assert stored["thermostat_lead_k"].default() == 1.0

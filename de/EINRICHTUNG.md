@@ -212,7 +212,7 @@ Bei Fernwärme erscheinen stattdessen *Wärmepreis laut Abrechnung*, *Davon nach
 
 ### 4.3 Gastherme (ebusd) und Gaszähler
 
-Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme und trägt ein, was er findet: die Werte der Therme, ihren ebusd-Kreis, das eBUS-Signal und, wenn genau einer passt, den Gaszähler. Die Beschreibung des Schritts sagt, was gefunden wurde, zum Beispiel *Gefunden: Vaillant (bai), 6 von 6 Werten – bitte prüfen.* Prüfe die Felder und mach weiter. Wurde nichts gefunden, steht dort *Keine Therme über ebusd gefunden – bitte wähle die Entitäten selbst aus.*
+Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme und trägt ein, was er findet: die Werte der Therme, ihren ebusd-Kreis, das eBUS-Signal und, wenn genau einer passt, den Gaszähler. Die Beschreibung des Schritts sagt, was gefunden wurde, zum Beispiel *Gefunden: Vaillant (bai), 5 von 5 Werten – bitte prüfen.* Prüfe die Felder und mach weiter. Wurde nichts gefunden, steht dort *Keine Therme über ebusd gefunden – bitte wähle die Entitäten selbst aus.*
 
 | Feld | Was du wählst oder einträgst |
 |---|---|
@@ -221,7 +221,7 @@ Der Schritt *Gastherme (ebusd) und Gaszähler* sucht nach deiner ebusd-Therme un
 | Therme-Status aus Status01 (off/on/overrun/hwc) | ebusd **Status01 pumpstate** (Status01 liefert mehrere Entitäten; die anderen sind Temperaturen) |
 | Heizungspumpe läuft (ebusd WP, on/off) | ebusd **WP** |
 | Status-Nummer der Therme (ebusd Statenumber, S.xx) | ebusd **Statenumber** |
-| Warmwasser aktiv (ebusd hwcmode oder ein Binärsensor) | ebusd **Status02 hwcmode** |
+| Warmwasser läuft (Binärsensor, optional) | bei ebusd leer lassen: Warmwasser erkennt Thriftherm an Status01, Status-Nummer und Temperaturen. *Status02 hwcmode* ist die Betriebsart (an, aus, auto), nicht das laufende Warmwasser |
 | eBUS-Signal (Binärsensor) | **das Signal von ebusd selbst** (`binary_sensor.…_global_signal`), nicht den Verbindungssensor des Adapters: Fällt der Adapter aus dem WLAN, bleibt sein eigener Sensor auf seinem letzten Wert „an“ stehen |
 | Nenn-Umlaufwassermenge der Pumpe | den Standardwert lassen, außer die Anleitung deiner Therme sagt etwas anderes |
 | Gaszähler Volumen (m³, Gesamt), Gaszähler Momentanfluss (m³/h) | deine Gaszähler-Entitäten, falls vorhanden; sonst leer lassen. Die Steuerung braucht keinen Gaszähler: Brennerlauf und Warmwasser erkennt sie an Pumpe und Statuscode. Ohne Zähler gibt es die Sensoren *Gasleistung* und *Gasenergie* nicht |
@@ -283,28 +283,32 @@ Wähle mindestens einen Außenfühler oder die Wetter-Entität – die Heizkurve
 
 Du legst einen Raum pro Seite an. Mit dem Haken **Weiteren Raum hinzufügen** kommt die nächste Seite; den letzten Raum ohne Haken absenden, dann ist die Einrichtung fertig.
 
+Oben stehen die Felder, die jeder Raum braucht. Seltenes liegt in drei eingeklappten Abschnitten darunter: *Wärmepumpe und Bad-Trocknung*, *Komfortzeiten ohne Zeitplan-Helfer, längstes Vorheizen* und *Erweitert*. Gespeichert wird alles wie bisher.
+
 | Feld | Was du einträgst |
 |---|---|
 | Raumname | zum Beispiel `Wohnzimmer` |
-| Priorität (1 = höchste) | wichtigere Räume bekommen eine kleinere Zahl; 5 passt für den Anfang |
 | Raumtemperatursensor | optional: Ein eigener Fühler im Raum misst genauer als das Ventil am Heizkörper. Jeder Temperatursensor in Home Assistant geht. Die Bad-Trocknung braucht ihn |
 | Raumfeuchtesensor | optional |
 | Fenster-/Türkontakte | optional, alle Kontakte des Raums |
-| Thermostat (TRV oder Better Thermostat) | die **Better-Thermostat**- oder Versatile-Thermostat-Entität des Raums. Steuert Thriftherm die Ventile direkt, bleibt es leer (siehe *Heizkörperventile, direkt gesteuert*). Noch nichts davon? Leer lassen und später ergänzen (Optionen → *Räume* → Raum → *Bearbeiten*) |
-| Leistungssensoren interner Wärmequellen | optional, sonst leer lassen: Leistung von Geräten, die den Raum mitheizen (etwa ein Rechner). Über 150 W senkt jedes weitere Watt den Heizbedarf des Raums um 0,1 % (*Regelparameter → Für Fortgeschrittene*: *Schwelle interne Wärmegewinne*, *Bedarfsreduktion je W interner Gewinne*) |
-| Zeitplan-Helfer (optional; ersetzt die Komfortfenster unten) | ein Zeitplan-Helfer von Home Assistant, dessen Blöcke die Komfortzeiten sind |
-| Längstes Vorheizen | optional, für einen Raum, den du nur kurz warm brauchst ([Einzelheiten](ANLEITUNG.md#vorheizen)) |
+| Thermostat oder Heizkörperventile | das **Better-Thermostat**-, Versatile- oder Generic-Thermostat des Raums, *oder* seine nackten Ventile (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …), die Thriftherm dann direkt steuert (Vorschau, [Einzelheiten](ANLEITUNG.md#ventile-direkt-ohne-raumthermostat-vorschau)). Thriftherm sortiert nach der Integration; ein Raumthermostat und Ventile zusammen lehnt das Formular ab. Für Ventile vorher am Ventil in HA die *Fühlerauswahl* und den *Fremdtemperatur-Eingang* aktivieren, falls deaktiviert (Einstellungen → Geräte → Entitäten), und die *Temperaturgenauigkeit* auf −0,4 stellen. Noch nichts davon? Leer lassen und später ergänzen (Optionen → *Räume* → Raum → *Bearbeiten*) |
+| Zeitplan-Helfer (optional; ersetzt die Komfortzeiten im Abschnitt unten) | ein Zeitplan-Helfer von Home Assistant, dessen Blöcke die Komfortzeiten sind |
 | Komforttemperatur | Temperatur, wenn der Raum genutzt wird, zum Beispiel 20 °C |
 | Absenktemperatur | Temperatur außerhalb der Komfortzeiten, zum Beispiel 17 °C; nie über der Komforttemperatur |
-| Heizkörperventile, direkt gesteuert | statt eines Thermostats, Vorschau ([Einzelheiten](ANLEITUNG.md#ventile-direkt-ohne-raumthermostat-vorschau)). Vorher am Ventil in HA die *Fühlerauswahl* und den *Fremdtemperatur-Eingang* aktivieren, falls deaktiviert (Einstellungen → Geräte → Entitäten), und die *Temperaturgenauigkeit* auf −0,4 stellen |
-| Vorhalt am Thermostat | 0,5 K lassen ([Einzelheiten](ANLEITUNG.md#vorhalt-am-thermostat)); 0 schaltet ihn aus |
+| **Abschnitt Komfortzeiten ohne Zeitplan-Helfer, längstes Vorheizen** | |
 | Komfortzeiten Mo–Fr / Sa–So | Zeiten als `HH:MM-HH:MM`, mehrere mit Komma getrennt, zum Beispiel `06:00-08:00,17:00-22:00`. Vorgegeben sind 06:00-22:00 und 08:00-23:00 |
+| Längstes Vorheizen | optional, für einen Raum, den du nur kurz warm brauchst ([Einzelheiten](ANLEITUNG.md#vorheizen)) |
+| **Abschnitt Erweitert** | |
+| Priorität (1 = höchste) | wichtigere Räume bekommen eine kleinere Zahl; 5 passt für den Anfang |
+| Leistungssensoren interner Wärmequellen | optional, sonst leer lassen: Leistung von Geräten, die den Raum mitheizen (etwa ein Rechner). Über 150 W senkt jedes weitere Watt den Heizbedarf des Raums um 0,1 % (*Regelparameter → Für Fortgeschrittene*: *Schwelle interne Wärmegewinne*, *Bedarfsreduktion je W interner Gewinne*) |
+| Vorhalt am Thermostat | 0,5 K lassen ([Einzelheiten](ANLEITUNG.md#vorhalt-am-thermostat)); 0 schaltet ihn aus |
+| Wie die Ventile geregelt werden | *Automatisch* lassen; nur für direkt gesteuerte Ventile, die anderen Wege sind zum Testen |
 
 Der Raum ist warm, *wenn* eine Komfortzeit beginnt: Thriftherm fängt rechtzeitig vorher an zu heizen.
 
 **Fühler, die nur bei Änderung melden** (z. B. Shelly H&T: erst ab 1 °C oder 1 %): Normalerweise gilt ein unveränderter Wert höchstens 6 Stunden, solange das Gerät nichts anderes meldet (meldet es noch etwa die Feuchte, bis zu einem Tag). Schalte dann unter *Optionen → Regelparameter → Für Fortgeschrittene* **Raumfühler melden nur bei Änderung** ein. Raumtemperaturen gelten dann bis zum *Max. Sensoralter*. Bei Fühlern, die alle paar Minuten melden, bleibt der Schalter aus.
 
-Nur wenn eine Wärmepumpe eingerichtet ist, zeigt das Formular zusätzlich *Wird von der Wärmepumpe beheizt*, *Bad-Trocknung mit der Wärmepumpe* und *Trocknung nach dem Duschen von selbst starten*. Die Bad-Trocknung läuft über die Wärmepumpe, ohne sie erscheint keins der Felder. Mit ihr bekommt der Raum den Knopf *Jetzt trocknen*; ist der dritte Schalter aus, trocknet nur der Knopf. Sie braucht außerdem *Wird von der Wärmepumpe beheizt* und den Raumfeuchtesensor, sonst lehnt das Formular sie ab.
+Nur wenn eine Wärmepumpe eingerichtet ist, zeigt das Formular zusätzlich den Abschnitt *Wärmepumpe und Bad-Trocknung* mit *Wird von der Wärmepumpe beheizt*, *Bad-Trocknung mit der Wärmepumpe* und *Trocknung nach dem Duschen von selbst starten*. Die Bad-Trocknung läuft über die Wärmepumpe, ohne sie erscheint keins der Felder. Mit ihr bekommt der Raum den Knopf *Jetzt trocknen*; ist der dritte Schalter aus, trocknet nur der Knopf. Sie braucht außerdem *Wird von der Wärmepumpe beheizt* und den Raumfeuchtesensor, sonst lehnt das Formular sie ab.
 
 **Prüfen:** Nach dem letzten Raum zeigt *Einstellungen → Geräte & Dienste* **Thriftherm**. Sein Gerät zeigt *Thermensteuerung* und *Raumsteuerung* auf **Nur beobachten**.
 
@@ -312,7 +316,7 @@ Nur wenn eine Wärmepumpe eingerichtet ist, zeigt das Formular zusätzlich *Wird
 
 Überspringen, wenn du keine smarten Heizkörperventile hast. Die Thermensteuerung funktioniert auch ohne; dann die Handventile weit genug öffnen und die Vorlauftemperatur die Arbeit machen lassen.
 
-Je Raum gibt es drei Wege: die Ventile direkt (ohne weitere Integration), Better Thermostat oder Versatile Thermostat. Ein Raum hat entweder ein *Thermostat* oder Ventile, nicht beides. Was im Alltag gilt: [Anleitung, Raumthermostate](ANLEITUNG.md#raumthermostate).
+Je Raum gibt es drei Wege: die Ventile direkt (ohne weitere Integration), Better Thermostat oder Versatile Thermostat. Alle kommen ins Feld *Thermostat oder Heizkörperventile*; Thriftherm sortiert nach der Integration: Better, Versatile und Generic Thermostat sind Raumthermostate, alles andere sind Ventile. Ein Raum hat entweder ein Raumthermostat oder Ventile, nicht beides. Was im Alltag gilt: [Anleitung, Raumthermostate](ANLEITUNG.md#raumthermostate).
 
 ### Ventile direkt (Vorschau)
 
@@ -320,7 +324,7 @@ Mit Sonoff TRVZB/TRVZBT und Zigbee2MQTT erprobt; andere Ventile (ZHA, Shelly und
 
 1. Am Ventil in Home Assistant die Entitäten *Fühlerauswahl* und *Fremdtemperatur-Eingang* aktivieren, falls sie deaktiviert sind (*Einstellungen → Geräte → Entitäten*).
 2. Beim TRVZB/TRVZBT die *Temperaturgenauigkeit* auf −0,4 stellen.
-3. In Thriftherm unter Optionen → *Räume* → Raum → *Bearbeiten* das Feld *Thermostat* leeren und die Ventile unter *Heizkörperventile, direkt gesteuert* wählen. Ein Ventil, das ein aktiver Better-Thermostat-Eintrag noch steuert, lehnt das Formular ab.
+3. In Thriftherm unter Optionen → *Räume* → Raum → *Bearbeiten* im Feld *Thermostat oder Heizkörperventile* ein Raumthermostat entfernen und die Ventile wählen. Ein Ventil, das ein aktiver Better-Thermostat-Eintrag noch steuert, lehnt das Formular ab.
 
 ### Better Thermostat
 
@@ -329,14 +333,14 @@ Für jeden Raum:
 1. **Better Thermostat** aus HACS (Marketplace) installieren, falls noch nicht geschehen.
 2. Ein Better Thermostat für den Raum anlegen: die Heizkörperthermostate des Raums wählen, **denselben Raumtemperaturfühler**, den auch Thriftherm bekommen hat, und die **Fensterkontakte** des Raums.
 3. Gibst du ihm einen Außentemperaturfühler, die Außentemperatur, bei der es abschaltet, **hoch genug einstellen, zum Beispiel 25 °C** – oder den Außenfühler leer lassen. Sonst sperrt Better Thermostat Heizen, das Thriftherm anfordert.
-4. In Thriftherm dieses Better Thermostat als Thermostat des Raums wählen (Optionen → *Räume* → Raum → *Bearbeiten*), falls du es in Schritt 4.6 leer gelassen hast.
+4. In Thriftherm dieses Better Thermostat im Feld *Thermostat oder Heizkörperventile* wählen (Optionen → *Räume* → Raum → *Bearbeiten*), falls du es in Schritt 4.6 leer gelassen hast.
 5. Soll ein Dreh am Drehknopf des Ventils als Handänderung zählen, in Better Thermostat den Schalter **Kindersicherung** des Raums **ausschalten**. Ist er an, setzt Better Thermostat das Ventil zurück, und der Dreh zählt nicht.
 
 Ein Thermostat, das du von Hand **ausschaltest**, lässt Thriftherm in Ruhe, und dieser Raum fordert die Therme nicht mehr an. Wie Thriftherm im Alltag mit den Thermostaten umgeht: [Anleitung, Raumthermostate](ANLEITUNG.md#raumthermostate).
 
 ### Versatile Thermostat statt Better Thermostat (Vorschau)
 
-Als Thermostat eines Raums kannst du auch die Klima-Entität von [Versatile Thermostat](https://github.com/jmcollin78/versatile_thermostat) wählen. Wichtig beim Einrichten: Die Funktion „Zentralheizung“ von Versatile Thermostat bleibt ausgeschaltet, wenn Thriftherm die Therme steuert, und den Zeitplan führst du in Thriftherm. Was sonst gilt: [Anleitung, Versatile Thermostat](ANLEITUNG.md#versatile-thermostat-statt-better-thermostat-vorschau).
+Im Feld *Thermostat oder Heizkörperventile* kannst du auch die Klima-Entität von [Versatile Thermostat](https://github.com/jmcollin78/versatile_thermostat) wählen. Wichtig beim Einrichten: Die Funktion „Zentralheizung“ von Versatile Thermostat bleibt ausgeschaltet, wenn Thriftherm die Therme steuert, und den Zeitplan führst du in Thriftherm. Was sonst gilt: [Anleitung, Versatile Thermostat](ANLEITUNG.md#versatile-thermostat-statt-better-thermostat-vorschau).
 
 ## 6. An der Therme
 

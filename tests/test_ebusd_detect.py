@@ -17,7 +17,6 @@ BAI = {
     "boiler_pump_state": ("sensor", "Status01_pumpstate"),
     "boiler_pump_running": ("sensor", "WP_value"),
     "boiler_state_number": ("sensor", "Statenumber_value"),
-    "boiler_hwc_mode": ("sensor", "Status02_hwcmode"),
 }
 
 
@@ -47,7 +46,7 @@ async def test_finds_the_vaillant_boiler_by_unique_id(hass: HomeAssistant) -> No
     _add(hass, "binary_sensor", "eas_signal", original_device_class="connectivity")
     found = detect(hass)
     assert found == Detection(
-        "vaillant_bai", "bai", {**expected, "boiler_signal": "binary_sensor.heating_eas_signal"}, found=6, total=6
+        "vaillant_bai", "bai", {**expected, "boiler_signal": "binary_sensor.heating_eas_signal"}, found=5, total=5
     )
 
 
@@ -57,7 +56,7 @@ async def test_prefers_the_circuit_with_the_most_values(hass: HomeAssistant) -> 
     _add(hass, "sensor", "ebusd_700_Hc1FlowTemp_value")  # the controller: no boiler values
     _add(hass, "sensor", "ebusd_global_Uptime_value")
     found = detect(hass)
-    assert (found.profile, found.circuit, found.found, found.total) == ("vaillant_bai", "bai2", 6, 6)
+    assert (found.profile, found.circuit, found.found, found.total) == ("vaillant_bai", "bai2", 5, 5)
     assert found.entities == expected
 
 
@@ -75,7 +74,7 @@ async def test_missing_optional_values_are_counted(hass: HomeAssistant) -> None:
     expected["boiler_pump_running"] = _add(hass, "binary_sensor", "ebusd_bai_WP_value")
     _add(hass, "binary_sensor", "ebusd_bai_Statenumber_value")  # the status field takes sensors only
     found = detect(hass)
-    assert found == Detection("vaillant_bai", "bai", expected, found=3, total=6)
+    assert found == Detection("vaillant_bai", "bai", expected, found=3, total=5)
 
 
 async def test_flow_and_return_are_required(hass: HomeAssistant) -> None:
@@ -179,7 +178,7 @@ FOUND = Detection(
         "boiler_signal": "binary_sensor.signal", "gas_volume": "sensor.gas",
     },
     found=3,
-    total=6,
+    total=5,
 )
 
 

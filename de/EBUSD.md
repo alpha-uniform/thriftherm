@@ -30,7 +30,6 @@ Diese Nachrichten nicht ausschließen:
 | Status01 | Feld *pumpstate*: Heizbetrieb, Nachlauf, Warmwasser |
 | WP | Heizungspumpe läuft |
 | Statenumber | Status-Nummer S.xx: Heizung, Warmwasser oder Nachlauf |
-| Status02 | Feld *hwcmode*: Warmwasser aktiv |
 | SetMode | der Befehl an die Therme – nie ausschließen |
 | PrEnergySumHc1 bis 3, PrEnergySumHwc1 bis 3 | nur ohne Gaszähler: Daraus schätzt Thriftherm das Gas für Heizung und für Warmwasser (siehe [unten](#was-meist-niemand-braucht)) |
 

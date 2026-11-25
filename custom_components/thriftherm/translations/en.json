@@ -31,7 +31,7 @@
           "boiler_pump_state": "Boiler state from Status01 (off/on/overrun/hwc)",
           "boiler_pump_running": "Heating pump running (ebusd WP, on/off)",
           "boiler_state_number": "Boiler status number (ebusd Statenumber, S.xx)",
-          "boiler_hwc_mode": "Hot water active (ebusd hwcmode, or a binary sensor)",
+          "boiler_hwc_mode": "Hot water running (binary sensor, optional; not ebusd Status02 hwcmode)",
           "boiler_flame": "Burner on (binary sensor, e.g. OpenTherm flame, or burner output in %)",
           "boiler_signal": "eBUS signal (binary sensor)",
           "boiler_flow_setpoint_entity": "Without ebusd: flow setpoint of the boiler (number entity)",
@@ -55,7 +55,7 @@
         "data_description": {
           "boiler_nominal_input_kw": "Only for the two sensors “Gas for heating” and “Gas for hot water”, and only read when no gas meter is set above. A Vaillant boiler adds up its burner output itself (ebusd PrEnergySumHc1-3 and PrEnergySumHwc1-3); with the nominal heat input from the type plate (Q or Qn, the larger value of a range, e.g. 22.2) that becomes kWh as on the gas bill. Leave empty if you have a gas meter or another boiler.",
           "boiler_pump_power_w": "Its electricity joins the price of boiler heat: Thriftherm counts how long the pump runs and how much heat the boiler gives, and adds the pump's electricity per kWh of heat. A heat pump that takes over then also saves the pump's electricity. Leave empty to compare gas alone. A pump in permanent mode often draws 20 to 50 W.",
-          "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation.",
+          "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded.",
           "boiler_condensing": "At its own limit (cycling on its least power, on average far below the flow sent) Thriftherm sends more than the heating curve while a room does not get there: up to 55 °C for a condensing boiler, whose efficiency falls with a hot return, otherwise up to the maximum flow temperature. Untick it for an older boiler without condensing.",
           "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms. The heating curve per load class counts more rooms than this share as the majority (0.5: three of four rooms).",
           "boiler_heat_up_rate_k_h": "How fast a room is to warm up while the boiler heats it, for every heat-up of a room that is 1 °C or more below its target (after a raise, the setback or an open window). Slower than this, Thriftherm raises the flow for this room every 20 minutes and remembers per room how much it took, as the start for its next heat-up; much faster, it lowers it again. More speed burns more gas. Only acts with active boiler control. 0 leaves the flow as before: heating curve, learned correction and up to 8 °C extra while a room is far below target.",
@@ -95,29 +95,50 @@
         "description": "Rooms configured so far: {count}. Schedule format: HH:MM-HH:MM, comma separated (comfort temperature inside the windows, setback outside).",
         "data": {
           "name": "Room name",
-          "priority": "Priority (1 = highest)",
           "temperature_sensor": "Room temperature sensor",
           "humidity_sensor": "Room humidity sensor",
           "window_sensors": "Window / door contacts",
-          "climate_entity": "Thermostat (TRV or Better Thermostat)",
-          "valve_entities": "Radiator valves, driven directly without a room thermostat (instead of the thermostat above; Thriftherm gives them the room temperature or an offset as they can take it)",
-          "valve_control": "How the valves are controlled (only for valves driven directly)",
-          "served_by_midea": "Heated by the heat pump",
-          "internal_gain_sensors": "Power sensors of internal heat sources",
+          "thermostat_or_valves": "Thermostat or radiator valves",
+          "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows under the heading below)",
           "comfort_temp": "Comfort temperature",
           "setback_temp": "Setback temperature",
-          "thermostat_lead_k": "Lead at the thermostat while the boiler heats the room (0 = off; it is asked for this much above the target until the room is nearly there, so that it does not throttle early; not for valves driven directly)",
-          "schedule_weekday": "Comfort windows Mon–Fri",
-          "schedule_weekend": "Comfort windows Sat–Sun",
-          "add_another": "Add another room",
-          "bathroom_drying_mode": "Bathroom drying with the heat pump",
-          "bathroom_drying_automatic": "Start the drying by itself after a shower (off: only with the button “Dry now”)",
-          "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows below)",
-          "preheat_max_min": "Longest preheat (optional; empty: four hours at most, with the boiler also longer if set. Set, the room also calls the boiler up to the end of its block, for a short block)",
-          "cooling_schedule_entity": "Cooling schedule (schedule helper)"
+          "add_another": "Add another room"
         },
         "data_description": {
-          "temperature_sensor": "Optional: a sensor of its own in the room measures more exactly than the valve at the radiator. Any temperature sensor in Home Assistant will do."
+          "temperature_sensor": "Optional: a sensor of its own in the room measures more exactly than the valve at the radiator. Any temperature sensor in Home Assistant will do.",
+          "thermostat_or_valves": "A Better Thermostat, Versatile Thermostat or Generic Thermostat is the room thermostat: Thriftherm gives it the target, the rest (window, valves) it does itself. Bare valves (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …) Thriftherm drives directly, the window included. One room thermostat or any number of valves, not both."
+        },
+        "sections": {
+          "heat_pump": {
+            "name": "Heat pump and bathroom drying",
+            "data": {
+              "served_by_midea": "Heated by the heat pump",
+              "bathroom_drying_mode": "Bathroom drying with the heat pump",
+              "bathroom_drying_automatic": "Start the drying by itself after a shower (off: only with the button “Dry now”)",
+              "cooling_schedule_entity": "Cooling schedule (schedule helper)"
+            }
+          },
+          "times": {
+            "name": "Comfort windows without a schedule helper, longest preheat",
+            "data": {
+              "schedule_weekday": "Comfort windows Mon–Fri",
+              "schedule_weekend": "Comfort windows Sat–Sun",
+              "preheat_max_min": "Longest preheat (optional; empty: four hours at most, with the boiler also longer if set. Set, the room also calls the boiler up to the end of its block, for a short block)"
+            }
+          },
+          "advanced": {
+            "name": "Advanced: priority, internal heat sources, lead, valve control",
+            "data": {
+              "priority": "Priority (1 = highest)",
+              "internal_gain_sensors": "Power sensors of internal heat sources",
+              "thermostat_lead_k": "Lead at the thermostat while the boiler heats the room (0 = off; it is asked for this much above the target until the room is nearly there, so that it does not throttle early; not for valves driven directly)",
+              "valve_control": "How the valves are controlled (only for valves driven directly)"
+            },
+            "data_description": {
+              "thermostat_lead_k": "Only for a room thermostat (Better, Versatile or Generic Thermostat); valves driven directly get no lead.",
+              "valve_control": "Only for valves driven directly (bare valves in the field above); leave it on Automatic, the other ways are for testing."
+            }
+          }
         }
       }
     },
@@ -135,12 +156,13 @@
       "drying_needs_humidity": "Bathroom drying needs the room humidity sensor",
       "climate_is_heat_pump": "This climate entity is the heat pump: a room's thermostat and the heat pump must be two different entities",
       "climate_used_twice": "This thermostat already belongs to another room",
-      "valves_and_thermostat": "A room has either a thermostat or valves driven directly, not both",
+      "valves_and_thermostat": "A room has either a room thermostat (Better, Versatile or Generic Thermostat) or valves driven directly, not both",
       "valve_used_twice": "This valve already belongs to another room",
       "valve_driven_elsewhere": "An active Better Thermostat or Versatile Thermostat drives this valve; disable that entry first",
       "invalid_ebus_circuit": "The eBUS circuit is one word as ebusd names it, such as bai: letters, digits, '.', '_' or '-', no '/', '+', '#' or space",
       "drying_needs_temperature": "Bathroom drying needs the room temperature sensor",
-      "room_needs_a_temperature": "A room needs a temperature sensor, a thermostat or a valve: something has to measure it"
+      "room_needs_a_temperature": "A room needs a temperature sensor, a thermostat or a valve: something has to measure it",
+      "two_room_thermostats": "A room has one room thermostat (Better, Versatile or Generic Thermostat), not two"
     },
     "abort": {
       "celsius_only": "Thriftherm works in °C only. Please switch Home Assistant to the metric unit system first."
@@ -192,7 +214,7 @@
           "boiler_pump_state": "Boiler state from Status01 (off/on/overrun/hwc)",
           "boiler_pump_running": "Heating pump running (ebusd WP, on/off)",
           "boiler_state_number": "Boiler status number (ebusd Statenumber, S.xx)",
-          "boiler_hwc_mode": "Hot water active (ebusd hwcmode, or a binary sensor)",
+          "boiler_hwc_mode": "Hot water running (binary sensor, optional; not ebusd Status02 hwcmode)",
           "boiler_flame": "Burner on (binary sensor, e.g. OpenTherm flame, or burner output in %)",
           "boiler_signal": "eBUS signal (binary sensor)",
           "boiler_flow_setpoint_entity": "Without ebusd: flow setpoint of the boiler (number entity)",
@@ -216,7 +238,7 @@
         "data_description": {
           "boiler_nominal_input_kw": "Only for the two sensors “Gas for heating” and “Gas for hot water”, and only read when no gas meter is set above. A Vaillant boiler adds up its burner output itself (ebusd PrEnergySumHc1-3 and PrEnergySumHwc1-3); with the nominal heat input from the type plate (Q or Qn, the larger value of a range, e.g. 22.2) that becomes kWh as on the gas bill. Leave empty if you have a gas meter or another boiler.",
           "boiler_pump_power_w": "Its electricity joins the price of boiler heat: Thriftherm counts how long the pump runs and how much heat the boiler gives, and adds the pump's electricity per kWh of heat. A heat pump that takes over then also saves the pump's electricity. Leave empty to compare gas alone. A pump in permanent mode often draws 20 to 50 W.",
-          "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded. Reported by a user, not yet measured on the test installation.",
+          "boiler_hot_water_standby": "Off: with active boiler control, the boiler no longer heats for hot water without a tap open, so it stops firing about once an hour to keep its exchanger warm. A tap still gets hot water, a little later. Leave it on if a hot water cylinder is connected: it would no longer be loaded.",
           "boiler_condensing": "At its own limit (cycling on its least power, on average far below the flow sent) Thriftherm sends more than the heating curve while a room does not get there: up to 55 °C for a condensing boiler, whose efficiency falls with a hot return, otherwise up to the maximum flow temperature. Untick it for an older boiler without condensing.",
           "boiler_spread_min_room_share": "The flow/return spread only says something about the heating curve while enough radiators take heat: one open radiator returns the water almost as warm as it went out, and a small spread then used to lower the curve wrongly. With fewer calling rooms than this share of the rooms that can take heat right now (rounded up, at least one), only the progress of the calling rooms counts. Rooms that merely heat along are not counted. 0.5 = half of the rooms. The heating curve per load class counts more rooms than this share as the majority (0.5: three of four rooms).",
           "boiler_heat_up_rate_k_h": "How fast a room is to warm up while the boiler heats it, for every heat-up of a room that is 1 °C or more below its target (after a raise, the setback or an open window). Slower than this, Thriftherm raises the flow for this room every 20 minutes and remembers per room how much it took, as the start for its next heat-up; much faster, it lowers it again. More speed burns more gas. Only acts with active boiler control. 0 leaves the flow as before: heating curve, learned correction and up to 8 °C extra while a room is far below target.",
@@ -392,28 +414,49 @@
         "description": "Rooms configured: {count}. Schedule format: HH:MM-HH:MM, comma separated.",
         "data": {
           "name": "Room name",
-          "priority": "Priority (1 = highest)",
           "temperature_sensor": "Room temperature sensor",
           "humidity_sensor": "Room humidity sensor",
           "window_sensors": "Window / door contacts",
-          "climate_entity": "Thermostat (TRV or Better Thermostat)",
-          "valve_entities": "Radiator valves, driven directly without a room thermostat (instead of the thermostat above; Thriftherm gives them the room temperature or an offset as they can take it)",
-          "valve_control": "How the valves are controlled (only for valves driven directly)",
-          "served_by_midea": "Heated by the heat pump",
-          "internal_gain_sensors": "Power sensors of internal heat sources",
+          "thermostat_or_valves": "Thermostat or radiator valves",
+          "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows under the heading below)",
           "comfort_temp": "Comfort temperature",
-          "setback_temp": "Setback temperature",
-          "thermostat_lead_k": "Lead at the thermostat while the boiler heats the room (0 = off; it is asked for this much above the target until the room is nearly there, so that it does not throttle early; not for valves driven directly)",
-          "schedule_weekday": "Comfort windows Mon–Fri",
-          "schedule_weekend": "Comfort windows Sat–Sun",
-          "bathroom_drying_mode": "Bathroom drying with the heat pump",
-          "bathroom_drying_automatic": "Start the drying by itself after a shower (off: only with the button “Dry now”)",
-          "schedule_entity": "Weekly schedule helper (optional; replaces the comfort windows below)",
-          "preheat_max_min": "Longest preheat (optional; empty: four hours at most, with the boiler also longer if set. Set, the room also calls the boiler up to the end of its block, for a short block)",
-          "cooling_schedule_entity": "Cooling schedule (schedule helper)"
+          "setback_temp": "Setback temperature"
         },
         "data_description": {
-          "temperature_sensor": "Optional: a sensor of its own in the room measures more exactly than the valve at the radiator. Any temperature sensor in Home Assistant will do."
+          "temperature_sensor": "Optional: a sensor of its own in the room measures more exactly than the valve at the radiator. Any temperature sensor in Home Assistant will do.",
+          "thermostat_or_valves": "A Better Thermostat, Versatile Thermostat or Generic Thermostat is the room thermostat: Thriftherm gives it the target, the rest (window, valves) it does itself. Bare valves (Zigbee2MQTT, ZHA, Z-Wave, Homematic IP …) Thriftherm drives directly, the window included. One room thermostat or any number of valves, not both."
+        },
+        "sections": {
+          "heat_pump": {
+            "name": "Heat pump and bathroom drying",
+            "data": {
+              "served_by_midea": "Heated by the heat pump",
+              "bathroom_drying_mode": "Bathroom drying with the heat pump",
+              "bathroom_drying_automatic": "Start the drying by itself after a shower (off: only with the button “Dry now”)",
+              "cooling_schedule_entity": "Cooling schedule (schedule helper)"
+            }
+          },
+          "times": {
+            "name": "Comfort windows without a schedule helper, longest preheat",
+            "data": {
+              "schedule_weekday": "Comfort windows Mon–Fri",
+              "schedule_weekend": "Comfort windows Sat–Sun",
+              "preheat_max_min": "Longest preheat (optional; empty: four hours at most, with the boiler also longer if set. Set, the room also calls the boiler up to the end of its block, for a short block)"
+            }
+          },
+          "advanced": {
+            "name": "Advanced: priority, internal heat sources, lead, valve control",
+            "data": {
+              "priority": "Priority (1 = highest)",
+              "internal_gain_sensors": "Power sensors of internal heat sources",
+              "thermostat_lead_k": "Lead at the thermostat while the boiler heats the room (0 = off; it is asked for this much above the target until the room is nearly there, so that it does not throttle early; not for valves driven directly)",
+              "valve_control": "How the valves are controlled (only for valves driven directly)"
+            },
+            "data_description": {
+              "thermostat_lead_k": "Only for a room thermostat (Better, Versatile or Generic Thermostat); valves driven directly get no lead.",
+              "valve_control": "Only for valves driven directly (bare valves in the field above); leave it on Automatic, the other ways are for testing."
+            }
+          }
         }
       },
       "reset_learning": {
@@ -445,12 +488,13 @@
       "drying_needs_humidity": "Bathroom drying needs the room humidity sensor",
       "climate_is_heat_pump": "This climate entity is the heat pump: a room's thermostat and the heat pump must be two different entities",
       "climate_used_twice": "This thermostat already belongs to another room",
-      "valves_and_thermostat": "A room has either a thermostat or valves driven directly, not both",
+      "valves_and_thermostat": "A room has either a room thermostat (Better, Versatile or Generic Thermostat) or valves driven directly, not both",
       "valve_used_twice": "This valve already belongs to another room",
       "valve_driven_elsewhere": "An active Better Thermostat or Versatile Thermostat drives this valve; disable that entry first",
       "invalid_ebus_circuit": "The eBUS circuit is one word as ebusd names it, such as bai: letters, digits, '.', '_' or '-', no '/', '+', '#' or space",
       "drying_needs_temperature": "Bathroom drying needs the room temperature sensor",
-      "room_needs_a_temperature": "A room needs a temperature sensor, a thermostat or a valve: something has to measure it"
+      "room_needs_a_temperature": "A room needs a temperature sensor, a thermostat or a valve: something has to measure it",
+      "two_room_thermostats": "A room has one room thermostat (Better, Versatile or Generic Thermostat), not two"
     },
     "abort": {
       "learning_reset": "The chosen learning data was cleared. Thriftherm starts learning again.",

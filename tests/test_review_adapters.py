@@ -17,7 +17,7 @@ from custom_components.thriftherm.adapters.inputs import SnapshotBuilder
 from custom_components.thriftherm.const import DOMAIN
 
 from .test_config_flow import _open, _prefilled
-from .test_integration import _entry_data, _set_states, _setup
+from .test_integration import _answer, _entry_data, _set_states, _setup
 
 START = datetime(2026, 1, 15, 12, 0, tzinfo=dt_util.UTC)
 
@@ -35,7 +35,7 @@ async def _save_bathroom_unchanged_but_priority(hass: HomeAssistant, entry) -> d
     """Open the bathroom in the options, change only its priority, save; the room as stored afterwards."""
     result = await _open(hass, entry, "rooms")
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "badezimmer", "action": "edit"})
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {**_prefilled(result), "priority": 2})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], _answer(result, {**_prefilled(result), "priority": 2}))
     assert result["type"] == "create_entry"
     await hass.async_block_till_done()
     return next(r for r in entry.options["rooms"] if r["key"] == "badezimmer")

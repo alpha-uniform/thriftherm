@@ -19,7 +19,7 @@ from custom_components.thriftherm import config_schema, const
 from custom_components.thriftherm.const import DOMAIN
 
 from .test_ebusd_detect import _add, _boiler, _gas_volume, _rename
-from .test_integration import _entry_data, _set_states, _setup
+from .test_integration import _answer, _entry_data, _set_states, _setup
 
 
 @pytest.fixture(autouse=True)
@@ -130,7 +130,8 @@ def test_every_key_the_code_reads_is_kept():
     """Saving drops unknown keys; every top-level key in const.py must survive, room fields live in the rooms."""
     from custom_components.thriftherm import const
 
-    room_fields = {str(k) for k in config_schema.schema_room({}, allow_add_another=False).schema} | {const.CONF_ROOM_KEY}
+    room_fields = {str(k) for k in config_schema._markers(config_schema.schema_room({}, allow_add_another=False))}
+    room_fields |= {const.CONF_ROOM_KEY, const.CONF_ROOM_CLIMATE, const.CONF_ROOM_VALVES}  # stored from the one field
     keys = {value for name, value in vars(const).items() if name.startswith("CONF_")}
     assert keys - room_fields == config_schema.CONFIG_KEYS
 
@@ -251,7 +252,7 @@ async def test_options_boiler_step_clears_what_was_left_empty(hass: HomeAssistan
 def _prefilled(result) -> dict:
     """What the form shows filled in, i.e. what the frontend sends back when the user only confirms."""
     shown = {}
-    for marker in result["data_schema"].schema:
+    for marker in config_schema._markers(result["data_schema"]):  # flat: wrap it in `_answer` for a form with headings
         if marker.description and "suggested_value" in marker.description:
             shown[str(marker)] = marker.description["suggested_value"]
         elif marker.default is not vol.UNDEFINED:
@@ -275,7 +276,7 @@ async def _confirm_boiler_and_finish(hass: HomeAssistant, result, boiler: dict) 
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     room = {"name": "Bad", "temperature_sensor": "sensor.bath_temp", "add_another": False}
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], room)
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], _answer(result, room))
     assert result["type"] == "create_entry" and result["data"] == {}
     await hass.async_block_till_done()
     return result["options"]
@@ -287,7 +288,7 @@ async def test_config_flow_fills_in_the_boiler_found(hass: HomeAssistant) -> Non
     signal = _add(hass, "binary_sensor", "eas_signal", original_device_class="connectivity")
     _gas_volume(hass, "sensor.gas_meter_volume")
     result = await _config_flow_to_boiler(hass)
-    assert result["description_placeholders"] == {"detected": "Found: Vaillant (bai), 6 of 6 values — please check."}
+    assert result["description_placeholders"] == {"detected": "Found: Vaillant (bai), 5 of 5 values — please check."}
     shown = _prefilled(result)
     assert {k: shown.get(k) for k in BOILER_FIELDS if k in found or k in ("boiler_signal", "gas_volume", "gas_flow")} == {
         **found, "boiler_signal": signal, "gas_volume": "sensor.gas_meter_volume", "gas_flow": None,
@@ -302,12 +303,12 @@ async def test_config_flow_fills_in_the_boiler_found(hass: HomeAssistant) -> Non
 
 async def test_config_flow_names_a_partial_find_in_german(hass: HomeAssistant) -> None:
     hass.config.language = "de"
-    _boiler(hass, "bai2", roles=("boiler_flow_temp", "boiler_return_temp", "boiler_hwc_mode"))
+    _boiler(hass, "bai2", roles=("boiler_flow_temp", "boiler_return_temp", "boiler_state_number"))
     result = await _config_flow_to_boiler(hass)
-    assert result["description_placeholders"] == {"detected": "Gefunden: Vaillant (bai2), 3 von 6 Werten – bitte prüfen."}
+    assert result["description_placeholders"] == {"detected": "Gefunden: Vaillant (bai2), 3 von 5 Werten – bitte prüfen."}
     shown = _prefilled(result)
     assert shown["boiler_ebus_circuit"] == "bai2"
-    assert "boiler_pump_state" not in shown and shown["boiler_hwc_mode"] == "sensor.heating_ebusd_bai2_status02_hwcmode"
+    assert "boiler_pump_state" not in shown and shown["boiler_state_number"] == "sensor.heating_ebusd_bai2_statenumber_value"
 
 
 async def test_config_flow_without_ebusd_asks_for_the_entities(hass: HomeAssistant) -> None:
@@ -330,12 +331,12 @@ async def test_options_boiler_step_fills_only_empty_fields(hass: HomeAssistant) 
     _add(hass, "binary_sensor", "eas_signal", original_device_class="connectivity")
     _gas_volume(hass, "sensor.gas_meter_volume")
     result = await _open(hass, entry, "boiler")
-    assert result["description_placeholders"] == {"detected": "Found: Vaillant (bai), 6 of 6 values — please check."}
+    assert result["description_placeholders"] == {"detected": "Found: Vaillant (bai), 5 of 5 values — please check."}
     shown = _prefilled(result)
     assert {k: shown.get(k) for k in BOILER_FIELDS[:11] if k not in ("boiler_circulation_l_h", "boiler_flame")} == {
         "boiler_flow_temp": "sensor.flow", "boiler_return_temp": "sensor.return", "boiler_pump_state": "sensor.pump",
         "boiler_pump_running": found["boiler_pump_running"], "boiler_state_number": found["boiler_state_number"],
-        "boiler_hwc_mode": found["boiler_hwc_mode"], "boiler_signal": "binary_sensor.ebus",
+        "boiler_hwc_mode": None, "boiler_signal": "binary_sensor.ebus",
         "gas_volume": "sensor.gas_meter_volume", "gas_flow": "sensor.gas_flow",
     }
     result = await hass.config_entries.options.async_configure(result["flow_id"], shown)
@@ -349,10 +350,10 @@ async def test_options_boiler_step_leaves_a_configured_boiler_alone(hass: HomeAs
     entry = await _setup(hass)
     _boiler(hass, "bai2")  # a boiler on another circuit than the configured one
     result = await _open(hass, entry, "boiler")
-    assert result["description_placeholders"] == {"detected": "Found: Vaillant (bai2), 6 of 6 values — please check."}
+    assert result["description_placeholders"] == {"detected": "Found: Vaillant (bai2), 5 of 5 values — please check."}
     shown = _prefilled(result)
     assert shown["boiler_ebus_circuit"] == "bai"
-    for key in ("boiler_pump_running", "boiler_state_number", "boiler_hwc_mode"):
+    for key in ("boiler_pump_running", "boiler_state_number"):
         assert key not in shown  # still empty: not taken from the other boiler
 
 
@@ -534,13 +535,13 @@ async def test_options_refuses_a_second_room_with_the_same_name(hass: HomeAssist
     room = {"name": "Badezimmer", "priority": 2, "temperature_sensor": "sensor.x", "comfort_temp": 21.0, "setback_temp": 17.0}
     result = await _open(hass, entry, "rooms")
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "add-room", "action": "edit"})
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {**room, "schedule_weekday": "x"})
-    assert result["errors"] == {"schedule_weekday": "invalid_schedule", "name": "duplicate_room"}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], _answer(result, {**room, "schedule_weekday": "x"}))
+    assert result["errors"] == {"base": "invalid_schedule", "name": "duplicate_room"}
 
     # editing a room under its own name is no duplicate
     result = await _open(hass, entry, "rooms")
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "badezimmer", "action": "edit"})
-    result = await hass.config_entries.options.async_configure(result["flow_id"], room)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], _answer(result, room))
     assert result["type"] == "create_entry"
     await hass.async_block_till_done()
     assert [(r["key"], r["priority"]) for r in entry.options["rooms"]] == [("badezimmer", 2), ("wohnzimmer", 3)]
@@ -556,8 +557,8 @@ async def test_config_flow_refuses_a_second_room_with_the_same_name(hass: HomeAs
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
     assert result["step_id"] == "room"
     room = {"name": "Bad", "temperature_sensor": "sensor.x", "add_another": True}
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], room)
-    result = await hass.config_entries.flow.async_configure(result["flow_id"], {**room, "name": "bad"})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], _answer(result, room))
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], _answer(result, {**room, "name": "bad"}))
     assert result["errors"] == {"name": "duplicate_room"}
     assert result["description_placeholders"] == {"count": "1"}
 
@@ -572,7 +573,7 @@ async def _submit_bathroom(hass: HomeAssistant, entry, **changes):
     result = await _open(hass, entry, "rooms")
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "badezimmer", "action": "edit"})
     answer = {k: v for k, v in {**room, **changes}.items() if v is not None}
-    return await hass.config_entries.options.async_configure(result["flow_id"], answer)
+    return await hass.config_entries.options.async_configure(result["flow_id"], _answer(result, answer))
 
 
 async def test_options_refuses_renaming_a_room_to_another_rooms_name(hass: HomeAssistant) -> None:
@@ -585,22 +586,22 @@ async def test_a_room_thermostat_that_is_the_heat_pump_or_another_rooms_is_refus
     # review 2026-11-08: room control and heat pump control wrote the same unit, each taking the other's
     # setpoint for a hand at the device, and the unit ran above its least power
     entry = await _setup(hass)
-    result = await _submit_bathroom(hass, entry, climate_entity="climate.midea")
-    assert result["errors"] == {"climate_entity": "climate_is_heat_pump"}
-    await _edit_bathroom(hass, entry, climate_entity="climate.bath_trv")
+    result = await _submit_bathroom(hass, entry, thermostat_or_valves=["climate.midea"])
+    assert result["errors"] == {"thermostat_or_valves": "climate_is_heat_pump"}
+    await _edit_bathroom(hass, entry, thermostat_or_valves=["climate.bath_trv"])
     result = await _open(hass, entry, "rooms")
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "add-room", "action": "edit"})
-    room = {"name": "Küche", "temperature_sensor": "sensor.x", "climate_entity": "climate.bath_trv"}
-    result = await hass.config_entries.options.async_configure(result["flow_id"], room)
-    assert result["errors"] == {"climate_entity": "climate_used_twice"}
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {**room, "climate_entity": "climate.kitchen_trv"})
+    room = {"name": "Küche", "temperature_sensor": "sensor.x", "thermostat_or_valves": ["climate.bath_trv"]}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], _answer(result, room))
+    assert result["errors"] == {"thermostat_or_valves": "climate_used_twice"}
+    result = await hass.config_entries.options.async_configure(result["flow_id"], _answer(result, {**room, "thermostat_or_valves": ["climate.kitchen_trv"]}))
     assert result["type"] == "create_entry"
-    await _edit_bathroom(hass, entry, climate_entity="climate.bath_trv")  # its own thermostat again: no second room
+    await _edit_bathroom(hass, entry, thermostat_or_valves=["climate.bath_trv"])  # its own thermostat again: no second room
 
 
 async def test_the_heat_pump_that_is_a_rooms_thermostat_is_refused(hass: HomeAssistant) -> None:
     entry = await _setup(hass)
-    await _edit_bathroom(hass, entry, climate_entity="climate.bath_trv")
+    await _edit_bathroom(hass, entry, thermostat_or_valves=["climate.bath_trv"])
     result = await _open(hass, entry, "midea")
     result = await hass.config_entries.options.async_configure(result["flow_id"], {**_prefilled(result), "midea_climate": "climate.bath_trv"})
     assert result["errors"] == {"midea_climate": "climate_is_heat_pump"}
@@ -621,9 +622,9 @@ async def test_a_room_thermostat_around_the_heat_pump_is_refused(hass: HomeAssis
     entry = await _setup(hass)
     _register_better_thermostat(hass, "bt_midea", "climate.midea")
     _register_better_thermostat(hass, "bt_bath", "climate.bath_trv")
-    result = await _submit_bathroom(hass, entry, climate_entity="climate.bt_midea")
-    assert result["errors"] == {"climate_entity": "climate_is_heat_pump"}
-    await _edit_bathroom(hass, entry, climate_entity="climate.bt_bath")
+    result = await _submit_bathroom(hass, entry, thermostat_or_valves=["climate.bt_midea"])
+    assert result["errors"] == {"thermostat_or_valves": "climate_is_heat_pump"}
+    await _edit_bathroom(hass, entry, thermostat_or_valves=["climate.bt_bath"])
     result = await _open(hass, entry, "midea")
     result = await hass.config_entries.options.async_configure(result["flow_id"], {**_prefilled(result), "midea_climate": "climate.bath_trv"})
     assert result["errors"] == {"midea_climate": "climate_is_heat_pump"}
@@ -655,7 +656,7 @@ async def test_an_ebus_circuit_that_is_no_single_topic_level_is_refused(hass: Ho
 @pytest.mark.parametrize(
     ("changes", "errors"),
     [
-        ({"served_by_midea": False}, {"bathroom_drying_mode": "drying_needs_heat_pump"}),
+        ({"served_by_midea": False}, {"base": "drying_needs_heat_pump"}),  # under a heading that may be folded
         ({"humidity_sensor": None}, {"humidity_sensor": "drying_needs_humidity"}),
         ({}, None),
     ],
@@ -704,7 +705,7 @@ async def test_the_room_form_shows_and_keeps_the_temperatures_in_force(hass: Hom
     shown = _prefilled(result)
     assert (shown["comfort_temp"], shown["setback_temp"]) == (22.5, 17.0)
 
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {**shown, "setback_temp": 16.0})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], _answer(result, {**shown, "setback_temp": 16.0}))
     assert result["type"] == "create_entry"
     await hass.async_block_till_done()
     coordinator = entry.runtime_data  # reloaded
@@ -761,7 +762,7 @@ def test_heat_pump_ticks_appear_only_with_a_heat_pump():
     from custom_components.thriftherm.const import CONF_ROOM_DRYING, CONF_ROOM_HEAT_PUMP
 
     def fields(heat_pump: bool) -> set[str]:
-        return {str(key) for key in schema_room({}, allow_add_another=False, heat_pump=heat_pump).schema}
+        return {str(key) for key in config_schema._markers(schema_room({}, allow_add_another=False, heat_pump=heat_pump))}
 
     assert {CONF_ROOM_DRYING, CONF_ROOM_HEAT_PUMP} <= fields(True)
     assert not {CONF_ROOM_DRYING, CONF_ROOM_HEAT_PUMP} & fields(False)
@@ -878,9 +879,9 @@ def test_every_choice_of_the_heat_pump_tuning_has_its_wording():
 
 
 def test_the_room_form_offers_the_longest_preheat_and_leaves_it_empty():
-    keys = {str(k): k for k in config_schema.schema_room({}, False).schema}
+    keys = {str(k): k for k in config_schema._markers(config_schema.schema_room({}, False))}
     assert "preheat_max_min" in keys and keys["preheat_max_min"].default is vol.UNDEFINED
-    filled = {str(k): k for k in config_schema.schema_room({"preheat_max_min": 45}, False).schema}
+    filled = {str(k): k for k in config_schema._markers(config_schema.schema_room({"preheat_max_min": 45}, False))}
     assert filled["preheat_max_min"].description == {"suggested_value": 45}
 
 
@@ -913,7 +914,7 @@ async def test_a_room_that_ends_in_cool_already_can_still_be_saved_in_the_option
 
     result = await _open(hass, entry, "rooms")
     result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "wohnen_cool", "action": "edit"})
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {**_prefilled(result), "priority": 7})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], _answer(result, {**_prefilled(result), "priority": 7}))
 
     assert result["type"] == "create_entry", result.get("errors")
     await hass.async_block_till_done()
@@ -936,9 +937,179 @@ def test_the_refusal_and_the_repair_have_wording_in_every_language() -> None:
 
 def test_the_own_controller_on_the_opening_is_no_choice_any_more_a_test_may_force_a_way():
     """Review 2026-11-15 §3.5: way d is not offered; item 6: offset or corrected setpoint forced for a test."""
-    schema = config_schema.schema_room({}, allow_add_another=False).schema
+    schema = config_schema.schema_room({}, allow_add_another=False).schema["advanced"].schema.schema
     marker = next(m for m in schema if str(m) == "valve_control")
     assert list(schema[marker].config["options"]) == ["auto", "offset", "setpoint"]
     # a room stored with way d opens with the default, so that the form can be saved
-    schema = config_schema.schema_room({"valve_control": "opening"}, allow_add_another=False).schema
-    assert next(m for m in schema if str(m) == "valve_control").default() == "auto"
+    schema = config_schema.schema_room({"valve_control": "opening"}, allow_add_another=False)
+    assert next(m for m in config_schema._markers(schema) if str(m) == "valve_control").default() == "auto"
+
+
+async def test_status02_hwcmode_is_neither_found_nor_kept_as_hot_water_running(hass: HomeAssistant) -> None:
+    """Status02 hwcmode is the hot water mode, not a run (0.8.1): the search leaves it out, and one stored before
+    is not shown again, else the form, which takes binary sensors only, could not be saved."""
+    entry = await _setup(hass, options={"boiler_hwc_mode": "sensor.heating_ebusd_bai_status02_hwcmode"})
+    _boiler(hass)
+    _add(hass, "sensor", "ebusd_bai_Status02_hwcmode")
+    result = await _open(hass, entry, "boiler")
+    shown = _prefilled(result)
+    assert "boiler_hwc_mode" not in shown
+    result = await hass.config_entries.options.async_configure(result["flow_id"], shown)
+    assert result["type"] == "create_entry"
+    await hass.async_block_till_done()
+    assert entry.options.get("boiler_hwc_mode") is None
+
+
+# ------------------------------------------------------------------ room form under headings (0.8.1)
+ROOM_OPEN = [
+    "name", "temperature_sensor", "humidity_sensor", "window_sensors", "thermostat_or_valves",
+    "schedule_entity", "comfort_temp", "setback_temp",
+]
+ROOM_SECTIONS = {
+    "heat_pump": ["served_by_midea", "bathroom_drying_mode", "bathroom_drying_automatic", "cooling_schedule_entity"],
+    "times": ["schedule_weekday", "schedule_weekend", "preheat_max_min"],
+    "advanced": ["priority", "internal_gain_sensors", "thermostat_lead_k", "valve_control"],
+}
+
+
+def _room_layout(schema) -> tuple[list[str], dict[str, list[str]]]:
+    from homeassistant.data_entry_flow import section
+
+    top, sections = [], {}
+    for marker, value in schema.schema.items():
+        if isinstance(value, section):
+            sections[str(marker)] = [str(m) for m in value.schema.schema]
+        else:
+            top.append(str(marker))
+    return top, sections
+
+
+def test_the_room_form_shows_the_usual_open_and_folds_the_rare():
+    """About 20 fields in one list: what every room needs stands open, the rest under folded headings."""
+    top, sections = _room_layout(config_schema.schema_room({}, allow_add_another=True))
+    assert top == [*ROOM_OPEN, "add_another"] and sections == ROOM_SECTIONS
+    top, sections = _room_layout(config_schema.schema_room({}, allow_add_another=False, heat_pump=False))
+    assert top == ROOM_OPEN and sections == {k: v for k, v in ROOM_SECTIONS.items() if k != "heat_pump"}
+    folded = lambda cur: {  # noqa: E731
+        str(m): v.options["collapsed"] for m, v in config_schema.schema_room(cur, False).schema.items() if str(m) in ROOM_SECTIONS
+    }
+    assert folded({}) == {"heat_pump": True, "times": True, "advanced": True}
+    assert folded({"served_by_midea": True})["heat_pump"] is False  # a room the heat pump serves shows it
+
+
+async def test_a_room_answered_under_headings_is_stored_flat(hass: HomeAssistant) -> None:
+    entry = await _setup(hass)
+    result = await _open(hass, entry, "rooms")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "add-room", "action": "edit"})
+    answer = {
+        "name": "Flur", "temperature_sensor": "sensor.x", "comfort_temp": 20.0, "setback_temp": 16.0,
+        "heat_pump": {"served_by_midea": False, "bathroom_drying_mode": False, "bathroom_drying_automatic": True},
+        "times": {"schedule_weekday": "06:00-22:00", "schedule_weekend": "08:00-23:00"},
+        "advanced": {"priority": 4, "thermostat_lead_k": 0.0, "valve_control": "auto"},
+    }
+    result = await hass.config_entries.options.async_configure(result["flow_id"], answer)
+    assert result["type"] == "create_entry", result.get("errors")
+    await hass.async_block_till_done()
+    room = next(r for r in entry.options["rooms"] if r["key"] == "flur")
+    assert (room["priority"], room["schedule_weekday"], room["served_by_midea"]) == (4, "06:00-22:00", False)
+    assert not set(ROOM_SECTIONS) & set(room)
+
+
+async def test_a_refused_field_under_a_folded_heading_is_told_above_the_form(hass: HomeAssistant) -> None:
+    """A folded heading hides the message at its field: it stands at the top, and the answer is shown again."""
+    entry = await _setup(hass)
+    result = await _open(hass, entry, "rooms")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "add-room", "action": "edit"})
+    answer = {
+        "name": "Flur", "temperature_sensor": "sensor.x", "comfort_temp": 20.0, "setback_temp": 16.0,
+        "heat_pump": {}, "times": {"schedule_weekday": "6-22", "schedule_weekend": "08:00-23:00"}, "advanced": {},
+    }
+    result = await hass.config_entries.options.async_configure(result["flow_id"], answer)
+    assert result["errors"] == {"base": "invalid_schedule"}
+    shown = {str(m): m for m in config_schema._markers(result["data_schema"])}
+    assert shown["schedule_weekday"].default() == "6-22" and shown["name"].default() == "Flur"
+
+
+def test_every_field_and_heading_of_the_room_form_has_its_wording():
+    import json
+    from pathlib import Path
+
+    component = Path(config_schema.__file__).parent
+    for name in ("strings.json", "translations/en.json", "translations/de.json"):
+        data = json.loads((component / name).read_text(encoding="utf-8"))
+        for flow, add in (("config", True), ("options", False)):
+            texts = data[flow]["step"]["room"]
+            top, sections = _room_layout(config_schema.schema_room({}, allow_add_another=add))
+            assert list(texts["data"]) == top, (name, flow)
+            assert {k: list(v["data"]) for k, v in texts["sections"].items()} == sections, (name, flow)
+            assert all(v["name"] and all(v["data"].values()) for v in texts["sections"].values()), (name, flow)
+
+
+# ------------------------------------------------------------------ one field for thermostat or valves (0.8.1)
+def _register_valve(hass: HomeAssistant, object_id: str, platform: str = "mqtt") -> str:
+    """A bare radiator valve, as Zigbee2MQTT or ZHA enter it."""
+    from homeassistant.helpers import entity_registry as er
+
+    return er.async_get(hass).async_get_or_create("climate", platform, object_id, suggested_object_id=object_id).entity_id
+
+
+def _bathroom(entry) -> dict:
+    return next(r for r in entry.options["rooms"] if r["key"] == "badezimmer")
+
+
+async def test_a_better_thermostat_in_the_one_field_is_the_room_thermostat(hass: HomeAssistant) -> None:
+    entry = await _setup(hass)
+    _register_better_thermostat(hass, "bt_bath", "climate.bath_trv")
+    await _edit_bathroom(hass, entry, thermostat_or_valves=["climate.bt_bath"])
+    room = _bathroom(entry)
+    assert room["climate_entity"] == "climate.bt_bath" and not room.get("valve_entities")
+    assert "thermostat_or_valves" not in room
+
+
+@pytest.mark.parametrize("platform", ["mqtt", "zha", "zwave_js", "homematicip_cloud"])
+async def test_a_bare_valve_in_the_one_field_is_driven_directly(hass: HomeAssistant, platform: str) -> None:
+    entry = await _setup(hass)
+    valves = [_register_valve(hass, "bath_valve_1", platform), _register_valve(hass, "bath_valve_2", platform)]
+    await _edit_bathroom(hass, entry, thermostat_or_valves=valves)
+    room = _bathroom(entry)
+    assert room["valve_entities"] == valves and not room.get("climate_entity")
+
+
+async def test_two_room_thermostats_or_one_with_a_valve_are_refused(hass: HomeAssistant) -> None:
+    entry = await _setup(hass)
+    _register_better_thermostat(hass, "bt_bath", "climate.bath_trv")
+    _register_better_thermostat(hass, "bt_bath_2", "climate.bath_trv_2")
+    valve = _register_valve(hass, "bath_valve")
+    result = await _submit_bathroom(hass, entry, thermostat_or_valves=["climate.bt_bath", valve])
+    assert result["errors"] == {"thermostat_or_valves": "valves_and_thermostat"}
+    result = await _submit_bathroom(hass, entry, thermostat_or_valves=["climate.bt_bath", "climate.bt_bath_2"])
+    assert result["errors"] == {"thermostat_or_valves": "two_room_thermostats"}
+
+
+async def test_a_stored_room_shows_its_thermostat_or_valves_in_the_one_field(hass: HomeAssistant) -> None:
+    data = _entry_data()
+    data["rooms"][0]["climate_entity"] = "climate.bt_bath"
+    data["rooms"][1]["valve_entities"] = ["climate.living_valve_1", "climate.living_valve_2"]
+    entry = await _setup(hass, options=data)
+    for key, shown in (("badezimmer", ["climate.bt_bath"]), ("wohnzimmer", ["climate.living_valve_1", "climate.living_valve_2"])):
+        result = await _open(hass, entry, "rooms")
+        result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": key, "action": "edit"})
+        assert _prefilled(result)["thermostat_or_valves"] == shown
+        assert not {"climate_entity", "valve_entities"} & set(_fields(result))
+
+
+async def test_a_bare_valve_stored_as_thermostat_becomes_a_valve_when_the_room_is_saved(hass: HomeAssistant) -> None:
+    """Wanted: as a thermostat it was left the window and everything else; nothing changes until the room is saved."""
+    _set_states(hass)
+    valve = _register_valve(hass, "bath_valve")
+    data = _entry_data()
+    data["rooms"][0]["climate_entity"] = valve
+    entry = await _setup(hass, options=data)
+    assert _bathroom(entry)["climate_entity"] == valve
+    result = await _open(hass, entry, "rooms")
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"room": "badezimmer", "action": "edit"})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], _answer(result, _prefilled(result)))
+    assert result["type"] == "create_entry", result.get("errors")
+    await hass.async_block_till_done()
+    room = _bathroom(entry)
+    assert room["valve_entities"] == [valve] and "climate_entity" not in room

@@ -4,6 +4,14 @@
 
 Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
 
+## 0.8.1 – 2026-11-25
+
+- Thermostat und Heizkörperventile eines Raums stehen in einem Feld; Thriftherm sortiert nach der Integration (Better, Versatile, Generic Thermostat sind Raumthermostate, alles andere Ventile). Ein nacktes Ventil, das bisher als Thermostat eingetragen war, wird beim nächsten Speichern des Raums direkt gesteuert, samt Fenster; ohne Speichern ändert sich nichts.
+- Das Formular eines Raums ist kürzer: Oben steht, was jeder Raum braucht; Wärmepumpe und Bad-Trocknung, Komfortzeiten ohne Zeitplan-Helfer, Priorität, interne Wärmequellen, Vorhalt und Ventil-Regelweg liegen in eingeklappten Abschnitten. Gespeichert wird wie bisher.
+- Behoben: Thriftherm hielt die Warmwasser-Betriebsart der Therme (ebusd Status02 hwcmode „on“) für laufendes Warmwasser; bei einer Therme mit Speicher galt so jede Stunde als Warmwasser, und das Lernen stand still. Das Feld nimmt jetzt nur einen Binärsensor, ein gespeicherter Status02-Wert wird nicht mehr gelesen.
+- Behoben: Die Karte schrieb bei einem Raum, der als erreicht gilt und wieder abkühlt, „Fast erreicht“; jetzt „Gilt als erreicht, heizt wieder unter …“.
+- Behoben: Unter *Nur beobachten* meldete die Karte „Therme heizt“ samt Flammen, obwohl nichts an die Therme ging; jetzt „Therme würde heizen (nur beobachten)“.
+
 ## 0.8.0 – 2026-11-20
 
 **Von 0.7.5 kommend:**
