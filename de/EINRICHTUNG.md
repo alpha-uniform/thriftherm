@@ -370,18 +370,20 @@ Sieht etwas falsch aus, in den Optionen anpassen, bevor du aktiv schaltest.
 
 ### 7.2 Aktiv schalten
 
-1. Die Better-Thermostat-Entitäten auf **Heizen** schalten.
+1. Nur mit Better oder Versatile Thermostat: deren Entitäten auf **Heizen** schalten. Direkt gesteuerte Ventile brauchen nichts.
 2. Thriftherm → *Konfigurieren* → **Gastherme und Gaszähler**: *Aktive Thermensteuerung freigeben (sonst nur beobachten)* einschalten. Absenden.
-3. Thriftherm → *Konfigurieren* → **Regelparameter**, Abschnitt *Freigaben*: *Aktive Raumsteuerung freigeben (Sollwerte an die Thermostate schreiben)* einschalten. Absenden.
+3. Mit Ventilen oder Thermostaten: Thriftherm → *Konfigurieren* → **Regelparameter**, Abschnitt *Freigaben*: *Aktive Raumsteuerung freigeben (Sollwerte an die Thermostate schreiben)* einschalten. Absenden.
 4. Mit Wärmepumpe: Thriftherm → *Konfigurieren* → **Wärmepumpe: Feineinstellung**: *Aktive Steuerung freigeben (sonst nur beobachten)* einschalten. Absenden.
-5. Am Thriftherm-Gerät **Thermensteuerung** und **Raumsteuerung** (mit Wärmepumpe auch **Wärmepumpen-Steuerung**) auf **Aktiv** stellen.
+
+Mit dem Absenden stellt Thriftherm die freigegebene Steuerung selbst von *Nur beobachten* auf *Aktiv*. Zu sehen und umzuschalten ist das unter *Einstellungen → Geräte & Dienste → Thriftherm → Gerät Thriftherm → Steuerelemente*: **Thermensteuerung**, **Raumsteuerung** und mit Wärmepumpe **Wärmepumpen-Steuerung**. Stellst du dort später von Hand auf *Nur beobachten* oder *Aus*, bleibt das so; nimmst du die Freigabe zurück, geht die Steuerung wieder auf *Nur beobachten*.
 
 **Nach ein paar Minuten prüfen:**
 
 | Entität | Erwartet |
 |---|---|
+| *Thermensteuerung*, *Raumsteuerung* | *Aktiv* |
 | *Therme-Steuerbefehl* | Attribut *Befehle werden gesendet* ist an |
-| Better-Thermostat-Entitäten | zeigen die neuen Sollwerte aus dem *Thermostat-Plan* |
+| Ventile bzw. Thermostate | zeigen die neuen Sollwerte aus dem *Thermostat-Plan* |
 | *Sicherheitsstatus* | OK |
 
 **Optional:** Soll *Abwesend* enden, wenn jemand heimkommt, unter Thriftherm → *Konfigurieren* → **Regelparameter** bei *Abwesend endet, wenn eine dieser Personen heimkommt* die Personen (`person.*`) wählen. Ihr Standort muss in Home Assistant stimmen, etwa über die Companion App.
@@ -420,7 +422,7 @@ Was die Karte zeigt, von oben nach unten:
 
 - **Wärmequelle in einem Satz**, z. B. „Wärmepumpe heizt“, darunter die Kosten je kWh Wärme. Ein Tipp öffnet den Vergleich von Therme und Wärmepumpe: was jede tut und warum, Vorlauf-Soll bzw. COP, Kosten, ab welchem COP sich die Wärmepumpe lohnt, und was das Lernen der Heizkurve gerade macht.
 - **Hinweise, nur wenn es welche gibt:** Sicherheit eingeschränkt, Wärmepumpe gesperrt (nur in einem Betriebsmodus, der sie nutzt, also nicht bei *Nur Heizung* oder *Aus (nur Frostschutz)*), Fenster offen, Frostschutz in einem Raum, von Hand geändert (mit *Zurück zur Automatik*), Wärmepumpe von Hand geändert, Thermostat meldet sich nicht.
-- **Eine Zeile je Raum:** gemessene Temperatur, Soll und der Grund. Kleine Symbole zeigen, ob die Therme oder die Wärmepumpe gerade für den Raum heizt, ob von Hand geändert wurde oder ein Fenster offen ist. Ein Tipp auf den Raum öffnet eine Infozeile (der nächste Wechsel laut Zeitplan mit dem Soll danach, und der Trend, wenn der Sensor *Temperaturtrend* des Raums aktiviert ist), *Jetzt* (das Soll von Hand ändern, es gilt so lange wie jede Änderung von Hand), Komfort, Absenkung, *Schnell aufheizen*, im Bad *Jetzt trocknen*, *Zeitplan* (öffnet den Zeitplan-Helfer des Raums, wenn er einen hat) und *Zurück zur Automatik*, solange etwas von Hand läuft: eine Änderung, *Schnell aufheizen* oder *Jetzt trocknen*.
+- **Eine Zeile je Raum:** gemessene Temperatur, Soll und der Grund. Hat ein Ventil des Raums eine Öffnungsgrenze (Sonoff TRVZB/TRVZBT) unter 100 %, steht dahinter, wie weit es offen ist, z. B. „Ventil 60 % offen“; bei mehreren Ventilen der kleinste Wert. Kleine Symbole zeigen, ob die Therme oder die Wärmepumpe gerade für den Raum heizt, ob von Hand geändert wurde oder ein Fenster offen ist. Ein Tipp auf den Raum öffnet eine Infozeile (der nächste Wechsel laut Zeitplan mit dem Soll danach, und der Trend, wenn der Sensor *Temperaturtrend* des Raums aktiviert ist), *Jetzt* (das Soll von Hand ändern, es gilt so lange wie jede Änderung von Hand), Komfort, Absenkung, *Schnell aufheizen*, im Bad *Jetzt trocknen*, *Zeitplan* (öffnet den Zeitplan-Helfer des Raums, wenn er einen hat) und *Zurück zur Automatik*, solange etwas von Hand läuft: eine Änderung, *Schnell aufheizen* oder *Jetzt trocknen*.
 - **Betriebsmodus**, im Modus *Abwesend* mit der Rückkehr.
 
 Die Karte braucht Home Assistant 2025.1 oder neuer. Thriftherm trägt die Karte selbst als Dashboard-Ressource ein. Zeigt das Dashboard nach der Installation oder einem Update trotzdem *Custom element not found: thriftherm-card* oder noch die alte Karte, lade die Seite hart neu (Cmd+Shift+R bzw. Strg+Shift+R). Hilft das nicht, lösche im Browser die Websitedaten deiner Home-Assistant-Adresse; in der App: *Einstellungen → Companion App → Frontend-Cache zurücksetzen* ([Fehlersuche](FEHLERSUCHE.md#die-thriftherm-karte-fehlt-custom-element-doesnt-exist)).

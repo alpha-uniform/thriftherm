@@ -1177,7 +1177,7 @@
         "name": "Deviation from target"
       },
       "room_demand": {
-        "name": "Heat demand",
+        "name": "Heat demand (internal estimate)",
         "state_attributes": {
           "issues": {
             "name": "Issues"
@@ -1198,6 +1198,9 @@
           },
           "calls_again_below": {
             "name": "Calls the boiler again below (°C)"
+          },
+          "valve_opening_pct": {
+            "name": "Valve open (%)"
           }
         }
       },
@@ -2521,6 +2524,15 @@
           },
           "flow_set_by": {
             "name": "Room that sets the flow"
+          },
+          "room_flows_c": {
+            "name": "Flow each room would ask for itself in °C"
+          },
+          "valves_in_part_by_flow_pct": {
+            "name": "Valves open in part because another room's flow is higher (%)"
+          },
+          "valve_opening_learned_pct": {
+            "name": "Correction of the opening on another room's flow, learned per room (percentage points)"
           },
           "heat_up_extra_k": {
             "name": "Heat-up extra per room in degrees (in force while it heats up, else where the next heat-up starts)"

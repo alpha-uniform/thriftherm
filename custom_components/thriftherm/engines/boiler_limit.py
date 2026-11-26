@@ -95,13 +95,14 @@ def judged_rooms(rooms: tuple[RoomResult, ...], lag_k: float) -> list[tuple[Room
     needs: a heat-up (a preheat, a raised target, a target set by hand) the pace it is planned with, PLAN_RATE_MIN_K_H at
     least; holding, LAG_RATE_K_H. A preheat by its pace since it began, else the trend.
 
-    Not judged: a quick heat-up (its own extra), a room whose thermostat shuts its valve or whose valve cannot open, one
+    Not judged: a quick heat-up (its own extra), a room whose thermostat shuts its valve or whose valve cannot open or was open in part by
+    the flow within the last half hour (load.valve_limited), one
     calling for less than LAG_MIN_CALL_S, a target moved within the trend's window, a silent sensor."""
     judged = []
     for r in rooms:
         if not r.heating_allowed or r.boost_active or r.thermostat_heating is False or r.temperature is None:
             continue
-        if r.valve_unable is not None or r.boiler_call not in (None, CALL_CALLING, CALL_STALLED):
+        if r.valve_unable is not None or load.valve_limited(r) or r.boiler_call not in (None, CALL_CALLING, CALL_STALLED):
             continue
         if round(r.target - r.temperature, 2) < lag_k or (r.calling_s is not None and r.calling_s < load.LAG_MIN_CALL_S):
             continue

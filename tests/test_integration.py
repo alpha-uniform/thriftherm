@@ -2277,3 +2277,24 @@ async def test_a_stop_in_a_quick_heat_up_or_a_drying_leaves_the_unit_at_its_room
     await hass.async_block_till_done()
     assert [c.data["temperature"] for c in set_temperature] == [target]
     assert (coordinator.control_memory.last_target, coordinator.control_memory.drying_held) == (target, False)
+
+
+async def test_the_release_in_the_options_is_the_one_step_to_active(hass: HomeAssistant) -> None:
+    """Forum 26.11.2026: the release was given, the control still only observed. The release now switches it on."""
+    entry = await _setup(hass)
+    assert hass.states.get("select.thriftherm_boiler_control").state == "shadow"
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, "boiler_allow_active_control": True, "room_allow_active_control": True}
+    )
+    await hass.async_block_till_done()  # the options reload the entry
+    assert hass.states.get("select.thriftherm_boiler_control").state == "active"
+    assert hass.states.get("select.thriftherm_room_control").state == "active"
+
+    # observe only chosen afterwards stays, also across a reload
+    await hass.services.async_call(
+        "select", "select_option", {"entity_id": "select.thriftherm_boiler_control", "option": "shadow"}, blocking=True
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("select.thriftherm_boiler_control").state == "shadow"
+    assert hass.states.get("select.thriftherm_room_control").state == "active"

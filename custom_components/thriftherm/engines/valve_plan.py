@@ -221,35 +221,85 @@ def _opening_back(mem: ValveMemory) -> float:
 
 # Heating along (heat_call.join), a valve with an opening limit (TRVZB, TRVZBT: valve_opening_degree, shown as
 # heating_valve_position) opens in part, by how little the room lacks of its own target (decided 16.11., "anteilig wie
-# bei BT"): it takes the heat over the whole burner run instead of reaching its target at once and shutting. Coarse on
-# purpose: two stages below fully open. A room sensor in tenths lacks 0.1 (30 %) or 0.2 to 0.3 (60 %); more than that
-# and the valve is open as the person set it, as for a room that calls. The 30 % lies well above the TRVZB's 3 % below
-# which it loses its calibration; whether 30 and 60 take the heat as hoped is measured (docs/PHASE13_VALVES.md).
-JOIN_OPENINGS = ((0.15, 30.0), (0.35, 60.0))  # (lacking less than this many K, opening in %)
-JOIN_DOWN_K = 0.1  # a smaller stage only this far past its bound ...
-JOIN_HOLD_S = 600.0  # ... and this long after the last change; a larger one at once
+# bei BT"): it takes the heat over the whole burner run instead of reaching its target at once and shutting. Stepless
+# since 0.8.2 (decided 25.11., before: the two stages 30 and 60 %): in steps of ten points from 20 % to fully open, ten
+# points for every 0.05 K the room lacks, 30 % at 0.1 K; from 0.45 K the valve is open as the person set it, as for a
+# room that calls. The 20 % lie well above the TRVZB's 3 % below which it loses its calibration.
+OPENING_STEP_PCT = 10.0
+OPENING_LEAST_PCT = 20.0
+JOIN_BASE_PCT = 10.0  # the opening of a room heating along: this ...
+JOIN_PCT_PER_K = 200.0  # ... and this for each K it lacks
+# As the own controller writes (valve_tpi.due): a smaller opening only once it lies this far below the one in force ...
+OPENING_DOWN_PCT = valve_tpi.MIN_CHANGE_PCT
+OPENING_HOLD_S = 600.0  # ... and this long after the last change; a larger one at once (the room falls behind)
 OPENING_ANSWER_S = 300.0  # a valve showing another opening this long after ours: a person set it
 OPENING_MEMO = ("opening_pct", "opening_ts", "opening_before", "opening_prev")
 
 
-def join_opening(deficit_k: float, held_pct: float | None, held_ts: float | None, now_ts: float) -> float | None:
-    """The opening limit for a room heating along `deficit_k` below its own target, None for open as the person set it.
+def _stepless(raw_pct: float, held_pct: float | None, held_ts: float | None, now_ts: float) -> float | None:
+    """The opening limit for `raw_pct`, in steps of OPENING_STEP_PCT and OPENING_LEAST_PCT at least; None for open as the
+    person set it.
 
-    `held_pct` is the limit in force since `held_ts` (None: none yet). A larger stage comes at once; a smaller one once the
-    room lacks JOIN_DOWN_K less than its bound, and not within JOIN_HOLD_S of the last change."""
-    wanted = next((pct for bound, pct in JOIN_OPENINGS if deficit_k < bound), 100.0)
-    if held_pct is None or wanted >= held_pct:
+    `held_pct` is the limit in force since `held_ts` (None: none yet). Either way `raw_pct` has to lie OPENING_DOWN_PCT
+    off it (a need on the rounding edge flapped between two steps, live 25.11.2026); a larger one then comes at once, a
+    smaller one not within OPENING_HOLD_S of the last change."""
+    wanted = math.floor(raw_pct / OPENING_STEP_PCT + 0.5 + 1e-9) * OPENING_STEP_PCT
+    wanted = min(max(wanted, OPENING_LEAST_PCT), 100.0)
+    if held_pct is None:
         return None if wanted >= 100.0 else wanted
-    bound = next(b for b, pct in JOIN_OPENINGS if pct == wanted)
-    if deficit_k > bound - JOIN_DOWN_K + 1e-6 or (held_ts is not None and now_ts - held_ts < JOIN_HOLD_S):
+    if abs(raw_pct - held_pct) < OPENING_DOWN_PCT - 1e-6:
+        return held_pct
+    if wanted > held_pct:
+        return None if wanted >= 100.0 else wanted
+    if held_ts is not None and now_ts - held_ts < OPENING_HOLD_S:
         return held_pct
     return wanted
 
 
+def join_opening(deficit_k: float, held_pct: float | None, held_ts: float | None, now_ts: float) -> float | None:
+    """The opening limit for a room heating along `deficit_k` below its own target, None for open as the person set it
+    (`_stepless`: larger at once, smaller ten points and ten minutes on)."""
+    return _stepless(JOIN_BASE_PCT + JOIN_PCT_PER_K * deficit_k, held_pct, held_ts, now_ts)
+
+
+# A room that calls but does not set the flow (0.8.2): the flow is another room's, a small radiator's, and higher than
+# this room needs. Fully open its radiator gives off more than the room needs: it overshoots, shuts, and the boiler,
+# which cannot go below its least output, cycles. The share of the radiator's output the room needs follows the
+# radiator's law, (flow - room) ** 1.3, and is the opening its valve gets, stepless as for heating along. An opening is
+# no share of the output (a valve half open passes more than half): whether the share as the opening throttles
+# enough is measured (docs/auswertungen/2026-11-25-anteilige-oeffnung-messplan.md).
+RADIATOR_EXPONENT = 1.3
+
+
+def flow_share(own_flow_c: float, sent_flow_c: float, room_c: float) -> float | None:
+    """The share of its radiator's output a room needs that would itself ask for `own_flow_c` while `sent_flow_c` is
+    sent, 0 to 1; None where there is nothing to spare (it needs all that is sent, or the flow is no warmer than it)."""
+    if sent_flow_c <= room_c + 1.0 or own_flow_c >= sent_flow_c - 1e-9:
+        return None
+    return (max(own_flow_c - room_c, 0.0) / (sent_flow_c - room_c)) ** RADIATOR_EXPONENT
+
+
+# Only a room needing this much of its radiator or less is throttled (live 25.11.2026): a valve passes hardly less at
+# 90 % than open, and a surplus of a few percent brings no room past its target (a towel radiator 1.5 degrees under
+# another room's flow went to 90 % for nothing). Once throttled it opens fully again a step above it.
+FLOW_MOST_PCT = 80.0
+
+
+def flow_opening(share: float, held_pct: float | None, held_ts: float | None, now_ts: float) -> float | None:
+    """The opening limit for a room needing `share` of its radiator's output (`flow_share`), None for open as the person
+    set it; the steps and the calm of `join_opening`, at FLOW_MOST_PCT at most."""
+    raw = 100.0 * share
+    if held_pct is None and raw > FLOW_MOST_PCT + 1e-6:
+        return None
+    limit = _stepless(raw, held_pct, held_ts, now_ts)
+    return None if limit is None or limit > FLOW_MOST_PCT else limit
+
+
 def _opening_limit(
-    view: ValveView, mem: ValveMemory, deficit_k: float | None, now_ts: float
+    view: ValveView, mem: ValveMemory, deficit_k: float | None, now_ts: float, share: float | None = None
 ) -> tuple[list[Write], ValveMemory]:
-    """The opening limit of a room heating along (`join_opening`), or the opening given back once it no longer does.
+    """The opening limit of a room heating along `deficit_k` below its target (`join_opening`) or calling and needing
+    `share` of what the flow gives (`flow_opening`), or the opening given back once neither holds.
 
     The value the valve had is the person's and the most it gets (a person's 60 % stays the top); it is remembered with
     the valve (persisted) and given back when the room calls, stops heating along, its window opens, the valve is
@@ -269,9 +319,12 @@ def _opening_limit(
         else:
             # not what we set, long after: a person's, the new top
             mem = replace(mem, opening_before=shown, opening_pct=shown, opening_prev=None)
-    limit = None if deficit_k is None or shown is None else join_opening(
-        deficit_k, mem.opening_pct if ours else None, mem.opening_ts if ours else None, now_ts
-    )
+    held = (mem.opening_pct, mem.opening_ts) if ours else (None, None)
+    limit = None
+    if shown is not None and deficit_k is not None:
+        limit = join_opening(deficit_k, *held, now_ts)
+    elif shown is not None and share is not None:
+        limit = flow_opening(share, *held, now_ts)
     top = mem.opening_before if ours and mem.opening_before is not None else shown
     if limit is not None and top is not None:
         value = max(min(limit, top), view.quirks.min_opening_pct)
@@ -431,6 +484,7 @@ def plan(
     room_sensor: bool = True,
     window_open: bool = False,
     join_deficit_k: float | None = None,
+    flow_share: float | None = None,
 ) -> tuple[ValvePlan, ValveMemory]:
     """What to write to one valve now and what to remember of it.
 
@@ -443,7 +497,9 @@ def plan(
     the own controller the full opening or none. `window_off`: the room's window is open past its delay and the valves
     are to be off (§5.1, the default since 2026-11-15); switched on again once it is shut. An off of a person stays.
     `join_deficit_k`: the room heats along (heat_call.join) this far below its own target, None otherwise: a valve with
-    an opening limit opens in part (`_opening_limit`), on every other way only.
+    an opening limit opens in part (`_opening_limit`), on every other way only. `flow_share`: the room calls, another
+    room sets the flow, and this one needs that share of its radiator's output (`flow_share`), None otherwise: the same
+    limit, by the share.
     """
     caps = view.caps
     if not view.available:
@@ -540,8 +596,10 @@ def plan(
         # Heating along, in part; else back to what it had. Also no more on way d (a room stored with it, saved as
         # Automatic): open as before, its own control is the net (review 2026-11-15, second round #3: left at 3 % the
         # room hardly heated). An exercise gets it open as it was, as does a room that calls.
-        deficit = join_deficit_k if exercise is None and not window_open else None
-        limit_writes, mem = _opening_limit(view, mem, deficit, now_ts)
+        limited = exercise is None and not window_open
+        limit_writes, mem = _opening_limit(
+            view, mem, join_deficit_k if limited else None, now_ts, flow_share if limited else None
+        )
         out.extend(limit_writes)
     if opening is not None and caps.opening:
         value = valve_tpi.due(opening, mem.opening_pct, mem.opening_ts, now_ts, view.quirks.min_opening_pct)

@@ -134,7 +134,8 @@ def test_detail_values_are_rounded_and_start_disabled() -> None:
     assert by_key["dew_point"].value_fn(room) == 12.3
     assert by_key["abs_humidity"].value_fn(room) == 10.5
     detail = {d.key for d in (*ROOM_SENSORS, *SYSTEM_SENSORS) if d.entity_registry_enabled_default is False}
-    assert detail == {"deviation", "trend", "dew_point", "abs_humidity", "boiler_delta_t", "boiler_thermal_power_estimate",
+    # the gap to the target is on since 0.8.2: it is what a person reads instead of the heat demand in percent
+    assert detail == {"trend", "dew_point", "abs_humidity", "boiler_delta_t", "boiler_thermal_power_estimate",
                       "midea_airflow_estimate"}
     assert {"recent_plans", "recent_commands", "cop_map_by_outdoor_temp"} <= DescribedSensor._unrecorded_attributes
     assert "heat_rates" in ModeSelect._unrecorded_attributes

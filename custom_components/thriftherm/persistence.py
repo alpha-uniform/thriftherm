@@ -24,10 +24,11 @@ from .engines.common import as_dict, as_float
 from .engines.heat_call import CallMemory
 from .engines.heat_pump_control import ControlMemory
 from .engines.room_control import RoomCtrlMemory
+from .engines.flow_throttle import Throttle
 from .engines.valve_plan import ValveMemory
 from .engines.learning import AcCoolRateStats, CoolRateStats, CopMap, HeatRateStats
 from .engines.season import FreeRunDays, OutdoorHours
-from .const import SEASON_AUTO, SEASON_COOLING, SEASON_HEATING, SOURCE_BOILER, SOURCE_HEAT_PUMP, STORAGE_VERSION
+from .const import CTRL_ACTIVE, CTRL_SHADOW, SEASON_AUTO, SEASON_COOLING, SEASON_HEATING, SOURCE_BOILER, SOURCE_HEAT_PUMP, STORAGE_VERSION
 from .models import DryingState, Override
 
 if TYPE_CHECKING:
@@ -177,11 +178,37 @@ def restore(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
     coord.last_learning_reset = last_reset if isinstance(last_reset, dict) else None
 
 
+_CONTROLS = ("control_mode", "boiler_control_mode", "room_control_mode")
+
+
+def released(coord: ThrifthermCoordinator) -> dict[str, bool]:
+    """Whether each control was released in the options when stored: a release given later switches it on (apply_release)."""
+    return {f"{key}_released": CTRL_ACTIVE in getattr(coord, f"{key}s") for key in _CONTROLS}
+
+
+def apply_release(coord: ThrifthermCoordinator, data: dict[str, Any] | None) -> None:
+    """The release in the options is the one step to active: a control that observes only and was not released goes active.
+
+    "Off" chosen by hand stays, and so does observe only chosen while released; a fresh install starts observing
+    (7.1 of the setup), and a store from before this rule keeps no release and changes nothing.
+    """
+    if data is None:
+        return
+    for key in _CONTROLS:
+        before = data.get(f"{key}_released")
+        if before is False and getattr(coord, key) == CTRL_SHADOW and CTRL_ACTIVE in getattr(coord, f"{key}s"):
+            setattr(coord, key, CTRL_ACTIVE)
+
+
 def _restore_valves(coord: ThrifthermCoordinator, data: dict[str, Any]) -> None:
     """What each valve driven directly was given, for the valves still configured (docs/PHASE13_VALVES.md)."""
     valves = {v for r in coord.builder.rooms for v in r.valve_entities}
     coord.valve_ctrl_memory = {
         valve: ValveMemory.from_storage(mem) for valve, mem in as_dict(data.get("valve_ctrl_memory")).items() if valve in valves
+    }
+    direct = {r.key for r in coord.builder.rooms if r.valve_entities}
+    coord.flow_throttle = {
+        room: Throttle.from_storage(t) for room, t in as_dict(data.get("flow_throttle")).items() if room in direct
     }
 
 
@@ -254,11 +281,14 @@ def to_store(coord: ThrifthermCoordinator) -> dict[str, Any]:
         "boiler_fault": coord.boiler_fault.to_storage(),
         "boiler_load_log": list(coord.load_log)[-LOAD_LOG_STORED_ROWS:],
         "room_control_mode": coord.room_control_mode,
+        **released(coord),  # a release given later in the options switches observe only to active (apply_release)
         "room_temps": coord.room_temps,
         "room_ctrl_memory": {room: mem.to_storage() for room, mem in coord.room_ctrl_memory.items()},
         # when each valve last spoke and what it showed: a restart of Home Assistant repeats its values (inputs.py)
         "valve_memory": coord.builder.valve_memory(),
         "valve_ctrl_memory": {valve: mem.to_storage() for valve, mem in coord.valve_ctrl_memory.items()},
+        # how far each room's valve opens on another room's flow, as learned (engines/flow_throttle.py)
+        "flow_throttle": {room: t.to_storage() for room, t in coord.flow_throttle.items() if t.adjust_pct},
         "call_memory": {room: mem.to_storage() for room, mem in coord.call_memory.items()},
         "heating_up": sorted(coord._heating_up),  # heating up to a raised target: no holding (boiler_load.heating_up)
         "last_cheaper": coord._last_cheaper,

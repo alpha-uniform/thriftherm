@@ -4,6 +4,16 @@
 
 Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
 
+## 0.8.2 – 2026-11-26
+
+- Ein direkt gesteuertes Sonoff TRVZB/TRVZBT öffnet nur noch anteilig, wenn sein Raum anfordert, aber ein anderer Raum einen deutlich höheren Vorlauf vorgibt (der Raum braucht höchstens 80 % seines Heizkörpers): Der Raum schwingt weniger über, die Therme taktet weniger. Fällt der Raum zurück, öffnet das Ventil wieder so weit, wie du es eingestellt hast.
+- Wie weit so ein Ventil öffnet, lernt Thriftherm je Raum: Fällt der Raum hinter dem begrenzten Ventil zurück, öffnet es beim nächsten Mal weiter; heizt er nach dem Ruf über sein Ziel hinaus, weniger weit.
+- Die anteilige Öffnung ist stufenlos, auch beim Mitheizen: in 10-%-Schritten von 20 % bis ganz offen statt der festen Stufen 30 % und 60 %.
+- Die Karte zeigt in der Raumzeile, wie weit ein Ventil mit Öffnungsgrenze (Sonoff TRVZB/TRVZBT) offen ist, wenn es weniger als 100 % ist.
+- Statt des Heizbedarfs in Prozent zeigen Karte und Beispiel-Dashboard die Abweichung vom Soll in Grad; der Sensor *Abweichung vom Soll* ist jetzt eingeschaltet, *Heizbedarf (interne Schätzung)* steht unter Diagnose.
+- Die Freigabe in den Optionen genügt: Thriftherm stellt die Steuerung danach selbst von *Nur beobachten* auf *Aktiv*. Die Einrichtung beschreibt das Aktivschalten jetzt auch für direkt gesteuerte Ventile.
+- Die mitgelieferte COP-Tabelle der Midea PortaSplit reicht jetzt bis −6 °C Außentemperatur (Messungen bis 24.11.).
+
 ## 0.8.1 – 2026-11-25
 
 - Thermostat und Heizkörperventile eines Raums stehen in einem Feld; Thriftherm sortiert nach der Integration (Better, Versatile, Generic Thermostat sind Raumthermostate, alles andere Ventile). Ein Heizkörperventil, das bisher selbst als Thermostat eingetragen war, wird beim nächsten Speichern des Raums direkt gesteuert, samt Fenster; ohne Speichern ändert sich nichts.

@@ -1177,7 +1177,7 @@
         "name": "Abweichung vom Soll"
       },
       "room_demand": {
-        "name": "Heizbedarf",
+        "name": "Heizbedarf (interne Schätzung)",
         "state_attributes": {
           "issues": {
             "name": "Probleme"
@@ -1198,6 +1198,9 @@
           },
           "calls_again_below": {
             "name": "Ruft die Therme wieder unter (°C)"
+          },
+          "valve_opening_pct": {
+            "name": "Ventil offen (%)"
           }
         }
       },
@@ -2521,6 +2524,15 @@
           },
           "flow_set_by": {
             "name": "Raum, der den Vorlauf bestimmt"
+          },
+          "room_flows_c": {
+            "name": "Vorlauf, den jeder Raum selbst bräuchte, in °C"
+          },
+          "valves_in_part_by_flow_pct": {
+            "name": "Ventile nur teilweise offen, weil ein anderer Raum den höheren Vorlauf vorgibt (%)"
+          },
+          "valve_opening_learned_pct": {
+            "name": "Gelernte Korrektur der Öffnung am Vorlauf eines anderen Raums, je Raum (Prozentpunkte)"
           },
           "heat_up_extra_k": {
             "name": "Aufheiz-Zuschlag je Raum in Grad (gilt beim Aufheizen, sonst Startwert fürs nächste)"

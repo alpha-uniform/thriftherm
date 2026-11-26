@@ -576,3 +576,30 @@ def test_a_direct_room_whose_valve_cannot_be_open_does_not_lag():
     assert load.lagging((behind,))
     for why in ("exercise", "battery"):
         assert not load.lagging((replace(behind, valve_unable=why),))
+
+
+def test_a_room_whose_valve_was_open_in_part_by_the_flow_does_not_lag_until_it_was_fully_open_for_half_an_hour():
+    """0.8.2: a room that calls while another sets the flow has its valve open in part (valve_plan.flow_share). Rising
+    slowly behind that limit it is no evidence that the flow is too low, nor that the boiler is short at its own limit:
+    the valve was open again after a quarter of an hour, the curve judged the room after half an hour of its call."""
+    from custom_components.thriftherm.engines import boiler_limit
+
+    behind = replace(rr(temp=20.6, target=21.0, trend=0.0), boiler_call="calling", calling_s=3600.0)
+    assert load.lagging((behind,)) and boiler_limit.judged_rooms((behind,), 0.2)
+    for ago in (0.0, 600.0, 1799.0):
+        limited = replace(behind, valve_limited_s=ago)
+        assert not load.lagging((limited,)) and not boiler_limit.judged_rooms((limited,), 0.2), ago
+    open_again = replace(behind, valve_limited_s=1800.0)
+    assert load.lagging((open_again,)) and boiler_limit.judged_rooms((open_again,), 0.2)
+
+
+def test_the_time_behind_a_limited_valve_is_booked_to_no_line():
+    """Hours with the valve open in part say nothing about the room's own line: neither that it got there on it, nor
+    that it did not."""
+    bath = replace(rr("badezimmer", temp=20.0, target=21.0), boiler_call="calling")
+    living = replace(rr("wohnzimmer", temp=20.7, target=21.0), boiler_call="calling")
+    mem = heating_memory()
+    for i, room in enumerate((living, living, replace(living, valve_limited_s=0.0), replace(living, valve_limited_s=600.0))):
+        _, mem = decide(_inp([bath, room], mode="active", flow=45.0, ret=42.0, burner=True, now=NOW + 60.0 * i), mem)
+    booked = {cell.split(":")[1]: line.hours for cell, line in mem.lines.items()}
+    assert booked["badezimmer"] == pytest.approx(3 / 60) and booked["wohnzimmer"] == pytest.approx(1 / 60)

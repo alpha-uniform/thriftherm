@@ -408,6 +408,81 @@ async def test_a_valve_heating_along_opens_in_part_a_call_opens_it_fully_and_obs
     assert not calls["switch_on"] and not calls["switch_off"] and not calls["lock"]
 
 
+# ------------------------------------------------------------------ 0.8.2: in part by the flow
+async def test_a_calling_room_that_does_not_set_the_flow_opens_in_part_and_fully_once_it_falls_behind(
+    hass: HomeAssistant, freezer, monkeypatch
+) -> None:
+    """The living room far below its target sets the flow. The bathroom calls 0.3 below its own and would need far
+    less: its valve opens in part, and fully as soon as it lies half a degree below. A boiler only observed heats by its
+    knob: nothing is limited by a flow Thriftherm does not send."""
+    from .test_hand import _cycle
+    from .test_valve_direct import _direct
+
+    coordinator, _, calls = await _direct(hass, freezer, room={"served_by_midea": False})
+    registry = er.async_get(hass)
+    device = registry.async_get("climate.bath").device_id
+    registry.async_get_or_create("number", "mqtt", "trv_bath_heating_valve_position",
+                                 suggested_object_id="bath_heating_valve_position", device_id=device)
+    hass.states.async_set("number.bath_heating_valve_position", "100", {"unit_of_measurement": "%"})
+    hass.states.async_set("select.bath_temperature_sensor_select", "remote_temperature",
+                          {"options": ["local_temperature", "remote_temperature"]})
+
+    def openings() -> list[float]:
+        return [c.data["value"] for c in calls["number"] if c.data["entity_id"] == "number.bath_heating_valve_position"]
+
+    from custom_components.thriftherm.engines import boiler_control
+
+    seen: list[dict] = []
+    decide = boiler_control.decide
+
+    def noting(inp, mem):
+        seen.append({r.key: r.valve_limited_s for r in inp.rooms if r.valve_limited_s is not None})
+        return decide(inp, mem)
+
+    monkeypatch.setattr(boiler_control, "decide", noting)
+    hass.states.async_set("sensor.living_temp", "15.0")  # far enough below that the bathroom needs 80 % at most
+    hass.states.async_set("sensor.bath_temp", "20.7")
+    await _cycle(hass, coordinator, freezer, 60)
+    await _cycle(hass, coordinator, freezer, 60)
+    data = coordinator.data
+    assert data["rooms"]["badezimmer"].boiler_call == heat_call.CALL_CALLING
+    assert data["boiler_command"].flow_set_by == "wohnzimmer" and data["boiler_command"].throttle_rooms == ("badezimmer",)
+    assert 20.0 <= openings()[-1] <= 70.0 and openings()[-1] % 10 == 0 and data["valves_by_flow"] == {"badezimmer": openings()[-1]}
+    hass.states.async_set("number.bath_heating_valve_position", str(openings()[-1]), {"unit_of_measurement": "%"})
+    hass.states.async_set("sensor.bath_temp", "20.5")  # half a degree below: fully open, as the person set it
+    await _cycle(hass, coordinator, freezer, 60)
+    assert openings()[-1] == 100.0 and coordinator.data["valves_by_flow"] == {}
+    # fallen behind its limited valve: the next time it gets ten points more, and that is stored, shown and forgotten
+    from custom_components.thriftherm import learning_reset, persistence
+
+    assert coordinator.flow_throttle["badezimmer"].adjust_pct == 10.0
+    assert coordinator.data["flow_adjust"] == {"badezimmer": 10.0}
+    assert persistence.to_store(coordinator)["flow_throttle"] == {"badezimmer": {"adjust_pct": 10.0}}
+    first = openings()[-2]
+    hass.states.async_set("number.bath_heating_valve_position", "100", {"unit_of_measurement": "%"})
+    hass.states.async_set("sensor.bath_temp", "20.7")
+    for _ in range(12):  # ten minutes on a smaller opening may come
+        await _cycle(hass, coordinator, freezer, 60)
+    assert openings()[-1] == first + 10.0
+    hass.states.async_set("number.bath_heating_valve_position", str(openings()[-1]), {"unit_of_measurement": "%"})
+    await coordinator.async_reset_learning({learning_reset.SCOPE_ROOMS})
+    assert coordinator.flow_throttle["badezimmer"].adjust_pct == 0.0 and coordinator.data["flow_adjust"] == {}
+    hass.states.async_set("sensor.bath_temp", "20.5")
+    await _cycle(hass, coordinator, freezer, 60)
+    assert openings()[-1] == 100.0
+    # what the boiler is told a cycle later: limited a minute ago, so its slow rise is no sign of the flow yet
+    assert seen[0] == {} and seen[-1] == {"badezimmer": 60.0}
+    hass.states.async_set("number.bath_heating_valve_position", "100", {"unit_of_measurement": "%"})
+    hass.states.async_set("sensor.bath_temp", "20.7")
+    coordinator.set_boiler_control_mode("shadow")
+    await hass.async_block_till_done()
+    written = len(openings())
+    for _ in range(12):
+        await _cycle(hass, coordinator, freezer, 60)
+    assert len(openings()) == written
+    assert not calls["switch_on"] and not calls["switch_off"] and not calls["lock"]
+
+
 async def test_the_opening_of_a_valve_heating_along_survives_a_restart_to_be_given_back(hass: HomeAssistant, freezer) -> None:
     from custom_components.thriftherm import persistence
     from custom_components.thriftherm.engines.valve_plan import ValveMemory
@@ -517,3 +592,21 @@ def test_a_learned_rate_at_the_floor_is_planned_with_no_less_than_the_lagging_ra
                    boiler_call="calling", calling_s=7200.0, target_steady_s=7200.0, preheat_for_ts=1.0,
                    preheat_pace_k_per_h=0.12, heat_rate_k_h=res.heat_rate_k_h)
     assert load.lagging_rooms((bath,)) != []
+
+
+async def test_the_heat_demand_shows_how_far_a_valve_with_an_opening_limit_may_open(hass: HomeAssistant, freezer) -> None:
+    """For the card (0.8.2): what the valve shows, the person's limit as well as Thriftherm's; nothing without one."""
+    from .test_hand import _cycle
+    from .test_valve_direct import _direct
+
+    coordinator, _, _ = await _direct(hass, freezer, room={"served_by_midea": False})
+    await _cycle(hass, coordinator, freezer, 60)
+    demand = "sensor.thriftherm_badezimmer_heat_demand"
+    assert hass.states.get(demand).attributes["valve_opening_pct"] is None  # no opening entity: nothing to show
+    registry = er.async_get(hass)
+    device = registry.async_get("climate.bath").device_id
+    registry.async_get_or_create("number", "mqtt", "trv_bath_heating_valve_position",
+                                 suggested_object_id="bath_heating_valve_position", device_id=device)
+    hass.states.async_set("number.bath_heating_valve_position", "60", {"unit_of_measurement": "%"})
+    await _cycle(hass, coordinator, freezer, 60)
+    assert hass.states.get(demand).attributes["valve_opening_pct"] == 60.0

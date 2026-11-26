@@ -409,6 +409,12 @@ class RoomResult:
     stalled_target: float | None = None
     thermostat_heating: bool | None = None  # see RoomState
     valve_unable: str | None = None  # see RoomState
+    # how long ago its valve was last open in part because another room set a higher flow (valve_plan.flow_share), 0
+    # while it is; None: not since the start. Its slow rise then is no sign of the flow (engines/boiler_load.counts)
+    valve_limited_s: float | None = None
+    # how far its valves may open, as the valves with an opening limit show it (Sonoff TRVZB/TRVZBT; the least of
+    # several); None without one. Thriftherm's own limit while heating along or by the flow, else the person's
+    valve_opening_pct: float | None = None
     # where `temperature` comes from: the room sensor, or the valve standing in for it (None: no
     # value, or the average of several valves)
     temperature_entity: str | None = None
@@ -554,6 +560,14 @@ class BoilerCommand:
     spread_rule: str | None = None  # active | blocked_few_rooms, None while the heating is not released
     load_class: str | None = None  # how many rooms call: single | few | majority, None while no room calls
     flow_set_by: str | None = None  # the room whose line sets the flow
+    # the flow each room that wants heat would ask for by itself (curve, its line, its boosts), while the boiler heats
+    room_flows: dict[str, float] | None = None
+    # the flow those rooms measure theirs against: what is sent, less what is sent for the boiler's own limit
+    flow_for_rooms: float | None = None
+    # the calling rooms that need less than that and rise as planned: their valves may open in part (valve_plan.flow_share)
+    throttle_rooms: tuple[str, ...] = ()
+    # ... and those that need less as well but fell behind, their valves fully open for it (engines/flow_throttle.py)
+    throttle_behind: tuple[str, ...] = ()
     heat_up_k: dict | None = None  # each room's heat-up extra: in force now, or where its next heat-up starts
     heating_up: tuple[str, ...] = ()  # the rooms whose heat-up adds to the flow now
     curve_by_load: dict | None = None  # the line of each load class: correction now, level, slope, found, hours

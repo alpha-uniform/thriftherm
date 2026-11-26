@@ -13,6 +13,11 @@ from __future__ import annotations
 
 from typing import Final
 
+# Ids kept when the English name was made clearer later: they stand in people's dashboards and automations.
+KEPT_IDS: Final[dict[tuple[str, str], str]] = {
+    ("sensor", "room_demand"): "heat_demand",  # 0.8.2: "Heat demand (internal estimate)"
+}
+
 OBJECT_IDS: Final[dict[str, dict[str, str]]] = {
     "sensor": {
         "midea_cop": "heat_pump_cop",

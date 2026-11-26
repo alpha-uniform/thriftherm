@@ -846,3 +846,56 @@ async def test_bathroom_drying_needs_an_active_heat_pump(hass: HomeAssistant, mo
         await coordinator.async_refresh()
         await hass.async_block_till_done()
         assert seen and all(value is expected for value in seen), mode
+
+
+def test_release_in_the_options_switches_observe_only_to_active():
+    """Giving the release in the options is the one step: the control goes from observe only to active (forum, 26.11.2026).
+
+    Only where it was not released before and still observes; "off" chosen by hand stays, a release taken back falls to
+    observe only, and a store from before this rule (no release kept) changes nothing.
+    """
+    from types import SimpleNamespace
+
+    from custom_components.thriftherm import persistence
+
+    def coord(released: bool):
+        modes = ["off", "shadow", "active"] if released else ["off", "shadow"]
+        return SimpleNamespace(
+            control_mode="shadow", boiler_control_mode="shadow", room_control_mode="shadow",
+            control_modes=modes, boiler_control_modes=modes, room_control_modes=modes,
+        )
+
+    # released just now: all three were observing without the release
+    now = coord(True)
+    now.room_control_mode = "off"  # chosen by hand, restored before
+    persistence.apply_release(now, {
+        "control_mode": "shadow", "control_mode_released": False,
+        "boiler_control_mode": "shadow", "boiler_control_mode_released": False,
+        "room_control_mode": "off", "room_control_mode_released": False,
+    })
+    assert now.control_mode == "active" and now.boiler_control_mode == "active"
+    assert now.room_control_mode == "off"  # "off" chosen by hand stays
+
+    # released before and set back to observe only by hand: that stays
+    kept = coord(True)
+    persistence.apply_release(kept, {"boiler_control_mode": "shadow", "boiler_control_mode_released": True})
+    assert kept.boiler_control_mode == "shadow"
+
+    # a store from an earlier version keeps no release: nothing changes
+    old = coord(True)
+    persistence.apply_release(old, {"boiler_control_mode": "shadow"})
+    assert old.boiler_control_mode == "shadow"
+
+    # a fresh install starts observing, as the setup recommends
+    fresh = coord(True)
+    persistence.apply_release(fresh, None)
+    assert fresh.boiler_control_mode == "shadow" and fresh.room_control_mode == "shadow"
+
+    # without the release nothing can be active
+    none = coord(False)
+    persistence.apply_release(none, {"boiler_control_mode": "shadow", "boiler_control_mode_released": False})
+    assert none.boiler_control_mode == "shadow"
+
+    # what is stored keeps whether it was released
+    stored = persistence.released(coord(True))
+    assert stored == {"control_mode_released": True, "boiler_control_mode_released": True, "room_control_mode_released": True}

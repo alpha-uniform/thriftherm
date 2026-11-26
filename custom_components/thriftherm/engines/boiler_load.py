@@ -352,11 +352,20 @@ def on_heat_up_plan(r: RoomResult) -> bool:
     return r.heat_rate_k_h is None or pace is None or pace >= r.heat_rate_k_h - 1e-9
 
 
+def valve_limited(r: RoomResult) -> bool:
+    """The room's valve was open in part by the flow (valve_plan.flow_share) within LAG_MIN_CALL_S: behind that limit a
+    slow rise is the valve's, not the flow's. It counts again once the valve was open as the person set it for as long
+    as a call has to run before it counts."""
+    return r.valve_limited_s is not None and r.valve_limited_s < LAG_MIN_CALL_S
+
+
 def counts(r: RoomResult) -> bool:
     """Whether a room's progress says anything about the flow (see `lagging_rooms`)."""
     if not r.heating_allowed or r.boost_active or r.thermostat_heating is False or r.temperature is None:
         return False
     if r.valve_unable is not None:  # a valve driven directly being exercised or on a flat battery
+        return False
+    if valve_limited(r):
         return False
     if r.target_steady_s is not None and r.target_steady_s < TREND_WINDOW_S:
         return False
@@ -394,6 +403,7 @@ def lagging_rooms(rooms: tuple[RoomResult, ...], lag_k: float = LAG_DEFICIT_K) -
       that counts: a household that heats by hand only would never teach the curve otherwise;
     * a room driven directly whose valve cannot be open: being exercised, or on a flat battery (an off or a
       silent valve takes the room's heating away anyway);
+    * a room whose valve was open in part by the flow within the last half hour (`valve_limited`);
     * a room whose thermostat says it does not heat. Its valve is shut although the room is below
       target (the valve's own sensor at the hot radiator, a window rule of the thermostat), and a
       hotter flow would only shut it sooner.

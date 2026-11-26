@@ -666,7 +666,12 @@
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_badezimmer_deviation_from_target": {
-   "attributes": null,
+   "attributes": {
+    "friendly_name": "Badezimmer Deviation from target",
+    "icon": "mdi:thermometer-lines",
+    "state_class": "measurement",
+    "unit_of_measurement": "°C"
+   },
    "capabilities": {
     "state_class": "measurement"
    },
@@ -685,7 +690,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": null,
+   "state": "-2.5",
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_badezimmer_deviation",
    "unit_of_measurement": "°C"
@@ -719,12 +724,13 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Badezimmer Heat demand",
+    "friendly_name": "Badezimmer Heat demand (internal estimate)",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
     "state_class": "measurement",
-    "unit_of_measurement": "%"
+    "unit_of_measurement": "%",
+    "valve_opening_pct": null
    },
    "capabilities": {
     "state_class": "measurement"
@@ -1272,12 +1278,15 @@
     ],
     "paused_until": "2026-01-14T10:50:00+00:00",
     "room_cooling_rates": {},
+    "room_flows_c": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
     "rooms_heating_up": [],
     "rooms_total": 2,
     "setpoint_changed_in": [],
-    "spread_rule": null
+    "spread_rule": null,
+    "valve_opening_learned_pct": {},
+    "valves_in_part_by_flow_pct": {}
    },
    "capabilities": {
     "options": [
@@ -1418,7 +1427,12 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
-   "attributes": null,
+   "attributes": {
+    "friendly_name": "Wohnzimmer Deviation from target",
+    "icon": "mdi:thermometer-lines",
+    "state_class": "measurement",
+    "unit_of_measurement": "°C"
+   },
    "capabilities": {
     "state_class": "measurement"
    },
@@ -1437,7 +1451,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": null,
+   "state": "-1.5",
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
    "unit_of_measurement": "°C"
@@ -1446,12 +1460,13 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Wohnzimmer Heat demand",
+    "friendly_name": "Wohnzimmer Heat demand (internal estimate)",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
     "state_class": "measurement",
-    "unit_of_measurement": "%"
+    "unit_of_measurement": "%",
+    "valve_opening_pct": null
    },
    "capabilities": {
     "state_class": "measurement"
@@ -2322,7 +2337,12 @@
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_badezimmer_deviation_from_target": {
-   "attributes": null,
+   "attributes": {
+    "friendly_name": "Badezimmer Deviation from target",
+    "icon": "mdi:thermometer-lines",
+    "state_class": "measurement",
+    "unit_of_measurement": "°C"
+   },
    "capabilities": {
     "state_class": "measurement"
    },
@@ -2341,7 +2361,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": null,
+   "state": "-2.5",
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_badezimmer_deviation",
    "unit_of_measurement": "°C"
@@ -2375,12 +2395,13 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Badezimmer Heat demand",
+    "friendly_name": "Badezimmer Heat demand (internal estimate)",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
     "state_class": "measurement",
-    "unit_of_measurement": "%"
+    "unit_of_measurement": "%",
+    "valve_opening_pct": null
    },
    "capabilities": {
     "state_class": "measurement"
@@ -3211,12 +3232,18 @@
     ],
     "paused_until": "2026-01-14T10:50:00+00:00",
     "room_cooling_rates": {},
+    "room_flows_c": {
+     "Badezimmer": 49.0,
+     "Wohnzimmer": 47.0
+    },
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
     "rooms_heating_up": [],
     "rooms_total": 2,
     "setpoint_changed_in": [],
-    "spread_rule": "active"
+    "spread_rule": "active",
+    "valve_opening_learned_pct": {},
+    "valves_in_part_by_flow_pct": {}
    },
    "capabilities": {
     "options": [
@@ -3357,7 +3384,12 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
-   "attributes": null,
+   "attributes": {
+    "friendly_name": "Wohnzimmer Deviation from target",
+    "icon": "mdi:thermometer-lines",
+    "state_class": "measurement",
+    "unit_of_measurement": "°C"
+   },
    "capabilities": {
     "state_class": "measurement"
    },
@@ -3376,7 +3408,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": null,
+   "state": "-1.5",
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
    "unit_of_measurement": "°C"
@@ -3385,12 +3417,13 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Wohnzimmer Heat demand",
+    "friendly_name": "Wohnzimmer Heat demand (internal estimate)",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
     "state_class": "measurement",
-    "unit_of_measurement": "%"
+    "unit_of_measurement": "%",
+    "valve_opening_pct": null
    },
    "capabilities": {
     "state_class": "measurement"
@@ -4267,7 +4300,12 @@
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_badezimmer_deviation_from_target": {
-   "attributes": null,
+   "attributes": {
+    "friendly_name": "Badezimmer Deviation from target",
+    "icon": "mdi:thermometer-lines",
+    "state_class": "measurement",
+    "unit_of_measurement": "°C"
+   },
    "capabilities": {
     "state_class": "measurement"
    },
@@ -4286,7 +4324,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": null,
+   "state": "-2.5",
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_badezimmer_deviation",
    "unit_of_measurement": "°C"
@@ -4320,12 +4358,13 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Badezimmer Heat demand",
+    "friendly_name": "Badezimmer Heat demand (internal estimate)",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
     "state_class": "measurement",
-    "unit_of_measurement": "%"
+    "unit_of_measurement": "%",
+    "valve_opening_pct": null
    },
    "capabilities": {
     "state_class": "measurement"
@@ -5156,12 +5195,18 @@
     ],
     "paused_until": "2026-01-14T10:50:00+00:00",
     "room_cooling_rates": {},
+    "room_flows_c": {
+     "Badezimmer": 49.0,
+     "Wohnzimmer": 47.0
+    },
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
     "rooms_heating_up": [],
     "rooms_total": 2,
     "setpoint_changed_in": [],
-    "spread_rule": "active"
+    "spread_rule": "active",
+    "valve_opening_learned_pct": {},
+    "valves_in_part_by_flow_pct": {}
    },
    "capabilities": {
     "options": [
@@ -5302,7 +5347,12 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
-   "attributes": null,
+   "attributes": {
+    "friendly_name": "Wohnzimmer Deviation from target",
+    "icon": "mdi:thermometer-lines",
+    "state_class": "measurement",
+    "unit_of_measurement": "°C"
+   },
    "capabilities": {
     "state_class": "measurement"
    },
@@ -5321,7 +5371,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": null,
+   "state": "-1.5",
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
    "unit_of_measurement": "°C"
@@ -5330,12 +5380,13 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Wohnzimmer Heat demand",
+    "friendly_name": "Wohnzimmer Heat demand (internal estimate)",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
     "state_class": "measurement",
-    "unit_of_measurement": "%"
+    "unit_of_measurement": "%",
+    "valve_opening_pct": null
    },
    "capabilities": {
     "state_class": "measurement"
@@ -6067,7 +6118,12 @@
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_badezimmer_deviation_from_target": {
-   "attributes": null,
+   "attributes": {
+    "friendly_name": "Badezimmer Deviation from target",
+    "icon": "mdi:thermometer-lines",
+    "state_class": "measurement",
+    "unit_of_measurement": "°C"
+   },
    "capabilities": {
     "state_class": "measurement"
    },
@@ -6086,7 +6142,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": null,
+   "state": "-2.5",
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_badezimmer_deviation",
    "unit_of_measurement": "°C"
@@ -6120,12 +6176,13 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Badezimmer Heat demand",
+    "friendly_name": "Badezimmer Heat demand (internal estimate)",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
     "state_class": "measurement",
-    "unit_of_measurement": "%"
+    "unit_of_measurement": "%",
+    "valve_opening_pct": null
    },
    "capabilities": {
     "state_class": "measurement"
@@ -6553,12 +6610,18 @@
     ],
     "paused_until": "2026-01-14T10:50:00+00:00",
     "room_cooling_rates": {},
+    "room_flows_c": {
+     "Badezimmer": 49.0,
+     "Wohnzimmer": 47.0
+    },
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
     "rooms_heating_up": [],
     "rooms_total": 2,
     "setpoint_changed_in": [],
-    "spread_rule": "active"
+    "spread_rule": "active",
+    "valve_opening_learned_pct": {},
+    "valves_in_part_by_flow_pct": {}
    },
    "capabilities": {
     "options": [
@@ -6699,7 +6762,12 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
-   "attributes": null,
+   "attributes": {
+    "friendly_name": "Wohnzimmer Deviation from target",
+    "icon": "mdi:thermometer-lines",
+    "state_class": "measurement",
+    "unit_of_measurement": "°C"
+   },
    "capabilities": {
     "state_class": "measurement"
    },
@@ -6718,7 +6786,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": null,
+   "state": "-1.5",
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
    "unit_of_measurement": "°C"
@@ -6727,12 +6795,13 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Wohnzimmer Heat demand",
+    "friendly_name": "Wohnzimmer Heat demand (internal estimate)",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
     "state_class": "measurement",
-    "unit_of_measurement": "%"
+    "unit_of_measurement": "%",
+    "valve_opening_pct": null
    },
    "capabilities": {
     "state_class": "measurement"
@@ -7492,7 +7561,12 @@
    "unit_of_measurement": "g/m³"
   },
   "sensor.thriftherm_badezimmer_deviation_from_target": {
-   "attributes": null,
+   "attributes": {
+    "friendly_name": "Badezimmer Deviation from target",
+    "icon": "mdi:thermometer-lines",
+    "state_class": "measurement",
+    "unit_of_measurement": "°C"
+   },
    "capabilities": {
     "state_class": "measurement"
    },
@@ -7511,7 +7585,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": null,
+   "state": "-2.5",
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_badezimmer_deviation",
    "unit_of_measurement": "°C"
@@ -7545,12 +7619,13 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Badezimmer Heat demand",
+    "friendly_name": "Badezimmer Heat demand (internal estimate)",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
     "state_class": "measurement",
-    "unit_of_measurement": "%"
+    "unit_of_measurement": "%",
+    "valve_opening_pct": null
    },
    "capabilities": {
     "state_class": "measurement"
@@ -7998,12 +8073,15 @@
     ],
     "paused_until": "2026-01-14T10:50:00+00:00",
     "room_cooling_rates": {},
+    "room_flows_c": {},
     "room_heat_up_rates": {},
     "room_heating_power_k_h": {},
     "rooms_heating_up": [],
     "rooms_total": 2,
     "setpoint_changed_in": [],
-    "spread_rule": null
+    "spread_rule": null,
+    "valve_opening_learned_pct": {},
+    "valves_in_part_by_flow_pct": {}
    },
    "capabilities": {
     "options": [
@@ -8144,7 +8222,12 @@
    "unit_of_measurement": null
   },
   "sensor.thriftherm_wohnzimmer_deviation_from_target": {
-   "attributes": null,
+   "attributes": {
+    "friendly_name": "Wohnzimmer Deviation from target",
+    "icon": "mdi:thermometer-lines",
+    "state_class": "measurement",
+    "unit_of_measurement": "°C"
+   },
    "capabilities": {
     "state_class": "measurement"
    },
@@ -8163,7 +8246,7 @@
    "options": {},
    "original_device_class": null,
    "original_icon": "mdi:thermometer-lines",
-   "state": null,
+   "state": "-1.5",
    "translation_key": "room_deviation",
    "unique_id": "ENTRY_wohnzimmer_deviation",
    "unit_of_measurement": "°C"
@@ -8172,12 +8255,13 @@
    "attributes": {
     "boiler_call": "calling",
     "calls_again_below": null,
-    "friendly_name": "Wohnzimmer Heat demand",
+    "friendly_name": "Wohnzimmer Heat demand (internal estimate)",
     "icon": "mdi:radiator",
     "internal_gain_w": null,
     "issues": [],
     "state_class": "measurement",
-    "unit_of_measurement": "%"
+    "unit_of_measurement": "%",
+    "valve_opening_pct": null
    },
    "capabilities": {
     "state_class": "measurement"

@@ -1912,3 +1912,70 @@ def test_a_raised_target_the_room_stands_still_below_is_held_not_heated_up_to():
     assert load.heating_up(True, 21.0, room, reached_k=0.1, steady_s=1800.0)  # not long enough to tell
     assert not load.heating_up(True, 21.0, room, reached_k=0.1, steady_s=3700.0)  # an hour without a rise
     assert load.heating_up(True, 21.0, replace(room, trend_k_per_h=0.3), reached_k=0.1, steady_s=3700.0)  # rising
+
+
+# ------------------------------------------------------------------ the flow each room needs itself (0.8.2)
+def _two(living_temp=20.7, living_demand=0.1, **living):
+    bath = room_result("badezimmer", 21.0, 20.0, demand=1.0, boiler_call="calling")
+    living_room = room_result("wohnzimmer", 21.0, living_temp, **{"demand": living_demand, "boiler_call": "calling", **living})
+    return [bath, living_room]
+
+
+def test_the_boiler_says_which_flow_each_room_needs_itself_and_who_may_take_less():
+    """The small bathroom radiator sets the flow; the living room calls as well and would need far less. Its valve
+    may open in part (engines/valve_plan.flow_share); the bathroom's stays fully open."""
+    cmd, _ = decide(inp(_two()), BoilerMemory())
+    assert cmd.flow_set_by == "badezimmer" and cmd.flow_setpoint == 48.0
+    assert cmd.room_flows == {"badezimmer": 48.0, "wohnzimmer": 40.8}
+    assert cmd.flow_for_rooms == 48.0 and cmd.throttle_rooms == ("wohnzimmer",)
+
+
+@pytest.mark.parametrize("living", [
+    {"living_temp": 20.5},  # half a degree below its target
+    {"boost_active": True},  # a quick heat-up
+    {"calling_s": 1200.0, "trend_k_per_h": 0.1},  # calling for a quarter of an hour and hardly rising
+    {"boiler_call": "stalled"},
+    {"heating_up": True, "heat_rate_k_h": 1.0, "trend_k_per_h": 0.5},  # behind the pace its heat-up is planned with
+    {"valve_unable": "exercise"},
+])
+def test_a_room_falling_behind_or_heating_up_quickly_keeps_its_valve_fully_open(living):
+    temp = living.pop("living_temp", 20.7)
+    behind = not {"boost_active", "valve_unable", "boiler_call"} & living.keys()  # a stalled room calls no more
+    cmd, _ = decide(inp(_two(temp, **living)), BoilerMemory())
+    assert cmd.throttle_rooms == () and cmd.room_flows["wohnzimmer"] < cmd.room_flows["badezimmer"]
+    # fallen behind on a flow that would allow less: what the opening learns from (engines/flow_throttle.py)
+    assert cmd.throttle_behind == (("wohnzimmer",) if behind else ())
+
+
+def test_a_room_rising_as_planned_takes_less_also_after_a_quarter_of_an_hour():
+    cmd, _ = decide(inp(_two(calling_s=1200.0, trend_k_per_h=0.3)), BoilerMemory())
+    assert cmd.throttle_rooms == ("wohnzimmer",)
+
+
+def test_no_room_takes_less_at_frost_while_drying_or_without_a_heating_boiler():
+    from custom_components.thriftherm.models import DryingState
+
+    assert decide(inp(_two(), frost=("badezimmer",)), BoilerMemory())[0].throttle_rooms == ()
+    assert decide(inp(_two(drying=DryingState(active=True))), BoilerMemory())[0].throttle_rooms == ()
+    blocked, _ = decide(inp(_two(), advice="none"), BoilerMemory())
+    assert blocked.plan == "block" and blocked.throttle_rooms == () and blocked.room_flows is None
+
+
+def test_what_is_sent_for_the_boilers_own_limit_is_not_the_rooms_to_throttle_against():
+    """Sent above the curve because the boiler cycles (engines/boiler_limit.py), the mean flow is not higher: the other
+    rooms measure against what the room that sets the flow asks for."""
+    cmd, _ = decide(inp(_two()), replace(BoilerMemory(), comp_k=4.0))
+    assert cmd.flow_for_rooms <= 48.0
+
+
+def test_a_flow_held_back_by_the_ramp_is_what_the_rooms_measure_against():
+    mem = replace(heating_memory(), last_flow=41.0, last_send_ts=NOW - 60)
+    cmd, _ = decide(inp(_two()), mem)
+    assert cmd.flow_setpoint == 46.0 and cmd.flow_for_rooms == 46.0
+
+
+def test_the_room_that_sets_the_flow_is_not_one_that_fell_behind_a_limit():
+    cmd, _ = decide(inp(_two()), BoilerMemory())
+    assert cmd.throttle_behind == ()
+    alone, _ = decide(inp([_two()[0]]), BoilerMemory())
+    assert alone.throttle_behind == () and alone.throttle_rooms == ()

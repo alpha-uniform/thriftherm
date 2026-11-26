@@ -4,6 +4,16 @@
 
 Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
 
+## 0.8.2 – 2026-11-26
+
+- A Sonoff TRVZB/TRVZBT driven directly opens only in part when its room calls but another room sets a clearly higher flow (the room needs 80 % of its radiator or less): the room overshoots less, the boiler cycles less. Once the room falls behind, the valve opens again as far as you set it.
+- How far such a valve opens is learned per room: if the room falls behind its limited valve, it opens further the next time; if it goes on past its target after the call, less far.
+- The opening in part is stepless, while heating along as well: in steps of 10 % from 20 % to fully open instead of the fixed stages 30 % and 60 %.
+- The card shows in the room row how far a valve with an opening limit (Sonoff TRVZB/TRVZBT) is open, when it is below 100 %.
+- Instead of the heat demand in percent, the card and the example dashboard show the deviation from target in degrees; the sensor *Deviation from target* is now on, *Heat demand (internal estimate)* sits under Diagnostic.
+- The release in the options is enough: Thriftherm then switches the control from *Observe only* to *Active* by itself. The setup now describes going active for valves driven directly too.
+- The COP map shipped for the Midea PortaSplit now reaches down to −6 °C outside (measured until 24 Nov).
+
 ## 0.8.1 – 2026-11-25
 
 - A room's thermostat and radiator valves share one field; Thriftherm sorts them by their integration (Better, Versatile, Generic Thermostat are room thermostats, anything else is a valve). A radiator valve entered itself as a thermostat so far is driven directly, window included, once the room is saved next; without saving nothing changes.

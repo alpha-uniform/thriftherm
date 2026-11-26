@@ -121,6 +121,7 @@ from .engines import (
     boiler_control,
     boiler_learning,
     boiler_load,
+    flow_throttle,
     economics,
     gas_split,
     heat_call,
@@ -423,6 +424,10 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # the rooms heating along last cycle and their valves' opening: a trial of the heating curve is judged by the
         # burner only while these stay as they were (boiler_learning.review_trials)
         self._heating_along: tuple[tuple[str, float], ...] = ()
+        # when each room's valve was last open in part by the flow: not kept over a restart, a call counts anew after it
+        self._valve_limited_ts: dict[str, float] = {}
+        # how far each room's valve opens on another room's flow, as learned (engines/flow_throttle.py; stored)
+        self.flow_throttle: dict[str, flow_throttle.Throttle] = {}
         # the rooms heating up to a raised target they have not reached yet (boiler_load.heating_up): the heating curve
         # learns from holding a temperature, not from heating up to it (16.11.)
         self._heating_up: set[str] = set()
@@ -747,6 +752,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._forget(scopes, rooms or None, learning_reset.REASON_CONFIGURATION)
             if data.get("learning_basis") != learning_reset.basis(self.config):
                 self._store_dirty = True
+        # the release in the options is the one step: observe only goes active (forum, 26.11.2026)
+        persistence.apply_release(self, data if isinstance(data, dict) else None)
         if self._bind_cop_map():
             _LOGGER.warning("thriftherm: fan stage or airflow curve changed, the COP table starts anew")
             self._forget({learning_reset.SCOPE_HEAT_PUMP}, None, learning_reset.REASON_CONFIGURATION)
@@ -1522,6 +1529,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.heat_rates.forget(None if rooms is None else list(rooms))
             self.cool_rates.forget(None if rooms is None else list(rooms))
             self.ac_cool_rates.forget(None if rooms is None else list(rooms))
+            self.flow_throttle = {} if rooms is None else {k: t for k, t in self.flow_throttle.items() if k not in rooms}
         narrowed = {learning_reset.SCOPE_ROOMS, learning_reset.SCOPE_BOILER}  # the areas the rooms named narrow
         self.last_learning_reset = {
             "scopes": [s for s in learning_reset.SCOPES if s in scopes],
@@ -2394,7 +2402,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
                 or (heat_pump_pending and heat_pump_gone_s is not None and heat_pump_gone_s <= HEAT_PUMP_DROPOUT_S),
                 rooms=tuple(
-                    replace(res, boiler_call=heat_call.CALL_IDLE) if key in left_to_unit else res for key, res in rooms.items()
+                    replace(res, boiler_call=heat_call.CALL_IDLE) if key in left_to_unit
+                    # limited by the flow a while ago: its slow rise says nothing about the flow yet (boiler_load.counts)
+                    else replace(res, valve_limited_s=round(max(now_ts - self._valve_limited_ts[key], 0.0), 1))
+                    if key in self._valve_limited_ts else res
+                    for key, res in rooms.items()
                 ),
                 frost_rooms=safety_res.frost_rooms,
                 advice_source=advisor.boiler_source(
@@ -2592,11 +2604,41 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if k in rooms and call_states.get(k) != heat_call.CALL_CALLING
             and (to := heat_call.heats_along_to(r, rooms[k])) is not None
         }
+        # calling, but another room sets a flow higher than this one needs: the same limit, by the share of its
+        # radiator's output it needs (valve_plan.flow_share). Only by a flow Thriftherm sends itself.
+        by_flow: dict[str, tuple[float, float]] = {}
+        if boiler_cmd.plan == BOILER_PLAN_HEAT and self.boiler_control_mode == CTRL_ACTIVE and boiler_cmd.room_flows:
+            by_flow = {
+                k: (boiler_cmd.room_flows[k], boiler_cmd.flow_for_rooms) for k in boiler_cmd.throttle_rooms
+                if k in boiler_cmd.room_flows and boiler_cmd.flow_for_rooms is not None and k not in joined
+                and k not in left_to_unit and call_states.get(k) == heat_call.CALL_CALLING
+            }
         valve_plans = self._plan_valves(
             snapshot, room_commands, {k: r.target for k, r in rooms.items()}, wanting, windows_off, windows_open,
-            joined,
+            joined, by_flow,
         )
         self._heating_along = tuple(sorted((k, self._opening_along(k)) for k in joined))
+        valves_by_flow = {k: pct for k in sorted(by_flow) if (pct := self._opening_along(k)) < 100.0}
+        self._valve_limited_ts = {
+            **{k: ts for k, ts in self._valve_limited_ts.items() if now_ts - ts < boiler_load.LAG_MIN_CALL_S},
+            **dict.fromkeys(valves_by_flow, now_ts),
+        }
+        # what came of the opening teaches the next one: fallen behind its limited valve, more; gone on past its target
+        # after a call that ended limited, less
+        for cfg in self.builder.rooms:
+            if not cfg.direct or cfg.valve_opening or (res := rooms.get(cfg.key)) is None:
+                continue
+            was = self.flow_throttle.get(cfg.key, flow_throttle.Throttle())
+            sent = sent_rooms.get(cfg.key)
+            now_is = flow_throttle.follow(
+                was, calling=call_states.get(cfg.key) == heat_call.CALL_CALLING, limited=cfg.key in valves_by_flow,
+                behind=cfg.key in boiler_cmd.throttle_behind,
+                target=res.target, room_c=res.temperature, now_ts=now_ts,
+                disturbed=cfg.key in joined or cfg.key in windows_open or (sent is not None and sent.target > res.target),
+            )
+            if now_is != was:
+                self.flow_throttle[cfg.key] = now_is
+                self._store_dirty = self._store_dirty or now_is.adjust_pct != was.adjust_pct
 
         # --- learning: heat-up rates (heating = a source that reaches the room is on) ----
         # Another room's call heats nothing here: a radiator gets the boiler's heat only where it may open,
@@ -2669,6 +2711,10 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         room_names = {r.key: r.name for r in self.builder.rooms}
         reason_state, reason_texts = self.plan_log.reasons(advice, self.hass.config.language, room_names, now_ts)
 
+        # how far each room's valves may open, for the card (0.8.2)
+        openings = self._valve_openings()
+        sent_rooms = {k: replace(r, valve_opening_pct=openings.get(k)) for k, r in sent_rooms.items()}
+
         return {
             "snapshot": snapshot,  # what the cycle read; nothing in the integration uses it, the tests look at it
             "mode": snapshot.mode,  # the operating mode the cycle ran in, the advice's own
@@ -2732,6 +2778,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "reason_texts": reason_texts,
             "room_commands": room_commands,
             "valve_plans": valve_plans,
+            "valves_by_flow": valves_by_flow,
+            "flow_adjust": {k: t.adjust_pct for k, t in sorted(self.flow_throttle.items()) if t.adjust_pct},
             "echoes_ignored": dict(self.echoes_ignored),
             "room_control_mode": self.room_control_mode,
             "season": self.season,
@@ -2756,12 +2804,15 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         windows_off: frozenset[str] | set[str] = frozenset(),
         windows_open: frozenset[str] | set[str] = frozenset(),
         joined: Mapping[str, float] | None = None,
+        by_flow: Mapping[str, tuple[float, float]] | None = None,
     ) -> dict[str, valve_plan.ValvePlan]:
         """What the valves of the rooms driven directly get besides the first one's setpoint (engines/valve_plan.py).
 
         `joined`: the rooms heating along without a call of their own, with what they heat to (heat_call.heats_along_to);
-        their valves open in part where they can, by how little the room lacks of it."""
-        joined = joined or {}
+        their valves open in part where they can, by how little the room lacks of it. `by_flow`: the calling rooms that
+        need less flow than is sent, with the flow each would ask for itself and the flow sent: in part as well, by the
+        share of the radiator's output the room needs (valve_plan.flow_share)."""
+        joined, by_flow = joined or {}, by_flow or {}
         plans: dict[str, valve_plan.ValvePlan] = {}
         corrected, self._valve_corrected = self._valve_corrected, {}
         self._valve_memory_next = {}
@@ -2781,6 +2832,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             lacks = None
             if cfg.key in joined and not cfg.valve_opening and fresh and room_c is not None:
                 lacks = round(joined[cfg.key] - room_c, 2)
+            share = None
+            if cfg.key in by_flow and not cfg.valve_opening and fresh and room_c is not None:
+                share = valve_plan.flow_share(*by_flow[cfg.key], room_c)
+                if share is not None:
+                    share = flow_throttle.adjusted(share, self.flow_throttle.get(cfg.key))
             if cfg.valve_opening and fresh and room_c is not None and cfg.key in targets:
                 opening = valve_tpi.opening(
                     targets[cfg.key], room_c, snapshot.outdoor_temp.value_or_none, cfg.key in wanting
@@ -2804,6 +2860,7 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     target=targets.get(cfg.key) if index else None, opening=opening, exercise=step,
                     setpoint_limits=view.setpoint_limits, window_off=cfg.key in windows_off,
                     room_sensor=bool(cfg.temperature_sensor), window_open=cfg.key in windows_open, join_deficit_k=lacks,
+                    flow_share=share,
                 )
         return plans
 
@@ -2816,6 +2873,27 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             and mem.opening_pct is not None
         ]
         return min(limits) if limits else 100.0
+
+    def _valve_openings(self) -> dict[str, float]:
+        """How far each room's valves with an opening limit (Sonoff TRVZB/TRVZBT) may open, as they show it: the valves
+        driven directly, those behind a Better or Versatile Thermostat, or the room's thermostat itself; the least of
+        several. Rooms without such a valve are left out."""
+        out: dict[str, float] = {}
+        for cfg in self.builder.rooms:
+            if cfg.direct:
+                valves: tuple[str, ...] = tuple(cfg.valve_entities)
+            elif cfg.climate_entity and self.builder.wraps_thermostats(cfg.climate_entity):
+                valves = tuple(self.builder.valves_behind(cfg.climate_entity))
+            else:
+                valves = (cfg.climate_entity,) if cfg.climate_entity else ()
+            shown = [
+                view.opening_shown for v in valves if v.startswith("climate.")
+                and (view := valve_view(self.hass, v)).caps.opening and view.quirks.opening_is_limit
+                and view.opening_shown is not None
+            ]
+            if shown:
+                out[cfg.key] = min(shown)
+        return out
 
     def disabled_valve_entities(self, room: RoomConfig) -> tuple[str, ...]:
         """The sensor selections and inputs for the room temperature of the room's valves driven directly that are

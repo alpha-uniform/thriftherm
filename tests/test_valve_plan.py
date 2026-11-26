@@ -626,11 +626,12 @@ def test_a_persons_own_sensor_outlasts_a_short_drop_out_and_goes_with_a_new_star
 # ------------------------------------------------------------------ heating along: the opening in part (decided 16.11.)
 def test_a_room_heating_along_opens_its_valve_in_part_by_how_little_it_lacks():
     """A room that heats along takes the heat over the whole burner run instead of reaching its target at once and
-    shutting. Its opening limit goes down by stages, from the value the person set, and is remembered for the way back."""
+    shutting. Its opening limit goes down in steps of ten points (stepless since 0.8.2, before: 30 or 60 %), from the
+    value the person set, and is remembered for the way back."""
     plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=100.0), ValveMemory(), 18.4, True, NOW, join_deficit_k=0.1)
     assert writes(plan)[TRVZB_D.opening] == 30.0 and (mem.opening_pct, mem.opening_before) == (30.0, 100.0)
     plan, mem2 = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=100.0), ValveMemory(), 18.3, True, NOW, join_deficit_k=0.2)
-    assert writes(plan)[TRVZB_D.opening] == 60.0
+    assert writes(plan)[TRVZB_D.opening] == 50.0
     plan, mem3 = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=100.0), ValveMemory(), 18.0, True, NOW, join_deficit_k=0.5)
     assert TRVZB_D.opening not in writes(plan) and mem3.opening_ts is None  # further below: fully open, as it was
     # a valve without an opening limit goes by its setpoint as before
@@ -639,16 +640,27 @@ def test_a_room_heating_along_opens_its_valve_in_part_by_how_little_it_lacks():
 
 
 def test_the_opening_in_part_changes_seldom():
-    """Up at once (the room lacks more), down only 0.1 K past its bound and ten minutes on: a sensor flickering between
+    """Up at once (the room lacks more), down only by ten points or more and ten minutes on: a sensor flickering between
     two tenths does not write every minute."""
     _, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=100.0), ValveMemory(), 18.3, True, NOW, join_deficit_k=0.2)
-    assert mem.opening_pct == 60.0
-    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=60.0), mem, 18.4, True, NOW + MIN, join_deficit_k=0.1)
-    assert TRVZB_D.opening not in writes(plan) and mem.opening_pct == 60.0
-    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=60.0), mem, 18.45, True, NOW + 11 * MIN, join_deficit_k=0.05)
-    assert writes(plan)[TRVZB_D.opening] == 30.0
-    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=30.0), mem, 18.3, True, NOW + 12 * MIN, join_deficit_k=0.2)
-    assert writes(plan)[TRVZB_D.opening] == 60.0  # up at once
+    assert mem.opening_pct == 50.0
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=50.0), mem, 18.4, True, NOW + MIN, join_deficit_k=0.1)
+    assert TRVZB_D.opening not in writes(plan) and mem.opening_pct == 50.0
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=50.0), mem, 18.33, True, NOW + 11 * MIN, join_deficit_k=0.17)
+    assert TRVZB_D.opening not in writes(plan) and mem.opening_pct == 50.0  # less than ten points down: left
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=50.0), mem, 18.45, True, NOW + 11 * MIN, join_deficit_k=0.05)
+    assert writes(plan)[TRVZB_D.opening] == 20.0
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=20.0), mem, 18.3, True, NOW + 12 * MIN, join_deficit_k=0.2)
+    assert writes(plan)[TRVZB_D.opening] == 50.0  # up at once
+
+
+def test_the_opening_in_part_goes_in_steps_of_ten_from_twenty_to_fully_open():
+    """Stepless (decided 25.11., in place of the stages 30 and 60 %): ten points for every 0.05 K the room lacks, never
+    below 20 % (the TRVZB loses its calibration below 3 %), and open as the person set it from 0.45 K."""
+    got = [vp.join_opening(d, None, None, NOW) for d in (0.0, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.45, 0.6)]
+    assert got == [20.0, 20.0, 30.0, 40.0, 50.0, 70.0, 90.0, None, None]
+    assert all(pct is None or (pct % 10 == 0 and 20 <= pct < 100) for pct in
+               (vp.flow_opening(s / 100, None, None, NOW) for s in range(101)))
 
 
 def test_the_opening_comes_back_when_the_room_calls_stops_heating_along_or_its_window_opens():
@@ -664,9 +676,9 @@ def test_the_opening_comes_back_when_the_room_calls_stops_heating_along_or_its_w
 
 def test_a_valve_the_person_throttled_keeps_that_as_its_most():
     """A person's 60 % is the most Thriftherm opens it to; it gets the 60 back, never 100."""
-    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=60.0), ValveMemory(), 18.3, True, NOW, join_deficit_k=0.2)
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=60.0), ValveMemory(), 18.3, True, NOW, join_deficit_k=0.25)
     assert TRVZB_D.opening not in writes(plan)  # 60 % is what it has
-    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=60.0), mem, 18.4, True, NOW + 11 * MIN, join_deficit_k=0.05)
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=60.0), mem, 18.4, True, NOW + 11 * MIN, join_deficit_k=0.1)
     assert writes(plan)[TRVZB_D.opening] == 30.0 and mem.opening_before == 60.0
     plan, _ = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=30.0), mem, 18.6, True, NOW + 12 * MIN)
     assert writes(plan)[TRVZB_D.opening] == 60.0
@@ -674,7 +686,7 @@ def test_a_valve_the_person_throttled_keeps_that_as_its_most():
     assert [(w.entity_id, w.value) for w in vp.hand_back(left, mem)] == [(TRVZB_D.opening, 60.0)]
     # one the person changes meanwhile is theirs: the new most
     plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=80.0), mem, 18.3, True, NOW + 25 * MIN, join_deficit_k=0.2)
-    assert mem.opening_before == 80.0 and writes(plan)[TRVZB_D.opening] == 60.0
+    assert mem.opening_before == 80.0 and writes(plan)[TRVZB_D.opening] == 50.0
 
 
 def test_the_opening_in_part_keeps_the_valves_least_opening():
@@ -716,15 +728,100 @@ def test_an_opening_given_back_is_forgotten_only_once_the_valve_shows_it():
     assert TRVZB_D.opening not in writes(plan) and (mem.opening_pct, mem.opening_ts, mem.opening_before) == (None, None, None)
 
 
-@pytest.mark.parametrize(("held", "deficit", "wanted"), [(30.0, 0.2, 60.0), (60.0, 0.01, 30.0)])
+@pytest.mark.parametrize(("held", "deficit", "wanted"), [(30.0, 0.2, 50.0), (60.0, 0.01, 20.0)])
 def test_a_stage_change_that_did_not_arrive_is_sent_again_and_not_taken_for_the_persons(held, deficit, wanted):
-    """Review 2026-11-18: 30 to 60 written, not arrived; five minutes later the valve still showing 30 was taken for a
+    """Review 2026-11-18: 30 to 60 written (50 since 0.8.2), not arrived; five minutes later the valve still showing 30 was taken for a
     person's 30, and the person's 100 were gone. The value we had before is ours, never a person's."""
     start = _ours(held, ts=NOW - 1200.0)
     plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=held), start, 18.4, True, NOW, join_deficit_k=deficit)
     assert writes(plan)[TRVZB_D.opening] == wanted
     plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=held), mem, 18.4, True, NOW + 360, join_deficit_k=deficit)
     assert writes(plan)[TRVZB_D.opening] == wanted and mem.opening_before == 100.0
-    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=50.0), mem, 18.4, True, NOW + 1200, join_deficit_k=deficit)
-    # a value of neither: a person's, the new top - 30 below it, or nothing of ours left where 60 is above it
-    assert (mem.opening_before, writes(plan).get(TRVZB_D.opening)) == ((50.0, 30.0) if wanted < 50.0 else (None, None))
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=45.0), mem, 18.4, True, NOW + 1200, join_deficit_k=deficit)
+    # a value of neither: a person's, the new top - 20 below it, or nothing of ours left where 50 is no less
+    assert (mem.opening_before, writes(plan).get(TRVZB_D.opening)) == ((45.0, 20.0) if wanted < 45.0 else (None, None))
+
+
+# ------------------------------------------------------------------ in part by the flow (0.8.2)
+def test_a_room_needing_less_flow_than_is_sent_needs_only_a_share_of_the_radiators_heat():
+    """The bathroom sets 55 °C, the living room would need 45 °C: its radiator gives off more than the room needs, by
+    the radiator's law ((own flow - room) / (flow sent - room)) ** 1.3."""
+    assert vp.flow_share(45.0, 55.0, 21.0) == pytest.approx((24.0 / 34.0) ** 1.3)
+    assert vp.flow_share(37.0, 55.0, 21.0) == pytest.approx((16.0 / 34.0) ** 1.3)
+    assert vp.flow_share(55.0, 55.0, 21.0) is None and vp.flow_share(58.0, 55.0, 21.0) is None  # nothing to spare
+    assert vp.flow_share(30.0, 22.0, 21.5) is None and vp.flow_share(20.0, 55.0, 21.0) == 0.0
+
+
+def test_the_share_gives_the_opening_in_steps_of_ten_and_changes_as_seldom_as_heating_along():
+    assert vp.flow_opening(0.64, None, None, NOW) == 60.0
+    assert vp.flow_opening(0.37, None, None, NOW) == 40.0
+    assert vp.flow_opening(0.05, None, None, NOW) == 20.0  # never below
+    assert vp.flow_opening(0.97, None, None, NOW) is None  # nearly all of it: open as the person set it
+    assert vp.flow_opening(0.76, 60.0, NOW - MIN, NOW) == 80.0  # larger at once
+    assert vp.flow_opening(0.97, 60.0, NOW - MIN, NOW) is None
+    assert vp.flow_opening(0.37, 60.0, NOW - 5 * MIN, NOW) == 60.0  # smaller only ten minutes on ...
+    assert vp.flow_opening(0.52, 60.0, NOW - 11 * MIN, NOW) == 60.0  # ... and by ten points at least
+    assert vp.flow_opening(0.3, 60.0, NOW - 11 * MIN, NOW) == 30.0
+
+
+def test_a_share_on_the_rounding_edge_does_not_flap_between_two_steps():
+    """Live 25.11.2026: a need of about 95 % rounded to 90 one minute and 100 the next, so the valve went 90, 100, 90,
+    100 within twelve minutes. Larger comes at once, but by ten points as smaller does."""
+    assert vp.flow_opening(0.75, 70.0, NOW - MIN, NOW) == 70.0
+    assert vp.flow_opening(0.79, 70.0, NOW - MIN, NOW) == 70.0
+    assert vp.flow_opening(0.66, 60.0, NOW - MIN, NOW) == 60.0  # rounds to 70, but lies only six points up
+    assert vp.flow_opening(0.70, 60.0, NOW - MIN, NOW) == 70.0  # a full step up: at once
+    assert vp.join_opening(0.275, 60.0, NOW - MIN, NOW) == 60.0  # heating along the same: 65 is no step from 60
+
+
+def test_a_room_needing_more_than_four_fifths_of_its_radiator_stays_open():
+    """Live 25.11.2026: the bathroom's towel radiator, 1.5 degrees under the bedroom's flow, went to 90 %. A valve hardly
+    passes less at 90 % than open, and so little surplus brings no room past its target: only a room needing 80 % of
+    its radiator or less is throttled, open again once it needs 90 %. Heating along keeps its 90 % step."""
+    assert vp.flow_opening(0.92, None, None, NOW) is None
+    assert vp.flow_opening(0.84, None, None, NOW) is None  # 80 % after rounding, but needs more than 80 %
+    assert vp.flow_opening(0.80, None, None, NOW) == 80.0
+    assert vp.flow_opening(0.86, 80.0, NOW - MIN, NOW) == 80.0  # held: no step up yet
+    assert vp.flow_opening(0.90, 80.0, NOW - MIN, NOW) is None  # a step up past 80: open as the person set it
+    assert vp.join_opening(0.42, None, None, NOW) == 90.0
+
+
+def test_a_calling_room_that_does_not_set_the_flow_opens_its_valve_by_its_share():
+    """Fully open on the bathroom's flow, the large radiator overshoots, shuts, and the boiler cycles."""
+    share = vp.flow_share(45.0, 55.0, 21.0)
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=100.0), ValveMemory(), 20.7, True, NOW, flow_share=share)
+    assert writes(plan)[TRVZB_D.opening] == 60.0 and (mem.opening_pct, mem.opening_before) == (60.0, 100.0)
+    # it falls back, or sets the flow itself: no share any more, open as it was
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=60.0), mem, 20.4, True, NOW + MIN)
+    assert writes(plan)[TRVZB_D.opening] == 100.0
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=100.0), mem, 20.4, True, NOW + 2 * MIN)
+    assert TRVZB_D.opening not in writes(plan) and (mem.opening_ts, mem.opening_before) == (None, None)
+
+
+def test_by_the_flow_a_valve_without_an_opening_limit_gets_what_it_got_before():
+    plain, _ = vp.plan(view(), ValveMemory(), 20.7, True, NOW)
+    plan, mem = vp.plan(view(), ValveMemory(), 20.7, True, NOW, flow_share=0.3)
+    assert plan == plain and mem.opening_ts is None
+    position = view(TRVZB_D, opening_shown=45.0)  # a position, not a limit (review 2026-11-18)
+    plan, mem = vp.plan(position, ValveMemory(), 20.7, True, NOW, flow_share=0.3)
+    assert TRVZB_D.opening not in writes(plan) and mem.opening_before is None
+
+
+def test_by_the_flow_the_persons_opening_stays_the_most_and_comes_back():
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=50.0), ValveMemory(), 20.7, True, NOW, flow_share=0.64)
+    assert TRVZB_D.opening not in writes(plan) and mem.opening_ts is None  # 60 % would be more than the person's 50
+    plan, mem = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=50.0), ValveMemory(), 20.7, True, NOW, flow_share=0.3)
+    assert writes(plan)[TRVZB_D.opening] == 30.0 and mem.opening_before == 50.0
+    plan, _ = vp.plan(view(TRVZB_D, quirks=SONOFF, opening_shown=30.0), mem, 20.4, True, NOW + MIN)
+    assert writes(plan)[TRVZB_D.opening] == 50.0
+    left = view(TRVZB_D, quirks=SONOFF, selection="local_temperature", opening_shown=30.0)
+    assert [(w.entity_id, w.value) for w in vp.hand_back(left, mem)] == [(TRVZB_D.opening, 50.0)]
+
+
+def test_by_the_flow_no_limit_while_the_window_is_open_the_valve_is_exercised_or_on_the_own_controller():
+    limited = view(TRVZB_D, quirks=SONOFF, opening_shown=100.0)
+    for kw in ({"window_open": True}, {"window_off": True}, {"exercise": "open", "setpoint": 21.0}):
+        plan, mem = vp.plan(limited, ValveMemory(), 20.7, True, NOW, flow_share=0.3, **kw)
+        assert TRVZB_D.opening not in writes(plan) and mem.opening_before is None, kw
+    plan, _ = vp.plan(limited, ValveMemory(), 20.7, True, NOW, flow_share=0.3, opening=80.0)
+    assert writes(plan)[TRVZB_D.opening] == 80.0  # way d: the controller's opening, not a limit

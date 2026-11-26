@@ -262,6 +262,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ThrifthermConfigEntry) -
         model="Heating control",
         sw_version=version,
     )
+    _enable_gap_to_target(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, _platforms(coordinator))
     _remove_stale_registry_entries(hass, entry, coordinator)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
@@ -323,6 +324,15 @@ def _device_still_provided(entry: ThrifthermConfigEntry, device: dr.DeviceEntry 
         if identifier.startswith(prefix) and identifier[len(prefix):] in rooms:
             return True
     return False
+
+
+def _enable_gap_to_target(hass: HomeAssistant, entry: ThrifthermConfigEntry) -> None:
+    """The gap of each room to its target in °C is on since 0.8.2 (it replaces the heat demand in percent for people to
+    read); before, it was created off. One the integration left off is switched on; one a person switched off stays so."""
+    registry = er.async_get(hass)
+    for item in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if item.translation_key == "room_deviation" and item.disabled_by == er.RegistryEntryDisabler.INTEGRATION:
+            registry.async_update_entity(item.entity_id, disabled_by=None)
 
 
 async def async_remove_config_entry_device(hass: HomeAssistant, entry: ThrifthermConfigEntry, device: dr.DeviceEntry) -> bool:

@@ -370,18 +370,20 @@ If something looks wrong, adjust it in the options before going active.
 
 ### 7.2 Going active
 
-1. Switch the Better Thermostat entities to **heat**.
+1. Only with Better or Versatile Thermostat: switch their entities to **heat**. Valves driven directly need nothing.
 2. Thriftherm → *Configure* → **Gas boiler and gas meter**: switch on *Release active boiler control (otherwise observe only)*. Submit.
-3. Thriftherm → *Configure* → **Control parameters**, section *Releases*: switch on *Release active room control (write setpoints to the thermostats)*. Submit.
+3. With valves or thermostats: Thriftherm → *Configure* → **Control parameters**, section *Releases*: switch on *Release active room control (write setpoints to the thermostats)*. Submit.
 4. With a heat pump: Thriftherm → *Configure* → **Heat pump: fine tuning**: switch on *Release active control (otherwise observe only)*. Submit.
-5. On the Thriftherm device, set **Boiler control** and **Room control** (with a heat pump also **Heat pump control**) to **Active**.
+
+On submitting, Thriftherm switches the released control from *Observe only* to *Active* by itself. You see and switch it under *Settings → Devices & services → Thriftherm → device Thriftherm → Controls*: **Boiler control**, **Room control** and with a heat pump **Heat pump control**. If you later set it to *Observe only* or *Off* by hand, it stays so; if you take the release back, the control goes back to *Observe only*.
 
 **Check after a few minutes:**
 
 | Entity | Expected |
 |---|---|
+| *Boiler control*, *Room control* | *Active* |
 | *Boiler command* | attribute *Commands sent* is on |
-| Better Thermostat entities | show the new targets from *Thermostat plan* |
+| Valves or thermostats | show the new targets from *Thermostat plan* |
 | *Safety state* | OK |
 
 **Optional:** for *Away* to end when somebody comes home, choose the people (`person.*`) under Thriftherm → *Configure* → **Control parameters** at *Away ends when one of these people comes home*. Their location in Home Assistant has to be right, for instance through the Companion App.
@@ -420,7 +422,7 @@ What the card shows, from top to bottom:
 
 - **The heat source in one sentence**, e.g. "Heat pump is heating", below it the cost per kWh of heat. A tap opens the comparison of boiler and heat pump: what each does and why, flow setpoint or COP, cost, the COP from which the heat pump pays off, and what the learning of the heating curve does right now.
 - **Notes, only when there are some:** safety restricted, heat pump blocked (only in a mode that uses it, so not in *Central heating only* or *Off (frost protection only)*), window open, frost protection in a room, changed by hand (with *Back to automatic*), heat pump changed by hand, thermostat does not report.
-- **One row per room:** measured temperature, target and the reason. Small icons show whether the boiler or the heat pump heats the room right now, whether it was changed by hand or a window is open. A tap on the room opens an info line (the schedule's next change with the target after it, and the trend once the room's *Temperature trend* sensor is enabled), *Now* (change the target by hand; it holds as long as any change by hand), comfort, setback, *Quick heat-up*, in the bathroom *Dry now*, *Schedule* (opens the room's schedule helper when it has one) and *Back to automatic* while anything by hand is on: a change, *Quick heat-up* or *Dry now*.
+- **One row per room:** measured temperature, target and the reason. If a valve of the room has an opening limit (Sonoff TRVZB/TRVZBT) below 100 %, the row also says how far it is open, e.g. "Valve 60 % open"; with several valves the least. Small icons show whether the boiler or the heat pump heats the room right now, whether it was changed by hand or a window is open. A tap on the room opens an info line (the schedule's next change with the target after it, and the trend once the room's *Temperature trend* sensor is enabled), *Now* (change the target by hand; it holds as long as any change by hand), comfort, setback, *Quick heat-up*, in the bathroom *Dry now*, *Schedule* (opens the room's schedule helper when it has one) and *Back to automatic* while anything by hand is on: a change, *Quick heat-up* or *Dry now*.
 - **Operating mode**, in *Away* with the return.
 
 The card needs Home Assistant 2025.1 or newer. Thriftherm adds the card as a dashboard resource itself. If the dashboard still shows *Custom element not found: thriftherm-card* or the old card after installing or updating, hard-reload the page (Cmd+Shift+R or Ctrl+Shift+R). If that does not help, clear the browser's site data for your Home Assistant address; in the app: *Settings → Companion app → Reset frontend cache* ([Troubleshooting](TROUBLESHOOTING.md#the-thriftherm-card-is-missing-custom-element-doesnt-exist)).

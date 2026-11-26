@@ -976,3 +976,100 @@ def test_a_boiler_thriftherm_only_observes_is_not_said_to_heat() -> None:
     assert active["headline"] == texts.CARD["en"]["boiler_heats"]
     assert observed["headline"] == texts.CARD["en"]["boiler_would_heat"]
     assert active["flame"] and not observed["flame"]
+
+
+# ------------------------------------------------------------------ 0.8.2: how far a valve may open
+def test_the_heat_demand_names_how_far_the_rooms_valves_may_open() -> None:
+    """A valve with an opening limit (Sonoff TRVZB/TRVZBT) shows it in percent: the card reads it here."""
+    from dataclasses import replace
+
+    from custom_components.thriftherm.sensor import ROOM_SENSORS
+
+    from .test_heat_call import rr
+
+    demand = next(d for d in ROOM_SENSORS if d.key == "demand")
+    assert demand.attr_fn(replace(rr(temp=20.8, target=21.0), valve_opening_pct=60.0))["valve_opening_pct"] == 60.0
+    assert demand.attr_fn(rr(temp=20.8, target=21.0))["valve_opening_pct"] is None
+
+
+def _valve_reason(attributes: str) -> str:
+    result = _run_card(f"""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({{}});
+      const hass = makeHass();
+      const demand = "sensor.thriftherm_badezimmer_heat_demand";
+      hass.entities[demand] = {{ entity_id: demand, platform: "thriftherm", translation_key: "room_demand", device_id: "badezimmer" }};
+      hass.states[demand] = {{ entity_id: demand, state: "40", attributes: {attributes}, last_updated: "t0" }};
+      await shown(main, hass);
+      const reasons = [...main.shadowRoot.innerHTML.matchAll(/class="reason">([^<]*)</g)].map((m) => m[1]);
+      console.log(JSON.stringify({{ reasons }}));
+    """)
+    return result["reasons"][0].replace("\xa0", " ")
+
+
+def test_the_card_shows_how_far_a_valve_may_open_only_below_fully() -> None:
+    limited = _valve_reason('{ boiler_call: "calling", valve_opening_pct: 60 }')
+    assert limited.endswith(" · " + texts.CARD["en"]["valve_opening"].replace("{value}", "60"))
+    assert " · " not in _valve_reason('{ boiler_call: "calling", valve_opening_pct: 100 }')
+    assert " · " not in _valve_reason('{ boiler_call: "calling" }')
+    assert texts.CARD["de"]["valve_opening"] == "Ventil {value} % offen"  # plain words, as people say it
+    assert texts.CARD["en"]["valve_opening"] == "Valve {value} % open"
+
+
+# ------------------------------------------------------------------ 0.8.2: the gap to the target instead of a percentage
+async def test_the_gap_to_the_target_is_on_by_default_and_the_percentage_is_a_diagnostic(hass: HomeAssistant) -> None:
+    """The heat demand in percent read like a valve or an output; it is an estimated gap to the target. The gap in °C
+    is what a person reads, on for every room, also where an earlier version left it off; one switched off stays so."""
+    from homeassistant.const import EntityCategory
+    from homeassistant.helpers import entity_registry as er
+
+    entry = await _setup(hass)
+    registry = er.async_get(hass)
+    gap = "sensor.thriftherm_badezimmer_deviation_from_target"
+    assert registry.async_get(gap).disabled_by is None and hass.states.get(gap) is not None
+    assert registry.async_get("sensor.thriftherm_badezimmer_heat_demand").entity_category == EntityCategory.DIAGNOSTIC
+
+    registry.async_update_entity(gap, disabled_by=er.RegistryEntryDisabler.INTEGRATION)  # as 0.8.1 created it
+    registry.async_update_entity("sensor.thriftherm_wohnzimmer_deviation_from_target",
+                                 disabled_by=er.RegistryEntryDisabler.USER)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert registry.async_get(gap).disabled_by is None
+    assert registry.async_get("sensor.thriftherm_wohnzimmer_deviation_from_target").disabled_by == er.RegistryEntryDisabler.USER
+
+
+def test_the_percentage_is_named_as_the_estimate_it_is() -> None:
+    names = {lang: json.loads((COMPONENT / "translations" / f"{lang}.json").read_text())["entity"]["sensor"]
+             for lang in ("de", "en")}
+    assert names["de"]["room_demand"]["name"] == "Heizbedarf (interne Schätzung)"
+    assert names["en"]["room_demand"]["name"] == "Heat demand (internal estimate)"
+
+
+def _bar(current: str, target: str) -> dict:
+    return _run_card(f"""
+      const main = new (customElements.get("thriftherm-card"))();
+      main.setConfig({{}});
+      const hass = makeHass();
+      const t = "sensor.thriftherm_badezimmer_target_temperature";
+      hass.states[t] = {{ ...hass.states[t], state: "{target}" }};
+      const temp = hass.states[t].attributes.temperature_entity;
+      hass.states[temp] = {{ ...(hass.states[temp] || {{ entity_id: temp, attributes: {{}} }}), state: "{current}" }};
+      if (temp.startsWith("climate.")) hass.states[temp].attributes = {{ ...hass.states[temp].attributes, current_temperature: {current} }};
+      const demand = "sensor.thriftherm_badezimmer_heat_demand";
+      hass.entities[demand] = {{ entity_id: demand, platform: "thriftherm", translation_key: "room_demand", device_id: "badezimmer" }};
+      hass.states[demand] = {{ entity_id: demand, state: "90", attributes: {{ boiler_call: "calling" }}, last_updated: "t0" }};
+      hass.states["sensor.wohnzimmer_temp"].state = "21.5";  // the other room at its target: no bar of its own
+      await shown(main, hass);
+      const html = main.shadowRoot.innerHTML;
+      const m = html.match(/class="bar"[^>]*aria-label="([^"]*)"[^>]*><div style="width:([0-9.]+)%/);
+      console.log(JSON.stringify({{ label: m ? m[1] : null, width: m ? Number(m[2]) : null }}));
+    """)
+
+
+def test_the_bar_shows_the_gap_to_the_target_in_degrees_not_the_percentage() -> None:
+    below = _bar("20.4", "21")
+    assert below["width"] == 30.0  # 0.6 of 2 degrees, whatever the percentage says
+    assert below["label"].replace("\xa0", " ") == texts.CARD["en"]["below_target"].replace("{value}", "0.6 °C")
+    assert _bar("21.2", "21")["width"] is None  # at or above its target: no bar
+    assert _bar("17", "21")["width"] == 100.0
+    assert texts.CARD["de"]["below_target"] == "{value} unter Soll"

@@ -33,6 +33,7 @@ const ICONS = {
 
 const DOMAIN = "thriftherm";
 // what the integration names a room's entities and the system's (translation keys)
+const GAP_FULL_K = 2; // the gap to the target a room bar is full at, as the heat demand is by default
 const ROOM_KEYS = ["room_target", "room_demand", "room_window_open", "room_heating_allowed", "room_boost",
   "room_drying", "room_drying_mode", "room_comfort_temp", "room_setback_temp", "room_thermostat_plan", "room_trend"];
 // what a tapped room can offer; the card's option hidden_controls leaves any of them out
@@ -620,7 +621,6 @@ class ThrifthermCard extends HTMLElement {
     const windowOpen = this._s(room.ids.window_open)?.state === "on";
     const allowed = this._s(room.ids.heating_allowed)?.state !== "off";
     const demandState = this._s(room.ids.demand);
-    const demand = num(demandState?.state);
     const byHand = a.reason === "override" || !!a.override_by;
     const boilerCommand = this._sys("boiler_command");
     // a flame only where the boiler was really told to heat, not under „observe only“
@@ -649,10 +649,17 @@ class ThrifthermCard extends HTMLElement {
       // reached within a few tenths and hardly rising any more: the boiler stays off until the room cools
       reason = this._t("stalled", { temp: this._temp(num(demandState.attributes.calls_again_below)) });
     } else reason = this._attr(target, "reason");
+    // how far its valves may open, where a valve has an opening limit and it is below fully open (0.8.2)
+    const opening = num(demandState?.attributes.valve_opening_pct);
+    if (!cooling && !windowOpen && opening !== null && opening < 100) {
+      reason = `${reason} · ${this._t("valve_opening", { value: this._num(opening, 0) })}`;
+    }
 
     const open = this._open.has(room.key);
-    const bar = allowed && demand !== null && demand > 0
-      ? `<div class="bar" role="presentation"><div style="width:${Math.min(100, Math.max(4, demand))}%"></div></div>` : "";
+    // the gap to the target in °C, full at 2 degrees (0.8.2): the heat demand in percent read like a valve or an output
+    const gap = current !== null && setpoint !== null && !cooling ? Math.round((setpoint - current) * 10) / 10 : null;
+    const bar = allowed && gap !== null && gap > 0
+      ? `<div class="bar" role="img" aria-label="${esc(this._t("below_target", { value: this._temp(gap) }))}"><div style="width:${Math.min(100, Math.max(4, gap / GAP_FULL_K * 100))}%"></div></div>` : "";
     const head = `<span class="room-name"><span class="name">${esc(room.name)}</span><span class="badges">${badges}</span></span>
         <span class="temps">${current !== null ? `<span class="current">${esc(this._num(current))}°</span>` : ""}${setpoint !== null ? `<span class="target">→ ${esc(this._num(setpoint))}°</span>` : ""}</span>
         <span class="reason">${esc(reason)}</span>

@@ -177,14 +177,14 @@ views:
                   - condition: state
                     entity: binary_sensor.thriftherm_badezimmer_window_open
                     state: "on"
-          # Measured temperature (from the thermostat) and heat demand.
+          # Measured temperature (from the thermostat) and deviation from target.
           - type: tile
             entity: climate.badezimmer
             name: Current
             state_content: current_temperature
           - type: tile
-            entity: sensor.thriftherm_badezimmer_heat_demand
-            name: Heat demand
+            entity: sensor.thriftherm_badezimmer_deviation_from_target
+            name: Deviation from target
           # Target now with its reason. A change by hand shows only when there is one.
           - type: markdown
             content: |
@@ -258,8 +258,8 @@ views:
             name: Current
             state_content: current_temperature
           - type: tile
-            entity: sensor.thriftherm_wohnzimmer_heat_demand
-            name: Heat demand
+            entity: sensor.thriftherm_wohnzimmer_deviation_from_target
+            name: Deviation from target
           - type: markdown
             content: |
               {%- set e = 'sensor.thriftherm_wohnzimmer_target_temperature' %}
@@ -559,16 +559,16 @@ views:
                 name: Living room
               - entity: sensor.thriftherm_wohnzimmer_target_temperature
                 name: Target by Thriftherm
-          # Heat demand of the rooms in percent.
+          # Deviation of the rooms from their target in degrees (negative: below).
           - type: history-graph
-            title: Heat demand (24 h)
+            title: Deviation from target (24 h)
             hours_to_show: 24
             grid_options:
               columns: full
             entities:
-              - entity: sensor.thriftherm_badezimmer_heat_demand
+              - entity: sensor.thriftherm_badezimmer_deviation_from_target
                 name: Bathroom
-              - entity: sensor.thriftherm_wohnzimmer_heat_demand
+              - entity: sensor.thriftherm_wohnzimmer_deviation_from_target
                 name: Living room
 
       # Boiler: planned flow and gas per day (gas boiler only).

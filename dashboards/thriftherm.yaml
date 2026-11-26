@@ -176,14 +176,14 @@ views:
                   - condition: state
                     entity: binary_sensor.thriftherm_badezimmer_window_open
                     state: "on"
-          # Gemessene Temperatur (vom Thermostat) und Heizbedarf.
+          # Gemessene Temperatur (vom Thermostat) und Abweichung vom Soll.
           - type: tile
             entity: climate.badezimmer
             name: Ist
             state_content: current_temperature
           - type: tile
-            entity: sensor.thriftherm_badezimmer_heat_demand
-            name: Heizbedarf
+            entity: sensor.thriftherm_badezimmer_deviation_from_target
+            name: Abweichung vom Soll
           # Soll jetzt mit Grund. Eine Änderung von Hand steht nur da, wenn es eine gibt.
           - type: markdown
             content: |
@@ -257,8 +257,8 @@ views:
             name: Ist
             state_content: current_temperature
           - type: tile
-            entity: sensor.thriftherm_wohnzimmer_heat_demand
-            name: Heizbedarf
+            entity: sensor.thriftherm_wohnzimmer_deviation_from_target
+            name: Abweichung vom Soll
           - type: markdown
             content: |
               {%- set e = 'sensor.thriftherm_wohnzimmer_target_temperature' %}
@@ -558,16 +558,16 @@ views:
                 name: Wohnzimmer
               - entity: sensor.thriftherm_wohnzimmer_target_temperature
                 name: Soll laut Thriftherm
-          # Heizbedarf der Räume in Prozent.
+          # Abweichung der Räume vom Soll in Grad (negativ: darunter).
           - type: history-graph
-            title: Heizbedarf (24 h)
+            title: Abweichung vom Soll (24 h)
             hours_to_show: 24
             grid_options:
               columns: full
             entities:
-              - entity: sensor.thriftherm_badezimmer_heat_demand
+              - entity: sensor.thriftherm_badezimmer_deviation_from_target
                 name: Badezimmer
-              - entity: sensor.thriftherm_wohnzimmer_heat_demand
+              - entity: sensor.thriftherm_wohnzimmer_deviation_from_target
                 name: Wohnzimmer
 
       # Therme: geplanter Vorlauf und Gas je Tag (nur mit Gastherme).

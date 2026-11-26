@@ -5,7 +5,7 @@ from pathlib import Path
 
 from homeassistant.util import slugify
 
-from custom_components.thriftherm.entity_ids import OBJECT_IDS
+from custom_components.thriftherm.entity_ids import KEPT_IDS, OBJECT_IDS
 
 EN = json.loads((Path(__file__).parents[1] / "custom_components/thriftherm/translations/en.json").read_text())["entity"]
 
@@ -14,7 +14,7 @@ def test_object_ids_follow_the_english_names():
     """A renamed English entity name must come with a regenerated id table."""
     for platform, names in EN.items():
         for key, entry in names.items():
-            assert OBJECT_IDS[platform][key] == slugify(entry["name"]), (platform, key)
+            assert OBJECT_IDS[platform][key] == KEPT_IDS.get((platform, key), slugify(entry["name"])), (platform, key)
     assert {p: set(m) for p, m in OBJECT_IDS.items()} == {p: set(m) for p, m in EN.items()}
 
 

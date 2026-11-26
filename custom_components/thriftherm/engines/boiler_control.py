@@ -53,6 +53,7 @@ from . import boiler_learning as learning
 from . import boiler_limit, heat_up
 from . import boiler_load as load
 from .boiler_learning import BURNING_GAS_W
+from .heat_call import CALL_CALLING
 from .boiler_memory import BoilerInputs, BoilerMemory, cold_weight, correction, curve_flow
 from .common import round_half
 from .gas_split import HOT_WATER_SIGN_S
@@ -270,6 +271,16 @@ def _boosts(mem: BoilerMemory, calling: list) -> dict[str, float]:
     return {r.key: DEMAND_BOOST_K * (r.demand or 0.0) + heat_up.extra_k(mem.heat_up, r) for r in calling}
 
 
+def _needs(inp: BoilerInputs, mem: BoilerMemory, boosts: dict[str, float], cell: str | None) -> dict[str, float]:
+    """What each room that wants heat needs added to the curve: its own line and, while it calls, its boosts."""
+    base = correction(mem, inp.outdoor_c, cell)
+    needs = {}
+    for r in load.wanting_rooms(inp.rooms):
+        line = base if cell is None else correction(mem, inp.outdoor_c, load.room_cell(load.class_of(cell), r.key))
+        needs[r.key] = line + boosts.get(r.key, 0.0)
+    return needs
+
+
 def _need(inp: BoilerInputs, mem: BoilerMemory, boosts: dict[str, float], cell: str | None) -> tuple[float, str | None]:
     """What is added to the curve, and the room that asks for it.
 
@@ -277,13 +288,42 @@ def _need(inp: BoilerInputs, mem: BoilerMemory, boosts: dict[str, float], cell: 
     that needs the most sets the flow, the others' valves take less. Without a room asking, the line
     in use (`cell`) holds.
     """
-    base = correction(mem, inp.outdoor_c, cell)
-    best, set_by = base, load.room_of(cell)
-    for r in load.wanting_rooms(inp.rooms):
-        line = base if cell is None else correction(mem, inp.outdoor_c, load.room_cell(load.class_of(cell), r.key))
-        if line + boosts.get(r.key, 0.0) > best + 1e-9:
-            best, set_by = line + boosts.get(r.key, 0.0), r.key
+    best, set_by = correction(mem, inp.outdoor_c, cell), load.room_of(cell)
+    for room, need in _needs(inp, mem, boosts, cell).items():
+        if need > best + 1e-9:
+            best, set_by = need, room
     return best, set_by
+
+
+THROTTLE_BELOW_K = 0.5  # a room this far below its target gets its valve fully open, whatever the flow
+THROTTLE_SLOW_AFTER_S = 900.0  # ... as does one calling this long and rising more slowly than a call is to (LAG_RATE_K_H)
+
+
+def _throttle_rooms(
+    calling: list, set_by: str | None, needs: dict[str, float], need: float
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """The calling rooms whose valves may open in part (engines/valve_plan.flow_share): another room sets the flow, they
+    need less, and they get there; and those of them that fell behind. Fully open stays the room that sets the flow and
+    every room that falls behind: half a degree below its target, calling for a quarter of an hour and hardly rising,
+    behind the pace its heat-up is planned with; as does one in a quick heat-up or drying, or with a valve that cannot
+    open. The quarter of an hour lies well before the curve takes a room for one that does not get there
+    (LAG_MIN_CALL_S): a throttled valve is open again by then."""
+    may, behind = [], []
+    for r in calling:
+        if r.key == set_by or r.key not in needs or needs[r.key] >= need - 1e-9:
+            continue
+        if r.boiler_call != CALL_CALLING or r.boost_active or r.drying.active or r.valve_unable is not None:
+            continue
+        if r.thermostat_heating is False:
+            continue
+        slow = r.trend_k_per_h is not None and r.trend_k_per_h < load.LAG_RATE_K_H
+        fell_behind = (
+            round(r.target - r.temperature, 2) >= THROTTLE_BELOW_K
+            or (slow and r.calling_s is not None and r.calling_s >= THROTTLE_SLOW_AFTER_S)
+            or ((r.heating_up or r.preheat_for_ts is not None) and not load.on_heat_up_plan(r))
+        )
+        (behind if fell_behind else may).append(r.key)
+    return tuple(sorted(may)), tuple(sorted(behind))
 
 
 def _book_operation(inp: BoilerInputs, mem: BoilerMemory, cell: str | None) -> BoilerMemory:
@@ -299,6 +339,8 @@ def _book_operation(inp: BoilerInputs, mem: BoilerMemory, cell: str | None) -> B
     # since the release there is no line to book to.
     lines = mem.lines
     for r in load.wanting_rooms(inp.rooms) if cell is not None else ():
+        if load.valve_limited(r):
+            continue  # behind a valve open in part its hours say nothing about its line, either way
         own = load.room_cell(load.class_of(cell), r.key)
         lines = load.observe(lines, own, hours, r.key in behind, mem.offset_k, mem.slope_k)
     return replace(mem, lines=lines, lines_seen_ts=now)
@@ -364,6 +406,10 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
             spread_rule=load.spread_rule(len(heating_rooms), able, share) if plan == BOILER_PLAN_HEAT else None,
             load_class=in_use,
             flow_set_by=set_by,
+            room_flows=room_flows,
+            flow_for_rooms=flow_for_rooms,
+            throttle_rooms=throttle_rooms,
+            throttle_behind=throttle_behind,
             curve_by_load=load.summary(mem.lines, cold, mem.offset_k, mem.slope_k),
             heat_up_k=(
                 {room: round(s.extra_k, 1) for room, s in mem.heat_up.items() if s.extra_k > 0.0} or None
@@ -379,6 +425,11 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
     set_by: str | None = None
     heating_up: tuple[str, ...] = ()
     asked: float | None = None  # the flow the rooms ask for, before the limits
+    # what each room would ask for itself, what they measure it against, and who may take less (0.8.2)
+    room_flows: dict[str, float] | None = None
+    flow_for_rooms: float | None = None
+    throttle_rooms: tuple[str, ...] = ()
+    throttle_behind: tuple[str, ...] = ()
     flow_cell = cell  # the line of the room that sets the flow: the one the learning moves
 
     def not_ours(mem: BoilerMemory) -> BoilerMemory:
@@ -536,6 +587,13 @@ def _decide(inp: BoilerInputs, mem: BoilerMemory, heating_run: bool, burning: bo
             # and the flow went from 45 to 53 °C in 21 seconds.
             mem = replace(mem, ramp_from=None, ramp_since_ts=None)
         disable = False
+        needs = _needs(inp, mem, boosts, cell)
+        room_flows = {room: round(curve + n, 1) for room, n in needs.items()}
+        # what is sent on top for the boiler's own limit is no heat the radiators get more of: it cycles, its mean flow
+        # is no higher. Held back by the ramp or the maximum, the flow sent is what there is.
+        flow_for_rooms = min(flow, max(round_half(curve + need), p.boiler_flow_min))
+        if not frost:
+            throttle_rooms, throttle_behind = _throttle_rooms(heating_rooms, set_by, needs, need)
     else:
         flow = p.boiler_flow_min
         disable = True

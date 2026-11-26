@@ -160,6 +160,11 @@ def _learning_attrs(d: Data) -> dict[str, Any]:
         "spread_rule": c.spread_rule,
         "load_class": c.load_class,
         "flow_set_by": names.get(c.flow_set_by, c.flow_set_by),
+        # the flow each room would ask for itself, and the valves open in part because another room's flow is higher
+        "room_flows_c": {names.get(k, k): v for k, v in (c.room_flows or {}).items()},
+        "valves_in_part_by_flow_pct": {names.get(k, k): v for k, v in (d.get("valves_by_flow") or {}).items()},
+        # what each room's opening on another room's flow was corrected by, learned (engines/flow_throttle.py)
+        "valve_opening_learned_pct": {names.get(k, k): v for k, v in (d.get("flow_adjust") or {}).items()},
         "curve_by_load": c.curve_by_load,
         "heat_up_extra_k": {names.get(k, k): v for k, v in (c.heat_up_k or {}).items()},
         "rooms_heating_up": [names.get(k, k) for k in c.heating_up],
@@ -493,7 +498,7 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
         icon="mdi:thermometer-lines",
-        **_DETAIL,
+        # the gap to the target in °C is what a person reads (0.8.2); on, where the heat demand in percent is a detail
         value_fn=lambda r: _rounded(r.deviation_k, 1),
     ),
     _room_desc(
@@ -501,6 +506,9 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         icon="mdi:radiator",
+        # an estimated gap to the target, not a valve or an output (0.8.2): kept, as the call to the boiler and the
+        # history go by it, but among the diagnostics
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda r: None if r.demand is None else round(r.demand * 100.0, 0),
         attr_fn=lambda r: {
             "issues": list(r.issues),
@@ -513,6 +521,7 @@ ROOM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
                 if r.boiler_call == heat_call.CALL_STALLED and r.stalled_target is not None
                 else None
             ),
+            "valve_opening_pct": r.valve_opening_pct,  # how far its valves may open, for the card (0.8.2)
         },
     ),
     _room_desc(
