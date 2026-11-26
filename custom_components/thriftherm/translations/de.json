@@ -1611,6 +1611,22 @@
           }
         }
       },
+      "boiler_state": {
+        "name": "Therme Zustand",
+        "state": {
+          "standby": "Bereitschaft",
+          "starting": "Brennerstart",
+          "heating": "Heizbetrieb",
+          "overrun": "Nachlauf",
+          "burner_lockout": "Brennersperrzeit",
+          "hot_water": "Warmwasser",
+          "heating_blocked": "Heizbetrieb gesperrt",
+          "frost_protection": "Frostschutz",
+          "waiting_for_water": "Wartet auf Wasser",
+          "self_test": "Selbsttest",
+          "other": "Anderer Zustand"
+        }
+      },
       "boiler_command": {
         "name": "Therme-Steuerbefehl",
         "state": {

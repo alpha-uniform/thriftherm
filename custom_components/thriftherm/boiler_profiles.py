@@ -10,7 +10,7 @@ No Home Assistant imports.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .const import (
     BOILER_REPORTS_HEATING,
@@ -38,6 +38,13 @@ class BoilerProfile:
     heating_after_states: frozenset[int] = frozenset()  # overrun and lockout after a heating run
     water_wait_states: frozenset[int] = frozenset()  # it waits, seeing too little water move through it
     fault_states: frozenset[int] = frozenset()  # those and the tests of its sensors that hold back the heating
+    shown_states: Mapping[str, frozenset[int]] = field(default_factory=dict)  # the sensor "Boiler state": words for the codes
+
+    def shown_state(self, state_number: int | None) -> str | None:
+        """What the boiler does in plain words (BOILER_STATES), None without a code; a code not listed is "other"."""
+        if state_number is None:
+            return None
+        return next((word for word, codes in self.shown_states.items() if state_number in codes), BOILER_STATE_OTHER)
 
     def reported_mode(self, state_number: int | None) -> str | None:
         """What the boiler itself says it burns for, None when the code does not tell."""
@@ -51,6 +58,12 @@ class BoilerProfile:
             return BOILER_REPORTS_FAULT
         return None
 
+
+BOILER_STATE_OTHER = "other"
+BOILER_STATES = [
+    "standby", "starting", "heating", "overrun", "burner_lockout", "hot_water", "heating_blocked",
+    "frost_protection", "waiting_for_water", "self_test", BOILER_STATE_OTHER,
+]
 
 PROFILES: dict[str, BoilerProfile] = {
     p.key: p
@@ -84,6 +97,20 @@ PROFILES: dict[str, BoilerProfile] = {
             # flow sensors, the heating held back. S.97, the pressure sensor's test, comes before most starts.
             water_wait_states=frozenset({53, 54}),
             fault_states=frozenset({53, 54, 96, 98}),
+            # what the display code says, for the sensor "Boiler state" (#7, mail 26.11.2026); S.30/S.31 are no heat
+            # call from the controller or the heating blocked over the eBUS, S.34 frost protection
+            shown_states={
+                "standby": frozenset({0}),
+                "starting": frozenset({1, 2, 3}),
+                "heating": frozenset({4}),
+                "overrun": frozenset({5, 6, 7}),
+                "burner_lockout": frozenset({8}),
+                "hot_water": frozenset({*range(10, 18), *range(20, 28)}),
+                "heating_blocked": frozenset({30, 31}),
+                "frost_protection": frozenset({34}),
+                "waiting_for_water": frozenset({53, 54}),
+                "self_test": frozenset({96, 97, 98}),
+            },
         ),
     )
 }

@@ -4,6 +4,11 @@
 
 Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
 
+## 0.8.3 – 2026-11-26
+
+- New sensor *Boiler state*: shows the boiler's status code (S.xx) in words, such as heating, burner lockout, overrun or hot water.
+- Fixed: on a boiler with a status code that heats on its own knob, a hot flow after the heating run counted as hot water, also at night with no tap open. That run was then missing from *Boiler heating active* as well.
+
 ## 0.8.2 – 2026-11-26
 
 - A Sonoff TRVZB/TRVZBT driven directly opens only in part when its room calls but another room sets a clearly higher flow (the room needs 80 % of its radiator or less): the room overshoots less, the boiler cycles less. Once the room falls behind, the valve opens again as far as you set it.

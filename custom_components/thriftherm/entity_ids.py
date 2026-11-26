@@ -50,6 +50,7 @@ OBJECT_IDS: Final[dict[str, dict[str, str]]] = {
         "room_abs_humidity": "absolute_humidity",
         "midea_command": "heat_pump_command",
         "boiler_command": "boiler_command",
+        "boiler_state": "boiler_state",
         "boiler_flow_setpoint": "boiler_flow_setpoint_planned",
         "room_thermostat_plan": "thermostat_plan",
         "learning_state": "learning_state",

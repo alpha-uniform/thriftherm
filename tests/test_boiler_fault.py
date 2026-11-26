@@ -40,7 +40,7 @@ def test_a_fault_code_is_never_taken_for_hot_water():
     """29.10.: S.98 with a flow of 99 °C and no gas meter showed "hot water" for ten minutes, and paused the learning."""
     assert not bc.hot_water_suspected(99.0, 69.9, 60.0, reported_mode=BOILER_REPORTS_FAULT, status_known=True)
     assert not bc.hot_water_suspected(99.0, 69.9, 60.0, heating_flow_c=45.0, reported_mode=BOILER_REPORTS_FAULT, status_known=True)
-    assert bc.hot_water_suspected(99.0, 69.9, 60.0, reported_mode=None, status_known=True)  # the rule itself stands
+    assert bc.hot_water_suspected(99.0, 69.9, 60.0, heating_flow_c=45.0, reported_mode=None, status_known=True)  # the rule itself stands
 
 
 def test_a_flow_of_90_or_a_wait_for_water_holds_back_a_new_release_for_half_an_hour():

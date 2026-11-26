@@ -4,6 +4,11 @@
 
 Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
 
+## 0.8.3 – 2026-11-26
+
+- Neuer Sensor *Therme Zustand*: zeigt den Statuscode der Therme (S.xx) in Worten, etwa Heizbetrieb, Brennersperrzeit, Pumpennachlauf oder Warmwasser.
+- Behoben: Bei einer Therme mit Statuscode, die nach ihrem eigenen Drehknopf heizt, galt ein heißer Vorlauf nach dem Heizlauf als Warmwasser, auch nachts ohne Zapfen. Dieser Lauf fehlte dann auch bei *Therme Heizbetrieb aktiv*.
+
 ## 0.8.2 – 2026-11-26
 
 - Ein direkt gesteuertes Sonoff TRVZB/TRVZBT öffnet nur noch anteilig, wenn sein Raum anfordert, aber ein anderer Raum einen deutlich höheren Vorlauf vorgibt (der Raum braucht höchstens 80 % seines Heizkörpers): Der Raum schwingt weniger über, die Therme taktet weniger. Fällt der Raum zurück, öffnet das Ventil wieder so weit, wie du es eingestellt hast.

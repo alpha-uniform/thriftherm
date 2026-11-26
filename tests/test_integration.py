@@ -2298,3 +2298,22 @@ async def test_the_release_in_the_options_is_the_one_step_to_active(hass: HomeAs
     await hass.async_block_till_done()
     assert hass.states.get("select.thriftherm_boiler_control").state == "shadow"
     assert hass.states.get("select.thriftherm_room_control").state == "active"
+
+
+async def test_the_boiler_state_shows_what_the_boiler_does_in_plain_words(hass: HomeAssistant) -> None:
+    """#7, mail 26.11.2026: the S.xx of the display as a state of its own, as an owner charted it himself."""
+    hass.states.async_set("sensor.statenumber", "4")
+    entry = await _setup(hass, options={CONF_BOILER_STATE_NUMBER: "sensor.statenumber"})
+    state = hass.states.get("sensor.thriftherm_boiler_state")
+    assert state.state == "heating" and state.attributes["code"] == "S.4"
+    for code, shown in (("31", "heating_blocked"), ("8", "burner_lockout"), ("7", "overrun"), ("14", "hot_water"), ("0", "standby"),
+                        ("97", "self_test"), ("2", "starting"), ("62", "other")):
+        hass.states.async_set("sensor.statenumber", code)
+        await entry.runtime_data.async_refresh()
+        await hass.async_block_till_done()
+        assert hass.states.get("sensor.thriftherm_boiler_state").state == shown, code
+
+
+async def test_without_a_status_number_there_is_no_boiler_state(hass: HomeAssistant) -> None:
+    await _setup(hass)
+    assert hass.states.get("sensor.thriftherm_boiler_state") is None

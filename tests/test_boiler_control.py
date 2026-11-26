@@ -1451,7 +1451,7 @@ def test_on_its_own_knob_a_flow_above_the_maximum_is_no_sign_of_hot_water():
     assert not _bc.hot_water_suspected(66.0, 52.0, 60.0, gas_w=15000.0)
     assert _bc.hot_water_suspected(66.0, 52.0, 60.0, gas_w=15000.0, heating_flow_c=58.0)  # sent: the maximum is in force
     assert _bc.hot_water_suspected(66.0, 52.0, 60.0, heating_blocked=True)
-    assert _bc.hot_water_suspected(66.0, 52.0, 60.0, status_known=True)  # with a status code: as before
+    assert not _bc.hot_water_suspected(66.0, 52.0, 60.0, status_known=True)  # with a status code too (#7, 26.11.2026)
     assert _bc.hot_water_suspected(52.0, 66.0, 60.0)  # return above flow says it on any knob
 
     knob = replace(inp([rr()], flow=66.0, ret=52.0, burner=True), gas_power_w=15000.0)  # plan-only

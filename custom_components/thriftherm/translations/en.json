@@ -1611,6 +1611,22 @@
           }
         }
       },
+      "boiler_state": {
+        "name": "Boiler state",
+        "state": {
+          "standby": "Standby",
+          "starting": "Starting the burner",
+          "heating": "Heating",
+          "overrun": "Overrun",
+          "burner_lockout": "Burner lockout",
+          "hot_water": "Hot water",
+          "heating_blocked": "Heating blocked",
+          "frost_protection": "Frost protection",
+          "waiting_for_water": "Waiting for water",
+          "self_test": "Self-test",
+          "other": "Other"
+        }
+      },
       "boiler_command": {
         "name": "Boiler command",
         "state": {

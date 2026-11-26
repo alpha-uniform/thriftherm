@@ -610,3 +610,20 @@ async def test_the_heat_demand_shows_how_far_a_valve_with_an_opening_limit_may_o
     hass.states.async_set("number.bath_heating_valve_position", "60", {"unit_of_measurement": "%"})
     await _cycle(hass, coordinator, freezer, 60)
     assert hass.states.get(demand).attributes["valve_opening_pct"] == 60.0
+
+
+def test_a_boiler_on_its_own_knob_with_a_status_code_shows_no_hot_water_after_a_heating_run():
+    """#7, mail 26.11.2026: hot water shown at noon and at night with nobody tapping.
+
+    The boiler heats on its own knob (nothing was sent, so no maximum is in force), hotter than the maximum in
+    Thriftherm. After the run it reports standby or "heating blocked" with the flow still hot: its status code
+    says it makes no hot water, and with nothing sent the hot flow is the knob, not a tap. Only a limit really
+    sent makes a hot flow a sign.
+    """
+    from custom_components.thriftherm.engines import boiler_control as bc
+
+    # S.30/S.31 after a heating run on the knob at 75 °C, maximum 60 °C, plan-only or observe only
+    assert not bc.hot_water_suspected(72.0, 60.0, 60.0, reported_mode=None, status_known=True)
+    # the same with a limit really sent: then the hot flow still is a sign (the rule stands)
+    assert bc.hot_water_suspected(72.0, 60.0, 60.0, heating_flow_c=45.0, reported_mode=None, status_known=True)
+    assert bc.hot_water_suspected(72.0, 60.0, 60.0, heating_blocked=True, reported_mode=None, status_known=True)

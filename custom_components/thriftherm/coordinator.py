@@ -2721,6 +2721,8 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "rooms": sent_rooms,
             "safety": safety_res,
             "boiler": boiler_res,
+            # the display code in plain words; a boiler addressed through entities has no code
+            "boiler_state": None if self.boiler_entities else self.boiler_profile.shown_state(boiler_res.state_number),
             "gas_split": self.gas_split,
             "midea": heat_pump_res,
             "cop": cop_res,

@@ -23,6 +23,7 @@ from .const import (
     AUTOMATION_PLANNING,
     BOILER_PLANS,
     CONF_BOILER_NOMINAL_INPUT_KW,
+    CONF_BOILER_STATE_NUMBER,
     CONF_GAS_FLOW,
     CONF_GAS_VOLUME,
     ROOM_PLANS,
@@ -40,6 +41,7 @@ from .const import (
     SOURCE_UNKNOWN,
 )
 from . import texts
+from .boiler_profiles import BOILER_STATES
 from .coordinator import ThrifthermConfigEntry, ThrifthermCoordinator
 from .engines import gas_split, heat_call
 from .engines.boiler_learning import PHASE_LEARNING, PHASE_PAUSED, PHASE_REFINING
@@ -412,6 +414,17 @@ SYSTEM_SENSORS: tuple[ThrifthermSensorDescription, ...] = (
         icon="mdi:school",
         value_fn=lambda d: d["boiler_command"].learning_phase,
         attr_fn=_learning_attrs,
+    ),
+    _desc(
+        "boiler_state",
+        boiler_only=True,
+        needs_input=CONF_BOILER_STATE_NUMBER,
+        device_class=SensorDeviceClass.ENUM,
+        options=BOILER_STATES,
+        icon="mdi:list-status",
+        # the S.xx of the boiler's display in plain words (#7, mail 26.11.2026)
+        value_fn=lambda d: d["boiler_state"],
+        attr_fn=lambda d: {"code": None if d["boiler"].state_number is None else f"S.{d['boiler'].state_number}"},
     ),
     _desc(
         "boiler_command",
