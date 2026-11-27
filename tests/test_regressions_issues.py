@@ -627,3 +627,21 @@ def test_a_boiler_on_its_own_knob_with_a_status_code_shows_no_hot_water_after_a_
     # the same with a limit really sent: then the hot flow still is a sign (the rule stands)
     assert bc.hot_water_suspected(72.0, 60.0, 60.0, heating_flow_c=45.0, reported_mode=None, status_known=True)
     assert bc.hot_water_suspected(72.0, 60.0, 60.0, heating_blocked=True, reported_mode=None, status_known=True)
+
+
+def test_the_burner_overshoot_above_a_sent_maximum_is_no_hot_water():
+    """#7, diagnostics 27.11.2026: active control sends 55 °C, which is also the maximum.
+
+    Cycling at low load the boiler overshoots each run to 57-60 °C with the circuit taking the heat (spread
+    6-8 K). Each peak read as hot water, the burn was dropped: no starts, no burner share, "heating active"
+    almost never on. Above a sent flow the burner overshoot rule decides, not the maximum.
+    """
+    from custom_components.thriftherm.engines import boiler_control as bc
+
+    # flow, return of the peaks that night, the setpoint and the maximum both 55 °C, no gas meter
+    for flow, ret in ((57.62, 51.31), (59.25, 51.81), (59.81, 52.56), (60.44, 52.88), (59.75, 52.31)):
+        assert not bc.hot_water_suspected(flow, ret, 55.0, heating_flow_c=55.0, reported_mode=None, status_known=True)
+        assert not bc.hot_water_suspected(flow, ret, 55.0, heating_flow_c=55.0)
+    # far above what was sent it still is hot water, and with the heating blocked the maximum still tells
+    assert bc.hot_water_suspected(72.0, 60.0, 55.0, heating_flow_c=55.0, reported_mode=None, status_known=True)
+    assert bc.hot_water_suspected(60.0, 52.0, 55.0, heating_blocked=True, reported_mode=None, status_known=True)

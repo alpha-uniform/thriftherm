@@ -303,7 +303,7 @@ def _shower_inputs(now: float, flow: float, ret: float, burner: bool = True) -> 
 def test_hot_water_is_recognised_from_the_temperatures():
     # the shower on 2026-09-12 21:10: return 66.1 °C above flow 61.7 °C
     assert _bc.hot_water_suspected(61.7, 66.1, flow_max_c=60.0)
-    assert _bc.hot_water_suspected(64.0, 63.5, flow_max_c=60.0, heating_flow_c=55.0)  # far above any heating flow
+    assert _bc.hot_water_suspected(64.0, 63.5, flow_max_c=60.0, heating_flow_c=45.0)  # far above the heating flow sent
     assert not _bc.hot_water_suspected(45.0, 37.0, flow_max_c=60.0)  # an ordinary heating run
     assert not _bc.hot_water_suspected(None, 37.0, flow_max_c=60.0)
 
@@ -1449,7 +1449,8 @@ def test_the_hold_off_after_hot_water_holds_back_the_spread_and_not_the_rooms():
 def test_on_its_own_knob_a_flow_above_the_maximum_is_no_sign_of_hot_water():
     """Plan-only without a status code, the knob at 66 °C and a maximum of 60 °C: every heating run read as hot water."""
     assert not _bc.hot_water_suspected(66.0, 52.0, 60.0, gas_w=15000.0)
-    assert _bc.hot_water_suspected(66.0, 52.0, 60.0, gas_w=15000.0, heating_flow_c=58.0)  # sent: the maximum is in force
+    assert not _bc.hot_water_suspected(66.0, 52.0, 60.0, gas_w=15000.0, heating_flow_c=58.0)  # sent: an overshoot (#7, 27.11.2026)
+    assert _bc.hot_water_suspected(66.0, 52.0, 60.0, gas_w=15000.0, heating_flow_c=45.0)  # far above what was sent
     assert _bc.hot_water_suspected(66.0, 52.0, 60.0, heating_blocked=True)
     assert not _bc.hot_water_suspected(66.0, 52.0, 60.0, status_known=True)  # with a status code too (#7, 26.11.2026)
     assert _bc.hot_water_suspected(52.0, 66.0, 60.0)  # return above flow says it on any knob

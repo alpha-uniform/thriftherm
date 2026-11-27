@@ -4,7 +4,9 @@
 
 **English** | [Deutsch](README.md)
 
-[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5)](https://hacs.xyz)
+[![HACS Default](https://img.shields.io/badge/HACS%20%2F%20Marketplace-Default-41BDF5)](https://hacs.xyz)
+[![Release](https://img.shields.io/github/v/release/alpha-uniform/thriftherm?label=Version)](https://github.com/alpha-uniform/thriftherm/releases/latest)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5?logo=homeassistant&logoColor=white)](https://www.home-assistant.io)
 [![Downloads](https://img.shields.io/github/downloads/alpha-uniform/thriftherm/total?label=Downloads)](https://github.com/alpha-uniform/thriftherm/releases)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/alphauniform)
 
@@ -52,13 +54,13 @@ The times are estimated from the rules and depend on the weather ([details](en/G
 Nothing is written to the boiler or the thermostats until you switch to *Active* yourself.
 
 1. **ebusd:** connect the eBUS adapter to the boiler's eBUS terminal (a room controller already there is disconnected), then set up the ebusd app with MQTT, with `--accesslevel=*` and the `filter-name` addition ([step 2](en/SETUP.md#2-set-up-ebusd)); skip this without an own boiler.
-2. **Install:** search for **Thriftherm** in HACS, download it and restart Home Assistant. This button is quicker, it opens Thriftherm in HACS directly:
+2. **Install:** search for **Thriftherm** in HACS (*Marketplace* since Home Assistant 2026.11), download it and restart Home Assistant. This button is quicker, it opens Thriftherm in HACS directly:
 
    [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
 
 3. **Add the integration:** *Settings → Devices & services → Add integration → Thriftherm*. When ebusd entities are found, the boiler step is filled in for you – check it and continue.
 4. **Observe only for a few days** (Thriftherm works out and shows what it would do, but controls nothing)**:** compare *Boiler command*, *Thermostat plan* and *Decision reason* with what you would have done.
-5. **Switch to *Active*:** release active control in the options, then set *Boiler control* and *Room control* to *Active*.
+5. **Switch to *Active*:** release active control in the options; *Boiler control* and *Room control* then switch to *Active* by themselves.
 6. **Card on the dashboard:** *Add card → Thriftherm*. It comes with the integration and finds your rooms by itself ([step 9](en/SETUP.md#9-dashboard)).
 
 ## Documentation

@@ -4,6 +4,10 @@
 
 Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
 
+## 0.8.4 – 2026-11-27
+
+- Behoben: Steuert Thriftherm die Therme aktiv und schickt einen Vorlauf nahe am Höchstwert, galt das normale Überschwingen beim Takten als Warmwasser. Die Heizläufe fehlten dann bei Starts, Brenneranteil und *Therme Heizbetrieb aktiv*.
+
 ## 0.8.3 – 2026-11-26
 
 - Neuer Sensor *Therme Zustand*: zeigt den Statuscode der Therme (S.xx) in Worten, etwa Heizbetrieb, Brennersperrzeit, Pumpennachlauf oder Warmwasser.

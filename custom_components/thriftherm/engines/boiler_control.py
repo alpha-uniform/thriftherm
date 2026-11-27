@@ -145,8 +145,9 @@ def hot_water_suspected(
     boiler (active control); in plan-only mode the knob rules and neither applies.
     The boiler's own status code, where it is known, outranks every guess.
 
-    A flow above the configured maximum is only a sign while that maximum is in force,
-    which is while one of the two was sent, with a status code as well (#7). A boiler on its own knob
+    A flow above the configured maximum is only a sign while the heating is blocked. With a flow sent the
+    burner overshoots above it like above any setpoint, so the overshoot rule decides (#7, 27.11.2026: 55 °C
+    sent, the maximum 55 °C, every cycling run peaked at 57-60 °C and read as hot water). A boiler on its own knob
     (plan-only, hands off) heats as hot as the knob says: with the knob at 66 °C and a
     maximum of 60 °C every heating run read as hot water, its burns were left out and all
     its gas was counted as hot water (review 2026-10-13).
@@ -168,10 +169,10 @@ def hot_water_suspected(
     # shower ended at 03:00, the flow stood above 57 °C until 03:05 (maximum 55 °C), and hot
     # water was shown until 03:15.
     flame_possible = gas_w is None or burning
-    limit_in_force = heating_blocked or heating_flow_c is not None
-    # Only while a limit was really sent: on its own knob a boiler heats as hot as the knob says, with or without
-    # a status code (#7, 26.11.2026: after each heating run on the knob, standby with the flow still hot read as hot water)
-    if flame_possible and flow_c > flow_max_c + HOT_WATER_ABOVE_FLOW_MAX_K and limit_in_force:
+    # Only while the heating is blocked: on its own knob a boiler heats as hot as the knob says, with or without
+    # a status code (#7, 26.11.2026: after each heating run on the knob, standby with the flow still hot read as hot
+    # water), and above a sent flow it overshoots (#7, 27.11.2026)
+    if flame_possible and flow_c > flow_max_c + HOT_WATER_ABOVE_FLOW_MAX_K and heating_blocked:
         return True
     if flame_possible and heating_flow_c is not None and flow_c > heating_flow_c + HOT_WATER_ABOVE_SETPOINT_K:
         return True

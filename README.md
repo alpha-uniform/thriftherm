@@ -4,7 +4,9 @@
 
 [English](README.en.md) | **Deutsch**
 
-[![HACS Default](https://img.shields.io/badge/HACS-Default-41BDF5)](https://hacs.xyz)
+[![HACS Default](https://img.shields.io/badge/HACS%20%2F%20Marketplace-Default-41BDF5)](https://hacs.xyz)
+[![Release](https://img.shields.io/github/v/release/alpha-uniform/thriftherm?label=Version)](https://github.com/alpha-uniform/thriftherm/releases/latest)
+[![Home Assistant](https://img.shields.io/badge/Home%20Assistant-2026.9%2B-41BDF5?logo=homeassistant&logoColor=white)](https://www.home-assistant.io)
 [![Downloads](https://img.shields.io/github/downloads/alpha-uniform/thriftherm/total?label=Downloads)](https://github.com/alpha-uniform/thriftherm/releases)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/alphauniform)
 
@@ -52,12 +54,12 @@ Die Zeiten sind aus den Regeln abgeschätzt und hängen vom Wetter ab ([Einzelhe
 An Therme und Thermostate werden keine Befehle gesendet, bis du selbst auf *Aktiv* stellst.
 
 1. **ebusd:** den eBUS-Adapter an die eBUS-Klemme der Therme (ein vorhandener Raumregler dort wird abgeklemmt), dann die ebusd-App mit MQTT einrichten, mit `--accesslevel=*` und der Ergänzung von `filter-name` ([Schritt 2](de/EINRICHTUNG.md#2-ebusd-einrichten)); ohne eigene Therme überspringen.
-2. **Installieren:** in HACS nach **Thriftherm** suchen, herunterladen und Home Assistant neu starten. Schneller geht es mit diesem Knopf, er öffnet Thriftherm direkt in HACS:
+2. **Installieren:** in HACS (seit Home Assistant 2026.11 *Marketplace*) nach **Thriftherm** suchen, herunterladen und Home Assistant neu starten. Schneller geht es mit diesem Knopf, er öffnet Thriftherm direkt in HACS:
 
    [![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=alpha-uniform&repository=thriftherm&category=integration)
 3. **Integration hinzufügen:** *Einstellungen → Geräte & Dienste → Integration hinzufügen → Thriftherm*. Findet Thriftherm ebusd-Entitäten, ist der Thermen-Schritt schon ausgefüllt – prüfen und weiter.
 4. **Einige Tage *Nur beobachten*** (Thriftherm rechnet und zeigt, was es tun würde, steuert aber nichts)**:** *Therme-Steuerbefehl*, *Thermostat-Plan* und *Entscheidungsgrund* mit dem vergleichen, was du selbst getan hättest.
-5. **Auf *Aktiv* schalten:** die aktive Steuerung in den Optionen freigeben, dann *Thermensteuerung* und *Raumsteuerung* auf *Aktiv* stellen.
+5. **Auf *Aktiv* schalten:** die aktive Steuerung in den Optionen freigeben; *Thermensteuerung* und *Raumsteuerung* stehen danach von selbst auf *Aktiv*.
 6. **Karte aufs Dashboard:** *Karte hinzufügen → Thriftherm*. Sie kommt mit der Integration und findet deine Räume selbst ([Schritt 9](de/EINRICHTUNG.md#9-dashboard)).
 
 ## Dokumentation

@@ -4,6 +4,10 @@
 
 Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
 
+## 0.8.4 – 2026-11-27
+
+- Fixed: with active boiler control and a flow sent close to the maximum, the ordinary overshoot while cycling counted as hot water. Those heating runs were then missing from starts, burner share and *Boiler heating active*.
+
 ## 0.8.3 – 2026-11-26
 
 - New sensor *Boiler state*: shows the boiler's status code (S.xx) in words, such as heating, burner lockout, overrun or hot water.
