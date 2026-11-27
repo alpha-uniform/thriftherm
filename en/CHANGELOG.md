@@ -4,6 +4,10 @@
 
 Since 0.7.0 the configuration is at version 4; from 0.5.0 to 0.6.8 it was at version 3.
 
+## 0.8.5 – 2026-11-27
+
+- Fixed: when Thriftherm switched a valve driven directly off for an open window, its frost setpoint counted as a turn at the valve. The room then stayed on frost protection for two hours.
+
 ## 0.8.4 – 2026-11-27
 
 - Fixed: with active boiler control and a flow sent close to the maximum, the ordinary overshoot while cycling counted as hot water. Those heating runs were then missing from starts, burner share and *Boiler heating active*.

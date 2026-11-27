@@ -4,6 +4,10 @@
 
 Seit 0.7.0 ist die Konfiguration bei Version 4, von 0.5.0 bis 0.6.8 war sie bei Version 3.
 
+## 0.8.5 – 2026-11-27
+
+- Behoben: Schaltete Thriftherm ein direkt gesteuertes Ventil wegen eines offenen Fensters aus, galt dessen Frost-Sollwert als Drehen am Ventil. Der Raum blieb danach zwei Stunden auf Frostschutz.
+
 ## 0.8.4 – 2026-11-27
 
 - Behoben: Steuert Thriftherm die Therme aktiv und schickt einen Vorlauf nahe am Höchstwert, galt das normale Überschwingen beim Takten als Warmwasser. Die Heizläufe fehlten dann bei Starts, Brenneranteil und *Therme Heizbetrieb aktiv*.

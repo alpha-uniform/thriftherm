@@ -309,6 +309,28 @@ async def test_the_valve_of_a_room_with_its_window_open_goes_down_to_the_frost_l
     assert "badezimmer" not in coordinator.overrides  # its own frost setpoint is no hand
 
 
+async def test_a_valve_switched_off_for_the_window_shows_its_frost_setpoint_and_that_is_no_hand(hass, freezer) -> None:
+    """27.11.2026: the window switched the TRVZB off, the valve then reported its setpoint as 5 °C on its own (a new
+    MQTT state, no context of ours), and that was taken for a turn at the valve: 7 °C for two hours after the window."""
+    from .test_hand import _cycle
+
+    coordinator, bath, _ = await _direct(hass, freezer)
+    assert coordinator.builder.params.window_valve_off
+    hass.states.async_set("binary_sensor.bath_window", "on")
+    await _cycle(hass, coordinator, freezer, 60)
+    await _cycle(hass, coordinator, freezer, 15 * 60)  # past the window's grace
+    assert bath.hvac_mode == "off"
+    bath._attr_target_temperature = 5.0  # the valve's own frost setpoint while off, reported by the device itself
+    bath.async_write_ha_state()
+    await _cycle(hass, coordinator, freezer, 60)
+    assert "badezimmer" not in coordinator.overrides
+    hass.states.async_set("binary_sensor.bath_window", "off")
+    await _cycle(hass, coordinator, freezer, 60)
+    await _cycle(hass, coordinator, freezer, 70)
+    assert bath.hvac_mode == "heat" and bath.target_temperature == 21.5
+    assert "badezimmer" not in coordinator.overrides
+
+
 async def test_the_valve_memory_survives_a_restart(hass, freezer) -> None:
     from custom_components.thriftherm import persistence
 

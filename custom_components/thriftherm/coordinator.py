@@ -3064,6 +3064,11 @@ class ThrifthermCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             mem = self._room_memory(key, cfg.climate_entity)
             if mem.last_sent_target is None:
                 continue
+            # Switched off (by us for a window, or by a person) a valve shows its own frost setpoint: no wish for the
+            # room. A TRVZB reports it as a new state of its own, with no context of ours (27.11.2026: the window's off
+            # read as a turn to 5 °C, the room held 7 °C for two hours after the window). A mode alone is no hand either.
+            if state.trv_hvac_mode == "off":
+                continue
             # The thermostat's answer to our own setpoint is nobody's hand, whatever value it shows.
             # A late echo of its valve is no answer: our setpoint is what makes Better Thermostat
             # rewrite the valve, so a stale reply it adopts within seconds still carries our context.
